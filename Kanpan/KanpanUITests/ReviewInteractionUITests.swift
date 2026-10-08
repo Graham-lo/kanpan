@@ -64,10 +64,10 @@ final class ReviewInteractionUITests: KanpanUICase {
   }
 
   private func openCapture() -> Bool {
-    // 2026-09-28 顶栏方案 B：「记一笔」是顶栏右侧那颗书本圆片，不再在图表设置里。
-    let record = app.buttons[Ids.topNote]
-    guard expectExists(record, Self.short, "顶栏没有「记一笔」那颗") else { return false }
-    record.tap()
+    // 2026-10-08 起「记一笔」收进顶栏「⋯」菜单（09-28 至 10-08 是顶栏右侧那颗书本圆片）。
+    guard app.openTopMenuItem(Ids.topNote, timeout: Self.short) else {
+      XCTFail("顶栏「⋯」菜单里没有「记一笔」"); return false
+    }
     return expectExists(app.buttons["记下"], Self.short, "点「记一笔」没开出取景卡")
   }
 

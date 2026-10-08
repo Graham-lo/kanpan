@@ -394,9 +394,9 @@ final class WalkthroughPanelsUITests: WalkthroughCase {
     backToChart()
 
     step("分享") {
-      let share = app.buttons[Ids.topShare]
-      guard share.waitForExistence(timeout: 5) else { return false }
-      share.tap(); settle(1.5); shot("分享")
+      // 2026-10-08 起「分享」在顶栏「⋯」菜单里。
+      guard app.openTopMenuItem(Ids.topShare, timeout: 5) else { return false }
+      settle(1.5); shot("分享")
       let close = app.buttons["share.exit"]
       if close.exists { close.tap() } else { swipeDownPanel() }
       settle(0.8)
@@ -405,9 +405,8 @@ final class WalkthroughPanelsUITests: WalkthroughCase {
     backToChart()
 
     step("记一笔") {
-      let n = app.buttons[Ids.topNote]
-      guard n.waitForExistence(timeout: 5) else { return false }
-      n.tap()
+      // 2026-10-08 起「记一笔」在顶栏「⋯」菜单里。
+      guard app.openTopMenuItem(Ids.topNote, timeout: 5) else { return false }
       guard app.buttons["记下"].waitForExistence(timeout: 10) else { shot("记一笔-没开出"); return false }
       settle(1.0); shot("记一笔-取景卡")
       app.buttons["记下"].tap(); settle(1.5); shot("记一笔-记下后")

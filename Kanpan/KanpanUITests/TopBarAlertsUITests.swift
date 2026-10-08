@@ -153,10 +153,10 @@ final class TopBarAlertsUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.bell.label == "提醒 2" }, "铃角标不是 2：\(bell.label)")
   }
 
-  /// 验收截图：顶栏（对比亮、铃角标）青苔浅 / 深、对比模式搜索页两只、提醒列表置顶、日志未登录与登录后空。
+  /// 验收截图：顶栏（铃角标；10-08 起对比收进「⋯」菜单，不再亮强调色）青苔浅 / 深、对比模式搜索页两只、提醒列表置顶、日志未登录与登录后空。
   func testEvidenceShots() throws {
     XCTAssertTrue(waitForLiveChart(), "图没活")
-    XCTAssertTrue(app.buttons[Ids.topCompare].waitForExistence(timeout: Self.short), "顶栏没有对比加号")
+    XCTAssertTrue(app.buttons[Ids.topMore].waitForExistence(timeout: Self.short), "顶栏没有「⋯」")
 
     openHub()
     createFromHub(price: "9999999")
@@ -172,8 +172,8 @@ final class TopBarAlertsUITests: KanpanUICase {
     shot("顶栏-青苔浅")
 
     // 对比模式的搜索页：启动时带着 ETH、SOL 两只。
-    app.buttons[Ids.topCompare].tap()
-    XCTAssertTrue(app.buttons["compare.done"].waitForExistence(timeout: Self.short), "加号没开出对比模式的搜索页")
+    XCTAssertTrue(app.openTopMenuItem(Ids.topCompare, timeout: Self.short), "顶栏「⋯」菜单里没有「添加对比」")
+    XCTAssertTrue(app.buttons["compare.done"].waitForExistence(timeout: Self.short), "「⋯ › 添加对比」没开出对比模式的搜索页")
     XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'compare.remove.'")).count, 2,
                    "「正在对比」那条不是两只")
     shot("对比搜索-两只")

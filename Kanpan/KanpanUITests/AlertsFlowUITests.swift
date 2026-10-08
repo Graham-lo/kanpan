@@ -743,10 +743,8 @@ import XCTest
 
   /// 记一笔（看多，等答案）→ 总表里多一条「BTC 到点了」，写着到期时刻。
   func testARecordedCallShowsUpAsADueAlert() throws {
-    // 2026-09-28 顶栏方案 B：「记一笔」是顶栏右侧那颗书本圆片。
-    let record = app.buttons[Ids.topNote]
-    XCTAssertTrue(record.waitForExistence(timeout: 10), "顶栏没有「记一笔」那颗")
-    record.tap()
+    // 2026-10-08 起「记一笔」收进顶栏「⋯」菜单（原来是顶栏右侧那颗书本圆片）。
+    XCTAssertTrue(app.openTopMenuItem(Ids.topNote), "顶栏「⋯」菜单里没有「记一笔」")
     let long = app.buttons["看多"]
     XCTAssertTrue(long.waitForExistence(timeout: 10), "取景卡里没有「看多」")
     long.tap()

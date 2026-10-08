@@ -99,9 +99,9 @@ import XCTest
     tap("share.exit")
     XCTAssertTrue(wait(20) { self.info()["interval"] as? String == "4h" })
     attach("退出还原且尊重手动换档")
-    // 顶栏「分享」这一处落点使用同一张朋友名单。
-    // 2026-09-23 起图片与画线合成一个「分享」，点开再选「画线」；09-28 起它是顶栏右侧那颗圆片。
-    tap("top.share")
+    // 顶栏「⋯ › 分享」这一处落点使用同一张朋友名单。
+    // 2026-09-23 起图片与画线合成一个「分享」，点开再选「画线」；09-28 起它是顶栏右侧那颗圆片，10-08 起收进顶栏「⋯」菜单。
+    XCTAssertTrue(app.openTopMenuItem(Ids.topShare, timeout: 12), "顶栏「⋯」菜单里没有「分享」")
     XCTAssertTrue(app.otherElements["share.chooser"].waitForExistence(timeout: 10), "「分享」没弹出选图片还是画线")
     tap("share.lines")
     XCTAssertTrue(app.otherElements["share.picker"].waitForExistence(timeout: 10))
@@ -148,8 +148,8 @@ import XCTest
     XCTAssertTrue(app.buttons["draw.finish"].waitForExistence(timeout: 15))
     XCTAssertFalse(app.buttons["draw.send"].exists, "竖屏画线栏上还挂着纸飞机")
     tap("draw.finish")
-    // 留下来的线是自己的了，从顶栏「分享 › 画线」回发给朋友。
-    tap("top.share")
+    // 留下来的线是自己的了，从顶栏「⋯ › 分享 › 画线」回发给朋友。
+    XCTAssertTrue(app.openTopMenuItem(Ids.topShare, timeout: 12), "顶栏「⋯」菜单里没有「分享」")
     XCTAssertTrue(app.otherElements["share.chooser"].waitForExistence(timeout: 10))
     tap("share.lines")
     XCTAssertTrue(app.otherElements["share.picker"].waitForExistence(timeout: 10))

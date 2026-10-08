@@ -222,13 +222,11 @@ final class StressRegression1005UITests: KanpanUICase {
                   "\(id) 没切到 \(on ? "开" : "关")", file: file, line: line)
   }
 
-  // 对比（顶栏加号 → 搜索页的对比模式）
+  // 对比（顶栏「⋯ › 添加对比」→ 搜索页的对比模式；10-08 前是一颗加号圆片）
 
   private func openCompare(file: StaticString = #filePath, line: UInt = #line) {
-    let button = app.buttons[Ids.topCompare]
-    XCTAssertTrue(button.waitForExistence(timeout: Self.short), "顶栏没有对比加号", file: file, line: line)
-    button.tap()
-    XCTAssertTrue(app.buttons["compare.done"].waitForExistence(timeout: Self.short), "加号没开出对比模式", file: file, line: line)
+    XCTAssertTrue(app.openTopMenuItem(Ids.topCompare, timeout: Self.short), "顶栏「⋯」菜单里没有「添加对比」", file: file, line: line)
+    XCTAssertTrue(app.buttons["compare.done"].waitForExistence(timeout: Self.short), "「⋯ › 添加对比」没开出对比模式", file: file, line: line)
   }
 
   private func compareToggle(_ query: String, _ key: String, expect value: String, file: StaticString = #filePath, line: UInt = #line) {
@@ -448,7 +446,7 @@ final class StressRegression1005UITests: KanpanUICase {
     reportHangs("走查一全程", since: (0, []))
   }
 
-  /// 美元指数上：顶栏「对比＋」加 BTC、ETH、删一只，加满三只第四只「已满」；
+  /// 美元指数上：顶栏「⋯ › 添加对比」加 BTC、ETH、删一只，加满三只第四只「已满」；
   /// 铃铛建提醒 → 列表 → 日志 → 删。
   func testWalk2DollarIndexCompareAndAlerts() {
     executionTimeAllowance = 600
@@ -760,7 +758,7 @@ final class StressRegression1005UITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { abs((self.layout()["landStored"] ?? 0) - landSpacing) < 0.6 },
                   "横屏捏完没落盘：\(layout())")
     finishDrawing()
-    XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.buttons[Ids.topCompare].exists }, "回竖屏顶栏没回来")
+    XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.buttons[Ids.topMore].exists }, "回竖屏顶栏没回来")
     let portraitSpacing = double("spacing")
     // 对比 BTC。
     openCompare(); compareToggle("BTCUSDT", Self.btc, expect: "已添加"); doneCompare()

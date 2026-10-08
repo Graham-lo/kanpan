@@ -24,12 +24,18 @@ enum Ids {
   /// 人是「走进」这张图的，这颗把他原路送回去（并且原来那一页下钻到哪层还在哪层）。
   /// 从底栏直接点「图表」是回家，不是走进来，那时它不该在——冷启动更不该有。
   static let topBack = "top.back"
-  /// 顶栏右侧「记一笔」「分享」两颗圆片（2026-09-28 方案 B，原来在「图表设置 › 这张图」里）。
+  /// 顶栏右上三颗圆片「提醒铃 · ⋯ · 搜索」（2026-10-08）。「⋯」点开一个系统菜单，
+  /// 从上到下「添加对比 · 记一笔 · 分享」——这三项原来各是一颗圆片，id 沿用到菜单项上。
+  /// 用例要点它们一律走 `XCUIApplication.openTopMenuItem(_:)`（先开「⋯」再点项）。
+  static let topMore = "top.more"
+  /// 「⋯」菜单里的「记一笔」「分享」（2026-09-28 方案 B 起是顶栏圆片，10-08 收进菜单）。
   static let topNote = "top.note"
   static let topShare = "top.share"
-  /// 顶栏「添加对比」加号与「提醒」铃（2026-10-05，照 TradingView 手机版）。加号点开搜索页的对比模式，
-  /// 铃点开「提醒」sheet（列表 | 日志），铃角标是这只品种还没触发的提醒数。
+  /// 「⋯」菜单里的「添加对比」（2026-10-05 是一颗加号圆片，10-08 收进菜单）：点开搜索页的对比模式；
+  /// 对比集合满三只时这一项禁用。
   static let topCompare = "top.compare"
+  /// 顶栏「提醒」铃（2026-10-05，照 TradingView 手机版）：点开「提醒」sheet（列表 | 日志），
+  /// 角标是这只品种还没触发的提醒数。
   static let topAlerts = "top.alerts"
   /// 底栏「自选」那一格。标签栏常驻，任何一页上都点得到。
   static let favoritesTab = "bottom.favorites"
@@ -65,7 +71,7 @@ enum Ids {
   static let bottomMe = "bottom.me"
   /// 「我的」记号右上的复盘待判定数。
   static let bottomMeBadge = "bottom.me.badge"
-  /// 周期行右端的图表设置：K 线 · 显示 · 价格轴（「这张图」2026-09-28 搬到顶栏 `topNote` / `topShare`）。
+  /// 周期行右端的图表设置：K 线 · 显示 · 价格轴（「这张图」2026-09-28 搬到顶栏 `topNote` / `topShare`，10-08 起在顶栏「⋯」菜单里）。
   /// 「更多设置」那一层 2026-09-28 整层收掉（收设置项 B 组）。
   /// 面板名和标签名要分清——标签栏那一格叫「图表」，是整页。指标、对比、主力订单流
   /// 2026-09-27 起都不在这张面板里，走周期条的「分析」（`intervalIndicators`）。
@@ -508,6 +514,35 @@ extension XCUIApplication {
     buttons[Ids.intervalMore].tap()
     let cell = buttons["period.row.\(raw)"]
     if cell.waitForExistence(timeout: 8) { cell.tap() }
+  }
+
+  /// 顶栏「⋯」菜单里的一项（`Ids.topCompare` / `topNote` / `topShare`）：点 `top.more` 开菜单，
+  /// 等那一项出来再点。菜单已经开着就直接点。返回是否点到了（「⋯」不在、项不在、项禁用都算没点到）。
+  @discardableResult func openTopMenuItem(_ id: String, timeout: TimeInterval = 10) -> Bool {
+    guard let item = topMenuItem(id, timeout: timeout), item.isEnabled else { return false }
+    item.tap()
+    return true
+  }
+
+  /// 开「⋯」菜单、等某一项出来，返回那一项但不点（要验它在不在、是不是禁用时用）。
+  /// 「⋯」不在或等不到那一项返回 nil——此时菜单可能还开着，用 `closeTopMenu()` 收。
+  func topMenuItem(_ id: String, timeout: TimeInterval = 10) -> XCUIElement? {
+    let item = buttons[id]
+    if item.exists { return item }
+    let more = buttons[Ids.topMore]
+    guard more.waitForExistence(timeout: timeout) else { return nil }
+    more.tap()
+    return item.waitForExistence(timeout: timeout) ? item : nil
+  }
+
+  /// 「⋯」菜单开着就收掉（点菜单外的系统遮罩）。没开就什么都不做。
+  func closeTopMenu() {
+    let dismiss = otherElements["PopoverDismissRegion"]
+    if dismiss.exists { dismiss.tap(); return }
+    // 找不到系统遮罩就点屏幕左下一角（底栏之上的图区，空白处），菜单外一点就收。
+    if buttons[Ids.topNote].exists || buttons[Ids.topShare].exists || buttons[Ids.topCompare].exists {
+      coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.6)).tap()
+    }
   }
 
   /// 顶栏放大镜 → 搜索页。这一页是「我知道要找什么」那条路：打字、历史词、

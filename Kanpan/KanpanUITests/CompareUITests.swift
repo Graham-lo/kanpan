@@ -51,13 +51,12 @@ import UIKit
     let state = XCTAttachment(string: String(describing: info()))
     state.name = name + "-读数"; state.lifetime = .keepAlways; add(state)
   }
-  /// 对比入口 2026-10-05 起在顶栏（加号 `top.compare`），点开是搜索页的对比模式：
+  /// 对比入口 2026-10-05 起在顶栏（10-08 起是「⋯」菜单里的「添加对比」`top.compare`），点开是搜索页的对比模式：
   /// 顶上「正在对比」一条（`compare.chip.<键>` / `compare.remove.<键>`），每行行尾一颗加号
   /// （`compare.toggle.<键>`，值是 可添加 / 已添加 / 已满 / 主图），「完成」（`compare.done`）收起。
   func openCompare() {
-    let button = app.buttons[Ids.topCompare]
-    XCTAssertTrue(button.waitForExistence(timeout: 10)); button.tap()
-    XCTAssertTrue(app.textFields[Ids.searchQuery].waitForExistence(timeout: 10), "顶栏加号没开出对比搜索页")
+    XCTAssertTrue(app.openTopMenuItem(Ids.topCompare), "顶栏「⋯」菜单里没有「添加对比」")
+    XCTAssertTrue(app.textFields[Ids.searchQuery].waitForExistence(timeout: 10), "「⋯ › 添加对比」没开出对比搜索页")
     XCTAssertTrue(app.buttons["compare.done"].exists, "开出来的不是对比模式（右上不是「完成」）")
   }
   /// 在对比搜索页里换一个查询词，返回那一行行尾的加号。
@@ -96,6 +95,23 @@ import UIKit
     XCTAssertTrue(done.waitForExistence(timeout: 5)); done.tap()
     XCTAssertTrue(wait(10) { !done.exists })
   }
+  /// 对比集合满三只时：「⋯」菜单里「添加对比」还在，但是灰的；看完收起菜单。
+  func assertTopCompareDisabledWhenFull() {
+    let item = app.topMenuItem(Ids.topCompare)
+    XCTAssertNotNil(item, "顶栏「⋯」菜单里没有「添加对比」")
+    XCTAssertEqual(item?.isEnabled, false, "对比满三只了「⋯ › 添加对比」还点得动")
+    app.closeTopMenu()
+    XCTAssertTrue(wait(5) { !self.app.buttons[Ids.topCompare].exists }, "「⋯」菜单没收起")
+  }
+  /// 分析面板「对比」一节里点某只的「移除」（点完面板自己收起）。
+  func removeFromPanel(_ key: String) {
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「分析」没开出分析面板")
+    let remove = app.buttons["compare.remove." + key]
+    scrollPanel(to: remove)
+    XCTAssertTrue(remove.isHittable, "分析面板里没有 \(key) 的「移除」")
+    remove.tap()
+    XCTAssertTrue(wait(10) { !remove.exists }, "点「移除」后面板没收起")
+  }
   func addCompare(_ symbol: String) {
     openCompare(); toggle(symbol, expect: "已添加"); doneCompare()
   }
@@ -112,7 +128,7 @@ import UIKit
     }
   }
 
-  /// 2026-10-06 用户：「分析里的对比要留」。分析面板「对比」一节 ›「添加对比」开的是顶栏加号
+  /// 2026-10-06 用户：「分析里的对比要留」。分析面板「对比」一节 ›「添加对比」开的是「⋯ › 添加对比」
   /// 那同一张对比搜索页；加一只回到图上就有线，面板里多一行带「移除」的、底下一行「清除对比」。
   func testIndicatorPanelAddCompareOpensTheSameSearch() {
     app.launch(); ready(0)
@@ -137,9 +153,9 @@ import UIKit
     XCTAssertEqual(info()["compareKeys"] as? [String] ?? [], [])
   }
 
-  /// 顶栏加号 → 对比模式：加两只、图上立刻出线；再加满三只，第四只被拒（行尾「已满」、集合不变、
-  /// 提示「最多对比 3 个品种」）；主图那只那一行点不动；重启还在；从「正在对比」那条的 × 和
-  /// 行尾那颗各删一只，最后清空。
+  /// 「⋯ › 添加对比」→ 对比模式：加两只、图上立刻出线；再加满三只，第四只被拒（行尾「已满」、集合不变、
+  /// 提示「最多对比 3 个品种」）；主图那只那一行点不动；重启还在、这时「添加对比」是灰的；
+  /// 从分析面板「移除」、行尾那颗、「正在对比」那条的 × 各删一只，最后清空。
   func testPanelCollectionPersistsAndClears() {
     app.launch(); ready(0)
     openCompare()
@@ -169,10 +185,11 @@ import UIKit
 
     app.terminate(); app.launch(); ready(3)
     XCTAssertEqual(info()["compareKeys"] as? [String], keys)
-    openCompare()
-    app.buttons["compare.remove." + keys[2]].tap()
-    XCTAssertTrue(wait(5) { self.chips() == 2 }, "「正在对比」那条的 × 没删掉")
-    doneCompare(); ready(2)
+    // 满三只时「⋯ › 添加对比」是灰的（点不进去），删一只走分析面板「对比」一节那行的「移除」。
+    assertTopCompareDisabledWhenFull()
+    removeFromPanel(keys[2])
+    ready(2)
+    XCTAssertEqual(info()["compareKeys"] as? [String], Array(keys.prefix(2)))
     openCompare()
     toggle("ETHUSDT", expect: "可添加")
     app.buttons["compare.remove." + keys[1]].tap()
@@ -241,7 +258,7 @@ import UIKit
     XCUIDevice.shared.orientation = .portrait
     ready(3, interval: "1d")
     shot("对比-竖屏恢复")
-    app.buttons[Ids.topNote].tap()  // 顶栏「记一笔」（2026-09-28 方案 B）
+    XCTAssertTrue(app.openTopMenuItem(Ids.topNote))  // 顶栏「⋯ › 记一笔」（2026-10-08 收进菜单）
     let dismiss = app.buttons["收起"]
     XCTAssertTrue(dismiss.waitForExistence(timeout: 10))
     XCTAssertEqual(info()["percentAxis"] as? Bool, false)
@@ -318,11 +335,14 @@ import UIKit
     ready(2)
     XCTAssertEqual(info()["compareKeys"] as? [String], Array(keys.dropFirst()))
     XCTAssertEqual(info()["compareColors"] as? [String], originalColors.map { Array($0.dropFirst()) })
-    openCompare()
-    // ETH 只是这张图临时忽略；持久集合仍有它，「正在对比」那条里移除入口仍在；ETH 这时是主图，那一行点不动。
-    XCTAssertTrue(app.buttons["compare.remove." + keys[0]].exists)
-    XCTAssertEqual(find("ETHUSDT").value as? String, "主图")
-    doneCompare()
+    // ETH 只是这张图临时忽略；持久集合仍是三只（「⋯ › 添加对比」照样是灰的），
+    // 分析面板「对比」一节里 ETH 那行的「移除」仍在。
+    assertTopCompareDisabledWhenFull()
+    XCTAssertTrue(app.openIndicatorPage(), "周期条行尾「分析」没开出分析面板")
+    let ethRemove = app.buttons["compare.remove." + keys[0]]
+    scrollPanel(to: ethRemove)
+    XCTAssertTrue(ethRemove.exists, "扫到 ETH 后分析面板里 ETH 那行的「移除」没了")
+    app.closeOpenPanel()
     shot("对比-扫到ETH忽略自身")
     swipe(false)
     XCTAssertTrue(wait(30) { self.info()["symbol"] as? String == testInstrumentKey("BTCUSDT") })

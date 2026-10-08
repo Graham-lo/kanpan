@@ -84,9 +84,9 @@ final class SpeedFeelEvidenceUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: 90) { (self.chartInfo()["compareReady"] as? Int ?? 0) == 2 }, "对比两条没齐")
     save("对比-两只")
     waitForSlowNetwork()
-    app.buttons[Ids.topCompare].tap()
+    XCTAssertTrue(app.openTopMenuItem(Ids.topCompare), "顶栏「⋯」菜单里没有「添加对比」")
     let query = app.textFields[Ids.searchQuery]
-    XCTAssertTrue(query.waitForExistence(timeout: 10), "顶栏加号没开出对比搜索页")
+    XCTAssertTrue(query.waitForExistence(timeout: 10), "「⋯ › 添加对比」没开出对比搜索页")
     query.tap(); query.typeText("DOGEUSDT")
     let mark = app.buttons["compare.toggle." + testInstrumentKey("DOGEUSDT")]
     XCTAssertTrue(mark.waitForExistence(timeout: 20), "搜「DOGEUSDT」没出那一行")
@@ -109,12 +109,12 @@ final class SpeedFeelEvidenceUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: 60) { (self.chartInfo()["compareReady"] as? Int ?? 0) == 3 }, "第三只没画上")
     save("对比-三只到齐")
 
-    // 减一只：剩下两条原地不动，不清空重画。
-    app.buttons[Ids.topCompare].tap()
+    // 减一只：剩下两条原地不动，不清空重画。满三只时顶栏「⋯ › 添加对比」禁用（2026-10-08），
+    // 从分析面板「对比」一节那一行的「移除」拿掉（点了面板自己收起）。
+    XCTAssertTrue(app.openIndicatorPage(), "分析面板没开出来")
     let remove = app.buttons["compare.remove." + testInstrumentKey("SOLUSDT")]
-    XCTAssertTrue(remove.waitForExistence(timeout: 10), "对比搜索页上没有 SOL 的移除")
+    XCTAssertTrue(remove.waitForExistence(timeout: 10), "分析面板「对比」一节里没有 SOL 的移除")
     remove.tap()
-    app.buttons["compare.done"].tap()
     floor = Int.max; seen = 0
     for i in 0..<6 {
       let ready = sample()

@@ -3,7 +3,8 @@ import XCTest
 // ============================================================ 术语问号 · 顶栏乙方案 · 行情停住变灰 · 底栏渐变（2026-09-28）
 //
 // 这一轮五件事人眼能看见的那一半：
-// 1. 顶栏右侧三颗圆片「记一笔 · 分享 · 搜索」，图表设置里「这张图」整节没了；
+// 1. 顶栏右侧三颗圆片（2026-10-08 起是「提醒铃 · ⋯ · 搜索」，记一笔 / 分享 / 添加对比收进「⋯」菜单），
+//    图表设置里「这张图」整节没了；
 // 2. 六格里「仓 / 额 / 估值」后面各一颗问号（费率、结算、市值一看就懂，不挂），点开屏幕正中一张解释卡，
 //    「知道了」和点遮罩都能关；从半屏面板（系统 sheet）里点开时卡片照样落在最上层；
 //    从问号上起手横滑仍然换品种（不吞扫图）；
@@ -108,16 +109,23 @@ final class TermMarkTopBarUITests: KanpanUICase {
   func testTopBarDiscsTermCardsAndChartPanel() throws {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据：\(chartInfo())")
 
-    // 三颗圆片从左到右：记一笔 · 分享 · 搜索。
-    let note = app.buttons[Ids.topNote], share = app.buttons[Ids.topShare], search = app.buttons[Ids.searchButton]
-    for (el, name) in [(note, "记一笔"), (share, "分享"), (search, "搜索")] {
+    // 三颗圆片从左到右：提醒铃 · ⋯ · 搜索（10-08 起记一笔 / 分享 / 添加对比收进「⋯」）。
+    let alerts = app.buttons[Ids.topAlerts], more = app.buttons[Ids.topMore], search = app.buttons[Ids.searchButton]
+    for (el, name) in [(alerts, "提醒"), (more, "更多"), (search, "搜索")] {
       XCTAssertTrue(el.waitForExistence(timeout: Self.short), "顶栏没有「\(name)」")
       XCTAssertTrue(el.isHittable, "「\(name)」点不到")
     }
-    XCTAssertLessThan(note.frame.midX, share.frame.midX, "「记一笔」不在「分享」左边")
-    XCTAssertLessThan(share.frame.midX, search.frame.midX, "「分享」不在「搜索」左边")
-    XCTAssertEqual(note.frame.midY, search.frame.midY, accuracy: 1, "三颗不在一条线上")
-    XCTAssertLessThan(app.symbolLabel.frame.maxX, note.frame.minX, "品种名压到了「记一笔」上")
+    XCTAssertEqual(more.label, "更多", "「⋯」的无障碍名不是「更多」")
+    XCTAssertLessThan(alerts.frame.midX, more.frame.midX, "「提醒」不在「⋯」左边")
+    XCTAssertLessThan(more.frame.midX, search.frame.midX, "「⋯」不在「搜索」左边")
+    XCTAssertEqual(alerts.frame.midY, search.frame.midY, accuracy: 1, "三颗不在一条线上")
+    XCTAssertEqual(more.frame.midY, search.frame.midY, accuracy: 1, "三颗不在一条线上")
+    // 圆心距 = 圆片 32 + 间距 12 = 44（命中框 44 宽，正好首尾相接）。
+    XCTAssertEqual(more.frame.midX - alerts.frame.midX, 44, accuracy: 1, "「提醒」与「⋯」圆心距不是 44")
+    XCTAssertEqual(search.frame.midX - more.frame.midX, 44, accuracy: 1, "「⋯」与「搜索」圆心距不是 44")
+    XCTAssertFalse(app.buttons[Ids.topNote].exists || app.buttons[Ids.topShare].exists || app.buttons[Ids.topCompare].exists,
+                   "「记一笔 / 分享 / 添加对比」还摆在顶栏上，没收进「⋯」")
+    XCTAssertLessThan(app.symbolLabel.frame.maxX, alerts.frame.minX, "品种名压到了「提醒」上")
 
     // 六格：仓 · 额 · 估值（BTC 是 O/M）各一颗问号；市值、费率、结算一看就懂，不挂。
     for term in ["openInterest", "turnover", "oiToMarketCap"] {
@@ -169,15 +177,27 @@ final class TermMarkTopBarUITests: KanpanUICase {
     shot("青苔浅-图表设置只剩三组")
     XCTAssertTrue(app.closeChartPanel(), "图表设置收不起来")
 
-    // 顶栏「分享」：图片 / 画线二选一那张面板。
-    share.tap()
+    // 「⋯」菜单展开：从上到下 添加对比 · 记一笔 · 分享。
+    let items = [Ids.topCompare, Ids.topNote, Ids.topShare].compactMap { app.topMenuItem($0) }
+    XCTAssertEqual(items.count, 3, "「⋯」菜单里不是三项")
+    if items.count == 3 {
+      XCTAssertLessThan(items[0].frame.midY, items[1].frame.midY, "「添加对比」不在「记一笔」上面")
+      XCTAssertLessThan(items[1].frame.midY, items[2].frame.midY, "「记一笔」不在「分享」上面")
+      XCTAssertTrue(items[0].isEnabled, "没在对比时「添加对比」是灰的")
+    }
+    shot("青苔浅-顶栏更多菜单")
+    app.closeTopMenu()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons[Ids.topShare].exists }, "「⋯」菜单收不起来")
+
+    // 「⋯ › 分享」：图片 / 画线二选一那张面板。
+    XCTAssertTrue(app.openTopMenuItem(Ids.topShare), "「⋯」菜单里没有「分享」")
     XCTAssertTrue(app.otherElements["share.chooser"].waitForExistence(timeout: Self.short), "点「分享」没弹出二选一")
     shot("青苔浅-顶栏分享二选一")
     app.closeOpenPanel()
     XCTAssertTrue(app.otherElements["share.chooser"].waitForNonExistence(timeout: Self.short), "分享面板收不掉")
 
-    // 顶栏「记一笔」：开出取景卡。
-    note.tap()
+    // 「⋯ › 记一笔」：开出取景卡。
+    XCTAssertTrue(app.openTopMenuItem(Ids.topNote), "「⋯」菜单里没有「记一笔」")
     let save = app.buttons["记下"]
     XCTAssertTrue(save.waitForExistence(timeout: Self.short), "点「记一笔」没开出取景卡")
     shot("青苔浅-顶栏记一笔取景卡")
@@ -215,7 +235,7 @@ final class TermMarkTopBarUITests: KanpanUICase {
 
     // 半屏分享面板里同样（第二张 sheet，关掉再开）。
     XCTAssertTrue(app.closeChartPanel())
-    app.buttons[Ids.topShare].tap()
+    XCTAssertTrue(app.openTopMenuItem(Ids.topShare), "「⋯」菜单里没有「分享」")
     XCTAssertTrue(app.otherElements["share.chooser"].waitForExistence(timeout: Self.short))
     any("term.probe").tap()
     XCTAssertTrue(card.waitForExistence(timeout: Self.short), "分享面板里点问号没弹出卡片")
@@ -239,9 +259,15 @@ final class TermMarkTopBarUITests: KanpanUICase {
     XCTAssertTrue(app.buttons[Ids.topBack].waitForExistence(timeout: Self.short), "从自选进来没有返回键")
     let symbol = app.symbolLabel
     XCTAssertTrue(symbol.label.contains("PUMPBTC"), "品种名读出来是「\(symbol.label)」")
-    XCTAssertLessThan(symbol.frame.maxX, app.buttons[Ids.topNote].frame.minX, "品种名压到了「记一笔」")
-    XCTAssertGreaterThan(app.buttons[Ids.topNote].frame.minX - app.buttons[Ids.topBack].frame.maxX, 170,
-                         "返回键与右侧圆片之间给品种名留的不到 170pt")
+    // 10-08 起右侧只剩「提醒 · ⋯ · 搜索」三颗（32×3 + 12×2 = 120pt）。16 Pro 可用 370pt，有返回键时
+    // 品种块排版宽 370 − 32 − 8 − 120 − 16 = 194pt；量的是命中框（各往外伸 6pt），返回键命中框右沿到
+    // 「提醒」命中框左沿 194 + 6 + 6 = 206pt，门槛取 200（原五颗时是 170），品种名也不许压到「提醒」和「⋯」。
+    let alerts = app.buttons[Ids.topAlerts], more = app.buttons[Ids.topMore]
+    XCTAssertTrue(more.waitForExistence(timeout: Self.short), "有返回键时顶栏没有「⋯」")
+    XCTAssertLessThan(symbol.frame.maxX, alerts.frame.minX, "品种名压到了「提醒」")
+    XCTAssertLessThan(symbol.frame.maxX, more.frame.minX, "品种名压到了「⋯」")
+    XCTAssertGreaterThan(alerts.frame.minX - app.buttons[Ids.topBack].frame.maxX, 200,
+                         "返回键与右侧圆片之间给品种块留的不到 200pt")
     shot("青苔浅-有返回键-PUMPBTC不截断")
 
     // 从「仓」那颗问号上起手往左划：换到名单里的下一只（BTC），不弹卡片。
@@ -252,6 +278,10 @@ final class TermMarkTopBarUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.long) { self.symbolOnChart() == "BTCUSDT" },
                   "从问号上起手横滑没换到下一只（现在是 \(symbolOnChart())）")
     XCTAssertFalse(card.exists, "横滑弹出了术语卡")
+    // 扫到 BTC 返回键还在：「徽章 BTC/USDT 永续」约 143pt，194pt 的品种块整行放得下（10-08 起右侧三颗）。
+    XCTAssertTrue(app.buttons[Ids.topBack].exists, "横滑扫图后返回键没了")
+    XCTAssertLessThan(app.symbolLabel.frame.maxX, app.buttons[Ids.topAlerts].frame.minX, "BTC 品种块压到了「提醒」")
+    shot("青苔浅-有返回键-BTC整行")
   }
 
   // ------------------------------------------------------------ 3：断网变灰、网回来恢复

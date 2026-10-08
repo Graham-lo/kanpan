@@ -1820,3 +1820,30 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   venue 隔离 408 文件 ✓；app-logic 837 ✓；chart ✓；review 261 ✓；exchange ✓；Main 组 183 ✓（冷启模拟器后重跑）。界面回归 iPhone 16 Pro 一台：
   17 个套件（八个走查 + ChartFoundation + DrawingToolBar + StressRegression1005 + WholeAppStress + SkinScaleAccessibility + ReviewEntry + TopBarAlerts +
   ScanSwipe + IntervalSlot）79 条通过 / 0 红 / 5 条「正式存档下」手动用例按设计跳过，87 分钟（`/tmp/kanpan-ui-1008/`）。真机这轮没装（规矩：手机不在手边就跳过）。
+
+## 55. 10-08：行情页顶栏右上收成「提醒铃 · ⋯ · 搜索」，记一笔 / 分享 / 添加对比进「⋯」二级菜单（iOS + 手机网页）
+
+- **用户原话（10-08）**：「分享和记一笔用的极少，我觉得可以放到二级菜单里」。设计定稿：右上五颗「对比＋ · 提醒铃 · 记一笔 · 分享 · 搜索」收成三颗
+  「提醒铃 · ⋯ · 搜索」；「⋯」和铃、放大镜同一副托底（32pt `raised` 圆、二级墨色），点开系统菜单，从上到下「添加对比 · 记一笔 · 分享」。
+  对比一起收进去是因为「分析」面板「对比」一节本来就有入口（10-06 定的必须保留，两处开同一张对比模式搜索页），顶栏那颗是重复的。
+  加号「有对比时亮强调色」撤掉；对比满三只时菜单里「添加对比」禁用（`TopBar.compareFull`，宿主按 `CompareSearchMode(keys:current:).isFull` 传）。
+  菜单三项闭包全 nil（复盘回放、画线预览、看朋友分享的线）时「⋯」整颗不画。
+- **算术（iPhone 16 Pro 402pt，两侧页边 16，可用 370）**：簇间距回到 `Space.m`（12），簇宽 32 × 3 + 12 × 2 = 120，44 命中区首尾相接；
+  品种块与簇之间两道 `Space.s`（8 × 2）。没返回键时品种块 370 − 120 − 16 = 234pt；有返回键再让出 32 + 8，剩 194pt，
+  「徽章 BTC/USDT 永续」约 143pt 整行放得下，长名（PUMPBTC）才走 `ViewThatFits` 后几档（先舍徽章、再舍计价币、最后截基础币，「永续」一直在）。
+- **iOS 实现**：`Main/TopBar.swift`（`moreMenu`：`Menu` + `.menuOrder(.fixed)`，label 是同一颗 `disc`，负内边距 `hitOverhang` 让排版 32、命中 44；
+  `TopBarGlyph.more` 三颗 1.8 半径实心点）；`MainScreenParts.swift` / `MainScreen.swift` 传 `compareFull`；面板与搜索页注释同步改口径。
+- **标识与测试助手**：`top.more`（无障碍名「更多」），菜单项 `top.compare` / `top.note` / `top.share`（标识不变）。`UITestSupport`：
+  `Ids.topMore`、`app.openTopMenuItem(id)`（点「⋯」再点那一项，禁用项返回 false）、`app.topMenuItem(id)`（只展开、拿到那一项）、`app.closeTopMenu()`。
+  满三只时测试改走分析面板 `compare.remove.<键>` 删（CompareUITests、SpeedFeelEvidence）。`TermMarkTopBarUITests` 几何断言改成对「提醒」与「⋯」：
+  圆心距 44、品种名不压到「提醒」/「⋯」、有返回键时返回键命中框右沿到「提醒」命中框左沿 > 200（194 + 6 + 6 = 206；原五颗时门槛 170）。
+- **手机网页（`Web/src/m/pages/chart/header.ts`）**：同样三颗（`data-act` = alerts · more · search，「⋯」aria-label「更多」），菜单走 `ui/sheet.ts` 的 `openMenu`，
+  `MenuItem` 新加 `act` 写到 `data-act`（compare / note / share）；新加 `note` 线条图标；满三只（`st.compareSymbols.length >= MAX_COMPARE`）时「添加对比」置灰；
+  `.cp-top-acts` 间距回 `--s-m`；窄屏带返回键藏「永续」那条媒体查询删掉，改成基础币省略号截断。钉住用例 `Web/tests/m-topbar-more.test.ts`。
+- **截图**：`docs/acceptance/顶栏更多菜单-2026-10-08/`（iPhone 16 Pro 青苔浅：无返回键顶栏、从自选进来带返回键的 BTC 顶栏、「⋯」菜单展开；
+  手机网页：顶栏三颗、菜单展开、满三只「添加对比」置灰）。
+- **验证（10-08 本窗口）**：`make app-logic-test` 837 + 5 条全过；界面用例 iPhone 16 Pro 一台
+  （CompareUITests 5、ShareFlowUITests 3、TermMarkTopBarUITests 5、ReviewEntryUITests 1、TopBarAlertsUITests 2）16 / 16 通过、0 跳过（`/tmp/kanpan-topmenu-ui/`），
+  之后加了「扫到 BTC 返回键还在」那张截图的断言，单跑 `testScanSwipeFromTermMarkAndLongSymbolWithBack` 再过一遍；
+  Web `npm test` 167 文件 / 2170 条全过、`npm run build` 通过；手机网页无头 Chrome 实点：三颗圆片 left 266 / 310 / 354（圆心距 44），
+  菜单 compare · note · share，满三只时 compare 置灰，点「添加对比」开出对比搜索页，无页面错误。

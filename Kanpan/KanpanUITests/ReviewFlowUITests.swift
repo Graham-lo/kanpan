@@ -67,10 +67,10 @@ final class ReviewFlowUITests: KanpanUICase {
   /// 那条早退分支）。卡片收回去就算记成了：`saveRecord()` 失败时卡片会留在屏幕上。
   @discardableResult
   private func recordOnce(file: StaticString = #filePath, line: UInt = #line) -> Bool {
-    // 2026-09-28 顶栏方案 B：「记一笔」是顶栏右侧那颗书本圆片。
-    let record = app.buttons[Ids.topNote]
-    guard expectExists(record, Self.short, "顶栏没有「记一笔」那颗", file: file, line: line) else { return false }
-    record.tap()
+    // 2026-10-08 起「记一笔」收进顶栏「⋯」菜单（原来是顶栏右侧那颗书本圆片）。
+    guard app.openTopMenuItem(Ids.topNote, timeout: Self.short) else {
+      XCTFail("顶栏「⋯」菜单里没有「记一笔」", file: file, line: line); return false
+    }
     let save = app.buttons["记下"]
     guard expectExists(save, Self.short, "点「记一笔」没开出取景卡", file: file, line: line) else { return false }
     save.tap()
@@ -100,9 +100,7 @@ final class ReviewFlowUITests: KanpanUICase {
   /// 修在这两处，这里走用户最顺手的那一条。
   func testPickingAnotherSymbolMidCaptureEndsTheCapture() throws {
     XCTAssertTrue(waitForLiveChart(), "没等到行情：\(chartInfo())")
-    let record = app.buttons[Ids.topNote]
-    XCTAssertTrue(record.waitForExistence(timeout: Self.short), "顶栏没有「记一笔」那颗")
-    record.tap()
+    XCTAssertTrue(app.openTopMenuItem(Ids.topNote, timeout: Self.short), "顶栏「⋯」菜单里没有「记一笔」")
     let save = app.buttons["记下"]
     XCTAssertTrue(save.waitForExistence(timeout: Self.short), "点「记一笔」没开出取景卡")
 
