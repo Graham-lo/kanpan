@@ -79,6 +79,13 @@ const PAGE = () => {
     const hA = HS?.[0] ?? a, hB = HS?.[1] ?? (d.pts[1] ? b : null)
     // 走手机几何的种类（2026-10-08 补的 31 种）：取样点直接取图表这一帧的几何（chart.inkOf）——最长的几段线的中段、
     // 只有字块的种类取字块中心（字是画线颜色）；线段按它自己的着色（涨跌色的读数线照涨跌色取）。点中位置 = 第一个没被 DOM 盖着的取样点
+    // 成交量分布（2026-10-08 照 TV 重画，a402965f）：不画边框、柱子不随画线颜色——涨段从底边（放左 = 左沿、放右 = 右沿）起，
+    // 价值区外 #26C6DA α .5、区内 α .75（画线 style 里改过就按改过的）。取样：贴底边一竖列，整列里最朝涨段颜色的那一点
+    const profileCol = (d, x0, x1, yh, yl) => {
+      const st = d.style || {}, hex6 = v => typeof v === 'string' && /^#[0-9a-f]{6}/i.test(v) ? v.slice(0, 7) : null
+      const xb = st.placement === 'right' ? x1 - 2 : x0 + 2
+      return { k: 'col', xs: [xb - 1, xb, xb + 1], y0: Math.max(p.y + 2, yh - 2), y1: Math.min(p.y + p.h - 2, yl + 2), color: hex6(st.vaUp) || hex6(st.up) || '#26C6DA' }
+    }
     const ink = ch.inkOf?.(d)
     if (ink) {
       const tintCol = t => t === 'up' ? ch.colors.up || '#089981' : t === 'down' ? ch.colors.down || '#F23645' : col
@@ -111,7 +118,7 @@ const PAGE = () => {
         for (let i = i0; i <= i1; i++) { const q = ch.bars[i]; if (q) { lo = Math.min(lo, q.l); hi = Math.max(hi, q.h) } }
         const x0 = ch.indexToX(i0) - ch.spacing / 2, x1 = ch.indexToX(i1) + ch.spacing / 2, W = x1 - x0
         const xm = x0 + 0.65 * W, yh = Y(hi), yl = Y(lo)
-        if (W >= 12 && inside(xm, (yh + yl) / 2)) P.push({ k: 'col', xs: [xm, xm + 2, xm + 4], y0: Math.max(p.y + 2, yh - 2), y1: Math.min(p.y + p.h - 2, yl + 2), color: col, fmin: 0.4 })
+        if (W >= 12 && inside(xm, (yh + yl) / 2)) P.push(profileCol(d, x0, x1, yh, yl))
         setClick({ x: xm, y: (yh + yl) / 2 }); break
       }
       case 'trend': { const m = lerp(0.5), q = lerp(0.3); pt(m.x, m.y); pt(q.x, q.y); setClick(m); break }
@@ -153,7 +160,7 @@ const PAGE = () => {
         for (let i = i0; i <= i1; i++) { const q = ch.bars[i]; if (q) { lo = Math.min(lo, q.l); hi = Math.max(hi, q.h) } }
         const x0 = ch.indexToX(i0) - ch.spacing / 2, x1 = ch.indexToX(i1) + ch.spacing / 2, W = x1 - x0
         const xm = x0 + 0.65 * W, yh = Y(hi), yl = Y(lo)
-        if (W >= 12 && inside(xm, (yh + yl) / 2)) P.push({ k: 'col', xs: [xm, xm + 2, xm + 4], y0: Math.max(p.y + 2, yh - 2), y1: Math.min(p.y + p.h - 2, yl + 2), color: col, fmin: 0.4 })
+        if (W >= 12 && inside(xm, (yh + yl) / 2)) P.push(profileCol(d, x0, x1, yh, yl))
         setClick({ x: xm, y: (yh + yl) / 2 }); break
       }
       case 'measure': {
