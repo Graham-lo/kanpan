@@ -25,7 +25,7 @@ import { recordFootprintTrade, footprintWanted } from '../chart/footprint'
 import { heatFetchSent } from './heatFetch'
 import { createLayer } from './layer'
 import { mountLadder, ladderVisible, drawLadder, resetLadder, ladderDebug } from './ladder'
-import { mountDrawer, updateDrawer, revealInDrawer } from './drawer'
+import { mountDrawer, updateDrawer } from './drawer'
 import { widgetHTML, mountWidgets, isOfWidget, updateWidgets, resetTape, scheduleTape, markWall, OF_WIDGETS, tapeDebug } from './widgets'
 import { openOrderFlowSettings, settingsLayerOpen } from './settingsDialog'
 import { D, baseOfSymbol, productsOf, type Display } from './settings'
@@ -64,8 +64,6 @@ export function installOrderFlow(a: Api): void {
     OF.geo = g
     if (ladderVisible()) drawLadder(chart, g)
   }
-  if (!OF.prefs.seededStats && (st.orderFlow || st.slots.widgets.some(w => isOfWidget(w)))) { seedStats(); save() }
-  OF.reveal = id => revealInDrawer(id)
   OF.focus = focusOrder
   // 藏着时不做整套评估，只看要不要收掉数据层（原来藏着时一拍都不跑，后台标签页的几条簿 / 成交连接永远不关）
   setInterval(() => {
@@ -204,7 +202,6 @@ function onFrame(s: Snapshot): void {
   }
   const tb = tapeBase(s.thresholds)
   OF.bigTrade = tb ? tb / 5 : 0
-  OF.tape.prune(now)
   if (OF.fine) {
     // 梯子「变化」的实时环（梯子开着才记）；两块 24 小时统计（放在侧栏里才取）
     if (st.slots.ladder) OF.delta.sample(OF.fine, s.thresholds, now)
@@ -235,7 +232,6 @@ function onTrade(f: OrderFlowFeed, ev: TradeEvent): void {
   const step = f.model.scheme?.step
   if (step) OF.trades.add(ev.trade.price, ev.usd, row.side, step, row.t)
   OF.tps.add(Date.now())
-  if (OF.bigTrade > 0) OF.tape.dotFor(row, OF.bigTrade)
   scheduleTape()
 }
 
@@ -336,38 +332,16 @@ async function heatBackfill(visFrom: number, visTo: number, visMin: number, visM
 
 // ------------------------------------------------------------------ 开关
 
-/** 图上订单流的总开关（指标行、面板里的开关都走这里）。第一次打开时把梯子、抽屉和小部件摆出来。 */
+/** 图上订单流的总开关（指标行、面板里的开关都走这里）。只管自己这一颗：梯子、抽屉、热力、侧栏小部件各有各的开关，
+ *  不再「第一次打开就把整套摆出来」、也不再跟着开 / 关抽屉（用户 2026-10-08：开第一颗后面全开了，体验很不好）。 */
 export function setOrderFlow(on: boolean): void {
   st.orderFlow = on
-  if (on) {
-    st.slots.drawer = true
-    if (!OF.prefs.seeded) {
-      OF.prefs.seeded = true; savePrefs()
-      st.slots.ladder = true
-      const add: WidgetId[] = OF_WIDGETS.filter(w => !st.slots.widgets.includes(w))
-      if (add.length) st.slots.widgets = [...st.slots.widgets, ...add]
-      OF.prefs.seededStats = true; savePrefs()
-    }
-    seedStats()
-  } else st.slots.drawer = false
   save()
   OF.version++
   api?.charts().forEach(c => { c.chart.dirty = true })
   sync()
   api?.renderPanel()
   api?.renderToolbar()
-}
-
-/** 2026-09-29 新加的两块统计：已经开过订单流的也摆一次（摆在「大单」后面），之后尊重用户的开合 */
-function seedStats(): void {
-  if (OF.prefs.seededStats) return
-  OF.prefs.seededStats = true; savePrefs()
-  const add = (['liq', 'vol'] as WidgetId[]).filter(w => !st.slots.widgets.includes(w))
-  if (!add.length) return
-  const list = st.slots.widgets.slice()
-  const at = list.indexOf('walls')
-  list.splice(at >= 0 ? at + 1 : list.length, 0, ...add)
-  st.slots.widgets = list
 }
 
 export function toggleHeat(): void {
@@ -462,9 +436,6 @@ function onPanelClick(e: MouseEvent): void {
     chip.setAttribute('aria-pressed', String(OF.prefs.display[k]))
     OF.version++
     api?.charts().forEach(c => { c.chart.dirty = true })
-    // 抽屉里那排胶囊是同一套开关
-    document.querySelectorAll<HTMLElement>(`#drawerSlot [data-chip="${k}"]`).forEach(x => x.setAttribute('aria-pressed', String(OF.prefs.display[k])))
-    updateDrawer(true)
     return
   }
   const wb = t.closest<HTMLElement>('[data-ofp-w]')
