@@ -47,14 +47,16 @@ export interface Prefs {
   collapsed: string[]
   bookUnit: BookUnit
   band: number
+  /** 旧抽屉（逐单表格）的排序；2026-10-08 抽屉改成汇总后不再读，留着字段免得老档解析出错 */
   sort: { key: DrawerKey; dir: 1 | -1 }
-  /** 第一次打开订单流时把小部件、梯子、抽屉摆出来，之后尊重用户的开合 */
+  /** 2026-10-08 起不再读：原来第一次打开「图上订单流」时把梯子、抽屉、小部件一起摆出来，
+   *  现在四个开关（图上订单流 / 深度梯子 / 大单列表 / 深度热力）各管各的，谁也不替谁打开。字段留着兼容老档 */
   seeded: boolean
   /** 梯子：深度 / 变化（本机） */
   ladderMode: 'depth' | 'delta'
   /** 变化模式的窗口 */
   deltaWin: DeltaWin
-  /** 「24 小时流动性」「24 小时成交」两块是 2026-09-29 后加的：已经开过订单流的也摆一次 */
+  /** 2026-10-08 起不再读（同 seeded） */
   seededStats: boolean
 }
 
@@ -116,8 +118,15 @@ export const OF = {
   focus: null as null | ((o: BigOrder) => void),
   /** 活动格子画完一帧（梯子跟着重画，保证与价格轴对齐） */
   onChartDrawn: null as null | ((chart: TVChart, g: ChartGeometry) => void),
-  /** 大额成交的金额线（门槛 ÷ 5），图上打点的大小以它为 1 */
+  /** 大额成交的金额线（门槛 ÷ 5），图上大单签的档位以它为 1 倍 */
   bigTrade: 0,
+  /** 图上大单签点了 / 抽屉里点了一行：那一根的签亮 1.5 秒（symbol 大写、t = 那根的开盘时间） */
+  barHi: null as null | { symbol: string; t: number; until: number },
+  /** 图上点了一枚大单签：抽屉开着就滚到那一根并高亮，没开就打开 */
+  revealBar: null as null | ((symbol: string, t: number) => void),
+  /** 活动格子十字线所在那根的开盘时间（抽屉按根表同步高亮）；不在图上为 null */
+  crossT: null as number | null,
+  onCross: null as null | (() => void),
 }
 
 /** 数据层还没起来时各处空态的那句话：在等品种停稳就是「正在接」，否则是没打开 */

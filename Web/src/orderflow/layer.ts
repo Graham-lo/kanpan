@@ -2,7 +2,8 @@
  *
  * 最底下（成交量柱之下）：深度热力（开了才画）。
  * 蜡烛下面：大单带——只画值得看的几道（取舍见 bands.ts），挂着的铺底、结束的一道细线。
- * 蜡烛上面：结束记号与右端标签（躲开蜡烛）、大额成交的点、梯子悬停那一行的淡色横带。
+ * 蜡烛上面：结束记号与右端标签（躲开蜡烛）、每根 K 线的大单签（bigTags.ts）、梯子悬停那一行的淡色横带。
+ * 大单签不跟着数据层走：多图里每一格都画（非活动格子只有服务端历史），刷新后从服务端历史重画。
  * 行高和梯子是同一套「k 个细桶一行」，所以热力的格子、大单带的厚度和梯子的行一一对齐。
  * 时间 t 在图上的 x：timeToX(t) − 半根 K 线宽（一根 K 线的时间段正好铺满它的宽度）。
  */
@@ -18,9 +19,11 @@ import { pickBands, liveAlpha, placeLabels, placeMark, MAX_MARKS, ENDED_LINE, HI
 import { OF, rowsPerLine, bandColor, bandInk, isDarkBg, rgbOf, showCard, hideCard, amt, hms, mdhm, durShort, PRODUCT_FULL, decFor, px, peak, canvasFont } from './state'
 import { esc } from '../ui/dom'
 import { hexA } from '../util/format'
+import { flowOf, ensureHistory } from '../chart/tradeFlow'
+import { BigBarCache, planTags, unitFor, ivName, type Tag, type TagIn, type Rect as TagRect, type BarBig } from './bigTags'
+import { EXCHANGE_NAMES as EXN } from './aggregate'
 
 interface BandHit { x0: number; x1: number; y0: number; y1: number; o: BigOrder; id: string }
-interface DotHit { x: number; y: number; r: number; i: number }
 interface HeatDraw { cols: HeatCol[]; xs: number[]; ws: number[]; rowLo: number; rowHi: number; k: number; step: number; top: number; bottom: number }
 
 function rrect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -30,9 +33,25 @@ function rrect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: 
 
 const xOf = (g: ChartGeometry, t: number): number => g.timeToX(t) - g.spacing / 2
 
+/** 每张图此刻画出来的签（压测 / 截图脚本按它找悬停位置；界面不读） */
+export const tagsOf = new WeakMap<TVChart, () => readonly Tag[]>()
+
 export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: string }): ChartLayer {
   let bands: BandHit[] = []
-  let dots: DotHit[] = []
+  let tags: Tag[] = []
+  tagsOf.set(chart, () => tags)
+  let tagData = new Map<number, BarBig>()
+  const bigCache = new BigBarCache()
+  let flowSym = ''
+  const onHistory = (): void => { chart.dirty = true }
+  // 图例是 DOM（左上角），尺寸变了 ResizeObserver 推过来，画签时不去读布局
+  let legend: TagRect | null = null
+  if (typeof ResizeObserver !== 'undefined' && chart.legendEl) {
+    new ResizeObserver(() => {
+      const el = chart.legendEl
+      legend = el.offsetWidth && el.offsetHeight ? { x: el.offsetLeft - 2, y: el.offsetTop - 2, w: el.offsetWidth + 4, h: el.offsetHeight + 4 } : null
+    }).observe(chart.legendEl)
+  }
   let heat: HeatDraw | null = null
   let geo: ChartGeometry | null = null
   const cache = new HeatCache()
@@ -238,25 +257,68 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     }
   }
 
-  function drawDots(c: CanvasRenderingContext2D, g: ChartGeometry): void {
-    dots = []
+  function drawTags(c: CanvasRenderingContext2D, g: ChartGeometry): void {
+    tags = []
     if (!st.orderFlow) return
-    const list = OF.tape.dots
-    if (!list.length) return
-    const tFrom = g.timeOf(g.from - 1)
-    const top = g.pane.y, bottom = g.pane.y + g.pane.h
-    const big = OF.bigTrade || 1
-    for (let i = list.length - 1; i >= 0; i--) {
-      const d = list[i]
-      if (d.t < tFrom) break
-      const x = xOf(g, d.t), y = g.priceToY(d.price)
-      if (x < 0 || x > g.plotW || y < top || y > bottom) continue
-      const r = Math.max(3, Math.min(9, 3 * Math.sqrt(d.usd / big)))
-      c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2)
-      c.fillStyle = hexA(d.side === 'buy' ? g.colors.up : g.colors.down, 0.85); c.fill()
-      c.lineWidth = 1; c.strokeStyle = hexA(g.colors.bg, 0.9); c.stroke()
-      dots.push({ x, y, r, i })
+    const sym = cellOf().symbol.toUpperCase()
+    if (!sym || sym === 'DXY') return
+    const f = flowOf(sym)
+    if (sym !== flowSym) { if (flowSym) flowOf(flowSym).listeners.delete(onHistory); flowSym = sym }
+    const now = Date.now()
+    if (!(g.iv < 60_000)) ensureHistory(f, onHistory, now)
+    const unit = unitFor(f, mine() ? OF.bigTrade : 0)
+    if (!(unit > 0)) return
+    bigCache.begin(f, `${sym}|${g.iv}`, now)
+    const list: TagIn[] = []
+    tagData = new Map()
+    const lo = Math.max(0, Math.floor(g.from) - 1), hi = Math.ceil(g.to) + 1
+    for (let i = lo; i <= hi; i++) {
+      const t0 = g.timeOf(i)
+      if (t0 > now) break
+      const d = bigCache.get(f, t0, g.timeOf(i + 1), now)
+      if (!d || (d.bb < unit && d.bs < unit)) continue
+      const x = g.indexToX(i)
+      if (x < -40 || x > g.plotW + 40) continue
+      list.push({ i, t: t0, x, data: d }); tagData.set(t0, d)
     }
+    if (!list.length) return
+    const avoid: TagRect[] = chart.textRects.slice()
+    if (legend) avoid.push(legend)
+    const fontS = canvasFont(11, 600), fontB = canvasFont(13, 700)
+    const yHi = (b: { h: number }) => g.priceToY(b.h), yLo = (b: { l: number }) => g.priceToY(b.l)
+    tags = planTags(list, {
+      unit, spacing: g.spacing, top: g.pane.y + 2, bottom: g.pane.y + g.pane.h - 2, plotW: g.plotW, avoid,
+      span: (x0, x1) => {
+        const i0 = Math.max(0, Math.round(g.xToIndex(x0))), i1 = Math.round(g.xToIndex(x1))
+        let hiY = Infinity, loY = -Infinity
+        for (let i = i0; i <= i1; i++) { const b = g.bar(i); if (!b) continue; hiY = Math.min(hiY, yHi(b)); loY = Math.max(loY, yLo(b)) }
+        return isFinite(hiY) ? { hiY, loY } : null
+      },
+      measure: (t, big) => { c.font = big ? fontB : fontS; return c.measureText(t).width },
+      text: amt,
+    })
+    const hiOn = OF.barHi && OF.barHi.symbol === sym && OF.barHi.until > now ? OF.barHi.t : null
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 1
+    for (const t of tags) {
+      const col = t.side === 'buy' ? g.colors.up : g.colors.down
+      if (hiOn === t.t) { c.fillStyle = hexA(col, 0.22); rrect(c, t.x - 4, t.y - 4, t.w + 8, t.h + 8, 6); c.fill() }
+      if (t.kind === 'tri') {
+        const up = t.side === 'buy'
+        c.beginPath()
+        if (up) { c.moveTo(t.cx, t.y); c.lineTo(t.x + t.w, t.y + t.h); c.lineTo(t.x, t.y + t.h) }
+        else { c.moveTo(t.cx, t.y + t.h); c.lineTo(t.x + t.w, t.y); c.lineTo(t.x, t.y) }
+        c.closePath()
+        if (t.filled) { c.fillStyle = col; c.fill() } else { c.strokeStyle = col; c.stroke() }
+        continue
+      }
+      const big = t.kind === 'big'
+      rrect(c, t.x + .5, t.y + .5, t.w - 1, t.h - 1, big ? 4 : 3)
+      if (t.filled) { c.fillStyle = col; c.fill() } else { c.fillStyle = hexA(g.colors.bg, 0.85); c.fill(); c.strokeStyle = col; c.stroke() }
+      c.font = big ? fontB : fontS
+      c.fillStyle = t.filled ? '#fff' : col
+      c.fillText(t.text, t.cx, t.y + t.h / 2 + .5)
+    }
+    if (hiOn != null) setTimeout(() => { chart.dirty = true }, Math.max(0, OF.barHi!.until - now) + 20)
   }
 
   function drawHoverRow(c: CanvasRenderingContext2D, g: ChartGeometry): void {
@@ -310,14 +372,26 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       <div class="of-card-r"><span>挂单名义</span><b class="num">${amt(col.vals[i])}</b></div>${split}`
   }
 
-  function dotCard(d: DotHit, dec: number): string {
-    const t = OF.tape.dots[d.i]
-    if (!t) return ''
-    return `<div class="of-card-h"><i style="background:${t.side === 'buy' ? 'var(--up)' : 'var(--down)'}"></i>大额成交 · ${esc(t.label)}${PRODUCT_FULL[t.product]}</div>
-      <div class="of-card-r"><span>时间</span><b class="num">${hms(t.t)}</b></div>
-      <div class="of-card-r"><span>方向</span><b class="${t.side === 'buy' ? 'up' : 'down'}">${t.side === 'buy' ? '主动买' : '主动卖'}</b></div>
-      <div class="of-card-r"><span>价格</span><b class="num">${px(t.price, dec)}</b></div>
-      <div class="of-card-r"><span>金额</span><b class="num">${amt(t.usd)}</b></div>`
+  function tagCard(t: Tag, g: ChartGeometry): string {
+    const d = tagData.get(t.t)
+    if (!d) return ''
+    const net = d.bb - d.bs
+    const n = (k: number | null): string => k == null ? '' : `（${k} 笔）`
+    const mx = d.bmax && d.smax ? (d.bmax.usd >= d.smax.usd ? d.bmax : d.smax) : d.bmax ?? d.smax
+    const r = (k: string, v: string): string => `<div class="of-card-r"><span>${k}</span><b class="num">${v}</b></div>`
+    let h = `<div class="of-card-h"><i style="background:${net >= 0 ? 'var(--up)' : 'var(--down)'}"></i>大单 · ${mdhm(d.t)} · ${ivName(d.t1 - d.t)}</div>` +
+      r('大买', `<span class="up">${amt(d.bb)}</span>${n(d.bn)}`) + r('大卖', `<span class="down">${amt(d.bs)}</span>${n(d.sn)}`) +
+      r('净额', `<span class="${net >= 0 ? 'up' : 'down'}">${net > 0 ? '+' : net < 0 ? '−' : ''}${amt(Math.abs(net))}</span>`)
+    if (mx) h += r('最大一笔', `${amt(mx.usd)} · ${esc(exName(mx.exchange))}${PRODUCT_FULL[mx.product]} · ${px(mx.price, g.dec)}`)
+    const tot = d.bb + d.bs
+    if (d.spot != null && tot > 0) h += r('现货 / 合约', `${Math.round(d.spot / tot * 100)}% / ${Math.round((tot - d.spot) / tot * 100)}%`)
+    if (d.ex && tot > 0) h += r('三家', d.ex.map((v, k) => `${EXN[k]} ${Math.round(v / tot * 100)}%`).join(' · '))
+    return h
+  }
+
+  const tagAt = (x: number, y: number): Tag | null => {
+    for (const t of tags) if (x >= t.x - 2 && x <= t.x + t.w + 2 && y >= t.y - 2 && y <= t.y + t.h + 2) return t
+    return null
   }
 
   const stepK = (g: ChartGeometry): [number, number] | null => {
@@ -340,16 +414,22 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       drawBands(c, g, sk[1], sk[0])
     },
     over(c, g) {
-      if (!mine()) { dots = []; return }
-      drawBandMarks(c, g)
-      drawDots(c, g)
-      drawHoverRow(c, g)
+      geo = g
+      if (mine()) drawBandMarks(c, g)
+      drawTags(c, g)
+      if (mine()) drawHoverRow(c, g)
     },
     after(g) { if (mine()) OF.onChartDrawn?.(chart, g) },
     hover(x, y, cx, cy) {
-      if (!mine() || !geo) return false
+      if (!geo) return false
+      if (mine()) {
+        const t = geo.timeOf(Math.round(geo.xToIndex(x)))
+        if (OF.crossT !== t) { OF.crossT = t; OF.onCross?.() }
+      }
+      const tg = tagAt(x, y)
+      if (tg) { showCard(tagCard(tg, geo), cx, cy); return true }
+      if (!mine()) { hideCard(); return false }
       const dec = geo.dec
-      for (const d of dots) if ((x - d.x) ** 2 + (y - d.y) ** 2 <= (d.r + 2) ** 2) { showCard(dotCard(d, dec), cx, cy); return true }
       const step = OF.feed?.model.scheme?.step ?? 0
       for (let i = bands.length - 1; i >= 0; i--) {
         const b = bands[i]
@@ -360,8 +440,16 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       hideCard()
       return false
     },
-    leave() { hideCard() },
+    leave() { hideCard(); if (OF.crossT != null && mine()) { OF.crossT = null; OF.onCross?.() } },
     click(x, y) {
+      const tg = tagAt(x, y)
+      if (tg) {
+        const sym = cellOf().symbol.toUpperCase()
+        OF.barHi = { symbol: sym, t: tg.t, until: Date.now() + 1500 }
+        chart.dirty = true
+        OF.revealBar?.(sym, tg.t)
+        return true
+      }
       if (!mine()) return false
       for (let i = bands.length - 1; i >= 0; i--) {
         const b = bands[i]

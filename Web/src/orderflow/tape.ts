@@ -1,7 +1,9 @@
 /* Hkline Web · 主力订单流 · 合并成交
  *
  * 三家所有簿的逐笔合成一条带：同一家、同一方向、同一价位 1 秒以内的并成一行；
- * 过滤看并完的金额（默认门槛 ÷ 50），门槛 ÷ 5 以上加粗并在图上打点（点留 2 小时）。
+ * 过滤看并完的金额（默认门槛 ÷ 50），门槛 ÷ 5 以上加粗。
+ * 2026-10-08 起图上不再按逐笔打点：点只活在内存里，空闲停流 / 换品种 / 刷新一清就没（「下一根就没了」），
+ * 改成每根 K 线一枚大单签，数据走 tradeFlow 的分钟桶 + 服务端历史（见 bigTags.ts）。
  * 每行带一个 bps：这一笔相对同一家同一产品上一笔的价格变化（OpenMarket 通读 P1-6），|bps| < 0.5 不显示。
  */
 import type { Product } from './types'
@@ -23,11 +25,7 @@ export interface TapeRow {
   bps: number | null
 }
 
-export interface TradeDot { t: number; price: number; usd: number; side: 'buy' | 'sell'; exchange: string; label: string; product: Product }
-
 export const TAPE_CAP = 3000
-export const DOT_KEEP_MS = 2 * 3_600_000
-export const DOT_CAP = 4000
 export const MERGE_MS = 1000
 
 /** 用哪个门槛当「门槛」：U 本位永续，没有就现货，再没有就最小的那个。 */
@@ -38,7 +36,6 @@ export function tapeBase(t: { spot?: number; usdtPerp?: number; coinPerp?: numbe
 
 export class Tape {
   rows: TapeRow[] = []
-  dots: TradeDot[] = []
   version = 0
   private open = new Map<string, TapeRow>()
   /** 每本簿（交易所 × 产品 × 合约）上一笔的价格（算 bps 用；交割几期各算各的） */
@@ -71,24 +68,6 @@ export class Tape {
     return row
   }
 
-  /** 行并完之后够大就在图上打点（同一行只打一个，金额跟着长）。 */
-  dotFor(row: TapeRow, big: number): void {
-    if (!(row.usd >= big)) return
-    for (let i = this.dots.length - 1; i >= Math.max(0, this.dots.length - 64); i--) {
-      const d = this.dots[i]
-      if (d.t === row.t && d.price === row.price && d.exchange === row.exchange && d.side === row.side && d.product === row.product) { d.usd = row.usd; return }
-    }
-    this.dots.push({ t: row.t, price: row.price, usd: row.usd, side: row.side, exchange: row.exchange, label: row.label, product: row.product })
-  }
-
-  prune(now: number): void {
-    const cut = now - DOT_KEEP_MS
-    let i = 0
-    while (i < this.dots.length && this.dots[i].t < cut) i++
-    if (i) this.dots.splice(0, i)
-    if (this.dots.length > DOT_CAP) this.dots.splice(0, this.dots.length - DOT_CAP)
-  }
-
   /** 最新在前、金额 ≥ min 的行（最多 limit 行）。 */
   visible(min: number, limit: number): TapeRow[] {
     const out: TapeRow[] = []
@@ -96,7 +75,7 @@ export class Tape {
     return out
   }
 
-  clear(): void { this.rows = []; this.dots = []; this.open.clear(); this.lastPx.clear(); this.version++ }
+  clear(): void { this.rows = []; this.open.clear(); this.lastPx.clear(); this.version++ }
 }
 
 /** 价格变化（万分之一）：上一笔没有给 null */

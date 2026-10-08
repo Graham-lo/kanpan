@@ -371,18 +371,10 @@ describe('成交带', () => {
     expect(t.rows[0].n).toBe(3)
     expect(t.visible(5, 10).map(r => r.usd)).toEqual([5, 600])
   })
-  it('并完够大就在图上打一个点，金额跟着长', () => {
-    const t = new Tape()
-    const r = t.push({ ...base, t: 0, usd: 60 })
-    t.dotFor(r, 100)
-    expect(t.dots).toHaveLength(0)
-    const r2 = t.push({ ...base, t: 500, usd: 60 })
-    t.dotFor(r2, 100)
-    t.push({ ...base, t: 900, usd: 30 }); t.dotFor(r2, 100)
-    expect(t.dots).toHaveLength(1)
-    expect(t.dots[0].usd).toBe(150)
-    t.prune(3 * 3_600_000)
-    expect(t.dots).toHaveLength(0)
+  it('成交带不再给图上打点（2026-10-08 起图上是每根一枚大单签，见 orderflow-bigtags.test.ts）', () => {
+    const t = new Tape() as unknown as Record<string, unknown>
+    expect(t.dots).toBeUndefined()
+    expect(t.dotFor).toBeUndefined()
   })
   it('每秒 50 笔以上一小时也有上限', () => {
     const t = new Tape()
