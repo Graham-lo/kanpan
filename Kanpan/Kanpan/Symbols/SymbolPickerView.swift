@@ -198,17 +198,26 @@ struct SymbolPickerView: View {
           } header: {
             // 吸顶的分组标题自己垫一层页面底色、铺满整宽：`.plain` 表的吸顶头默认是
             // 系统的半透明材质，滚上去的行从它底下透出来，在青苔 / 陶土底上是一条色带（接缝）。
-            Text(section.title)
-              .font(TypeScale.caption2Emph)
-              .kerning(1)
-              .textCase(nil)
-              .foregroundStyle(Color(hex: seed.ink3))
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .pageHorizontalInset()
-              .padding(.top, Space.l)
-              .padding(.bottom, Space.s)
-              .background(Color(hex: seed.app))
-              .listRowInsets(EdgeInsets())
+            // 搜索态一家交易所一组（`SymbolSections.searchGroups`）：标题是那家的名字，
+            // 右边挂这一组的命中数，和搜索页的分组头同一个样子。
+            HStack(spacing: Space.s) {
+              Text(section.title)
+                .font(TypeScale.caption2Emph)
+                .kerning(1)
+                .textCase(nil)
+              if section.venue != nil {
+                Text("\(section.total)")
+                  .font(TypeScale.caption2)
+                  .monospacedDigit()
+              }
+            }
+            .foregroundStyle(Color(hex: seed.ink3))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .pageHorizontalInset()
+            .padding(.top, Space.l)
+            .padding(.bottom, Space.s)
+            .background(Color(hex: seed.app))
+            .listRowInsets(EdgeInsets())
           }
         }
       }

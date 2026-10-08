@@ -68,7 +68,8 @@ struct SymbolSearchView: View {
   private var rowTheme: PanelTheme { PanelTheme(seed: seed, redUp: redUp) }
 
   /// 搜索结果最多先露几行（原型 `out.slice(0,6)`）：一屏之内看得完，
-  /// 再多就该去品种整页慢慢翻。
+  /// 再多就该去品种整页慢慢翻。按交易所分组之后这是**各组加起来**的行数，
+  /// 怎么分给各组见 `SymbolSections.previewQuota`（轮流每组一行，每家至少一行）。
   private static let previewRows = 6
 
   private var trimmed: String { model.query.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -92,12 +93,25 @@ struct SymbolSearchView: View {
   /// 历史搜索词。对比模式不摆（也不记）：那一页是来挑对比的，不是来找主图的。
   private var historyTerms: [String] { compare == nil ? history.terms : [] }
 
-  /// 搜索态下那唯一一个分区（`SymbolSections.build` 有查询时只回一组）。
-  private var hits: SymbolSection? { model.sections.first { $0.kind == .search } }
-  private var hitCount: Int { hits.map { $0.rows.count + $0.more } ?? 0 }
+  /// 搜索态的各组：一家交易所一组，组序照注册表（`SymbolSections.searchGroups`）。零命中时为空。
+  private var hitGroups: [SymbolSection] { model.sections.filter { $0.kind == .search && !$0.rows.isEmpty } }
+  /// 各组命中数之和（含封顶没列出来的）。
+  private var hitCount: Int { SymbolSections.hitCount(model.sections) }
+  /// 每组摆几行，和 `hitGroups` 一一对应。对比模式整列给出来（「查看全部」去的品种整页没有对比模式）。
+  private func shownCounts(_ groups: [SymbolSection]) -> [Int] {
+    compare == nil
+      ? SymbolSections.previewQuota(groups.map(\.rows.count), budget: Self.previewRows)
+      : groups.map(\.rows.count)
+  }
   @Environment(\.symbolWarmup) private var warmup
-  /// 结果最前面那几只（`SymbolWarmup.hitsToWarm`）。结果一稳定就替它们先拉 K 线。
-  private var warmIDs: [String] { showsResults ? SymbolWarmup.hitsToWarm(hits?.rows.map(\.id) ?? []) : [] }
+  /// 结果最前面那几只（`SymbolWarmup.hitsToWarm`），按页面上摆出来的先后。结果一稳定就替它们先拉 K 线。
+  private var warmIDs: [String] {
+    guard showsResults else { return [] }
+    let groups = hitGroups
+    let counts = shownCounts(groups)
+    let shown = zip(groups, counts).flatMap { group, n in group.rows.prefix(n).map(\.id) }
+    return SymbolWarmup.hitsToWarm(shown)
+  }
 
   /// 最近看过。品种表还没到的时候查不到信息，那就先不显示这一组——
   /// 不占位、不解释，表到了它自己就出来。存几个就摆几个（`SymbolPrefs.recentLimit`，
@@ -263,8 +277,8 @@ struct SymbolSearchView: View {
 
   @ViewBuilder
   private var results: some View {
-    let rows = hits?.rows ?? []
-    if rows.isEmpty {
+    let groups = hitGroups
+    if groups.isEmpty {
       Text(model.emptyText)
         .font(TypeScale.caption)
         .foregroundStyle(theme.ink3)
@@ -273,15 +287,19 @@ struct SymbolSearchView: View {
         .padding(.vertical, Space.xxl)
         .accessibilityIdentifier("search.empty")
     } else {
-      groupHead("品种") {
-        Text("\(hitCount)")
-          .font(TypeScale.caption2)
-          .monospacedDigit()
-          .foregroundStyle(theme.ink3)
+      // 一家交易所一组：组头是那家的名字，右边是这一组的命中数。
+      let counts = shownCounts(groups)
+      ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+        groupHead(group.title) {
+          Text("\(group.total)")
+            .font(TypeScale.caption2)
+            .monospacedDigit()
+            .foregroundStyle(theme.ink3)
+        }
+        .accessibilityIdentifier("search.group." + (group.venue ?? ""))
+        rowList(Array(group.rows.prefix(counts[index])))
       }
-      // 对比模式整列给出来：「查看全部」去的品种整页没有对比模式。
-      rowList(compare == nil ? Array(rows.prefix(Self.previewRows)) : rows)
-      if compare == nil, hitCount > Self.previewRows {
+      if compare == nil, hitCount > counts.reduce(0, +) {
         Button {
           history.remember(trimmed)
           onAll()

@@ -26,13 +26,19 @@ struct DollarIndexSearchTests {
     }
   }
 
-  @Test("整词 USD：美元指数在最匹配那一档，USDC、xxxUSDT、BTC-USD 都在它后面")
+  @Test("整词 USD：美元指数那一组排最前（整词命中档最好），USDC、xxxUSDT 在默认交易所那一组")
   func usdRanksAheadOfStablecoinsAndUSDT() {
     let tickers = Dictionary(SymbolFixtures.tickers.map { ($0.symbol, $0) }, uniquingKeysWith: { a, _ in a })
     let sections = SymbolSections.build(catalog: Self.catalog, tickers: tickers, prefs: SymbolPrefs(), query: "USD")
-    let ids = sections.first?.rows.map(\.id) ?? []
+    // 搜索结果按交易所分组（2026-10-08）：组序先按组里最好的匹配档——美元指数整词命中，
+    // 它那一组排在币安（只有 `symbolContains`）前面，哪怕它在注册表里排最后；
+    // USDC、xxxUSDT 在默认交易所那一组，BTC-USD 在它自己那家的组里。
+    #expect(sections.first?.venue == MacroProvider.venue)
+    let ids = sections.first { $0.venue == MacroProvider.venue }?.rows.map(\.id) ?? []
     #expect(ids.first == "macro/index/DXY")
-    #expect(ids.contains("binance/usd_m/USDCUSDT") && ids.contains("binance/usd_m/BTCUSDT"))
+    let defaults = sections.first { $0.venue == VenueRegistry.default.id }?.rows.map(\.id) ?? []
+    #expect(defaults.contains("binance/usd_m/USDCUSDT") && defaults.contains("binance/usd_m/BTCUSDT"))
+    #expect(SymbolSections.hitCount(sections) == SymbolQuery.match(Self.catalog, query: "USD").count)
     // 打「US」不算整词，不把美元指数顶上来（它也不含 US）。
     #expect(SymbolQuery.match(Self.dxy, query: "US") == nil)
   }

@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import KanpanNetwork
 
 // ============================================================ 分区与行
 //
@@ -7,9 +8,11 @@ import KanpanCore
 // 每行：名 · 最新价 · 涨跌幅。
 //
 // 常数、文案、分组规矩全部照原型 `app.js/renderSymbols()`：
-//   · 无查询时三组；有查询时只剩一组「搜到 N 个」，不再分组。
+//   · 无查询时三组；有查询时不分自选 / 最近 / 全部，改按交易所分组（用户 2026-10-08：
+//     同一个币在不同交易所是不同品种，搜索结果像 TradingView 那样按交易所分区）。
+//     组序 = `VenueRegistry.all` 的注册顺序，那一家没命中就不出那一组；组标题是那家的名字。
 //   · 「全部」里剔掉已经在上面两组露过脸的品种（原型是 `!have.has(sym)`）。
-//   · 全部 120 条封顶、搜索 160 条封顶，超出的用一行小字交代。
+//   · 全部 120 条封顶、搜索每组各 160 条封顶，超出的用一行小字交代。
 
 /// 一行要显示的东西。纯值，好断言。
 struct SymbolRow: Sendable, Equatable, Identifiable {
@@ -83,8 +86,14 @@ struct SymbolSection: Sendable, Equatable, Identifiable {
   var rows: [SymbolRow]
   /// 没列出来的还剩几个（> 0 时行尾补一行小字）。
   var more: Int = 0
+  /// 搜索态按交易所分组时，这一组是哪一家（`InstrumentID.venue`）。其余分区是 nil。
+  var venue: String? = nil
 
-  var id: String { kind.rawValue }
+  /// 同一种分区可以有好几组（搜索态一家一组），所以带上交易所；
+  /// 没有交易所的（自选 / 最近 / 全部、零命中那一组）保持原来的 id。
+  var id: String { venue.map { kind.rawValue + "." + $0 } ?? kind.rawValue }
+  /// 这一组一共命中几个（列出来的 + 没列出来的）。
+  var total: Int { rows.count + more }
 
   /// 原型：`'还有 ' + more + ' 个，搜名字更快。'`
   var moreNote: String? { more > 0 ? "还有 \(more) 个，搜名字更快。" : nil }
@@ -135,7 +144,7 @@ enum SymbolSections {
     let bySymbol = Dictionary(catalog.map { (InstrumentID.canonical($0.symbol), $0) }, uniquingKeysWith: { a, _ in a })
     func row(_ m: SymbolMatch) -> SymbolRow { SymbolRow(match: m, ticker: tickers[InstrumentID.canonical(m.info.symbol)]) }
 
-    // ---- 搜索态：只有一组，不分自选 / 最近 / 全部（同原型）
+    // ---- 搜索态：不分自选 / 最近 / 全部，按交易所分组（`searchGroups`）
     let q = SymbolQuery.normalize(query)
     if !q.isEmpty {
       // 先最匹配，再按 24h 成交额降序（用户 2026-09-18 定的）。`SymbolQuery.match`
@@ -152,11 +161,7 @@ enum SymbolSections {
           return a.offset < b.offset
         }
         .map(\.element)
-      let shown = Array(hits.prefix(searchLimit))
-      return [SymbolSection(kind: .search,
-                            title: "搜到 \(hits.count) 个",
-                            rows: shown,
-                            more: max(0, hits.count - searchLimit))]
+      return searchGroups(hits)
     }
 
     // ---- 常态：自选 → 最近 → 全部
@@ -217,6 +222,62 @@ enum SymbolSections {
                                more: max(0, pool.count - allLimit)))
     }
     return out
+  }
+
+  /// 排好序的命中按交易所拆组，组内保持传进来的顺序，每组各自 `searchLimit` 封顶。
+  /// 认不出交易所的行归默认那一家（`descriptor(forSymbol:)`）。
+  ///
+  /// 组序：先按**这一组里最好的那一档匹配**（`SymbolMatch.Tier`，传进来的命中已经按档排好，
+  /// 所以每家第一行就是它最好的那档），同档再照 `VenueRegistry.all` 的注册顺序。
+  /// 这样搜「USD」「美元」时整词命中的美元指数那一组仍排最前（它在注册表里排最后），
+  /// 搜「BTC」时各家都是整词命中，就按注册表顺序：币安在前。
+  ///
+  /// 一条都没命中时回一个空的搜索分区（标题「搜到 0 个」）：页面据此摆「没有这个品种」，
+  /// 模型据此判断要不要去问目录（`lookUpMissingSymbolIfNeeded`）。
+  static func searchGroups(_ hits: [SymbolRow]) -> [SymbolSection] {
+    var byVenue: [String: [SymbolRow]] = [:]
+    for row in hits { byVenue[VenueRegistry.descriptor(forSymbol: row.id).id, default: []].append(row) }
+    var ranked: [(order: Int, tier: SymbolMatch.Tier, section: SymbolSection)] = []
+    for (order, venue) in VenueRegistry.all.enumerated() {
+      guard let rows = byVenue[venue.id], let best = rows.first else { continue }
+      let section = SymbolSection(kind: .search,
+                                  title: venue.displayName,
+                                  rows: Array(rows.prefix(searchLimit)),
+                                  more: max(0, rows.count - searchLimit),
+                                  venue: venue.id)
+      ranked.append((order, best.match.tier, section))
+    }
+    let groups = ranked
+      .sorted { a, b in a.tier == b.tier ? a.order < b.order : a.tier < b.tier }
+      .map(\.section)
+    if groups.isEmpty { return [SymbolSection(kind: .search, title: "搜到 0 个", rows: [])] }
+    return groups
+  }
+
+  /// 搜索态一共命中几个（各组之和，含封顶没列出来的）。搜索页「查看全部 N 个品种」用它。
+  static func hitCount(_ sections: [SymbolSection]) -> Int {
+    sections.reduce(0) { $0 + ($1.kind == .search ? $1.total : 0) }
+  }
+
+  /// 快捷搜索页每组先露几行（按组给，和 `counts` 一一对应）。
+  ///
+  /// 规则：按组序**轮流**每组取一行，直到总数到 `budget`；组数比 `budget` 多时每组照样给一行
+  /// ——每家至少露出它最匹配的那一只，其余的去品种整页看。某组取完了就跳过它，名额留给后面的组。
+  /// 例：budget 6，两组各有 12 / 3 个 → 3 + 3；12 / 1 → 5 + 1；五组都有 → 2 + 1 + 1 + 1 + 1；只有一组 → 6。
+  static func previewQuota(_ counts: [Int], budget: Int) -> [Int] {
+    var quota = counts.map { _ in 0 }
+    let cap = max(budget, counts.count { $0 > 0 })
+    var used = 0
+    var progressed = true
+    while used < cap, progressed {
+      progressed = false
+      for i in counts.indices where used < cap && quota[i] < counts[i] {
+        quota[i] += 1
+        used += 1
+        progressed = true
+      }
+    }
+    return quota
   }
 
   /// 搜索页的「热门」：没有历史搜索、也没有最近看过时（第一次打开）列的那一组（审查 U7）。

@@ -44,6 +44,24 @@ enum SymbolFixtures {
            high: $0.4 * 1.03, low: $0.4 * 0.97, quoteVolume: $0.6)
   }
 
+  /// 同一批品种挂到另一家交易所名下（键 `venue/market/SYMBOL`），取前 `take` 只。
+  /// 给「搜索按交易所分组」这类测试用：同一个币在不同交易所是不同品种。
+  /// 只按参数拼键，不点任何一家的名字（`Tools/check-venue-isolation.sh`）；调用方从注册表取 venue。
+  static func catalog(venue: String, market: String, take: Int = .max) -> [SymbolInfo] {
+    raw.prefix(take).map {
+      SymbolInfo(symbol: InstrumentID(venue: venue, market: market, symbol: $0.0).key, base: $0.1,
+                 pricePrecision: $0.2, tickSize: $0.3, underlyingType: "COIN")
+    }
+  }
+
+  /// 和 `catalog(venue:market:take:)` 配套的 24h 行情。
+  static func tickers(venue: String, market: String, take: Int = .max) -> [Ticker] {
+    raw.prefix(take).map {
+      Ticker(symbol: InstrumentID(venue: venue, market: market, symbol: $0.0).key, last: $0.4,
+             changePercent: $0.5, high: $0.4 * 1.03, low: $0.4 * 0.97, quoteVolume: $0.6)
+    }
+  }
+
   static func info(_ symbol: String) -> SymbolInfo {
     catalog.first { $0.symbol == InstrumentID.canonical(symbol) } ?? catalog[0]
   }

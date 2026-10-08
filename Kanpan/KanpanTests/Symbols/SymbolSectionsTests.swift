@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import KanpanCore
+import KanpanNetwork
 
 @testable import Kanpan
 
@@ -86,13 +87,97 @@ struct SymbolSectionsTests {
     #expect(rows.dropFirst().allSatisfy { $0.priceText == "—" })
   }
 
-  @Test("搜索态只剩一组，标题带命中数")
+  @Test("搜索态不分自选 / 最近 / 全部；只有一家命中时只有一组，标题是那家的名字")
   func searchCollapsesToOneSection() {
     let s = build(SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT"]), query: "eth")
     #expect(s.count == 1)
     #expect(s[0].kind == .search)
-    #expect(s[0].title == "搜到 3 个")
+    #expect(s[0].venue == VenueRegistry.default.id)
+    #expect(s[0].title == VenueRegistry.default.displayName)
+    #expect(s[0].total == 3)
+    #expect(SymbolSections.hitCount(s) == 3)
     #expect(s[0].rows.map(\.id) == ["binance/usd_m/ETHUSDT", "binance/usd_m/ETHFIUSDT", "binance/usd_m/ETHWUSDT"])
+  }
+
+  // ---------------------------------------------------------------- 搜索按交易所分组
+
+  /// 注册表里排第二的那一家（第一家是默认交易所，夹具主表就挂在它名下）。不写死是哪一家。
+  private var second: VenueDescriptor { VenueRegistry.all[1] }
+  private func key(_ venue: VenueDescriptor, _ symbol: String) -> String {
+    InstrumentID(venue: venue.id, market: venue.market, symbol: symbol).key
+  }
+  /// 默认交易所的整张夹具 + 第二家的前 `take` 只。第二家的行**排在前面**，
+  /// 这样组序要是跟着品种表走而不是跟着注册表走，测试就会红。
+  private func twoVenues(take: Int) -> (catalog: [SymbolInfo], tickers: [String: Ticker]) {
+    var t = tickers
+    for x in SymbolFixtures.tickers(venue: second.id, market: second.market, take: take) { t[x.symbol] = x }
+    return (SymbolFixtures.catalog(venue: second.id, market: second.market, take: take) + catalog, t)
+  }
+
+  @Test("两家都有命中：一家一组，组序照注册表，组标题是交易所名，组内照旧按档 → 成交额排")
+  func searchGroupsByVenue() {
+    let (both, t) = twoVenues(take: 3)   // 第二家：BTC / ETH / SOL
+    let s = SymbolSections.build(catalog: both, tickers: t, prefs: SymbolPrefs(), query: "eth")
+    #expect(s.map(\.kind) == [.search, .search])
+    #expect(s.map(\.venue) == [VenueRegistry.default.id, second.id] as [String?])
+    #expect(s.map(\.title) == [VenueRegistry.default.displayName, second.displayName])
+    #expect(s[0].rows.map(\.id) == ["binance/usd_m/ETHUSDT", "binance/usd_m/ETHFIUSDT", "binance/usd_m/ETHWUSDT"])
+    #expect(s[1].rows.map(\.id) == [key(second, "ETHUSDT")])
+    // 每组的行只属于那一家，不混源。
+    for section in s {
+      #expect(section.rows.allSatisfy { VenueRegistry.descriptor(forSymbol: $0.id).id == section.venue })
+    }
+    #expect(SymbolSections.hitCount(s) == 4)
+  }
+
+  @Test("分区 id 唯一：搜索组带交易所，自选 / 最近 / 全部保持原样")
+  func sectionIDsStayUnique() {
+    let (both, t) = twoVenues(take: 3)
+    let hits = SymbolSections.build(catalog: both, tickers: t, prefs: SymbolPrefs(), query: "btc")
+    #expect(hits.map(\.id) == ["search." + VenueRegistry.default.id, "search." + second.id])
+    #expect(Set(hits.map(\.id)).count == hits.count)
+    let prefs = SymbolPrefs(favorites: ["binance/usd_m/ETHUSDT"], recents: ["binance/usd_m/DOGEUSDT"])
+    let plain = SymbolSections.build(catalog: both, tickers: t, prefs: prefs, query: "")
+    #expect(plain.map(\.id) == ["favorites", "recents", "all"])
+    #expect(plain.allSatisfy { $0.venue == nil })
+  }
+
+  @Test("只有另一家命中：只出那一家的组，默认交易所不出空组")
+  func searchOnlyOtherVenue() {
+    let other = SymbolFixtures.catalog(venue: second.id, market: second.market, take: 3)
+    let s = SymbolSections.build(catalog: other, tickers: [:], prefs: SymbolPrefs(), query: "sol")
+    #expect(s.count == 1)
+    #expect(s[0].venue == second.id)
+    #expect(s[0].rows.map(\.id) == [key(second, "SOLUSDT")])
+  }
+
+  @Test("每组各自封顶 160，各自交代还剩几个；总数是各组之和")
+  func searchLimitIsPerGroup() {
+    func big(_ venue: VenueDescriptor, _ n: Int) -> [SymbolInfo] {
+      (1 ... n).map {
+        SymbolInfo(symbol: key(venue, "S\($0)USDT"), base: "S\($0)", pricePrecision: 2, tickSize: 0.01)
+      }
+    }
+    let list = big(VenueRegistry.default, 200) + big(second, 170)
+    let s = SymbolSections.build(catalog: list, tickers: [:], prefs: SymbolPrefs(), query: "S")
+    #expect(s.map(\.venue) == [VenueRegistry.default.id, second.id] as [String?])
+    #expect(s.map(\.rows.count) == [160, 160])
+    #expect(s.map(\.more) == [40, 10])
+    #expect(SymbolSections.hitCount(s) == 370)
+  }
+
+  @Test("搜索页预览：轮流每组一行到 6 行为止，每家至少一行，取完的组把名额让出来")
+  func previewQuota() {
+    #expect(SymbolSections.previewQuota([12], budget: 6) == [6])
+    #expect(SymbolSections.previewQuota([3], budget: 6) == [3])
+    #expect(SymbolSections.previewQuota([12, 3], budget: 6) == [3, 3])
+    #expect(SymbolSections.previewQuota([12, 1], budget: 6) == [5, 1])
+    #expect(SymbolSections.previewQuota([1, 12], budget: 6) == [1, 5])
+    #expect(SymbolSections.previewQuota([9, 9, 9, 9, 9], budget: 6) == [2, 1, 1, 1, 1])
+    // 组数比名额多：每组照样一行，不让哪一家整组只剩标题。
+    #expect(SymbolSections.previewQuota([2, 2, 2, 2, 2, 2, 2], budget: 6) == [1, 1, 1, 1, 1, 1, 1])
+    #expect(SymbolSections.previewQuota([], budget: 6) == [])
+    #expect(SymbolSections.previewQuota([2, 1], budget: 6) == [2, 1])
   }
 
   /// 用户 2026-09-18：「首先选最匹配的，然后如果出现多个应该按照成交额来排序，

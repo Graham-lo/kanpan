@@ -873,8 +873,9 @@ final class SymbolPickerModel {
   /// 只在「零命中」这一种情形下问，所以它天然是「用户明确点名」的信号；
   /// 打到一半的前缀（`BT`）不算，长度不够 3 或者带非字母数字的字符一律不问。
   private func lookUpMissingSymbolIfNeeded() {
-    guard let onMissingSymbol, let section = sections.first, section.kind == .search,
-          section.rows.isEmpty else { return }
+    // 搜索态按交易所分组（`SymbolSections.searchGroups`）：「零命中」= 有搜索分区、且所有分区都没有行。
+    guard let onMissingSymbol, sections.contains(where: { $0.kind == .search }),
+          sections.allSatisfy(\.rows.isEmpty) else { return }
     let want = SymbolQuery.normalize(settledQuery).uppercased()
     // 只有「看着就像个合约代号」的词才去问：中文（粘进来的「比特币」）和带
     // 分隔符的写法都不是代号，问了也是白问一趟。`isLetter` 对汉字是 true，
