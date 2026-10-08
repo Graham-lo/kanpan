@@ -1,6 +1,6 @@
 # Hkline（看盘 / Kanpan）跨窗口项目记忆
 
-更新：2026-10-04（§37 深度审查；旧注：第 8 节含 P0 价格精度返工；第 9 节为文档统一口径）。给任何新开的模型窗口恢复上下文用。用户当前指示优先；下面是整理时的快照，接手前用 `git log`、`git status` 和源码核对。
+更新：2026-10-09（§71 云端窗口接手；§37 深度审查）；旧注：2026-10-04（§37 深度审查；旧注：第 8 节含 P0 价格精度返工；第 9 节为文档统一口径）。给任何新开的模型窗口恢复上下文用。用户当前指示优先；下面是整理时的快照，接手前用 `git log`、`git status` 和源码核对。
 
 ## 1. 身份与分工
 
@@ -2096,3 +2096,14 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **冷启动价格轴**（`pages/chart.ts`，`chart.ts` 未动）：根因有三处——① 品种表没到时精度按 K 线小数位猜，合成 / 算出来的价带浮点尾巴就猜成 8 位、轴先宽，表一到又缩（§68 留意那条）→ `decOfBars` 再按价位封顶（有效数字最多 7 位）；② 本机 K 线留底首帧就摆，而品种表（IndexedDB）还在读盘 → `bootCells` 有留底要摆时等表读完这一下（最多 150 ms，首次打开没留底不等）；③ 还没 K 线时骨架的轴宽按「100」量，真价位 81,081.7 / 0.0091234 一到轴宽一跳 → `holdAxisWidth` 用图自己的画布（等宽数字）挑一个小数位数，让「100.xx…」和表里现价的轴标签一样宽，K 线到了 `setData` 换回真精度。实测（本地十六格 + 单格，冷 / 只有表 / 热三种起法）：热启动与只有表时整格不再跳（剩 ≤ 3 px：千分位逗号比数字窄，只能按位数逼近）；首次打开（本机什么都没有）表和 K 线前后脚到，仍会按「100.00」骨架 → 真宽度变一次。`tests/feel-watch-rows-first.test.ts` 加封顶用例。
 - **画线验收顺带修**：a402965f 把成交量分布照 TV 重画（柱子不随画线颜色、从底边长、不画边框）之后，`scripts/draw-lib.mjs` 里固定区间 / 锚定成交量分布的取样还按旧画法在区间 65% 处取画线颜色，像素类检查 45 项不过；改成贴底边（放左 = 左沿、放右 = 右沿）一竖列取涨段颜色（style 改过就按改过的）。
 - **验收**（29cfdb66）：tsc 净、vitest 190 文件 2437 条全过；`draw-cross.mjs` 本地 411 / 411；线上 `?v=29cfdb66#chart` 单开一页零控制台错误。截图 `docs/acceptance/网页版-质感图标-2026-10-08/`（1440×900，深浅 × 三皮肤，各含整页 / 左栏展开 / 工具条 / 右栏）。连开六个新会话截图时网关多交易所 WS 回过 429（同 IP 短时间连太多，服务端限流，不是页面错误）。
+
+## 71. 10-09：主工作树交接到云端窗口，电脑网页四件一起落地（分支 `claude/clever-fermi-ti9o49`，待 Mac 合 main · 回归 · 部署）
+
+- **交接方式**：本机把全部未提交改动 + 181 条本机记忆打成 `handoff/kanpan-2026-10-08`（`9a1c385`），云端窗口（Linux 容器，没有 Xcode、出网被代理挡住连不到网关与币安）接着做；交接说明并入 `docs/待办交接-Codex-2026-09-22.md` P5 后删除。云端只能跑 tsc / vitest / `cargo test --lib` 和本机 Chromium 的合成数据截图，**全面回归与部署要回 Mac**。
+- **十六图挂机 C15 根因**（`0c7dd27`）：全市场表一次没取到（`S.live === false`）就把整页判断线，而 `st.stale` 是 K 线推送总闸——推送明明连着，16 格最新一根整段不动。断线态改成只听推送连接（`Web/src/app/linkGrace.ts`，与 iOS LinkGrace / 手机网页同一规矩，手机那份改成再导出）。
+- **画线设置对话框**（`6ce2deb`，Opus 子代理）：照 TradingView 五页（输入 / 样式 / 文本 / 坐标 / 可见范围）+ 模板菜单（另存为 / 存为默认 / 恢复出厂 / 删模板）；纯逻辑在 `chart/drawSettingsModel.ts`（每把工具每页的行、`applyEdit`、刻度表 ↔ `d.levels` 往返），对话框 `pages/drawSettingsDialog.ts` 复用 `cs-*` 版式；入口：快捷条齿轮、双击非文字类画线、右键「设置…」；`knobs` 从 `drawing.ts` 挪到 model 共用。`tests/draw-settings.test.ts` 22 条。
+- **画线 style 与默认 / 模板随账号同步**（`777750e`，Opus 子代理）：`sync/codec.ts` 画线带 `style`（清空 → null）；电脑网页用 `PC_COLLECTIONS` 拉 `drawingPreferences/tools`（与手机网页 `drawCodec`、iOS `PersonalSyncCodec` 同一对象），只写 `webStyles/<KIND>` 与 `templates/<KIND>`，手机的键原样保留；模板整份超服务端 16 KB 时上云从后往前少带、本机不丢；`newDrawing` 先吃 `st.drawDefaults`。新 `tests/draw-preset.test.ts` 32 条。
+- **大单列表「逐根」1024 宽列重叠 + 梯子胶囊截断**（`7a30549`，Opus 子代理）：列宽按实际字宽算、放不下按「来源 → 笔数 → 最大单笔」让位，表头与行同一套网格（`drawerView.ts barCols/barNeed`）；胶囊连收短金额也放不下时只画小圆点（`state.ts pillFit`）。`orderflow-drawer` 41 条。
+- **其余页面与弹层的质感底块**（`43cbedf`，Opus 子代理）：`styles/icons.css` 一节覆盖左画线栏 / 右栏 / 工具条 / 顶栏之外所有 `.ibtn` / `.foot-ic`（28 / 26 / 22 三档），状态同 §70；删掉 app / workbench / sectors / compare / review / replay / orderflow css 里的旧按钮规则；星标选中只亮字形不亮块（整列亮块太吵）；提醒行的类型块与订单流开关同一磨砂块。截图 102 张在云端 scratchpad，没入库（合成数据）。
+- **顺手修**：交接提交带进的 6 份 xcodebuild 日志与 3 个临时探针脚本撤掉（`b966c8c`）；订单流面板「提醒」块双重转义（`f735606`）；`AGENTS.md` 顶栏三颗 / 兼容机型两句对齐用户后来的决定（`b1422cd`）。
+- **数字**：合并后 tsc 0 错、vitest 193 文件 2545 / 2547（红的 2 条 `account-refresh-race` 5 秒超时与 `heikin-range` 20 ms 性能断言在 main 上同样红，是容器 CPU 慢）；`cargo test --lib` 689 / 689。iOS 契约线 WIP（`PersonalSyncCodec` / `Drawing.swift` + 两份 AccountCodec 测试）云端编不了，见 P5。
