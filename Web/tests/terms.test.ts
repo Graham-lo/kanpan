@@ -4,7 +4,7 @@ import { BT, fill } from '../src/terms'
 describe('三端共用词表 terms.json', () => {
   it('模板填空', () => {
     expect(fill(BT.buyCount, { n: 12 })).toBe('买 12 笔')
-    expect(fill(BT.hours, { h: 2 })).toBe('近 2 小时')
+    expect(fill(BT.hours, { h: 2 })).toBe('2 小时')
     expect(BT.shortLiq).toBe('空单爆仓')
   })
   it('不出现口语化、含糊的说法', () => {

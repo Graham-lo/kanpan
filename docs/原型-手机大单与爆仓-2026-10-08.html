@@ -180,7 +180,7 @@ td:first-child{font-weight:600;white-space:nowrap}
 
 <!-- ============================================================ 二、十字线联动与周期 -->
 <h2><span class="n">02</span>十字线联动 · 周期粗细 · 分析面板入口</h2>
-<p class="l">按住图读十字线时弹层跟着那一根走（「本根」变成「该根 12:30」）；反过来在弹层「每根」条上点一根，图上十字线也跳过去。1 分钟图签很密时只剩点与三角，金额签只给最顶那档；1 日图签很少、每枚都带金额。</p>
+<p class="l">按住图读十字线时弹层跟着那一根走（「本根」变成「12:30」）；反过来在弹层「逐根」条上点一根，图上十字线也跳过去。1 分钟图签很密时只剩点与三角，金额签只给最顶那档；1 日图签很少、每枚都带金额。</p>
 <div class="row" id="rowLink"></div>
 
 <!-- ============================================================ 三、状态 -->
@@ -199,7 +199,7 @@ td:first-child{font-weight:600;white-space:nowrap}
 <ol>
 <li><b>一眼知道「此刻谁在打」。</b> 半屏弹层第一块是本根 K 线的买卖对撞条：买从左、卖从右，交汇点就是净方向，交汇点上一颗「净买 +1.2M」药丸。条永远铺满宽度（按买卖占比分），所以不管金额大小，哪边占上风一瞥就有；绝对金额写在两端。电脑网页版用的是按 √ 金额定长度的条，手机上没那个宽度，改成占比条 + 两端数字更快读。</li>
 <li><b>图上不再「下一根就没了」。</b> 签按根生成，数据来自分钟桶 + 服务端三天历史，刷新 / 后台回来 / 换周期都还在。每根最多一枚、只画主导方向、三档（点 / 三角 / 三角 + 金额签），档位按近 300 根的相对分位定，所以山寨币和 BTC 看起来密度一样。</li>
-<li><b>爆仓只回答一句话：</b>「最近一小时谁被打爆、今天最大一笔在哪个价」。半屏里一条多爆 / 空爆对撞条 + 一行「今日最大」；整页里才有 24 小时时间轴。不做热力、排行、推送。</li>
+<li><b>爆仓只回答一句话：</b>「1 小时多单 / 空单爆仓额、今日最大单笔在哪个价」。半屏里一条多单爆仓 / 空单爆仓对撞条 + 一行「今日最大单笔」；整页里才有 24 小时时间轴。不做热力、排行、推送。</li>
 <li><b>价位要看「钱堆在哪」而不是逐笔。</b> 整页「价位」是现价上下 ±5 档的竖梯：左边买单堆、右边卖单堆、梯子末端挂着现有的挂单墙药丸。手机竖屏天然适合梯子，这是电脑版横条没有的。</li>
 <li><b>少点：</b>签 → 半屏是一下；分析面板 → 「大单与爆仓」也是一下；改门槛沿用现有的编辑页（右上「门槛」药丸）。没有任何新设置项，开关只有一个「图上大单签」（出厂开）。</li>
 </ol>
@@ -223,7 +223,7 @@ td:first-child{font-weight:600;white-space:nowrap}
 <tr><td>半屏弹层「大单与爆仓」</td><td>点图上任意一枚签；分析面板 › 主力订单流 › 大单与爆仓</td><td>下拉、点弹层外、左上返回；再点一枚签只是换根不关</td><td>返回 ‹</td><td>「门槛」药丸</td><td>被弹层盖住（和现有分析面板一致）</td></tr>
 <tr><td>整页弹层</td><td>半屏上拉；或半屏里点「每根 / 价位」标题</td><td>下拉回半屏，再下拉关；返回键直接关</td><td>返回 ‹</td><td>「门槛」药丸</td><td>被弹层盖住，和分析面板整页一致</td></tr>
 <tr><td>门槛编辑</td><td>弹层右上「门槛」</td><td>返回回到弹层原来的档位</td><td>返回 ‹</td><td>无</td><td>盖住</td></tr>
-<tr><td>十字线</td><td>长按图</td><td>抬手即退；弹层半屏开着时抬手后保留「该根」3 秒再回「本根」</td><td colspan="3">—</td></tr>
+<tr><td>十字线</td><td>长按图</td><td>抬手即退；弹层半屏开着时抬手后保留那一根 3 秒再回「本根」</td><td colspan="3">—</td></tr>
 </table>
 
 <h2><span class="n">08</span>交互细节清单（施工项）</h2>
@@ -232,8 +232,8 @@ td:first-child{font-weight:600;white-space:nowrap}
 <li><b>点签反馈</b>：触感 <code>.selection</code>；签放大到 1.3 倍 120 ms 再回；弹层 280 ms 弹簧（damping 0.86）升起；「每根」条滚到那根并高亮 1.2 s。</li>
 <li><b>实时一根的签</b>：新大单落进来时签外圈扩散一道 8 pt 光环（600 ms，ease-out），减少动效时改为 150 ms 的透明度闪一下。</li>
 <li><b>对撞条动画</b>：交汇点位置变化 240 ms ease-in-out；金额数字滚动 200 ms；净药丸换色不动画。</li>
-<li><b>十字线联动</b>：按住图时弹层标题从「本根」变「该根 12:30」，数值随手指实时换，不节流；抬手 3 s 后回到本根（渐变 300 ms）。</li>
-<li><b>每根条</b>：横向可滚，默认停在最右；点一根 → 图上十字线跳到那根 + 触感 <code>.light</code>；最右那根顶部有一粒呼吸点表示还在走。</li>
+<li><b>十字线联动</b>：按住图时弹层标题从「本根」变「12:30」，数值随手指实时换，不节流；抬手 3 s 后回到本根（渐变 300 ms）。</li>
+<li><b>逐根条</b>：横向可滚，默认停在最右；点一根 → 图上十字线跳到那根 + 触感 <code>.light</code>；最右那根顶部有一粒呼吸点表示未收线。</li>
 <li><b>弹层档位</b>：半屏 440 pt，整页 780 pt，两档都盖住底栏（和现有分析面板一致）；拖过半屏 + 90 pt 即吸到整页；整页内容可滚，滚到顶继续下拉才收档。</li>
 <li><b>默认值</b>：图上大单签 出厂开；弹层第一次打开落半屏；门槛沿用现有默认（现货 750K / U 本位永续 2.5M …，按品种）。</li>
 <li><b>撤销 / 误触</b>：弹层没有破坏性操作；门槛编辑页沿用现有「恢复默认」。</li>
@@ -266,7 +266,7 @@ td:first-child{font-weight:600;white-space:nowrap}
 <li><b>签档位</b>：近 300 根的 P85 / P95 / max(P99, 3 × P95)，绝对地板 门槛 ÷ 5。一根一枚，落主导方向。</li>
 <li><b>价位梯</b>：1 分钟大单行 × 1 分钟 K 线 (高 + 低 + 收) ÷ 3 落进步长桶，最新一桶用实时覆盖；墙来自现有挂单墙。</li>
 <li><b>爆仓</b>：<code>GET /v1/market/orderflow/liq?base=&amp;from=&amp;to=</code>（币安 + OKX，分钟聚合，3 天），30 s 一取；多单爆仓用跌色、空单爆仓用涨色。现货品种不请求。</li>
-<li><b>停更判定</b>：实时流 20 s 没有新成交且不在休市 → 数字变 ink3、写「数据停在 hh:mm」，不弹提示；恢复后无感回到正常。</li>
+<li><b>停更判定</b>：实时流 20 s 没有新成交且不在休市 → 数字变 ink3、写「数据停于 hh:mm」，不弹提示；恢复后无感回到正常。</li>
 </ul>
 
 <h2><span class="n">11</span>不做清单（这轮明确不做）</h2>
@@ -394,8 +394,8 @@ function analysisPanel(spec,S){
   <div class="sec">主力订单流</div>
   <div class="pcard">
    <div class="prow"><span class="dot" style="background:${S.up}"></span>挂单墙<span class="r"><span class="sw on"></span></span></div>
-   <div class="prow"><span class="dot" style="background:${S.accent}"></span>图上大单签<span class="r"><span class="sw on"></span></span></div>
-   <div class="prow">大单与爆仓<span class="r">本根 净买 +1.2M<svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:${S.ink3};stroke-width:2;fill:none"><path d="M9 6l6 6-6 6"/></svg></span></div>
+   <div class="prow"><span class="dot" style="background:${S.accent}"></span>图上大单标记<span class="r"><span class="sw on"></span></span></div>
+   <div class="prow">大单与爆仓<span class="r">本根 净买入 +1.2M<svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:${S.ink3};stroke-width:2;fill:none"><path d="M9 6l6 6-6 6"/></svg></span></div>
    <div class="prow">门槛与步长<span class="r">永续 2.5M · 现货 750K<svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:${S.ink3};stroke-width:2;fill:none"><path d="M9 6l6 6-6 6"/></svg></span></div>
   </div>
   <div class="sec">指标</div>
@@ -408,32 +408,32 @@ function sheet(spec,S,bars,T,sel,live){
  const b=bars[sel];const hour=bars.slice(live-3,live+1);const day=bars.slice(live-40,live+1);
  const sum=a=>a.reduce((x,y)=>x+y,0);const hb=sum(hour.map(z=>z.buy)),hs=sum(hour.map(z=>z.sell)),db=sum(day.map(z=>z.buy)),ds=sum(day.map(z=>z.sell));
  const lobes=S.lobes.length?`<div class="lobes"><i style="width:260px;height:260px;left:-80px;top:-60px;background:${S.lobes[0]}"></i><i style="width:220px;height:220px;right:-60px;top:40px;background:${S.lobes[1]}"></i><i style="width:240px;height:240px;left:90px;bottom:-80px;background:${S.lobes[2]}"></i></div>`:'';
- const title=spec.crosshair!=null?`该根 12:${30-spec.crosshair*15<10?'0':''}${((30-spec.crosshair*15)+60)%60}`:'本根';
+ const title=spec.crosshair!=null?`12:${30-spec.crosshair*15<10?'0':''}${((30-spec.crosshair*15)+60)%60}`:'本根';
  const cross=spec.crosshair!=null;
  let body='';
- if(st==='loading'){body=`<div class="card hero"><h5>本根 <span class="rt">第一次打开</span></h5><div class="amts"><b class="skel" style="width:88px;height:22px;display:inline-block"></b><b class="skel" style="width:88px;height:22px;display:inline-block"></b></div><div class="vs skel" style="margin-top:12px"></div><div class="rows"><span class="lab">近 1 小时</span><div class="vs s skel"></div><span class="lab">今日</span><div class="vs s skel"></div></div></div>
+ if(st==='loading'){body=`<div class="card hero"><h5>本根 <span class="rt">自打开起统计</span></h5><div class="amts"><b class="skel" style="width:88px;height:22px;display:inline-block"></b><b class="skel" style="width:88px;height:22px;display:inline-block"></b></div><div class="vs skel" style="margin-top:12px"></div><div class="rows"><span class="lab">1 小时</span><div class="vs s skel"></div><span class="lab">今日</span><div class="vs s skel"></div></div></div>
   <div class="card thin"><h5>爆仓</h5><div class="vs s skel" style="margin:4px 0 10px"></div><div class="skel" style="height:14px;width:60%"></div></div>`}
  else{
   const stale=st==='stale';
   const nb=b.buy,ns=b.sell,net=nb-ns;const share=(x,y)=>x+y>0?x/(x+y):0.5;
   const heroEmpty=nb+ns===0;
-  body+=`<div class="card hero"><h5>${cross?'':'<span class="live"></span>'}${title}${stale?`<span class="rt">数据停在 12:3${spec.seed%10||1}</span>`:cross?'<span class="rt">抬手回到本根</span>':'<span class="rt">15 分钟 · 还在走</span>'}</h5>
-   ${heroEmpty?`<div class="empty" style="padding:6px 0 2px"><b>这根还没有大单</b>门槛以上的成交一出现就在这里</div>`:`<div class="amts"><b style="color:${S.up}">${fmt(nb)}<small>买 ${Math.max(1,Math.round(nb/4e5))} 笔</small></b><b style="color:${S.down}">${fmt(ns)}<small>卖 ${Math.max(1,Math.round(ns/4e5))} 笔</small></b></div>
-   <div class="vs"><div class="b" style="width:calc(${(share(nb,ns)*100).toFixed(1)}% - 2px)"></div><div class="a" style="width:calc(${((1-share(nb,ns))*100).toFixed(1)}% - 2px)"></div><span class="net" style="left:${(share(nb,ns)*100).toFixed(1)}%;color:${net>=0?S.up:S.down}">净${net>=0?'买':'卖'} ${net>=0?'+':'−'}${fmt(Math.abs(net))}</span></div>`}
+  body+=`<div class="card hero"><h5>${cross?'':'<span class="live"></span>'}${title}${stale?`<span class="rt">数据停于 12:3${spec.seed%10||1}</span>`:cross?'':'<span class="rt">15 分钟</span>'}</h5>
+   ${heroEmpty?`<div class="empty" style="padding:6px 0 2px"><b>暂无大单</b></div>`:`<div class="amts"><b style="color:${S.up}">${fmt(nb)}<small>买 ${Math.max(1,Math.round(nb/4e5))} 笔</small></b><b style="color:${S.down}">${fmt(ns)}<small>卖 ${Math.max(1,Math.round(ns/4e5))} 笔</small></b></div>
+   <div class="vs"><div class="b" style="width:calc(${(share(nb,ns)*100).toFixed(1)}% - 2px)"></div><div class="a" style="width:calc(${((1-share(nb,ns))*100).toFixed(1)}% - 2px)"></div><span class="net" style="left:${(share(nb,ns)*100).toFixed(1)}%;color:${net>=0?S.up:S.down}">净${net>=0?'买入':'卖出'} ${net>=0?'+':'−'}${fmt(Math.abs(net))}</span></div>`}
    <div class="rows" style="margin-top:${heroEmpty?6:10}px">
-    <span class="lab">近 1 小时</span><div><div class="vs s"><div class="b" style="width:calc(${(share(hb,hs)*100).toFixed(1)}% - 1px)"></div><div class="a" style="width:calc(${((1-share(hb,hs))*100).toFixed(1)}% - 1px)"></div></div><div class="ends"><b style="color:${S.up}">${fmt(hb)}</b><span>净${hb-hs>=0?'买':'卖'} ${fmt(Math.abs(hb-hs))}</span><b style="color:${S.down}">${fmt(hs)}</b></div></div>
+    <span class="lab">1 小时</span><div><div class="vs s"><div class="b" style="width:calc(${(share(hb,hs)*100).toFixed(1)}% - 1px)"></div><div class="a" style="width:calc(${((1-share(hb,hs))*100).toFixed(1)}% - 1px)"></div></div><div class="ends"><b style="color:${S.up}">${fmt(hb)}</b><span>净${hb-hs>=0?'买入':'卖出'} ${fmt(Math.abs(hb-hs))}</span><b style="color:${S.down}">${fmt(hs)}</b></div></div>
     <span class="lab">今日</span><div><div class="vs s"><div class="b" style="width:calc(${(share(db,ds)*100).toFixed(1)}% - 1px)"></div><div class="a" style="width:calc(${((1-share(db,ds))*100).toFixed(1)}% - 1px)"></div></div><div class="ends"><b style="color:${S.up}">${fmt(db)}</b><span>净${db-ds>=0?'买':'卖'} ${fmt(Math.abs(db-ds))}</span><b style="color:${S.down}">${fmt(ds)}</b></div></div>
    </div>
    ${st==='untracked'?`<div class="hint" style="margin-top:10px">这只品种只算打开以后的成交</div>`:''}
   </div>`;
   // 爆仓
   if(st==='spot'){/* 现货：整块不出现 */}
-  else if(st==='liqEmpty'){body+=`<div class="card thin"><h5>爆仓 <span class="rt">近 1 小时</span></h5><div class="empty" style="padding:4px 0 2px"><b>今天还没有人被打爆</b>多空都稳着</div></div>`}
-  else{const lq=1.9e6,sq=0.6e6;body+=`<div class="card thin"><h5>爆仓 <span class="rt">近 1 小时</span></h5>
+  else if(st==='liqEmpty'){body+=`<div class="card thin"><h5>爆仓 <span class="rt">1 小时</span></h5><div class="empty" style="padding:4px 0 2px"><b>今日无爆仓</b></div></div>`}
+  else{const lq=1.9e6,sq=0.6e6;body+=`<div class="card thin"><h5>爆仓 <span class="rt">1 小时</span></h5>
    <div class="vs s" style="margin:2px 0 4px"><div class="b" style="width:calc(${(sq/(lq+sq)*100).toFixed(1)}% - 1px);background:${S.up}"></div><div class="a" style="width:calc(${(lq/(lq+sq)*100).toFixed(1)}% - 1px);background:${S.down}"></div></div>
-   <div class="rows" style="grid-template-columns:1fr"><div class="ends"><b style="color:${S.up}">空爆 ${fmt(sq)}</b><span>多头被打得更狠</span><b style="color:${S.down}">多爆 ${fmt(lq)}</b></div></div>
-   <div class="mini"><span>今日最大 <b style="color:${S.down}">多单 1.24M</b> @ 114.66 · 12:31</span>${full?'<span>24h 多爆 <b>18.3M</b> · 空爆 <b>6.1M</b></span>':''}</div></div>`}
-  if(!full){body+=`<div class="hint">上拉看每根 · 价位 · 24 小时爆仓</div>`}
+   <div class="rows" style="grid-template-columns:1fr"><div class="ends"><b style="color:${S.up}">空单爆仓 ${fmt(sq)}</b><span></span><b style="color:${S.down}">多单爆仓 ${fmt(lq)}</b></div></div>
+   <div class="mini"><span>今日最大单笔 <b style="color:${S.down}">多单 1.24M</b> @ 114.66 · 12:31</span>${full?'<span>24 小时 多单 <b>18.3M</b> · 空单 <b>6.1M</b></span>':''}</div></div>`}
+  if(!full){body+=`<div class="hint">展开</div>`}
   else{
    // 每根
    const seg=bars.slice(live-39,live+1);const mx=Math.max(...seg.map(z=>Math.max(z.buy,z.sell)))||1;
@@ -444,17 +444,17 @@ function sheet(spec,S,bars,T,sel,live){
     if(isSel)sv+=`<rect x="${x-2}" y="1" width="11" height="94" rx="4" fill="none" stroke="${S.accent}" stroke-width="1.2"/>`;
     if(i===39)sv+=`<circle cx="${x+3.5}" cy="4" r="2.5" fill="${S.accent}">${G.anim?'<animate attributeName="opacity" values="1;.2;1" dur="1.6s" repeatCount="indefinite"/>':''}</circle>`});
    sv+='</svg>';
-   body+=`<div class="card"><h5>每根 <span class="rt">近 40 根 · 点一根十字线就跳过去</span></h5>${sv}<div class="mini"><span>09:30</span><span>11:00</span><span>12:30</span></div></div>`;
+   body+=`<div class="card"><h5>逐根 <span class="rt">近 40 根</span></h5>${sv}<div class="mini"><span>09:30</span><span>11:00</span><span>12:30</span></div></div>`;
    // 价位梯
-   const p0=Math.round(bars[live].c*10)/10;const rows=[];for(let k=5;k>=-5;k--){const p=p0+k*0.1;const r=rng(100+k*7+spec.seed)();const bv=k<0?r*(1-Math.abs(k)/8):r*0.25;const svv=k>0?r*(1-Math.abs(k)/8):r*0.25;rows.push({p,bv,svv,wall:k===-3?'墙 2.1M':k===2?'墙 1.6M':null})}
-   body+=`<div class="card"><h5>价位 <span class="rt">现价上下五档 · 近 2 小时</span></h5><div class="ladder">${rows.map(r=>`<div class="bl" style="--w:${(r.bv*100).toFixed(0)}%"><i style="width:${(r.bv*100).toFixed(0)}%"></i>${r.bv>0.06&&!(r.wall&&r.p<p0)?`<s>${fmt(r.bv*6.2e6)}</s>`:''}${r.wall&&r.p<p0?`<span class="wall">${r.wall}</span>`:''}</div><div class="p ${Math.abs(r.p-p0)<0.01?'now':''}">${r.p.toFixed(2)}</div><div class="br" style="--w:${(r.svv*100).toFixed(0)}%"><i style="width:${(r.svv*100).toFixed(0)}%"></i>${r.svv>0.06&&!(r.wall&&r.p>p0)?`<s>${fmt(r.svv*6.2e6)}</s>`:''}${r.wall&&r.p>p0?`<span class="wall">${r.wall}</span>`:''}</div>`).join('')}</div></div>`;
+   const p0=Math.round(bars[live].c*10)/10;const rows=[];for(let k=5;k>=-5;k--){const p=p0+k*0.1;const r=rng(100+k*7+spec.seed)();const bv=k<0?r*(1-Math.abs(k)/8):r*0.25;const svv=k>0?r*(1-Math.abs(k)/8):r*0.25;rows.push({p,bv,svv,wall:k===-3?'买墙 2.1M':k===2?'卖墙 1.6M':null})}
+   body+=`<div class="card"><h5>价位 <span class="rt">上下五档 · 近 2 小时</span></h5><div class="ladder">${rows.map(r=>`<div class="bl" style="--w:${(r.bv*100).toFixed(0)}%"><i style="width:${(r.bv*100).toFixed(0)}%"></i>${r.bv>0.06&&!(r.wall&&r.p<p0)?`<s>${fmt(r.bv*6.2e6)}</s>`:''}${r.wall&&r.p<p0?`<span class="wall">${r.wall}</span>`:''}</div><div class="p ${Math.abs(r.p-p0)<0.01?'now':''}">${r.p.toFixed(2)}</div><div class="br" style="--w:${(r.svv*100).toFixed(0)}%"><i style="width:${(r.svv*100).toFixed(0)}%"></i>${r.svv>0.06&&!(r.wall&&r.p>p0)?`<s>${fmt(r.svv*6.2e6)}</s>`:''}${r.wall&&r.p>p0?`<span class="wall">${r.wall}</span>`:''}</div>`).join('')}</div></div>`;
    // 爆仓 24h
    if(st!=='spot'){const r=rng(500+spec.seed);let lv=`<svg width="330" height="64" viewBox="0 0 330 64"><line x1="0" x2="330" y1="32" y2="32" stroke="${S.ink3}" stroke-width=".5" opacity=".6"/>`;
     for(let i=0;i<96;i++){const a=Math.pow(r(),3)*28,c=Math.pow(r(),3)*26;const sp=i>84?1.8:1;lv+=`<rect x="${i*3.4}" y="${32-c*sp}" width="2.4" height="${c*sp}" fill="${S.up}" opacity=".8"/><rect x="${i*3.4}" y="32" width="2.4" height="${a*sp}" fill="${S.down}" opacity=".8"/>`}
     lv+=`<rect x="${86*3.4-1}" y="2" width="4.4" height="60" rx="2" fill="none" stroke="${S.accent}" stroke-width="1"/></svg>`;
-    body+=`<div class="card"><h5>爆仓 <span class="rt">24 小时 · 每格 15 分钟</span></h5>${lv}<div class="mini"><span>昨天 12:30</span><span>多爆 <b style="color:${S.down}">18.3M</b> · 空爆 <b style="color:${S.up}">6.1M</b></span><span>现在</span></div>
-     <div class="liqmax"><span class="ic" style="background:${S.down}">多</span><span class="t">今日最大一笔 · 多单爆仓<small>12:31 · 114.66 · 币安</small></span><span class="v" style="color:${S.down}">1.24M</span></div></div>`}
-   body+=`<div class="card thin"><div class="thr"><span class="l">门槛</span><span class="v">永续 2.5M · 现货 750K</span><span class="go">改 ›</span></div></div>`;
+    body+=`<div class="card"><h5>爆仓 <span class="rt">24 小时</span></h5>${lv}<div class="mini"><span>昨天 12:30</span><span>多单 <b style="color:${S.down}">18.3M</b> · 空单 <b style="color:${S.up}">6.1M</b></span><span>现在</span></div>
+     <div class="liqmax"><span class="ic" style="background:${S.down}">多</span><span class="t">今日最大单笔 · 多单爆仓<small>12:31 · 114.66 · 币安</small></span><span class="v" style="color:${S.down}">1.24M</span></div></div>`}
+   body+=`<div class="card thin"><div class="thr"><span class="l">门槛</span><span class="v">永续 2.5M · 现货 750K</span><span class="go">›</span></div></div>`;
   }
  }
  return `<div class="sheet ${full?'full':'half'}">${lobes}<div class="grab"></div>
@@ -473,7 +473,7 @@ function mount(){
  );
  const link=document.getElementById('rowLink');link.innerHTML='';
  link.append(
-  fig({seed:7,crosshair:6,sheet:'half',ann:[{x:30,y:300,t:'标题变「该根 12:30」，数值跟手指实时换',c:'d'}]},'<b>5 · 十字线联动</b>。按住图时弹层改读那一根，抬手 3 秒后回到本根。整页里「每根」条上的高亮也跟着走。'),
+  fig({seed:7,crosshair:6,sheet:'half',ann:[{x:30,y:300,t:'标题变「12:30」，数值跟手指实时换',c:'d'}]},'<b>5 · 十字线联动</b>。按住图时弹层改读那一根，抬手 3 秒后回到本根。整页里「每根」条上的高亮也跟着走。'),
   fig({seed:7,interval:'1分'},'<b>6 · 1 分钟图</b>。成交密，但一根一枚 + 相对分位，整屏仍只有几枚点和三角，金额签只给最顶那档。'),
   fig({seed:11,interval:'1日'},'<b>7 · 1 日图</b>。签少，P95 以上就带金额；同样的规则，不另设。')
  );
@@ -484,7 +484,7 @@ function mount(){
   fig({seed:7,sheet:'half',toast:'行情断了，正在重连',toastSub:'刚才'},'<b>10 · 断网重连</b>。提示条沿用全 app 的那一条；弹层数字停在最后一刻变灰，签不消失。'),
   fig({seed:7,sheet:'full',state:'spot',spot:true},'<b>11 · 现货品种</b>。没有爆仓这件事，整块不出现，整页少一张卡。'),
   fig({seed:7,sheet:'half',state:'liqEmpty'},'<b>12 · 今天还没爆仓</b>。一行好看的空态，不画假图。'),
-  fig({seed:7,sheet:'half',state:'stale'},'<b>13 · 数据停了</b>。流 20 秒没新成交且不在休市：数字变灰、标题右边写「数据停在 hh:mm」，不弹提示；恢复后无感回来。')
+  fig({seed:7,sheet:'half',state:'stale'},'<b>13 · 数据停了</b>。流 20 秒没新成交且不在休市：数字变灰、标题右边写「数据停于 hh:mm」，不弹提示；恢复后无感回来。')
  );
  const skins=document.getElementById('rowSkins');skins.innerHTML='';
  skins.append(

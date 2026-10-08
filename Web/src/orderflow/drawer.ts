@@ -17,6 +17,7 @@
 import { st, save } from '../app/store'
 import { sizes, saveSizes } from '../app/sizes'
 import { I } from '../ui/dom'
+import { BT, fill } from '../terms'
 import { patchKeyedRows } from '../ui/patch'
 import { sym as symOf } from '../ui/common'
 import { kindName, baseOf } from '../market/symbols'
@@ -72,29 +73,29 @@ const EMPTY_LIQ_ICON = svgWrap(46, 30, `<g fill="var(--line-strong)">${[0, 1, 2,
 export function mountDrawer(el: HTMLElement): void {
   slot = el
   el.innerHTML = `<div class="of-dr">
-    <div class="of-dr-h"><h4>大单列表</h4><div class="ctx"><span class="pill" data-k="psym" hidden></span><span class="pill" data-k="pcut" hidden></span></div>
+    <div class="of-dr-h"><h4>${BT.listTitle}</h4><div class="ctx"><span class="pill" data-k="psym" hidden></span><span class="pill" data-k="pcut" hidden></span></div>
       <div class="r"><button class="ibtn xs" id="ofDrGrow" data-k="grow"></button>
-      <button class="ibtn xs" id="ofDrClose" aria-label="收起抽屉" data-tip="收起">${I('close', 'icon-16')}</button></div></div>
+      <button class="ibtn xs" id="ofDrClose" aria-label="${BT.collapse}" data-tip="${BT.collapse}">${I('close', 'icon-16')}</button></div></div>
     <div class="of-dr-grid">
-      <section class="of-blk of-sum" aria-label="汇总">
-        <div class="ct"><span class="gl" style="background:var(--accent)"></span>汇总<span class="r"><span class="lg dn">卖</span><span class="lg up">买</span></span></div>
-        <div class="sum-hero"><div><div class="v num" data-k="net"></div><div class="l">今日净额</div></div><div class="sp" data-k="spark"></div></div>
+      <section class="of-blk of-sum" aria-label="${BT.summary}">
+        <div class="ct"><span class="gl" style="background:var(--accent)"></span>${BT.summary}<span class="r"><span class="lg dn">${BT.sellShort}</span><span class="lg up">${BT.buyShort}</span></span></div>
+        <div class="sum-hero"><div><div class="v num" data-k="net"></div><div class="l">${BT.todayNet}</div></div><div class="sp" data-k="spark"></div></div>
         <div class="sum-tall" data-k="cumTall"></div>
         <div class="wins" data-k="wins"></div>
         <div class="src" data-k="src"></div>
       </section>
-      <section class="of-blk of-bars" aria-label="每根 K 线的大单">
+      <section class="of-blk of-bars" aria-label="${BT.perBar}">
         <div class="bh" data-k="bh"></div>
         <div class="bl" role="list" data-k="bl"></div>
         <div class="fade" data-k="fade"></div>
         <div class="of-empty" data-k="be" hidden></div>
       </section>
-      <section class="of-blk of-lvc" aria-label="价位">
-        <div class="ct"><span class="gl" style="background:var(--of-wall)"></span>价位<span class="r">近1时</span></div>
+      <section class="of-blk of-lvc" aria-label="${BT.levels}">
+        <div class="ct"><span class="gl" style="background:var(--of-wall)"></span>${BT.levels}<span class="r">${BT.hour}</span></div>
         <div class="lv" data-k="lv"></div>
       </section>
-      <section class="of-blk of-lqc" aria-label="爆仓">
-        <div class="ct"><span class="gl" style="background:var(--down)"></span>爆仓<span class="r" data-k="lqlg"><span class="lg dn">多</span><span class="lg up">空</span></span></div>
+      <section class="of-blk of-lqc" aria-label="${BT.liq}">
+        <div class="ct"><span class="gl" style="background:var(--down)"></span>${BT.liq}<span class="r" data-k="lqlg"><span class="lg dn">${BT.long}</span><span class="lg up">${BT.short}</span></span></div>
         <div class="lq-c" data-k="lqc"></div>
         <div class="lq-w" data-k="lqw"></div>
         <div class="lmax" data-k="lmax"></div>
@@ -352,7 +353,7 @@ function paintPills(c: Ctx | null): void {
   setHidden(ps, !s)
   if (s && ps) ps.innerHTML = `<b>${info?.base ?? baseOf(s)}</b> ${kindName(info)}`
   setHidden(pc, cut == null)
-  if (cut != null && pc) pc.innerHTML = `单笔 ≥ <b class="num">${amt(cut)}</b>`
+  if (cut != null && pc) pc.innerHTML = fill(BT.thresholdValue, { v: `<b class="num">${amt(cut)}</b>` })
 }
 
 // ---- 文字宽（金额写在条里还是挪到条外，按真实字宽算）
@@ -384,13 +385,13 @@ function paintSum(c: Ctx | null, tall: boolean): void {
   setHtml(net, has ? signed(n) : '—')
   net.className = `v num ${has ? tone(n) : 't3'}`
   // 窗口三行：每行按自己的买卖比；半边宽 = (行宽 − 28 − 54 − 两道 5 的间距 − 中缝 2) / 2
-  const half = Math.max(16, (wins.clientWidth - 28 - 54 - 10 - 2) / 2)
+  const half = Math.max(16, (wins.clientWidth - 36 - 54 - 10 - 2) / 2)
   const zero: WinSum = { bb: 0, bs: 0, bn: null, sn: null, has: false }
   const row = (k: string, s: WinSum): string => {
     const v = s.bb - s.bs
     return `<div class="wr"><span class="k">${k}</span>${bfHtml({ s: s.bs, b: s.bb, max: Math.max(s.bs, s.bb), half, tw })}<span class="n num ${tone(v)}">${signed(v)}</span></div>`
   }
-  setHtml(wins, row('本根', w?.bar ?? zero) + row('近1时', w?.hour ?? zero) + row('今日', w?.today ?? zero))
+  setHtml(wins, row(BT.currentBar, w?.bar ?? zero) + row(BT.hour, w?.hour ?? zero) + row(BT.today, w?.today ?? zero))
   const sh = c && OF.feed?.symbol === c.sym ? liveShares(c.f, c.now) : null
   setHtml(src, sh && sh.total > 0 ? srcHtml(sh.total, sh.spot, sh.ex) : srcHtml(0, null, null))
   // 今日累计净额：迷你走势（矮）/ 大图 + 逐根净额（高）
@@ -424,9 +425,9 @@ function netsOf(c: Ctx, from: number, B: number): number[] {
 // ---- 2. 每根
 
 function bhHtml(iv: number, empty: boolean): string {
-  const t = `<span class="t">每根<em>${ivShort(iv)}</em></span>`
+  const t = `<span class="t">${BT.perBar}<em>${ivShort(iv)}</em></span>`
   if (empty) return t
-  return t + '<div class="bf-h"><span>大卖</span><span>大买</span></div><span class="rt">净额</span><span class="rt">笔数</span><span class="rt">最大</span><span class="x rt">现货</span><span class="rt">来源</span>'
+  return t + `<div class="bf-h"><span>${BT.sellShort}</span><span>${BT.buyShort}</span></div><span class="rt">${BT.net}</span><span class="rt">${BT.trades}</span><span class="rt">${BT.maxSingle}</span><span class="x rt">${BT.spot}</span><span class="rt">${BT.source}</span>`
 }
 
 interface RowEnv { wide: boolean; half: number; max: number; lastT: number; live: boolean; daily: boolean; sel: number | null }
@@ -478,9 +479,9 @@ function paintBars(c: Ctx | null = ctxNow()): void {
     const s = a?.symbol.toUpperCase() ?? ''
     let html: string
     if (!a) html = ''
-    else if (s === 'DXY') html = '<b>美元指数没有成交明细</b>'
+    else if (s === 'DXY') html = `<b>${BT.noTradeData}</b>`
     else if (!c || (OF.feed?.symbol !== s && !c.f.srv.tracked)) html = `<span>${feedIdleText()}</span>`
-    else html = `${EMPTY_BARS_ICON}<b>这只品种还没有大单</b>${c.f.cut != null ? `<span>单笔 ≥ <span class="num">${amt(c.f.cut)}</span></span>` : ''}`
+    else html = `${EMPTY_BARS_ICON}<b>${BT.noBigTrade}</b>${c.f.cut != null ? `<span>${fill(BT.thresholdValue, { v: `<span class="num">${amt(c.f.cut)}</span>` })}</span>` : ''}`
     setHtml(be, html)
     return
   }
@@ -543,7 +544,7 @@ function paintLevels(c: Ctx | null): void {
     w: W, h: H, pxCol,
     sell: sell.map(l => ({ price: l.price, usd: l.usd })), buy: buy.map(l => ({ price: l.price, usd: l.usd })),
     ask: wall(walls.ask), bid: wall(walls.bid), cur: mid, fmt, tw,
-    note: !buy.length && !sell.length ? '近1时无成交大单' : undefined,
+    note: !buy.length && !sell.length ? BT.hourNoBigTrade : undefined,
   })
   wallHits = r.hits
   setHtml(lv, r.svg)
@@ -565,7 +566,7 @@ function paintLiq(c: Ctx | null, tall: boolean): void {
   const empty = !c || !s || !s.rows.size
   for (const el of [lc, lw, lm, lg]) setHidden(el, empty)
   setHidden(le, !empty)
-  if (empty) { setHtml(le, `${EMPTY_LIQ_ICON}${c && s && s.tracked != null ? '<b>暂无爆仓数据</b>' : ''}`); return }
+  if (empty) { setHtml(le, `${EMPTY_LIQ_ICON}${c && s && s.tracked != null ? `<b>${BT.noLiqData}</b>` : ''}`); return }
   const now = c!.now, all = [...s!.rows.values()]
   const b = c!.chart.bars
   const t0 = b[b.length - 1].t, t1 = c!.chart.timeAt(b.length)
@@ -573,15 +574,15 @@ function paintLiq(c: Ctx | null, tall: boolean): void {
   const m0 = Math.floor(t0 / MIN) * MIN
   const from = dayStartUtc(now)
   const bar = sumLiq(all, m0, Math.max(t1, m0 + MIN)), hour = sumLiq(all, Math.floor((now - HOUR) / MIN) * MIN, now + 1), today = sumLiq(all, from, now + 1)
-  setHtml(lw, liqRow('本根', bar) + liqRow('近1时', hour) + liqRow('今日', today))
+  setHtml(lw, liqRow(BT.currentBar, bar) + liqRow(BT.hour, hour) + liqRow(BT.today, today))
   const mx = today.max
-  if (!mx) { lm.className = 'lmax'; setHtml(lm, '<div><span>今日最大</span><b class="num">—</b></div>') }
+  if (!mx) { lm.className = 'lmax'; setHtml(lm, `<div><span>${BT.todayMaxLiq}</span><b class="num">—</b></div>`) }
   else {
     const short = mx[6] === 1
     lm.className = `lmax ${short ? 's' : 'l'}`
     const dec = OF.api?.dec(c!.sym) ?? 2
-    setHtml(lm, `<div><span>今日最大</span><b class="num">${amt(mx[4])}</b></div>` +
-      `<div><span class="${short ? 'up' : 'dn'}">${short ? '空头被平' : '多头被平'}</span><span class="num">· ${LIQ_EX[mx[7]] ?? ''}${mx[5] > 0 ? ` ${px(mx[5], dec)}` : ''}</span></div>`)
+    setHtml(lm, `<div><span>${BT.todayMaxLiq}</span><b class="num">${amt(mx[4])}</b></div>` +
+      `<div><span class="${short ? 'up' : 'dn'}">${short ? BT.shortLiq : BT.longLiq}</span><span class="num">· ${LIQ_EX[mx[7]] ?? ''}${mx[5] > 0 ? ` ${px(mx[5], dec)}` : ''}</span></div>`)
   }
   const W = Math.floor(lc.clientWidth), H = Math.floor(lc.clientHeight)
   if (!W || H < 24) { setHtml(lc, ''); return }

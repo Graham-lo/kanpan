@@ -15,6 +15,7 @@ import { orderFlowAmount } from '../../chart/renderer.orderflow'
 import type { WinSum, Level, Wall } from '../../../orderflow/summary'
 import type { LiqSum, LiqRow } from '../../../orderflow/liquidation'
 import { LIQ_EX } from '../../../orderflow/liquidation'
+import { BT, fill } from '../../../terms'
 import '../../styles/bigTrade.css'
 
 export type Detent = 'half' | 'full'
@@ -91,15 +92,15 @@ export interface BtModel {
 
 const share = (b: number, s: number): number => (b + s > 0 ? b / (b + s) : 0.5)
 
-/** 「净买 +3.3M」/「净卖 −1.2M」 */
+/** 「净买入 +3.3M」/「净卖出 −1.2M」 */
 export function netText(net: number): string {
-  return net >= 0 ? `净买 +${fmt(net)}` : `净卖 ${MINUS}${fmt(-net)}`
+  return net >= 0 ? `${BT.netBuy} +${fmt(net)}` : `${BT.netSell} ${MINUS}${fmt(-net)}`
 }
 
 /** 分析面板那一行的小字：本根净买 / 净卖，还没大单就说没有 */
 export function summaryLine(bar: WinSum | null): string {
-  if (!bar || bar.bb + bar.bs <= 0) return '本根暂无大单'
-  return `本根 ${netText(bar.bb - bar.bs)}`
+  if (!bar || bar.bb + bar.bs <= 0) return BT.currentNoBigTrade
+  return `${BT.currentBar} ${netText(bar.bb - bar.bs)}`
 }
 
 /** 往上取一个好看的步长：1 / 2 / 2.5 / 5 × 10^k */
@@ -115,7 +116,10 @@ const decimalsOf = (x: number): number => {
   return i < 0 ? 0 : s.length - i - 1
 }
 
-/** 价位梯：现价上下五档（11 行）。行距按近 1 小时大单落的价位自适应（盖住最远那一档），不小于订单流步长 */
+/** 价位梯的时间窗：近 2 小时（与 iOS BigTradeDigest.ladderWindowMs、定版原型同） */
+export const LADDER_HOURS = 2
+
+/** 价位梯：现价上下五档（11 行）。行距按近 2 小时大单落的价位自适应（盖住最远那一档），不小于订单流步长 */
 export function ladderRows(lv: { buy: Level[]; sell: Level[] }, mid: number, step: number, walls: { ask: Wall | null; bid: Wall | null }): LadderRow[] {
   if (!(mid > 0)) return []
   let far = 0
@@ -163,10 +167,10 @@ export function liqCells(rows: Iterable<LiqRow>, now: number): { start: number; 
 const skel = (style: string): string => `<span class="bt-skel" style="${style}"></span>`
 
 function heroSkelHTML(): string {
-  return `<div class="bt-card bt-hero"><h5>本根<span class="rt"></span></h5>
+  return `<div class="bt-card bt-hero"><h5>${BT.currentBar}<span class="rt"></span></h5>
     <div class="bt-amts">${skel('width:88px;height:22px')}${skel('width:88px;height:22px')}</div>
     <div class="bt-vs bt-skel" style="margin-top:12px"></div>
-    <div class="bt-rows"><span class="lab">近 1 小时</span><div class="bt-vs s bt-skel"></div><span class="lab">今日</span><div class="bt-vs s bt-skel"></div></div></div>`
+    <div class="bt-rows"><span class="lab">${BT.hour}</span><div class="bt-vs s bt-skel"></div><span class="lab">${BT.today}</span><div class="bt-vs s bt-skel"></div></div></div>`
 }
 
 function vsHTML(b: number, s: number, small: boolean): string {
@@ -177,18 +181,18 @@ function vsHTML(b: number, s: number, small: boolean): string {
 
 export function liqCardHTML(m: LiqModel | null, full: boolean): string {
   if (!m) return ''
-  if (m.state === 'loading') return `<div class="bt-card thin"><h5>爆仓</h5><div class="bt-vs s bt-skel" style="margin:4px 0 10px"></div>${skel('display:block;height:14px;width:60%')}</div>`
-  if (m.state === 'none') return `<div class="bt-card thin"><h5>爆仓</h5><div class="bt-empty"><b>这只品种暂无爆仓数据</b></div></div>`
-  if (m.today.long + m.today.short <= 0) return `<div class="bt-card thin" data-liq="empty"><h5>爆仓<span class="rt">近 1 小时</span></h5><div class="bt-empty"><b>今日无爆仓</b></div></div>`
+  if (m.state === 'loading') return `<div class="bt-card thin"><h5>${BT.liq}</h5><div class="bt-vs s bt-skel" style="margin:4px 0 10px"></div>${skel('display:block;height:14px;width:60%')}</div>`
+  if (m.state === 'none') return `<div class="bt-card thin"><h5>${BT.liq}</h5><div class="bt-empty"><b>${BT.noLiqData}</b></div></div>`
+  if (m.today.long + m.today.short <= 0) return `<div class="bt-card thin" data-liq="empty"><h5>${BT.liq}<span class="rt">${BT.hour}</span></h5><div class="bt-empty"><b>${BT.noLiqToday}</b></div></div>`
   const h = m.hour
   const mx = m.today.max
   const maxLine = mx
-    ? `<span>今日最大 <b class="${mx[6] === 0 ? 'down' : 'up'}">${mx[6] === 0 ? '多单' : '空单'} ${esc(fmt(mx[4]))}</b> @ ${esc(m.maxPrice)} · ${esc(m.maxWhen)}</span>`
+    ? `<span>${BT.todayMaxLiq} <b class="${mx[6] === 0 ? 'down' : 'up'}">${mx[6] === 0 ? BT.long : BT.short} ${esc(fmt(mx[4]))}</b> @ ${esc(m.maxPrice)} · ${esc(m.maxWhen)}</span>`
     : '<span></span>'
-  return `<div class="bt-card thin" data-liq="data"><h5>爆仓<span class="rt">近 1 小时</span></h5>
+  return `<div class="bt-card thin" data-liq="data"><h5>${BT.liq}<span class="rt">${BT.hour}</span></h5>
     ${vsHTML(h.short, h.long, true).replace('class="bt-vs s"', 'class="bt-vs s liq"')}
-    <div class="bt-ends"><b class="up">空爆 ${esc(fmt(h.short))}</b><span></span><b class="down">多爆 ${esc(fmt(h.long))}</b></div>
-    <div class="bt-mini">${maxLine}${full ? `<span>24h 多爆 <b>${esc(fmt(m.day.long))}</b> · 空爆 <b>${esc(fmt(m.day.short))}</b></span>` : ''}</div></div>`
+    <div class="bt-ends"><b class="up">${BT.shortLiq} ${esc(fmt(h.short))}</b><span></span><b class="down">${BT.longLiq} ${esc(fmt(h.long))}</b></div>
+    <div class="bt-mini">${maxLine}${full ? `<span>${BT.day} ${BT.long} <b>${esc(fmt(m.day.long))}</b> · ${BT.short} <b>${esc(fmt(m.day.short))}</b></span>` : ''}</div></div>`
 }
 
 export function barsCardHTML(bars: BarCol[], sel: number | null, flash: number | null): string {
@@ -197,7 +201,7 @@ export function barsCardHTML(bars: BarCol[], sel: number | null, flash: number |
   for (const b of bars) mx = Math.max(mx, b.bb, b.bs)
   if (!(mx > 0)) mx = 1
   const W = bars.length * 8
-  let sv = `<svg class="bt-cols" width="${W}" height="96" viewBox="0 0 ${W} 96" role="img" aria-label="近 ${bars.length} 根的大买大卖">`
+  let sv = `<svg class="bt-cols" width="${W}" height="96" viewBox="0 0 ${W} 96" role="img" aria-label="${fill(BT.barsA11y, { n: bars.length })}">`
   sv += `<line class="bt-mid" x1="0" x2="${W}" y1="48" y2="48"/>`
   bars.forEach((b, i) => {
     const x = i * 8, hb = (b.bb / mx) * 44, hs = (b.bs / mx) * 44
@@ -212,7 +216,7 @@ export function barsCardHTML(bars: BarCol[], sel: number | null, flash: number |
   })
   sv += '</svg>'
   const mid = bars[Math.floor((bars.length - 1) / 2)]
-  return `<div class="bt-card" data-card="bars"><h5>每根<span class="rt">近 ${bars.length} 根</span></h5>
+  return `<div class="bt-card" data-card="bars"><h5>${BT.perBar}<span class="rt">${fill(BT.recentBars, { n: bars.length })}</span></h5>
     <div class="bt-scroll">${sv}</div>
     <div class="bt-mini"><span>${esc(bars[0].label)}</span><span>${esc(mid.label)}</span><span>${esc(bars[bars.length - 1].label)}</span></div></div>`
 }
@@ -224,9 +228,9 @@ export function ladderCardHTML(rows: LadderRow[] | null): string {
   const side = (cls: 'bl' | 'br', w0: number, v: number, wall: number | null, w = w0 * 0.62): string => {
     const tiny = v > 0 && w < 3
     const ww = v > 0 ? `max(4px,${w.toFixed(1)}%)` : '0%'
-    return `<div class="${cls}" style="--w:${ww}"><i${tiny ? ' class="tiny"' : ''} style="width:${ww}"></i>${wall != null ? `<span class="wall">墙 ${esc(fmt(wall))}</span>` : w0 > 6 ? `<s>${esc(fmt(v))}</s>` : ''}</div>`
+    return `<div class="${cls}" style="--w:${ww}"><i${tiny ? ' class="tiny"' : ''} style="width:${ww}"></i>${wall != null ? `<span class="wall">${cls === 'bl' ? BT.buyWall : BT.sellWall} ${esc(fmt(wall))}</span>` : w0 > 6 ? `<s>${esc(fmt(v))}</s>` : ''}</div>`
   }
-  return `<div class="bt-card" data-card="ladder"><h5>价位<span class="rt">现价上下五档 · 近 1 小时</span></h5><div class="bt-ladder">${rows.map(r =>
+  return `<div class="bt-card" data-card="ladder"><h5>${BT.levels}<span class="rt">${fill(BT.levelsRange, { h: LADDER_HOURS })}</span></h5><div class="bt-ladder">${rows.map(r =>
     side('bl', r.bw, r.buy, r.bidWall) + `<div class="p${r.now ? ' now' : ''}">${esc(r.price)}</div>` + side('br', r.sw, r.sell, r.askWall)).join('')}</div></div>`
 }
 
@@ -235,7 +239,7 @@ export function liqDayCardHTML(m: LiqModel | null): string {
   let mx = 0
   for (const [a, b] of m.cells) mx = Math.max(mx, a, b)
   if (!(mx > 0)) mx = 1
-  let sv = '<svg class="bt-liq24" width="330" height="64" viewBox="0 0 330 64" role="img" aria-label="24 小时爆仓"><line class="bt-mid" x1="0" x2="330" y1="32" y2="32"/>'
+  let sv = '<svg class="bt-liq24" width="330" height="64" viewBox="0 0 330 64" role="img" aria-label="${BT.liqDayA11y}"><line class="bt-mid" x1="0" x2="330" y1="32" y2="32"/>'
   m.cells.forEach(([lo, sh], i) => {
     const x = (i * 3.4).toFixed(1), a = (lo / mx) * 28, c = (sh / mx) * 28
     if (c > 0) sv += `<rect class="bt-u" x="${x}" y="${(32 - c).toFixed(1)}" width="2.4" height="${c.toFixed(1)}"/>`
@@ -244,11 +248,11 @@ export function liqDayCardHTML(m: LiqModel | null): string {
   if (m.selCell >= 0) sv += `<rect class="bt-sel" x="${(m.selCell * 3.4 - 1).toFixed(1)}" y="2" width="4.4" height="60" rx="2"/>`
   sv += '</svg>'
   const mx1 = m.today.max
-  const max = mx1 ? `<div class="bt-liqmax"><span class="ic ${mx1[6] === 0 ? 'down' : 'up'}">${mx1[6] === 0 ? '多' : '空'}</span>
-    <span class="t">今日最大一笔 · ${mx1[6] === 0 ? '多单' : '空单'}爆仓<small>${esc(m.maxWhen)} · ${esc(m.maxPrice)} · ${LIQ_EX[mx1[7]] ?? '币安'}</small></span>
+  const max = mx1 ? `<div class="bt-liqmax"><span class="ic ${mx1[6] === 0 ? 'down' : 'up'}">${mx1[6] === 0 ? BT.longMark : BT.shortMark}</span>
+    <span class="t">${BT.todayMaxLiq} · ${mx1[6] === 0 ? BT.longLiq : BT.shortLiq}<small>${esc(m.maxWhen)} · ${esc(m.maxPrice)} · ${LIQ_EX[mx1[7]] ?? '币安'}</small></span>
     <span class="v ${mx1[6] === 0 ? 'down' : 'up'}">${esc(fmt(mx1[4]))}</span></div>` : ''
-  return `<div class="bt-card" data-card="liq24"><h5>爆仓<span class="rt">24 小时</span></h5><div class="bt-scroll">${sv}</div>
-    <div class="bt-mini"><span>${esc(m.from)}</span><span>多爆 <b class="down">${esc(fmt(m.day.long))}</b> · 空爆 <b class="up">${esc(fmt(m.day.short))}</b></span><span>现在</span></div>${max}</div>`
+  return `<div class="bt-card" data-card="liq24"><h5>${BT.liq}<span class="rt">${BT.day}</span></h5><div class="bt-scroll">${sv}</div>
+    <div class="bt-mini"><span>${esc(m.from)}</span><span>${BT.long} <b class="down">${esc(fmt(m.day.long))}</b> · ${BT.short} <b class="up">${esc(fmt(m.day.short))}</b></span><span>${BT.now}</span></div>${max}</div>`
 }
 
 // ───────────────────────────── 数字滚动
@@ -312,30 +316,30 @@ export class BigTradeSheet {
     const scrim = el('div', 'bt-scrim')
     const root = this.root = el('div', 'bt-sheet')
     root.setAttribute('role', 'dialog')
-    root.setAttribute('aria-label', '大单与爆仓')
+    root.setAttribute('aria-label', BT.title)
     root.innerHTML = `${liuliBackdropHTML(true)}<div class="bt-grab" aria-hidden="true"><i></i></div>
-      <div class="bt-hdr"><button type="button" class="bt-bk" aria-label="收起">${icon('chevronLeft', 20)}</button>
-        <h4>大单与爆仓<small class="bt-sub"></small></h4><button type="button" class="bt-pill">门槛</button></div>
+      <div class="bt-hdr"><button type="button" class="bt-bk" aria-label="${BT.collapse}">${icon('chevronLeft', 20)}</button>
+        <h4>${BT.title}<small class="bt-sub"></small></h4><button type="button" class="bt-pill">${BT.threshold}</button></div>
       <div class="bt-body">
         <div class="bt-hero-skel" hidden>${heroSkelHTML()}</div>
         <div class="bt-card bt-hero" data-card="hero">
-          <h5><span class="bt-live" aria-hidden="true"></span><span class="bt-ht">本根</span><span class="rt"></span></h5>
+          <h5><span class="bt-live" aria-hidden="true"></span><span class="bt-ht">${BT.currentBar}</span><span class="rt"></span></h5>
           <div class="bt-hero-main">
             <div class="bt-amts"><b class="up"><span data-r="bb"></span><small data-n="bn"></small></b><b class="down"><span data-r="bs"></span><small data-n="sn"></small></b></div>
             <div class="bt-vs" data-vs="bar"><div class="b"></div><div class="a"></div><span class="net"></span></div>
           </div>
-          <div class="bt-empty bt-hero-empty" hidden><b>这根还没有大单</b></div>
+          <div class="bt-empty bt-hero-empty" hidden><b>${BT.noBigTrade}</b></div>
           <div class="bt-rows">
-            <span class="lab">近 1 小时</span>${this.rowHTML('hour')}
-            <span class="lab">今日</span>${this.rowHTML('today')}
+            <span class="lab">${BT.hour}</span>${this.rowHTML('hour')}
+            <span class="lab">${BT.today}</span>${this.rowHTML('today')}
           </div>
-          <div class="bt-hint bt-untracked" hidden>这只品种只算打开以后的成交</div>
+          <div class="bt-hint bt-untracked" hidden>${BT.untracked}</div>
         </div>
         <div class="bt-liq"></div>
-        <button type="button" class="bt-hint bt-more">每根 · 价位 · 24 小时爆仓</button>
+        <button type="button" class="bt-hint bt-more">${BT.expand}</button>
         <div class="bt-full">
           <div class="bt-bars"></div><div class="bt-lad"></div><div class="bt-liqday"></div>
-          <button type="button" class="bt-card thin bt-thr"><span class="l">门槛</span><span class="v"></span><span class="go">改 ›</span></button>
+          <button type="button" class="bt-card thin bt-thr"><span class="l">${BT.threshold}</span><span class="v"></span><span class="go">›</span></button>
         </div>
       </div>`
     wrap.append(scrim, root)
@@ -449,8 +453,8 @@ export class BigTradeSheet {
     if (!empty) {
       roll(root.querySelector('[data-r="bb"]')!, b.bb, fmt)
       roll(root.querySelector('[data-r="bs"]')!, b.bs, fmt)
-      setText(root.querySelector('[data-n="bn"]')!, b.bn != null ? `买 ${b.bn} 笔` : '')
-      setText(root.querySelector('[data-n="sn"]')!, b.sn != null ? `卖 ${b.sn} 笔` : '')
+      setText(root.querySelector('[data-n="bn"]')!, b.bn != null ? fill(BT.buyCount, { n: b.bn }) : '')
+      setText(root.querySelector('[data-n="sn"]')!, b.sn != null ? fill(BT.sellCount, { n: b.sn }) : '')
       const vs = root.querySelector('[data-vs="bar"]')!
       const k = this.setVs(vs, b.bb, b.bs, 2)
       const net = vs.querySelector('.net') as HTMLElement
@@ -464,7 +468,7 @@ export class BigTradeSheet {
       this.setVs(row.querySelector('.bt-vs')!, w.bb, w.bs, 1)
       roll(row.querySelector('[data-r="b"]')!, w.bb, fmt)
       roll(row.querySelector('[data-r="s"]')!, w.bs, fmt)
-      setText(row.querySelector('[data-r="net"]')!, w.bb + w.bs > 0 ? netText(w.bb - w.bs) : '暂无大单')
+      setText(row.querySelector('[data-r="net"]')!, w.bb + w.bs > 0 ? netText(w.bb - w.bs) : BT.noBigTrade)
     }
     ;(root.querySelector('.bt-untracked') as HTMLElement).hidden = !h.untracked
   }

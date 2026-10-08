@@ -23,6 +23,8 @@ public enum BigTradeTerm: String, CaseIterable, Sendable {
   case cumNet
   case barNet
   case maxSingle
+  case trades
+  case source
   case summary
   case currentBar
   case staleSince

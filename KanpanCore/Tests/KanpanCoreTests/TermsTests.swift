@@ -19,7 +19,7 @@ struct TermsTests {
   @Test("模板填空")
   func fill() {
     #expect(BigTradeTerm.buyCount.fill(["n": "12"]) == "买 12 笔")
-    #expect(BigTradeTerm.hours.fill(["h": "2"]) == "近 2 小时")
+    #expect(BigTradeTerm.hours.fill(["h": "2"]) == "2 小时")
     #expect(BigTradeTerm.longLiq.text == "多单爆仓")
   }
 

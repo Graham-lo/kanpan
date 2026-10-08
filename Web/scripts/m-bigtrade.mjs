@@ -1,7 +1,7 @@
 // Hkline 手机网页版 · 2026-10-08「图上大单签 + 大单与爆仓」验收（393×852，iPhone 视口）
 //   node scripts/m-bigtrade.mjs [地址]
 //   默认地址 http://localhost:5178/web/m/（npx vite --port 5178，开发构建才认 ?bt=）；截图落在 docs/acceptance/大单与爆仓-手机-2026-10-08/
-// 走一遍：图上有签 → 点签开半屏（该根）→ 上拉提示进满屏 → 每根点一根（十字线跳过去）→ 门槛（弹层收下去）→ 关门槛回原档 → ‹ 关
+// 走一遍：图上有签 → 点签开半屏（那根）→ 展开进满屏 → 逐根点一根（十字线跳过去）→ 门槛（弹层收下去）→ 关门槛回原档 → ‹ 关
 // 再截：三套皮肤 × 浅 / 深的半屏，满屏，骨架 / 现货 / 爆仓空 / 停住 / 不跟。有 ✗ 退出码 1。
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
@@ -65,13 +65,13 @@ const hero = p => p.evaluate(() => ({
     await p.evaluate(() => { location.search = '?open=bigtrade' }); await p.waitForSelector('.bt-wrap.in', { timeout: 8000 })
   }
   await p.click('.bt-more'); await sleep(600)
-  ok((await hero(p)).full, '上拉提示 → 满屏')
+  ok((await hero(p)).full, '展开 → 满屏')
   await sleep(800)
   await shot(p, 'flow-2-full')
   const col = await p.evaluate(() => { const g = [...document.querySelectorAll('svg.bt-cols g')]; const sv = document.querySelector('svg.bt-cols').getBoundingClientRect(); const i = Math.max(0, g.length - 6); return { t: g[i]?.dataset.t, x: sv.left + (i + 0.5) * sv.width / g.length, y: sv.top + sv.height / 2 } })
   await p.mouse.click(col.x, col.y); await sleep(500)
   const after = await p.evaluate(() => ({ on: document.querySelector('svg.bt-cols g.on')?.dataset.t, title: document.querySelector('.bt-ht')?.textContent }))
-  ok(after.on === col.t && /^该根/.test(after.title || ''), `每根点一根：选中 ${after.on === col.t ? '对' : '错'}、卡片「${after.title}」`)
+  ok(after.on === col.t && /^\d\d:\d\d$/.test(after.title || ''), `每根点一根：选中 ${after.on === col.t ? '对' : '错'}、卡片「${after.title}」`)
   await shot(p, 'flow-3-pick-bar')
   await p.click('.bt-hdr .bt-pill'); await sleep(700)
   const th = await hero(p)
@@ -114,7 +114,7 @@ for (const [bt, extra] of [['loading', {}], ['spot', { symbol: 'BTC-USD' }], ['l
     liqEmpty: !!document.querySelector('[data-liq="empty"]'), stale: document.querySelector('.bt-sheet')?.classList.contains('stale'),
     rt: document.querySelector('[data-card="hero"] h5 .rt')?.textContent, untracked: !document.querySelector('.bt-untracked')?.hidden,
   }))
-  const pass = bt === 'loading' ? st.skel : bt === 'spot' ? !st.liq : bt === 'liqEmpty' ? st.liqEmpty : bt === 'stale' ? st.stale && /^数据停在/.test(st.rt) : st.untracked
+  const pass = bt === 'loading' ? st.skel : bt === 'spot' ? !st.liq : bt === 'liqEmpty' ? st.liqEmpty : bt === 'stale' ? st.stale && /^数据停于/.test(st.rt) : st.untracked
   ok(pass && !errs.length, `状态 ${bt}：${JSON.stringify(st)}${errs.length ? '；' + errs[0] : ''}`)
   await shot(p, `state-${bt}`)
   await ctx.close()

@@ -19,11 +19,11 @@ import { st } from '../src/m/app/store'
 
 describe('大单与爆仓 · 纯函数', () => {
   it('净买 / 净卖文字与分析面板那一行', () => {
-    expect(netText(1_200_000)).toBe('净买 +1.2M')
-    expect(netText(-350_000)).toBe('净卖 −350.0K')
+    expect(netText(1_200_000)).toBe('净买入 +1.2M')
+    expect(netText(-350_000)).toBe('净卖出 −350.0K')
     expect(summaryLine(null)).toBe('本根暂无大单')
     expect(summaryLine({ bb: 0, bs: 0, bn: 0, sn: 0, has: true })).toBe('本根暂无大单')
-    expect(summaryLine({ bb: 2_000_000, bs: 800_000, bn: 3, sn: 1, has: true })).toBe('本根 净买 +1.2M')
+    expect(summaryLine({ bb: 2_000_000, bs: 800_000, bn: 3, sn: 1, has: true })).toBe('本根 净买入 +1.2M')
   })
 
   it('好看的步长：1 / 2 / 2.5 / 5 × 10^k', () => {
@@ -70,15 +70,15 @@ describe('大单与爆仓 · 片段', () => {
   it('爆仓卡：现货整块不出现；骨架 / 暂无数据 / 今日无爆仓 / 有数；只留数字与短标签', () => {
     expect(liqCardHTML(null, false)).toBe('')
     expect(liqCardHTML(liqM({ state: 'loading' }), false)).toContain('bt-skel')
-    expect(liqCardHTML(liqM({ state: 'none' }), false)).toContain('这只品种暂无爆仓数据')
+    expect(liqCardHTML(liqM({ state: 'none' }), false)).toContain('<b>暂无爆仓数据</b>')
     expect(liqCardHTML(liqM(), false)).toContain('<b>今日无爆仓</b></div>')
     const max: LiqRow = [0, 900_000, 0, 1, 900_000, 98765.4, 0, 1]
     const m = liqM({ hour: { long: 1_000_000, short: 200_000, n: 4, max }, today: { long: 3e6, short: 1e6, n: 9, max }, day: { long: 5e6, short: 2e6, n: 20, max }, maxWhen: '12:31', maxPrice: '98765.4' })
     const half = liqCardHTML(m, false)
-    for (const x of ['被打得更狠', '多空都稳着']) expect(half).not.toContain(x)
-    expect(half).toContain('空爆 200.0K'); expect(half).toContain('多爆 1.0M'); expect(half).toContain('多单 900.0K'); expect(half).toContain('@ 98765.4 · 12:31')
-    expect(half).not.toContain('24h 多爆')
-    expect(liqCardHTML(m, true)).toContain('24h 多爆 <b>5.0M</b>')
+    for (const x of ['被打得更狠', '多空都稳着', '空爆', '多爆', '被平']) expect(half).not.toContain(x)
+    expect(half).toContain('空单爆仓 200.0K'); expect(half).toContain('多单爆仓 1.0M'); expect(half).toContain('今日最大单笔 <b class="down">多单 900.0K</b>'); expect(half).toContain('@ 98765.4 · 12:31')
+    expect(half).not.toContain('24 小时 多单')
+    expect(liqCardHTML(m, true)).toContain('24 小时 多单 <b>5.0M</b>')
   })
 
   it('每根：40 根一根一组，看的那根加框，点过的那根闪；最后一根带呼吸点', () => {
@@ -106,13 +106,13 @@ describe('大单与爆仓 · 片段', () => {
     const rows = ladderRows({ buy: [{ price: 100, usd: 1e6 }], sell: [] } as never, 100, 0.5, { ask: null, bid: { price: 99, usd: 2e6 } as never })
     const lad = ladderCardHTML(rows)
     expect(lad.match(/class="p/g)!.length).toBe(11)
-    expect(lad).toContain('墙 2.0M'); expect(lad).toContain('class="p now"')
+    expect(lad).toContain('买墙 2.0M'); expect(lad).toContain('class="p now"')
     expect(ladderCardHTML(null)).toBe('')
     const cells = Array.from({ length: 96 }, (_, i) => [i === 3 ? 500 : 0, i === 90 ? 800 : 0] as [number, number])
     const max: LiqRow = [0, 0, 800, 1, 800, 12.5, 1, 1]
     const d = liqDayCardHTML(liqM({ cells, today: { long: 500, short: 800, n: 2, max }, day: { long: 500, short: 800, n: 2, max }, maxWhen: '09:15', maxPrice: '12.5', selCell: 90 }))
     expect(d.match(/class="bt-[ud]"/g)!.length).toBe(2)
-    expect(d).toContain('bt-sel'); expect(d).toContain('今日最大一笔 · 空单爆仓'); expect(d).toContain('OKX')
+    expect(d).toContain('bt-sel'); expect(d).toContain('今日最大单笔 · 空单爆仓'); expect(d).toContain('OKX')
     expect(d).toContain('<span class="rt">24 小时</span>'); expect(d).not.toContain('每格 15 分钟')
     // 服务端 max_ex = 2 是 Bybit
     const byb: LiqRow = [0, 0, 800, 1, 800, 12.5, 1, 2]
@@ -215,7 +215,7 @@ describe('大单与爆仓 · 弹层各状态的模型', () => {
   it('半屏：本根卡片（买卖、笔数、近 1 小时 / 今日），不算每根和价位', () => {
     const m = model(rig())
     expect(m.loading).toBe(false); expect(m.stale).toBe(false)
-    expect(m.hero).toMatchObject({ title: '本根', live: true, rt: '15 分钟 · 还在走', untracked: false })
+    expect(m.hero).toMatchObject({ title: '本根', live: true, rt: '15 分钟', untracked: false })
     expect(m.hero.bar).toMatchObject({ bb: 900_000, bs: 300_000, bn: 2, sn: 1 })
     expect(m.hero.hour).toMatchObject({ bb: 900_000, bs: 300_000 })
     expect(m.hero.today.bs).toBe(1_800_000)
@@ -270,12 +270,12 @@ describe('大单与爆仓 · 弹层各状态的模型', () => {
     expect(liqCardHTML(e, false)).toContain('今日无爆仓')
   })
 
-  it('停住：20 秒没进成交 → 数字变灰、右上写「数据停在 hh:mm」；断网同样', () => {
+  it('停住：20 秒没进成交 → 数字变灰、右上写「数据停于 hh:mm」；断网同样', () => {
     const r = rig()
     r.port.lastTradeMs = NOW - STALE_MS - 1000
     const m = model(r)
     expect(m.stale).toBe(true)
-    expect(m.hero.rt).toBe(`数据停在 ${new Date(NOW - STALE_MS - 1000 + 8 * 3600_000).toISOString().slice(11, 16)}`)
+    expect(m.hero.rt).toBe(`数据停于 ${new Date(NOW - STALE_MS - 1000 + 8 * 3600_000).toISOString().slice(11, 16)}`)
     r.port.lastTradeMs = NOW - 5000
     expect(model(r).stale).toBe(false)
     expect(model(rig({ force: 'stale' })).stale).toBe(true)
@@ -289,7 +289,7 @@ describe('大单与爆仓 · 弹层各状态的模型', () => {
   })
 
   it('分析面板那一行的小字跟着本根', () => {
-    expect(rig().c.summaryText()).toBe('本根 净买 +600.0K')
+    expect(rig().c.summaryText()).toBe('本根 净买入 +600.0K')
     resetFlows()
     expect(rig({ trades: false }).c.summaryText()).toBe('本根暂无大单')
   })
@@ -304,11 +304,11 @@ describe('大单与爆仓 · 十字线联动', () => {
     const r = rig()
     r.emit('crosshair', { crosshair: {}, bar: { openTime: TB } })
     let m = r.sheet.last!
-    expect(m.hero).toMatchObject({ title: `该根 ${hhmm(TB)}`, live: false, rt: '15 分钟' })
+    expect(m.hero).toMatchObject({ title: hhmm(TB), live: false, rt: '15 分钟' })
     expect(m.hero.bar.bs).toBe(1_500_000); expect(m.sel).toBe(TB)
     r.emit('interaction', 'ended')
     vi.advanceTimersByTime(RETURN_MS - 10)
-    expect(r.sheet.last!.hero.title).toBe(`该根 ${hhmm(TB)}`)
+    expect(r.sheet.last!.hero.title).toBe(hhmm(TB))
     vi.advanceTimersByTime(20)
     m = r.sheet.last!
     expect(m.hero.title).toBe('本根'); expect(m.sel).toBeNull()
@@ -322,9 +322,9 @@ describe('大单与爆仓 · 十字线联动', () => {
     vi.advanceTimersByTime(1000)
     r.emit('crosshair', { bar: { openTime: TB - STEP } })
     vi.advanceTimersByTime(RETURN_MS)
-    expect(r.sheet.last!.hero.title).toBe(`该根 ${hhmm(TB - STEP)}`)
+    expect(r.sheet.last!.hero.title).toBe(hhmm(TB - STEP))
     r.emit('crosshair', { bar: { openTime: LAST } })
-    expect(r.sheet.last!.hero).toMatchObject({ title: '本根', live: true, rt: '15 分钟 · 还在走' })
+    expect(r.sheet.last!.hero).toMatchObject({ title: '本根', live: true, rt: '15 分钟' })
   })
 
   it('开着时点另一枚签：只换根、不关，标记这一下不是点外面', () => {
@@ -332,7 +332,7 @@ describe('大单与爆仓 · 十字线联动', () => {
     const tap = (r.c as unknown as { tapSign(s: { t: number }): boolean }).tapSign.bind(r.c)
     expect(tap({ t: TB })).toBe(true)
     expect(r.sheet.calls).toContain('noteSignTap'); expect(r.sheet.closed).toBe(false)
-    expect(r.sheet.last!.hero).toMatchObject({ title: `该根 ${hhmm(TB)}`, rt: '15 分钟' })
+    expect(r.sheet.last!.hero).toMatchObject({ title: hhmm(TB), rt: '15 分钟' })
   })
 
   it('横屏只画签不开弹层', () => {

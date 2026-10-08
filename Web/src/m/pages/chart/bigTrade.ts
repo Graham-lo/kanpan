@@ -21,9 +21,10 @@ import { ivName } from '../../../orderflow/bigTags'
 import { EXCHANGE_NAMES, exName } from '../../../orderflow/aggregate'
 import { baseOfSymbol } from '../../../orderflow/settings'
 import type { Thresholds } from '../../../orderflow/types'
+import { BT, fill } from '../../../terms'
 import { orderFlowAmount } from '../../chart/renderer.orderflow'
 import {
-  BigTradeSheet, ladderRows, liqCells, summaryLine, LIQ_CELL_MS,
+  BigTradeSheet, ladderRows, liqCells, summaryLine, LIQ_CELL_MS, LADDER_HOURS,
   type BtModel, type BarCol, type Detent, type HeroModel, type LiqModel,
 } from './bigTradeSheet'
 
@@ -266,10 +267,10 @@ export class BigTradeController {
     const stale = force === 'stale' || offline || (lastTrade > 0 && now - lastTrade > STALE_MS && !meta?.closed)
     const stoppedAt = force === 'stale' ? now - 25_000 : lastTrade || now
     let rt: string
-    if (stale) rt = `数据停在 ${this.label(stoppedAt, 60_000)}`
-    else rt = live ? `${ivName(step)} · 还在走` : ivName(step)
+    if (stale) rt = fill(BT.staleSince, { t: this.label(stoppedAt, 60_000) })
+    else rt = ivName(step)
     const hero: HeroModel = {
-      title: live ? '本根' : `该根 ${this.label(t0, step)}`, live, rt,
+      title: live ? BT.currentBar : this.label(t0, step), live, rt,
       bar: w.bar, hour: w.hour, today: w.today,
       untracked: force === 'untracked' || f.srv.tracked === false,
     }
@@ -298,7 +299,7 @@ export class BigTradeController {
         if (minute < a || minute >= a + step) return null
         return (s.high[i] + s.low[i] + s.close[i]) / 3
       } : null
-      const lv = priceLevels(f, pstep, now, typ, 999)
+      const lv = priceLevels(f, pstep, now, typ, 999, LADDER_HOURS * 60)
       ladder = ladderRows(lv, mid, pstep, nearestWalls(port?.snapshot?.orders ?? [], mid))
     }
 
@@ -335,7 +336,7 @@ export class BigTradeController {
   private dayLabel(t: number, now: number): string {
     const tz = this.tz() * 60_000
     const sameDay = Math.floor((t + tz) / DAY) === Math.floor((now + tz) / DAY)
-    return `${sameDay ? '今天' : '昨天'} ${this.label(t, 60_000)}`
+    return `${sameDay ? BT.todayDay : BT.yesterday} ${this.label(t, 60_000)}`
   }
 
   private subtitle(base: string): string {
@@ -343,19 +344,19 @@ export class BigTradeController {
     const set = new Set<string>()
     for (const v of venues ?? []) set.add(exName(v.exchange))
     const names = set.size ? EXCHANGE_NAMES.filter(x => set.has(x)) : [...EXCHANGE_NAMES]
-    return `${base} · ${names.join(' · ')}${names.length > 1 ? ' 合并' : ''}`
+    return `${base} · ${names.join(' · ')}${names.length > 1 ? ` ${BT.merged}` : ''}`
   }
 
   private thrText(): string {
     const t = this.d.thresholds()
-    if (!t) return '自动'
+    if (!t) return BT.auto
     const parts: string[] = []
     const perp = t.usdtPerp ?? t.coinPerp
-    if (perp != null) parts.push(`永续 ${SHORT(perp)}`)
-    if (t.spot != null) parts.push(`现货 ${SHORT(t.spot)}`)
-    if (t.delivery != null && perp == null) parts.push(`交割 ${SHORT(t.delivery)}`)
+    if (perp != null) parts.push(`${BT.perp} ${SHORT(perp)}`)
+    if (t.spot != null) parts.push(`${BT.spot} ${SHORT(t.spot)}`)
+    if (t.delivery != null && perp == null) parts.push(`${BT.delivery} ${SHORT(t.delivery)}`)
     const stepV = (t as Thresholds & { step?: number }).step ?? this.d.port()?.step ?? null
-    if (stepV != null) parts.push(`步长 ${+stepV.toPrecision(6)}`)
+    if (stepV != null) parts.push(fill(BT.step, { v: +stepV.toPrecision(6) }))
     return parts.join(' · ')
   }
 }

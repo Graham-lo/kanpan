@@ -68,12 +68,12 @@ export interface Level { price: number; usd: number; n: number }
 export type TypicalAt = (minute: number) => number | null
 /** 价位用的分钟数：最近 60 个整分钟（含正在走的这一分钟），和抽屉取的 60 根 1 分钟 K 线对齐 */
 export const PX_MINUTES = 60
-/** 近 1 小时的大单按价位桶并，买 / 卖各取金额最大的 k 档（每分钟取法见文件头） */
-export function priceLevels(f: SymbolFlow, step: number, now: number, typ: TypicalAt | null, k = 3): { buy: Level[]; sell: Level[] } {
+/** 近 minutes 分钟（出厂 1 小时；手机弹层 2 小时，与 iOS 同）的大单按价位桶并，买 / 卖各取金额最大的 k 档（每分钟取法见文件头） */
+export function priceLevels(f: SymbolFlow, step: number, now: number, typ: TypicalAt | null, k = 3, minutes = PX_MINUTES): { buy: Level[]; sell: Level[] } {
   const buy = new Map<number, Level>(), sell = new Map<number, Level>()
   if (!(step > 0)) return { buy: [], sell: [] }
   const M = 60_000
-  const cur = Math.floor(now / M) * M, from = cur - (PX_MINUTES - 1) * M
+  const cur = Math.floor(now / M) * M, from = cur - (minutes - 1) * M
   const add = (price: number, usd: number, isBuy: boolean, n: number): void => {
     if (!(usd > 0) || !(price > 0)) return
     const b = Math.floor(price / step + 1e-9) * step

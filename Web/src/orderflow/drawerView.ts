@@ -11,6 +11,7 @@
 import type { BarBig } from './bigTags'
 import type { LiqRow } from './liquidation'
 import { amt } from './state'
+import { BT, fill } from '../terms'
 import { EXCHANGE_COLORS, EXCHANGE_NAMES } from '../venues'
 
 export const MINUS = '−'
@@ -63,7 +64,7 @@ export const VENUES: readonly [string, string][] = EXCHANGE_NAMES.map((n, i) => 
 export function srcHtml(tot: number, spot: number | null, ex: readonly number[] | null): string {
   const has = tot > 0
   const sp = spot != null && has ? spot : null
-  const a = `<div class="of-sr"><div class="tx"><span>现货<b class="num">${sp == null ? '—' : pct(sp, tot)}</b></span><span>合约<b class="num">${sp == null ? '—' : pct(tot - sp, tot)}</b></span></div>` +
+  const a = `<div class="of-sr"><div class="tx"><span>${BT.spot}<b class="num">${sp == null ? '—' : pct(sp, tot)}</b></span><span>${BT.contract}<b class="num">${sp == null ? '—' : pct(tot - sp, tot)}</b></span></div>` +
     seg3(sp == null ? null : [[sp, 'var(--of-spot)'], [Math.max(0, tot - sp), 'var(--of-perp)']]) + '</div>'
   const e = ex && has ? ex : null
   const b = `<div class="of-sr"><div class="tx">${VENUES.map(([n, c], j) => `<span><i style="background:${c}"></i>${n}<b class="num">${e ? pct(e[j], tot) : '—'}</b></span>`).join('')}</div>` +
@@ -97,16 +98,16 @@ export function ivShort(ms: number): string {
 export function hoverCardHtml(d: BarBig, when: string, iv: string): string {
   const n = d.bb - d.bs, t = d.bb + d.bs || 1
   const mx = d.exact ? maxOf(d) : null
-  const cnt = (k: number | null): string => k == null ? '' : `${k} 笔`
+  const cnt = (k: number | null): string => k == null ? '' : fill(BT.count, { n: k })
   const tail = d.exact
-    ? `<span>最大一笔</span><b class="num">${mx ? amt(mx.usd) : '—'}</b><em class="${mx ? (mx.buy ? 'up' : 'dn') : ''}">${mx ? (mx.buy ? '买' : '卖') : ''}</em></div>` +
+    ? `<span>${BT.maxSingle}</span><b class="num">${mx ? amt(mx.usd) : '—'}</b><em class="${mx ? (mx.buy ? 'up' : 'dn') : ''}">${mx ? (mx.buy ? BT.buyShort : BT.sellShort) : ''}</em></div>` +
       `<div class="hc-src">${srcHtml(d.bb + d.bs, d.spot, d.ex)}</div>`
     : '</div>'
   return `<div class="hc"><div class="hc-h"><b class="num">${when}</b>· ${iv}</div>` +
-    `<div class="hc-net"><span class="v num ${tone(n)}">${signed(n)}</span><span class="l">净额</span></div>` +
+    `<div class="hc-net"><span class="v num ${tone(n)}">${signed(n)}</span><span class="l">${BT.net}</span></div>` +
     `<div class="hc-fly"><i class="s" style="flex:${(d.bs / t).toFixed(4)}"></i><i class="b" style="flex:${(d.bb / t).toFixed(4)}"></i></div>` +
-    `<div class="hc-kv"><span>大卖</span><b class="num dn">${amt(d.bs)}</b><em class="num">${cnt(d.sn)}</em>` +
-    `<span>大买</span><b class="num up">${amt(d.bb)}</b><em class="num">${cnt(d.bn)}</em>` + tail + '</div>'
+    `<div class="hc-kv"><span>${BT.sellShort}</span><b class="num dn">${amt(d.bs)}</b><em class="num">${cnt(d.sn)}</em>` +
+    `<span>${BT.buyShort}</span><b class="num up">${amt(d.bb)}</b><em class="num">${cnt(d.bn)}</em>` + tail + '</div>'
 }
 
 // ------------------------------------------------------------------ 价位：竖向价格轴
@@ -175,7 +176,7 @@ export function levelsSvg(o: LvIn): { svg: string; hits: { y0: number; y1: numbe
     const y = ys[i], ty = (y + 4).toFixed(1), yt = (y - 8).toFixed(1)
     if (x.k === 'wall') {
       hits.push({ y0: y - 9, y1: y + 9, ask: x.s === 'a' })
-      const lab = `${x.s === 'a' ? '卖墙' : '买墙'} ${amt(x.usd)}`, ago = `${Math.max(1, Math.round(x.age / MIN))}分`
+      const lab = `${x.s === 'a' ? BT.sellWall : BT.buyWall} ${amt(x.usd)}`, ago = `${Math.max(1, Math.round(x.age / MIN))}分`
       // 「N分」放不下（和墙的金额撞上）就只留圆环
       const fits = !o.tw || PX + 9 + o.tw(lab) + 6 <= w - 18 - o.tw(ago)
       g += `<g class="wall" data-wall="${x.s}"><rect x="${PX}" y="${yt}" width="${w - PX}" height="16" rx="5" fill="var(--of-wall-a)"/>` +
@@ -245,8 +246,8 @@ export function liqSvg({ w, h, q, hourFrom, tall, startLabel }: LiqSvgIn): strin
     if (b.short > 0) { const r = Math.sqrt(b.short) / m, hh = Math.max(1.5, r * (mid - 2)); g += `<rect x="${x}" y="${(mid - 1 - hh).toFixed(1)}" width="${ww}" height="${hh.toFixed(1)}" rx="1.2" fill="var(--up)" opacity="${(0.45 + 0.55 * r).toFixed(2)}"/>` }
     if (b.long > 0) { const r = Math.sqrt(b.long) / m, hh = Math.max(1.5, r * (mid - 2)); g += `<rect x="${x}" y="${(mid + 1).toFixed(1)}" width="${ww}" height="${hh.toFixed(1)}" rx="1.2" fill="var(--down)" opacity="${(0.45 + 0.55 * r).toFixed(2)}"/>` }
   })
-  g += `<text x="0" y="${h - 1}" class="num t3">${startLabel}</text><text x="${w}" y="${h - 1}" text-anchor="end" class="t3">现在</text>`
-  if (tall && i0 * bw > 70) g += `<text x="${(i0 * bw - 4).toFixed(1)}" y="${h - 1}" text-anchor="end" class="t3">近1时 ▸</text>`
+  g += `<text x="0" y="${h - 1}" class="num t3">${startLabel}</text><text x="${w}" y="${h - 1}" text-anchor="end" class="t3">${BT.now}</text>`
+  if (tall && i0 * bw > 70) g += `<text x="${(i0 * bw - 4).toFixed(1)}" y="${h - 1}" text-anchor="end" class="t3">${BT.hour} ▸</text>`
   return svgWrap(w, h, g)
 }
 
@@ -287,11 +288,11 @@ export function cumSvg({ w, h, nets, tall, ticks = [], startLabel = '8:00', empt
   const ec = c.last >= 0 ? 'var(--up)' : 'var(--down)'
   g += `<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="5" fill="${ec}" opacity=".18"/><circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="2.6" fill="${ec}" stroke="var(--surface)" stroke-width="1"/>`
   if (tall) {
-    g += `<text x="0" y="10" class="t3">累计净额 · ${startLabel} 起</text>`
+    g += `<text x="0" y="10" class="t3">${fill(BT.cumNet, { t: startLabel })}</text>`
     if (c.min < 0) g += `<text x="${w}" y="${(padT + ah + 12).toFixed(1)}" text-anchor="end" class="num t3">${signed(c.min)}</text>`
     const by = padT + ah + 10 + 16, mid = by + colH / 2
     const mm = Math.max(1, ...nets.map(Math.abs)), bw = (w - 4) / nets.length
-    g += `<text x="0" y="${(by - 4).toFixed(1)}" class="t3">逐根净额</text><line x1="0" x2="${w}" y1="${mid.toFixed(1)}" y2="${mid.toFixed(1)}" stroke="var(--line)"/>`
+    g += `<text x="0" y="${(by - 4).toFixed(1)}" class="t3">${BT.barNet}</text><line x1="0" x2="${w}" y1="${mid.toFixed(1)}" y2="${mid.toFixed(1)}" stroke="var(--line)"/>`
     nets.forEach((v, i) => {
       if (!v) return
       const hh = Math.max(1.5, Math.abs(v) / mm * (colH / 2 - 2))

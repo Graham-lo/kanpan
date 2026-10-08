@@ -223,7 +223,7 @@
 .of-dr.tall .sum-hero .sp { display: none; }
 .of-dr.tall .sum-hero { height: 36px; }
 .of-dr .wins { margin-top: 6px; display: flex; flex-direction: column; flex: none; }
-.of-dr .wr { display: grid; grid-template-columns: 28px minmax(0, 1fr) 54px; gap: 5px; align-items: center; height: 21px; font-size: 12px; }
+.of-dr .wr { display: grid; grid-template-columns: 36px minmax(0, 1fr) 54px; gap: 5px; align-items: center; height: 21px; font-size: 12px; }
 .of-dr .wr .k { color: var(--text-2); font-size: 11px; white-space: nowrap; }
 .of-dr .wr .n { text-align: right; font-weight: 650; white-space: nowrap; }
 .of-dr .bf { display: flex; height: 15px; gap: 2px; min-width: 0; }
@@ -283,7 +283,7 @@
 /* 价位 / 爆仓 */
 .of-dr .lv, .of-dr .lq-c { flex: 1; min-height: 0; position: relative; margin-top: 6px; overflow: hidden; }
 .of-dr .lq-w { display: flex; flex-direction: column; flex: none; margin-top: 6px; }
-.of-dr .lr { display: grid; grid-template-columns: 28px 38px minmax(0, 1fr) 38px; gap: 4px; align-items: center; height: 19px; font-size: 11px; }
+.of-dr .lr { display: grid; grid-template-columns: 34px 38px minmax(0, 1fr) 38px; gap: 4px; align-items: center; height: 19px; font-size: 11px; }
 .of-dr .lr .k { color: var(--text-2); white-space: nowrap; }
 .of-dr .lr .a { text-align: right; white-space: nowrap; }
 .of-dr .lr .a.b { text-align: left; }
