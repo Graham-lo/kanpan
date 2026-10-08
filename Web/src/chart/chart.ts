@@ -34,12 +34,13 @@ import { DEFAULTS as CS_DEFAULTS, crossText, dashOf, dayStartSh, marginRange, ty
 import { COMPARE_COLORS, alignCompare, compareBaseIndexFrom, comparePercentAt, comparePercentLabel, compareSegments, pctOf, percentTickLabel, percentTicks, priceOfPct, type Aligned, type CompareLine } from './compare'
 
 // 间距上下限、默认间距、右侧留白与滚轮手感都照 TradingView，见 ./wheel
-import { DEFAULT_SPACING, MAX_SPACING, MIN_SPACING, anchoredRightBar, clampRightBar, clampSpacing, isWinChromium, panPx, pinchFactor, timeAxisDragSpacing, wheelDelta, wheelSpeed, zoomFactor, zoomScale, zoomStart, zoomStep, type ZoomAnim } from './wheel'
+import { DEFAULT_SPACING, anchoredRightBar, clampRightBar, clampSpacing, isWinChromium, panPx, pinchFactor, timeAxisDragSpacing, wheelDelta, wheelSpeed, zoomFactor, zoomScale, zoomStart, zoomStep, type ZoomAnim } from './wheel'
 const SEP_HIT = 3 // 窗格分隔线上下各 3 px，热区 6 px
 
 // 线条规格（网页版自己的一套，和手机端无关）。基准屏 1 CSS px = 1 物理像素：
 // 横竖线一律整数宽、落在半像素上才锐利；曲线允许 1.5 px，靠抗锯齿显得顺滑又不压过 K 线。
-// K 线是主体：影线 1 px（间距 ≥ 20 时 2 px），实体奇偶跟影线走，让影线永远正好居中。
+// K 线是主体：照 TradingView——影线 1 物理像素，实体宽按 TV optimalCandlestickWidth（间距越大占比越高，6 px 间距 5 px 实体），
+// 实体奇偶跟影线走，让影线永远正好居中。
 export const LINE = {
   hair: 1,      // 网格、窗格分隔、轴线、RSI 参考线、最新价点线、提醒线、十字线
   plot: 1.5,    // 主图叠加线（MA / EMA / BOLL 中轨）、副图曲线（MACD / RSI / KDJ / 持仓量）
@@ -50,7 +51,22 @@ export const LINE = {
   handle: 2,    // 选中锚点的描边
   compare: 2,   // 对比线：比均线粗半档，一眼分得开
 } as const
-const VOL_ALPHA = 0.5, VOL_H = 0.16 // 成交量：垫在主图底部 16%，照 TradingView 默认与蜡烛同色、半透明
+// 成交量：照 TradingView 默认——垫在主图底部 25%，涨 #26A69A / 跌 #EF5350 各 50% 透明，一根柱宽 = 间距 − 1 物理像素
+const VOL_ALPHA = 0.5, VOL_H = 0.25, TV_VOL_UP = '#26A69A', TV_VOL_DOWN = '#EF5350'
+/** K 线实体宽（物理像素）：TV / lightweight-charts optimalCandlestickWidth——间距 2.5–4 固定 3 px，
+ *  其余按 1 − 0.2·atan(max(4, 间距) − 4)/(π/2) 取占比（间距越大越接近 80%），不足 1 物理像素按 1；
+ *  再按影线（floor(pr)，至少 1）的奇偶收一格，影线正好居中。dpr 1 下：间距 6 → 5、10 → 7、20 → 15、50 → 39 */
+export function candleBodyPx(spacing: number, pr: number): number {
+  const wick = Math.max(1, Math.floor(pr))
+  let w: number
+  if (spacing >= 2.5 && spacing <= 4) w = Math.floor(3 * pr)
+  else {
+    const coeff = 1 - 0.2 * Math.atan(Math.max(4, spacing) - 4) / (Math.PI * 0.5)
+    w = Math.max(Math.floor(pr), Math.min(Math.floor(spacing * coeff * pr), Math.floor(spacing * pr)))
+  }
+  if (w >= 2 && (wick % 2) !== (w % 2)) w--
+  return Math.max(wick, w)
+}
 
 // ------------------------------------------------------------ 类型
 /** avwap 锚定 VWAP、fvp 固定区间成交量分布、position 多空持仓（几何与画法在 drawTools.ts） */
@@ -184,7 +200,7 @@ export interface ChartOptions {
 
 export interface ThemeColors {
   bg: string; grid: string; text: string; text2: string; text3: string
-  cross: string; crossLabel: string; scaleLine: string
+  cross: string; crossLabel: string; scaleLine: string; sep: string
   up: string; down: string; accent: string; alert: string; line: string
 }
 
@@ -357,7 +373,7 @@ export class TVChart {
   /** 这一帧主图上画线 / 交易记号写过字的地方（订单流的大单签要躲开它们，不压也不被压）；每帧画线前清空 */
   textRects: { x: number; y: number; w: number; h: number }[] = []
   private layerHover: ChartLayer | null = null
-  colors: ThemeColors = { bg: '', grid: '', text: '', text2: '', text3: '', cross: '', crossLabel: '', scaleLine: '', up: '', down: '', accent: '', alert: '', line: '' }
+  colors: ThemeColors = { bg: '', grid: '', text: '', text2: '', text3: '', cross: '', crossLabel: '', scaleLine: '', sep: '', up: '', down: '', accent: '', alert: '', line: '' }
   font = '12px sans-serif'
   /** 画布已套用的像素比（resize 时定）：K 线横向几何按物理像素取整用它 */
   pr = 1
@@ -434,7 +450,7 @@ export class TVChart {
     const v = (n: string) => cs.getPropertyValue(n).trim()
     this.colors = {
       bg: v('--chart-bg'), grid: v('--chart-grid'), text: v('--chart-axis-text'), text2: v('--text-2'), text3: v('--text-3'),
-      cross: v('--chart-cross'), crossLabel: v('--chart-cross-label'), scaleLine: v('--chart-scale-line'),
+      cross: v('--chart-cross'), crossLabel: v('--chart-cross-label'), scaleLine: v('--chart-scale-line'), sep: v('--chart-sep') || v('--chart-scale-line'),
       up: v('--up'), down: v('--down'), accent: v('--accent'), alert: v('--alert-line'), line: v('--line'),
     }
     this.baseColors = { ...this.colors }; this.mergeColors(); this.applyLegendOpts()
@@ -460,7 +476,7 @@ export class TVChart {
     if (!this.bars.length || !(t1 > t0)) return
     const i0 = this.indexAt(t0), i1 = this.indexAt(t1)
     if (!(i1 > i0)) return
-    this.spacing = clamp(this.plotW() / (i1 - i0), MIN_SPACING, MAX_SPACING)
+    this.spacing = clampSpacing(this.plotW() / (i1 - i0), this.plotW())
     this.rightBar = i1; this.dirty = true; this.legendDirty = true
     this.maybeMore()
   }
@@ -658,7 +674,7 @@ export class TVChart {
     if (y < p.y || y > p.y + p.h) return
     const top = clamp(y - 10, p.y, p.y + p.h - h)
     c.fillStyle = bg; roundRect(c, PW + 1, top, this.aw - 2, h, 3); c.fill()
-    c.fillStyle = fg; c.textAlign = 'left'; c.font = `600 ${this.font}`
+    c.fillStyle = fg; c.textAlign = 'left'; c.font = this.font // TV 轴上标签不加粗
     c.fillText(text, PW + 8, top + 10)
     c.font = this.font
   }
@@ -777,7 +793,7 @@ export class TVChart {
     this.zAnim = null
     const i0 = this.indexAt(t0), i1 = this.indexAt(t1)
     const n = Math.max(10, i1 - i0 + 1)
-    this.spacing = clamp(this.plotW() / (n + this.rightMarginBars()), MIN_SPACING, MAX_SPACING)
+    this.spacing = clampSpacing(this.plotW() / (n + this.rightMarginBars()), this.plotW())
     this.rightBar = i1 + this.rightMarginBars(); this.setAuto(true)
   }
   scrollBars(k: number): void { this.rightBar += k; this.dirty = true; this.maybeMore() }
@@ -786,14 +802,14 @@ export class TVChart {
     this.zAnim = null
     const ax = anchorX ?? this.plotW()
     const idx = this.xToIndex(ax)
-    this.spacing = clamp(this.spacing * f, MIN_SPACING, MAX_SPACING)
+    this.spacing = clampSpacing(this.spacing * f, this.plotW())
     this.rightBar = this.clampRB(idx + (this.plotW() - ax) / this.spacing)
     this.dirty = true; this.maybeMore()
   }
   /** 右沿下标夹住，两头至少各留 2 根看得见（TV correctOffset），不让一路滚 / 拖到整屏空白 */
   private clampRB(rb: number): number { return clampRightBar(rb, this.lastIndex(), this.plotW(), this.spacing) }
-  /** 滚轮 / 捏合缩放（TV TimeScale.zoom）：x 底下那根 K 线不动；间距 ZOOM_MS 内顺滑插到目标（共用帧里 stepZoom 推），
-   *  还没到位又滚一格就在目标上再乘一格，锚点换成这一格鼠标下那根 */
+  /** 滚轮 / 捏合缩放（TV TimeScale.zoom）：x 底下那根 K 线不动（平常 x 给右沿 = 右沿不动，⌘ / Ctrl 时给鼠标处）；
+   *  间距 ZOOM_MS 内顺滑插到目标（共用帧里 stepZoom 推），还没到位又滚一格就在目标上再乘一格，锚点换成这一格的 x */
   wheelZoom(f: number, x: number, now = performance.now(), instant = false): void {
     const W = this.plotW()
     if (!this.bars.length || !(W > 0) || !(f > 0) || f === 1) return
@@ -801,13 +817,13 @@ export class TVChart {
     if (instant) { // 触控板捏合：一个事件一小口、每帧都来，直接按量缩才跟手（TV 同款）；再插值就是手指停了图还在追
       this.zAnim = null
       const idx = this.xToIndex(ax)
-      this.spacing = clampSpacing(this.spacing * f)
+      this.spacing = clampSpacing(this.spacing * f, W)
       this.rightBar = this.clampRB(anchoredRightBar(idx, ax, W, this.spacing))
       this.dirty = true; this.legendDirty = true
       this.maybeMore(); this.emitView()
       return
     }
-    this.zAnim = zoomStart(this.zAnim, this.spacing, this.rightBar, f, this.xToIndex(ax), ax, now)
+    this.zAnim = zoomStart(this.zAnim, this.spacing, this.rightBar, f, this.xToIndex(ax), ax, now, W)
     if (this.zAnim) kick()
   }
   /** 共用帧开头调（先于所有格子的 frame）：推进滚轮缩放一帧，联动的格子同一帧跟上。
@@ -1124,6 +1140,7 @@ export class TVChart {
     // 网格 + 价格刻度
     c.font = this.font; c.textBaseline = 'middle'
     const S = this.cs(), gh = S.grid === 'both' || S.grid === 'horz', gv = S.grid === 'both' || S.grid === 'vert'
+    c.setLineDash(dashOf('dotted')) // 网格照 TV 默认是点线
     for (const p of panes) {
       const r = this._ranges[p.id]
       const ticks = this.priceTicks(p, r)
@@ -1136,6 +1153,7 @@ export class TVChart {
     c.strokeStyle = S.vertColor ?? C.grid; c.beginPath()
     if (gv) for (const t of tticks) { const x = Math.round(this.indexToX(t.i)) + .5; c.moveTo(x, 0); c.lineTo(x, H - AXIS_H) }
     c.stroke()
+    c.setLineDash([])
 
     // 主图
     c.save(); c.beginPath(); c.rect(0, mainPane.y, PW, mainPane.h); c.clip()
@@ -1169,8 +1187,10 @@ export class TVChart {
     }
 
     // 分隔线与轴
-    c.strokeStyle = C.scaleLine; c.lineWidth = LINE.hair; c.beginPath()
+    c.strokeStyle = C.sep; c.lineWidth = LINE.hair; c.beginPath() // 窗格分隔线（TV separatorColor）
     for (const p of panes.slice(1)) { c.moveTo(0, p.y + .5); c.lineTo(W, p.y + .5) }
+    c.stroke()
+    c.strokeStyle = C.scaleLine; c.beginPath() // 价格轴 / 时间轴的轴线（TV 默认透明，图表设置里能给色）
     c.moveTo(PW + .5, 0); c.lineTo(PW + .5, H - AXIS_H)
     c.moveTo(0, H - AXIS_H + .5); c.lineTo(W, H - AXIS_H + .5)
     c.stroke()
@@ -1269,12 +1289,13 @@ export class TVChart {
   /** 影线：1 个物理像素向上凑到 CSS 像素（TV wickWidth = floor(pixelRatio)，最密时不超过间距），任何间距都一样粗——
    *  原来间距过 20 跳成 2 px，放大过这一档时整屏影线一起变粗、实体同时换奇偶，就是「闪一下」 */
   wickW(): number { const k = this.pr; return Math.max(1, Math.min(Math.floor(k), Math.floor(this.spacing * k))) / k }
-  candleW(): number { // 实体取间距的 3/4（物理像素取整），再按影线的奇偶收一格让影线正好居中；间距 < 2.5 时只剩影线
-    const k = this.pr, s = this.spacing, wick = Math.round(this.wickW() * k)
-    if (s < 2.5) return wick / k
-    let w = Math.max(3, Math.floor(s * k * 0.75))
-    if ((w - wick) % 2 !== 0) w = w - 1 > wick ? w - 1 : w + 1 // 收一格会收成没实体（Retina 上最窄那档）就放一格
-    return Math.max(wick, w) / k
+  candleW(): number { return candleBodyPx(this.spacing, this.pr) / this.pr }
+  /** 成交量柱宽（CSS 像素）：TV 直方图——间距按物理像素取整再减 1，相邻两根留一条 1 物理像素的缝 */
+  volW(): number { const k = this.pr; return Math.max(1, Math.round(this.spacing * k) - 1) / k }
+  /** 成交量涨跌色：涨跌色还是 TV 默认（绿 #089981 / 红 #F23645）时换成 TV 成交量自己那两色，改过颜色就跟着蜡烛走 */
+  volColor(up: boolean): string {
+    const c = up ? this.colors.up : this.colors.down, u = c.toUpperCase()
+    return u === '#089981' ? TV_VOL_UP : u === '#F23645' ? TV_VOL_DOWN : c
   }
   /** K 线：实体 / 边框 / 影线各自开关与涨跌色（图表设置「商品」；颜色没改过就跟涨跌色）。
    *  边框和实体同色（默认）时不另描——实体本身就是边，和原来一样两遍填充 */
@@ -1346,35 +1367,35 @@ export class TVChart {
   }
   drawVolume(p: Pane, from: number, to: number): void {
     if (this.spacing * this.pr < 1) { this.drawVolumeColumns(p, from, to); return }
-    const c = this.ctx, C = this.colors, bw = this.candleW()
+    const c = this.ctx, k = this.pr, bw = this.volW()
     let mx = 0
     // 坏量（NaN / Infinity / 负数）不画也不参与取顶：一根 Infinity 会把整屏的量柱压成 0 高
     const vOk = (v: number | undefined): v is number => v != null && Number.isFinite(v) && v > 0
     for (let i = from; i <= to; i++) { const v = this.bars[i]?.v; if (vOk(v)) mx = Math.max(mx, v) }
     if (!mx) return
     const h = p.h * VOL_H, base = p.y + p.h
-    const half = Math.floor(bw * this.pr / 2) / this.pr
+    const half = Math.floor(bw * k / 2) / k
     for (const pass of [0, 1]) {
-      c.fillStyle = hexA(pass ? C.up : C.down, VOL_ALPHA)
+      c.fillStyle = hexA(this.volColor(pass === 1), VOL_ALPHA)
       c.beginPath()
       for (let i = from; i <= to; i++) {
         const b = this.bars[i]; if (!b || !vOk(b.v)) continue
         if ((b.c >= b.o) !== (pass === 1)) continue
         const x = this.snapX(this.indexToX(i)), vh = Math.max(1, b.v / mx * h)
-        c.rect(x - half, Math.round(base - vh), Math.max(1 / this.pr, bw), Math.round(vh))
+        c.rect(x - half, Math.round(base - vh), bw, Math.round(vh))
       }
       c.fill()
     }
   }
   /** 最密时的成交量：按列相加，一列一根 1 px */
   private drawVolumeColumns(p: Pane, from: number, to: number): void {
-    const c = this.ctx, C = this.colors, { x: xs, b: bs } = this.columns(from, to)
+    const c = this.ctx, { x: xs, b: bs } = this.columns(from, to)
     let mx = 0
     for (const b of bs) if (Number.isFinite(b.v) && b.v > mx) mx = b.v
     if (!mx) return
     const h = p.h * VOL_H, base = p.y + p.h
     for (const pass of [0, 1]) {
-      c.fillStyle = hexA(pass ? C.up : C.down, VOL_ALPHA)
+      c.fillStyle = hexA(this.volColor(pass === 1), VOL_ALPHA)
       c.beginPath()
       for (let k = 0; k < bs.length; k++) {
         const b = bs[k]
@@ -1574,7 +1595,7 @@ export class TVChart {
       const h = 20
       const top = clamp(y - 10, p.y, p.y + p.h - h)
       c.fillStyle = bg; roundRect(c, PW + 1, top, this.aw - 2, h, 3); c.fill()
-      c.fillStyle = fg; c.textAlign = 'left'; c.font = `600 ${this.font}`
+      c.fillStyle = fg; c.textAlign = 'left'; c.font = this.font // TV 轴上标签不加粗
       c.fillText(text, PW + 8, top + 10)
       c.font = this.font
     }
@@ -2182,8 +2203,9 @@ export class TVChart {
       else if (reg.startsWith('sep:')) { this.paneR = null; this.paneLegendKeys.fill(null); this.dirty = true; this.o.onPaneResize?.(null) }
     }, { signal })
     // 滚轮 / 触控板照 TradingView（ChartWidget._onMousewheel，算法见 ./wheel）：
-    // 竖向 = 缩放（鼠标下那根不动，一格 ×1.1 / ×0.9，顺滑插到位）；横向（触控板横扫、Shift + 滚轮）= 平移，一格 80 px、不带惯性；
-    // Ctrl / 触控板捏合 = 跟手缩放；价格轴上 / Alt + 滚轮 = 缩价格（鼠标那一价不动）；时间轴上 = 缩时间、右沿不动
+    // 竖向 = 缩放（右沿不动：最新一根和右侧留白原地不动，一格 ×1.1 / ×0.9，顺滑插到位；按住 ⌘（Mac）/ Ctrl（Windows）才以鼠标处为锚）；
+    // 横向（触控板横扫、Shift + 滚轮）= 平移，一格 80 px、不带惯性；触控板捏合（带 ctrlKey 的滚轮）= 跟手缩放；
+    // 价格轴上 / Alt + 滚轮 = 缩价格（鼠标那一价不动）
     cv.addEventListener('wheel', e => {
       if (e.cancelable) e.preventDefault()
       const { x, y } = pos(e), reg = this.region(x, y)
@@ -2195,7 +2217,8 @@ export class TVChart {
         if (zf !== 1) this.zoomPrice(1 / zf, main ? y : undefined)
         return
       }
-      if (zf !== 1) this.wheelZoom(zf, reg === 'time' || reg === 'corner' ? this.plotW() : x, undefined, e.ctrlKey)
+      const atCursor = reg === 'plot' && (IS_MAC ? e.metaKey : e.ctrlKey)
+      if (zf !== 1) this.wheelZoom(zf, atCursor ? x : this.plotW(), undefined, e.ctrlKey)
       if (dx) { this.wheelPan(panPx(dx)); this.legendDirty = true; this.emitView() }
     }, { passive: false, signal })
     cv.addEventListener('contextmenu', e => {
@@ -2269,6 +2292,8 @@ export class TVChart {
 
 /** Windows 上的 Chromium 滚轮量要再除 DPR（TV 同款修正，见 ./wheel wheelSpeed） */
 const WIN_CHROMIUM = typeof navigator !== 'undefined' && isWinChromium(navigator.userAgent)
+/** ⌘ 是 Mac 上的修饰键、别处是 Ctrl（TV 同款：按住它滚轮才以鼠标处为锚缩放） */
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
 
 // ------------------------------------------------------------ 共用的一帧
 // 十六格各自挂一个 requestAnimationFrame 循环，每帧就是十六次回调；合成一个循环，挨个问脏没脏。

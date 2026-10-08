@@ -96,7 +96,7 @@ describe('chartSettings · 时间与线型', () => {
     expect(dayStartSh(t)).toBe(Date.UTC(2026, 8, 28, 16))
   })
   it('线型 → 虚线数组', () => {
-    expect(dashOf('solid')).toEqual([]); expect(dashOf('dashed', 2)).toEqual([8, 8]); expect(dashOf('dotted')).toEqual([1, 2])
+    expect(dashOf('solid')).toEqual([]); expect(dashOf('dashed', 2)).toEqual([10, 12]); expect(dashOf('dotted')).toEqual([1, 3])
   })
 })
 

@@ -67,12 +67,14 @@
   --alert-line: #F59E0B;
 
   /* 图表（TradingView 浅色） */
+  /* K 线图照 TradingView 默认浅色（所有皮肤一样）：白底、点线网格、无轴线、窗格分隔 #EBEBEB */
   --chart-bg: #FFFFFF;
-  --chart-grid: #F0F3FA;
-  --chart-axis-text: #131722;
-  --chart-cross: #9598A1;
-  --chart-cross-label: #131722;
-  --chart-scale-line: #E0E3EB;
+  --chart-grid: rgba(46,46,46,0.2);
+  --chart-axis-text: #0F0F0F;
+  --chart-cross: #9C9C9C;
+  --chart-cross-label: #0F0F0F;
+  --chart-scale-line: transparent;
+  --chart-sep: #EBEBEB;
 
   --shadow-menu: 0 0 0 1px rgba(19,23,34,.06), 0 4px 12px rgba(19,23,34,.08), 0 12px 32px rgba(19,23,34,.10);
   --shadow-dialog: 0 0 0 1px rgba(19,23,34,.06), 0 12px 32px rgba(19,23,34,.12), 0 32px 80px rgba(19,23,34,.18);
@@ -105,12 +107,14 @@
   --warn: #FB923C;
   --alert-line: #F59E0B;
 
-  --chart-bg: #11141B;
-  --chart-grid: #1A1E28;
-  --chart-axis-text: #B2B5BE;
-  --chart-cross: #6A6D78;
-  --chart-cross-label: #363A45;
-  --chart-scale-line: #2A2E39;
+  /* TradingView 默认深色 */
+  --chart-bg: #0F0F0F;
+  --chart-grid: rgba(242,242,242,0.2);
+  --chart-axis-text: #B8B8B8;
+  --chart-cross: #9C9C9C;
+  --chart-cross-label: #3D3D3D;
+  --chart-scale-line: transparent;
+  --chart-sep: #2E2E2E;
 
   --shadow-menu: 0 0 0 1px rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.45);
   --shadow-dialog: 0 0 0 1px rgba(255,255,255,.07), 0 24px 72px rgba(0,0,0,.6);
@@ -131,7 +135,7 @@ html[data-skin="sage"][data-theme="light"] {
   --tv-red-text: #C82738; --tv-green-text: #067665;
   --line: #D6E3DA; --line-strong: #B9CCC0; --control-line: #74897F;
   --accent: #2E7D6B; --accent-hover: #266B5B; --accent-soft: #DCEEE8; --accent-text: #256859; --accent-2: #4FA58F;
-  --chart-bg: #F4F8F5; --chart-grid: #E4EDE7; --chart-axis-text: #14211B; --chart-cross: #7B8D85; --chart-cross-label: #14211B; --chart-scale-line: #D6E3DA;
+  --chart-bg: #FFFFFF; --chart-grid: rgba(46,46,46,0.2); --chart-axis-text: #0F0F0F; --chart-cross: #9C9C9C; --chart-cross-label: #0F0F0F; --chart-scale-line: transparent; --chart-sep: #EBEBEB;
   --shadow-menu: 0 0 0 1px rgba(20,33,27,.08), 0 4px 12px rgba(20,33,27,.10), 0 12px 32px rgba(20,33,27,.12);
   --shadow-dialog: 0 0 0 1px rgba(20,33,27,.08), 0 12px 32px rgba(20,33,27,.14), 0 32px 80px rgba(20,33,27,.20);
 }
@@ -140,7 +144,7 @@ html[data-skin="sage"][data-theme="dark"] {
   --text-1: #E9F2EC; --text-2: #A5B8AE; --text-3: #869790;
   --line: #1F2B26; --line-strong: #33413A; --control-line: #5E6F67;
   --accent: #4FB69C; --accent-hover: #6BC8B0; --accent-soft: #16302A; --accent-text: #7CD2BC; --accent-2: #2E7D6B;
-  --chart-bg: #0E1512; --chart-grid: #17201C; --chart-axis-text: #B5C4BB; --chart-cross: #6C7D75; --chart-cross-label: #2A3730; --chart-scale-line: #253129;
+  --chart-bg: #0F0F0F; --chart-grid: rgba(242,242,242,0.2); --chart-axis-text: #B8B8B8; --chart-cross: #9C9C9C; --chart-cross-label: #3D3D3D; --chart-scale-line: transparent; --chart-sep: #2E2E2E;
 }
 html[data-skin="terra"][data-theme="light"] {
   --app: #DFD0C0; --surface: #FBF6F0; --surface-2: #F2E8DE; --surface-3: #EADFD2; --overlay: #FFFFFF;
@@ -149,7 +153,7 @@ html[data-skin="terra"][data-theme="light"] {
   --tv-red-text: #C32636; --tv-green-text: #067261;
   --line: #E7DACB; --line-strong: #CDB9A5; --control-line: #8C7A6A;
   --accent: #B25735; --accent-hover: #9E4A2B; --accent-soft: #F6E1D6; --accent-text: #9E4A2B; --accent-2: #D98A62;
-  --chart-bg: #FBF6F0; --chart-grid: #EFE5D9; --chart-axis-text: #241A13; --chart-cross: #8C7A6A; --chart-cross-label: #241A13; --chart-scale-line: #E7DACB;
+  --chart-bg: #FFFFFF; --chart-grid: rgba(46,46,46,0.2); --chart-axis-text: #0F0F0F; --chart-cross: #9C9C9C; --chart-cross-label: #0F0F0F; --chart-scale-line: transparent; --chart-sep: #EBEBEB;
   --shadow-menu: 0 0 0 1px rgba(36,26,19,.08), 0 4px 12px rgba(36,26,19,.10), 0 12px 32px rgba(36,26,19,.12);
   --shadow-dialog: 0 0 0 1px rgba(36,26,19,.08), 0 12px 32px rgba(36,26,19,.14), 0 32px 80px rgba(36,26,19,.20);
 }
@@ -158,7 +162,7 @@ html[data-skin="terra"][data-theme="dark"] {
   --text-1: #F7EFE6; --text-2: #C2AC98; --text-3: #9E8E7F;
   --line: #2E2219; --line-strong: #46362A; --control-line: #6E5B4B;
   --accent: #E2874F; --accent-hover: #ECA070; --accent-soft: #3A2517; --accent-text: #F0A574; --accent-2: #B25735;
-  --chart-bg: #161009; --chart-grid: #221A13; --chart-axis-text: #C9B8A6; --chart-cross: #7E6C5C; --chart-cross-label: #3A2B20; --chart-scale-line: #2E2219;
+  --chart-bg: #0F0F0F; --chart-grid: rgba(242,242,242,0.2); --chart-axis-text: #B8B8B8; --chart-cross: #9C9C9C; --chart-cross-label: #3D3D3D; --chart-scale-line: transparent; --chart-sep: #2E2E2E;
 }
 :root, [data-theme="light"] { --accent-2: #5B7CFA; --card-edge: transparent; }
 [data-theme="dark"] { --accent-2: #7FA2FF; --card-edge: var(--line); }

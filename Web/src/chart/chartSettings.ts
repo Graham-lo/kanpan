@@ -134,7 +134,8 @@ export function withUpDownReset(s: ChartSettings): ChartSettings {
 
 // ───────────────────────────────── 引擎用的小工具
 
-export const dashOf = (s: LineStyle, w = 1): number[] => s === 'solid' ? [] : s === 'dashed' ? [4 * w, 4 * w] : [w, 2 * w]
+/** 线型 → 虚线段（照 TradingView 画布：点线 [w, 3w]、虚线 [5w, 6w]） */
+export const dashOf = (s: LineStyle, w = 1): number[] => s === 'solid' ? [] : s === 'dashed' ? [5 * w, 6 * w] : [w, 3 * w]
 
 /** 主图自动缩放时上下留白：可见的最高 / 最低价分别离窗格上 / 下沿 top% / bottom%（对数轴在对数空间里算） */
 export function marginRange(lo: number, hi: number, top: number, bottom: number, log: boolean): { min: number; max: number } {

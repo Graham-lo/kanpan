@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_SPACING, MAX_SPACING, MIN_SPACING, PAN_PX_PER_NOTCH, ZOOM_MS,
-  anchoredRightBar, clampRightBar, clampSpacing, easeSpacing, isWinChromium, panPx, pinchFactor, timeAxisDragSpacing,
+  anchoredRightBar, clampRightBar, clampSpacing, maxSpacing, easeSpacing, isWinChromium, panPx, pinchFactor, timeAxisDragSpacing,
   wheelDelta, wheelSpeed, zoomFactor, zoomScale, zoomStart, zoomStep, type ZoomAnim,
 } from '../src/chart/wheel'
 
@@ -91,7 +91,13 @@ describe('上下限与视口夹', () => {
     expect(timeAxisDragSpacing(6, 2000, 1625, W)).toBeCloseTo(12) // 到右沿 375 → 750
     expect(timeAxisDragSpacing(6, 1625, 2000, W)).toBeCloseTo(3)
     expect(timeAxisDragSpacing(6, 2000, W + 10, W)).toBeNull()
-    expect(timeAxisDragSpacing(6, 2374, 0, W)).toBe(MAX_SPACING)
+    expect(timeAxisDragSpacing(6, 2374, 0, W)).toBe(W / 2) // 上限照 TV 是半个图宽
+  })
+  it('间距上限 = 绘图区宽 / 2（TV maxBarSpacing），宽没量出来时兜底 50', () => {
+    expect(maxSpacing(1200)).toBe(600); expect(maxSpacing(0)).toBe(MAX_SPACING)
+    expect(clampSpacing(400, 1200)).toBe(400); expect(clampSpacing(900, 1200)).toBe(600)
+    expect(zoomStart(null, 600, 100, 1.1, 50, 100, 0, 1200)).toBeNull()
+    expect(zoomStart(null, 50, 100, 1.1, 50, 100, 0, 1200)?.to).toBeCloseTo(55)
   })
 })
 

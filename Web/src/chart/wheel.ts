@@ -5,7 +5,9 @@
  *     再除以 100；纵向量夹成 sign·min(1, |d|) 交给 zoomTime（滚轮一格 ±100 = 满档 ±1），横向量 scrollChart(-80·dx)（一格 = 80 px）
  *   · TimeScale.zoom(zoomPoint, scale)：barSpacing += scale · barSpacing / 10（一格放大 ×1.1、缩小 ×0.9），
  *     再把右偏移挪回去，让 zoomPoint 底下那根（浮点下标）留在原地
- *   · 间距夹在 [minBarSpacing 0.5, maxBarSpacing]，默认 barSpacing 6；correctOffset：两头至少各留 2 根看得见
+ *   · 间距夹在 [minBarSpacing 0.5, maxBarSpacing = 图宽 / 2]，默认 barSpacing 6；correctOffset：两头至少各留 2 根看得见
+ *   · TV 网页版 rightBarStaysOnScroll 开着：zoom 后不挪右偏移——滚轮 / 捏合缩放时右沿不动（最新一根和右侧留白根数原地不动），
+ *     只有按住 ⌘（Mac）/ Ctrl（Windows）滚轮才以鼠标处为锚
  *   · 时间轴拖动（TimeScale.scaleTo）：间距 = 起拖间距 × 起拖点到右沿的距离 / 现在到右沿的距离（右沿不动，往左拖放大）
  * 我们在 TV 之上加的：
  *   · 缩放不是一步到位，ZOOM_MS 内按 ease-out 插到目标间距；连续滚动把目标累加（目标 × 新的一格），中途锚点不动
@@ -14,7 +16,7 @@
  *   · Shift + 滚轮在没有 deltaX 的环境里（部分系统 / 驱动不替你换轴）按横滑处理
  */
 
-/** 间距上下限（px / 根）：TV 的 minBarSpacing 0.5；上限 50（TV 默认是半个图宽，图很宽时一根能放到几百 px，没有用） */
+/** 间距下限（px / 根）：TV 的 minBarSpacing 0.5；上限照 TV 是半个绘图区宽（maxSpacing），宽还没量出来时用 MAX_SPACING 兜底 */
 export const MIN_SPACING = 0.5
 export const MAX_SPACING = 50
 /** 默认间距（TV barSpacing 默认 6）。右侧留白根数在图表设置里（chartSettings DEFAULTS.rightBars，默认 10 根，同 TV 网页版「右边距」） */
@@ -26,7 +28,9 @@ export const PAN_PX_PER_NOTCH = 80
 /** 两头至少各留几根看得见（TV Constants.MinVisibleBarsCount） */
 export const MIN_VISIBLE_BARS = 2
 
-export const clampSpacing = (s: number): number => Math.min(MAX_SPACING, Math.max(MIN_SPACING, s))
+/** TV maxBarSpacing：绘图区宽的一半（一屏至少两根） */
+export const maxSpacing = (plotW: number): number => plotW > 0 ? Math.max(MIN_SPACING, plotW / 2) : MAX_SPACING
+export const clampSpacing = (s: number, plotW = 0): number => Math.min(maxSpacing(plotW), Math.max(MIN_SPACING, s))
 
 /** deltaMode 折算系数（TV _determineWheelSpeedAdjustment）：页 120、行 32、像素 1；Windows 上的 Chromium 像素再除 DPR */
 export function wheelSpeed(mode: number, winChromium = false, dpr = 1): number {
@@ -80,15 +84,15 @@ export function easeSpacing(from: number, to: number, t: number): number {
 export function timeAxisDragSpacing(sp0: number, x0: number, x: number, plotW: number): number | null {
   const now = Math.min(plotW, Math.max(0, plotW - x)), start = Math.min(plotW, Math.max(0, plotW - x0))
   if (!now || !start) return null
-  return clampSpacing(sp0 * now / start)
+  return clampSpacing(sp0 * now / start, plotW)
 }
 
 /** 一段进行中的滚轮缩放：from → to 间距，t0 起算，锚点（连续下标 idx 保持在 x 上）；sp / rb 是上一次写进图里的值（别人改了就认出来） */
 export interface ZoomAnim { from: number; to: number; t0: number; idx: number; x: number; sp: number; rb: number }
 
 /** 接一格：目标在「还没到的目标」上累加，起点是现在实际的间距；锚点换成这一格鼠标下那根 */
-export function zoomStart(prev: ZoomAnim | null, spacing: number, rightBar: number, factor: number, idx: number, x: number, now: number): ZoomAnim | null {
-  const to = clampSpacing((prev ? prev.to : spacing) * factor)
+export function zoomStart(prev: ZoomAnim | null, spacing: number, rightBar: number, factor: number, idx: number, x: number, now: number, plotW = 0): ZoomAnim | null {
+  const to = clampSpacing((prev ? prev.to : spacing) * factor, plotW)
   if (to === spacing) return null // 已经在上 / 下限：不起动画
   return { from: spacing, to, t0: now, idx, x, sp: spacing, rb: rightBar }
 }
