@@ -249,12 +249,14 @@ public struct OKXProvider: MarketProvider {
                    URLQueryItem(name: "limit", value: String(ask))]
       if let cursor { query.append(URLQueryItem(name: "after", value: String(cursor))) }
       let bound = cursor
-      let rows = try OKXDTO.bars(try await get(path, query: query)).filter { bound == nil || $0.openTime < bound! }
+      let reply = try OKXDTO.barsPage(try await get(path, query: query))
+      let rows = reply.bars.filter { bound == nil || $0.openTime < bound! }
       guard let oldest = rows.first?.openTime else { break }
       collected = MarketSeries.dedup(rows + collected)
       cursor = oldest
-      // 回得比要的少：翻到这只品种上线那一根了。
-      if rows.count < ask { break }
+      // 上游回得比要的少：翻到这只品种上线那一根了。按上游给了几行判（坏行也算），
+      // 不按解出来几根判——一页里坏一行不等于到头了。
+      if reply.rows < ask { break }
       if startTime == nil, collected.count >= count { break }
     }
     var bars = collected

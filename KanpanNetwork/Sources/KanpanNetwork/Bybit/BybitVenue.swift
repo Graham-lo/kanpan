@@ -59,7 +59,15 @@ public enum BybitVenue {
   /// 这里取 20 次 / 秒（= 100 / 5 秒，官方上限的六分之一，与服务端那把 `PACER` 同一个数）。
   /// 一家一把、整个进程共用：行情、订单流、探测都经它；换主机（网关主 → 备）不换这把，窗口不重置。
   public static let perSecond: Double = 20
+  /// 直连：花的是手机自己出口 IP 的额度。
   public static let limiter = VenueRateLimiter(perSecond: perSecond)
+  /// 网关：透传花的是 kanpan-api 出口 IP 的额度，和直连那把分开记（接入指南第 6 节：直连与网关是两把）。
+  /// 原来两条线路共用一把：网关线路上的请求平白替直连排队，切线路时上一条线路攒下的间隔也带了过来。
+  public static let gatewayLimiter = VenueRateLimiter(perSecond: perSecond)
+  /// 这条线路上用哪一把（同一条线路上行情、订单流、探测共用）。
+  public static func limiter(_ route: MarketRoute) -> VenueRateLimiter {
+    endpoints(route).viaGateway ? gatewayLimiter : limiter
+  }
 
   // ---------------------------------------------------------------- 推送帧格式
 

@@ -255,8 +255,22 @@ public enum OrderFlowBase {
   /// 大写的 `KAS`、`KAITO` 是币名本身，不是缩放。
   public static let thousandsPrefix: Character = "k"
 
+  /// 交易所原名里大小写有意义的那几只（小写 `k` 打头的千枚计价）：大写 → 原名（`KPEPE` → `kPEPE`）。
+  /// 由那一家拉到品种表时登记（`registerOriginalNames`），这里不认识任何一家。
+  private static let originals = OriginalNames()
+
+  /// 登记一家品种表里的原名。只有 `k` + 合法币名的写法（`kPEPE`）记成千枚计价；原名本来就是大写的
+  /// （`KAITO`）记成「它就是币名本身」，撞名时它赢，之前登记过的 `kAITO` 不再生效。
+  public static func registerOriginalNames(_ names: [String]) {
+    originals.record(names) { $0.first == thousandsPrefix && isValid(String($0.dropFirst())) }
+  }
+
   /// `1000PEPE` → (`PEPE`, 1000)；`1MBABYDOGE` → (`BABYDOGE`, 1e6)；`kPEPE` → (`PEPE`, 1000)；其余原样、1。
+  ///
+  /// 大写的 `KPEPE`（品种键里的写法，品种信息还没到、只能拿键拼 base 时就是它）：登记过原名 `kPEPE` 的
+  /// 按原名折算；没登记过的原样（`KAITO`、`KAS` 是币名本身，不能见 K 就拆）。
   public static func normalize(_ base: String) -> (base: String, scale: Double) {
+    if base.first == "K", let original = originals.original(base) { return normalize(original) }
     if base.first == thousandsPrefix {
       let rest = String(base.dropFirst())
       if isValid(rest), rest.first.map({ !$0.isNumber }) ?? false { return (rest, 1000) }
@@ -267,6 +281,28 @@ public enum OrderFlowBase {
       if isValid(rest), rest.first.map({ !$0.isNumber }) ?? false { return (rest, scale) }
     }
     return (upper, 1)
+  }
+
+  private final class OriginalNames: @unchecked Sendable {
+    private let lock = NSLock()
+    private var table: [String: String] = [:]
+    /// 原名就是大写的那些（撞名时它们赢）。
+    private var plain: Set<String> = []
+    func record(_ names: [String], scaled: (String) -> Bool) {
+      lock.lock(); defer { lock.unlock() }
+      for name in names where !name.isEmpty {
+        let upper = name.uppercased()
+        if name == upper {
+          if table[upper] != nil || name.first == "K" { plain.insert(upper); table[upper] = nil }
+        } else if scaled(name), !plain.contains(upper) {
+          table[upper] = name
+        }
+      }
+    }
+    func original(_ upper: String) -> String? {
+      lock.lock(); defer { lock.unlock() }
+      return table[upper]
+    }
   }
 
   /// kanpan-api 只收 `^[A-Z0-9]{1,20}$`。

@@ -116,6 +116,12 @@ public struct HyperliquidWire: VenueWire {
       var payloads: [StreamPayload] = []
       var confirmed: [Sub] = []
       for row in HyperliquidDTO.candles(frame.data) {
+        // 周期认不出（不是看盘 14 档里 Hyperliquid 原生的那几档）：整帧丢。原来原样塞进 `KlineEvent.interval`，
+        // 上层拿一个不存在的周期名去找图。
+        guard let iv = Interval(rawValue: row.interval), HyperliquidVenue.interval(iv) == row.interval else {
+          WireNumber.noteDropped()
+          return .ignored
+        }
         confirmed.append(.candle(row.coin, row.interval))
         payloads.append(.kline(KlineEvent(symbol: HyperliquidVenue.key(row.coin), interval: row.interval,
                                           openTime: row.bar.openTime, closed: false, bar: row.bar,

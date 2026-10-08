@@ -86,16 +86,7 @@ enum OKXDTO {
 
   /// 步长要几位小数才写得下：按交易所给的那串字面数，末尾的 0 不算；科学计数法按指数折算
   /// （`0.25` 是两位，不是 `⌈-log10⌉` 算出来的一位）。
-  static func decimals(_ text: String) -> Int {
-    let t = text.trimmingCharacters(in: .whitespaces).lowercased()
-    if let e = t.firstIndex(of: "e") {
-      let exponent = Int(t[t.index(after: e)...]) ?? 0
-      return max(0, min(12, decimals(String(t[..<e])) - exponent))
-    }
-    guard let dot = t.firstIndex(of: ".") else { return 0 }
-    let fraction = t[t.index(after: dot)...].reversed().drop { $0 == "0" }
-    return max(0, min(12, fraction.count))
-  }
+  static func decimals(_ text: String) -> Int { venueDecimals(text) }
 
   // ---------------------------------------------------------------- 24h 行情
 
@@ -125,10 +116,11 @@ enum OKXDTO {
     guard let key = OKXVenue.key(instID: instID),
           let last = last.flatMap(finiteDouble), last > 0 else { return nil }
     let open24h = open.flatMap(finiteDouble).flatMap { $0 > 0 ? $0 : nil }
+    // 高低是价：不是有限正数就是「不知道」；额是币数 × 现价，乘爆了（`1e308 × 价`）也是「不知道」。
     return Ticker(symbol: key, last: last,
                   changePercent: open24h.map { (last / $0 - 1) * 100 } ?? .nan,
-                  high: high.flatMap(finiteDouble) ?? .nan, low: low.flatMap(finiteDouble) ?? .nan,
-                  quoteVolume: (baseVolume.flatMap(finiteDouble) ?? .nan) * last,
+                  high: positiveOrNaN(high.flatMap(finiteDouble)), low: positiveOrNaN(low.flatMap(finiteDouble)),
+                  quoteVolume: nonNegativeOrNaN(baseVolume.flatMap(finiteDouble).map { $0 * last }),
                   open24h: open24h, timeMs: ts.flatMap { Int64($0) },
                   priceChange: open24h.map { last - $0 })
   }
@@ -137,18 +129,23 @@ enum OKXDTO {
 
   /// 一行 K 线：`[ts, o, h, l, c, vol(张), volCcy(币), volCcyQuote(计价), confirm]`（REST 与推送同形）。
   /// 成交量取 `volCcy`（币数，和币安 `volume` 同一单位）；OKX 不给主动买量，留 NaN。
+  /// 零价、负价、开盘时刻不合理的不收（`isPlausibleVenueBar`）。
   static func bar(_ row: [String]) -> (bar: Bar, closed: Bool)? {
     guard row.count >= 7, let t = Int64(row[0]), let o = Double(row[1]), let h = Double(row[2]),
           let l = Double(row[3]), let c = Double(row[4]), let v = Double(row[6]) else { return nil }
     let bar = Bar(openTime: t, open: o, high: h, low: l, close: c, volume: v)
-    guard bar.isValidMarketBar else { return nil }
+    guard isPlausibleVenueBar(bar) else { return nil }
     return (bar, row.count > 8 ? row[8] == "1" : false)
   }
 
   /// K 线页：降序 → 升序、字符串 → Double。坏行只丢那一行。
-  static func bars(_ data: Data) throws -> [Bar] {
+  static func bars(_ data: Data) throws -> [Bar] { try barsPage(data).bars }
+
+  /// K 线页，连同上游这一页一共给了几行（坏行也算）。翻页按「上游给满没有」判到没到头：
+  /// 原来按解出来的根数判，一页里有一根坏行就少一根，被当成「翻到上线那一根了」，后面再也不往前翻。
+  static func barsPage(_ data: Data) throws -> (bars: [Bar], rows: Int) {
     let page: [[String]] = try rows(data, "K 线")
-    return page.compactMap { bar($0)?.bar }.sorted { $0.openTime < $1.openTime }
+    return (page.compactMap { bar($0)?.bar }.sorted { $0.openTime < $1.openTime }, page.count)
   }
 
   // ---------------------------------------------------------------- 资金费率
@@ -185,8 +182,9 @@ enum OKXDTO {
     var out: [OIPoint] = []
     out.reserveCapacity(page.rows.count)
     for row in page.rows {
+      // 时刻是 JSON 数：超过 Int64 的（`1e19`）原来在 `Int64(t)` 上闪退。
       guard row.count >= 2, let t = row[0], let coins = row[1],
-            t.isFinite, t > 0, coins.isFinite, coins >= 0 else { continue }
+            t.isFinite, t > 0, t < Double(WireTime.maxMs), coins.isFinite, coins >= 0 else { continue }
       out.append(OIPoint(time: Int64(t), value: coins))
     }
     return out.sorted { $0.time < $1.time }
@@ -284,10 +282,11 @@ enum OKXDTO {
       let ctVal = OKXVenue.contractValues.value(inst)
       var trades: [TradeEvent] = []
       for d in dicts {
+        // 价量是坏的（解不开、不是有限值、越界）：整帧丢掉并记一笔（坏帧里别的成交同样不可信）。
+        // 原来解不开的只跳过那一笔，和别家（整帧丢）不是一个口径。
         guard let px = str(d, "px").flatMap(Double.init), let sz = str(d, "sz").flatMap(Double.init),
-              let ms = str(d, "ts").flatMap({ Int64($0) }) else { continue }
-        // 解得开却不是有限值或越界：整帧丢掉并记一笔（坏帧里别的成交同样不可信）。
-        guard px.isFinite, px > 0, sz.isFinite, sz >= 0 else { WireNumber.noteDropped(); return [] }
+              px.isFinite, px > 0, sz.isFinite, sz >= 0 else { WireNumber.noteDropped(); return [] }
+        guard let ms = str(d, "ts").flatMap({ Int64($0) }) else { continue }
         trades.append(TradeEvent(symbol: key, price: px, qty: ctVal.map { sz * $0 } ?? 0, timeMs: ms,
                                  tradeID: str(d, "tradeId").flatMap { Int64($0) }))
       }
@@ -313,10 +312,17 @@ enum OKXDTO {
       guard channel.hasPrefix("candle"), let interval = OKXVenue.interval(bar: String(channel.dropFirst("candle".count))) else {
         return []
       }
-      let bars = rows.compactMap { row -> (bar: Bar, closed: Bool)? in
-        guard let cells = row as? [Any] else { return nil }
-        return bar(cells.map { ($0 as? String) ?? ($0 as? NSNumber)?.stringValue ?? "" })
-      }.sorted { $0.bar.openTime < $1.bar.openTime }
+      var bars: [(bar: Bar, closed: Bool)] = []
+      for row in rows {
+        // 一根坏的整帧丢（和别家同一口径）：同一帧里别的根同样不可信。
+        guard let cells = row as? [Any],
+              let parsed = bar(cells.map { ($0 as? String) ?? ($0 as? NSNumber)?.stringValue ?? "" }) else {
+          WireNumber.noteDropped()
+          return []
+        }
+        bars.append(parsed)
+      }
+      bars.sort { $0.bar.openTime < $1.bar.openTime }
       for (b, closed) in bars {
         out.append(.kline(KlineEvent(symbol: key, interval: interval.rawValue, openTime: b.openTime,
                                      closed: closed, bar: b)))

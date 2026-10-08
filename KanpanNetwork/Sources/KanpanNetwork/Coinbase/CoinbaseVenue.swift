@@ -37,7 +37,14 @@ public enum CoinbaseVenue {
   /// 公开行情按 IP 10 次/秒（官方公开端点的保守值）。整个进程共用这一把：
   /// 行情、订单流、小组件补价、探测都经它（Coinbase 按出口 IP 记账）。
   public static let perSecond: Double = 10
+  /// 直连：花的是手机自己出口 IP 的额度。
   public static let limiter = VenueRateLimiter(perSecond: perSecond)
+  /// 网关：透传花的是 kanpan-api 出口 IP 的额度，和直连那把分开记（接入指南第 6 节：直连与网关是两把）。
+  public static let gatewayLimiter = VenueRateLimiter(perSecond: perSecond)
+  /// 这条线路上用哪一把（同一条线路上行情、订单流、补价、探测共用）。
+  public static func limiter(_ route: MarketRoute) -> VenueRateLimiter {
+    endpoints(route).viaGateway ? gatewayLimiter : limiter
+  }
 
   /// 推送：两条控制帧之间至少隔多久（Coinbase 对入站消息有每秒条数上限）。
   static let controlGapMs: Double = 150

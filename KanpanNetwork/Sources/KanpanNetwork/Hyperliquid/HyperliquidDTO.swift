@@ -122,8 +122,9 @@ enum HyperliquidDTO {
     return Ticker(symbol: key(coin), last: last,
                   changePercent: prev.map { (last / $0 - 1) * 100 } ?? .nan,
                   high: .nan, low: .nan,
-                  quoteVolume: ctx.dayNtlVlm ?? .nan,
-                  markPrice: ctx.markPx, open24h: prev, timeMs: timeMs,
+                  quoteVolume: nonNegativeOrNaN(ctx.dayNtlVlm),
+                  // 标记价是价：负的、零的不是「有标记价」（原来照搬进 `Ticker.markPrice`）。
+                  markPrice: ctx.markPx.flatMap { $0 > 0 ? $0 : nil }, open24h: prev, timeMs: timeMs,
                   priceChange: prev.map { last - $0 })
   }
 
@@ -138,7 +139,7 @@ enum HyperliquidDTO {
   static func markTick(_ ctx: Ctx, nowMs: Int64) -> MarkPriceTick {
     MarkPriceTick(timeMs: nowMs, fundingRate: ctx.funding,
                   nextFundingTimeMs: HyperliquidVenue.nextFundingTimeMs(nowMs: nowMs),
-                  indexPrice: ctx.oraclePx)
+                  indexPrice: ctx.oraclePx.flatMap { $0 > 0 ? $0 : nil })
   }
 
   // ---------------------------------------------------------------- K 线
@@ -150,7 +151,7 @@ enum HyperliquidDTO {
           let close = number(o["c"]), let volume = number(o["v"]) else { return nil }
     // Hyperliquid 不给主动买量：留 NaN，不填 0（见 `Bar.takerBuy`）。
     let bar = Bar(openTime: t, open: open, high: high, low: low, close: close, volume: volume)
-    guard bar.isValidMarketBar else { return nil }
+    guard isPlausibleVenueBar(bar) else { return nil }
     return (o["s"] as? String, o["i"] as? String, bar)
   }
 
@@ -204,12 +205,18 @@ enum HyperliquidDTO {
   }
 
   /// `candle` 推送：官方文档写的是 `Candle[]`，实际是一根一个对象，两种都认。
+  /// 一根坏的（价量不是有限正数、开盘时刻不合理、缺币名 / 周期）整帧丢并记一笔，和别家同一口径。
   static func candles(_ data: Any?) -> [(coin: String, interval: String, bar: Bar)] {
     let rows: [Any] = (data as? [Any]) ?? (data.map { [$0] } ?? [])
-    return rows.compactMap { row in
-      guard let b = bar(row), let coin = b.coin, let interval = b.interval else { return nil }
-      return (coin, interval, b.bar)
+    var out: [(coin: String, interval: String, bar: Bar)] = []
+    for row in rows {
+      guard let b = bar(row), let coin = b.coin, let interval = b.interval else {
+        WireNumber.noteDropped()
+        return []
+      }
+      out.append((coin, interval, b.bar))
     }
+    return out
   }
 
   /// 一笔成交：`{coin, side:"B"(主动买)|"A"(主动卖), px, sz, time, hash, tid, users}`。

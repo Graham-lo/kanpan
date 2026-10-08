@@ -15,7 +15,7 @@ import KanpanCore
 ///
 /// 两条线路：直连打 Coinbase 自己的域名；网关打看盘自己的 `kanpan-api`（REST 原样透传、
 /// 推送是共享 hub），报文一字不差，只换地址（`CoinbaseVenue`）。两条线路的能力位相同。
-/// REST 走通用的 `VenueREST`、推送走通用的 `VenueStream` + `CoinbaseWire`，限速是 `CoinbaseVenue.limiter`。
+/// REST 走通用的 `VenueREST`、推送走通用的 `VenueStream` + `CoinbaseWire`，限速是 `CoinbaseVenue.limiter(route)`（直连、网关各一把）。
 public struct CoinbaseProvider: MarketProvider {
   public static let venue = CoinbaseVenue.id
   public static let market = CoinbaseVenue.market
@@ -50,7 +50,7 @@ public struct CoinbaseProvider: MarketProvider {
               transport: any HTTPTransport = URLSessionTransport(),
               sockets: any WSSocketFactory = URLSessionSocketFactory(),
               log: FeedLog = .silent) {
-    self.init(route: route, transport: transport, sockets: sockets, limiter: CoinbaseVenue.limiter, log: log)
+    self.init(route: route, transport: transport, sockets: sockets, limiter: CoinbaseVenue.limiter(route), log: log)
   }
 
   /// 测试用的旧写法：线路档位 + 地址表。
@@ -58,8 +58,8 @@ public struct CoinbaseProvider: MarketProvider {
               transport: any HTTPTransport = URLSessionTransport(),
               sockets: any WSSocketFactory = URLSessionSocketFactory(),
               log: FeedLog = .silent) {
-    self.init(route: MarketRoute(policy: policy, endpoints: endpoints), transport: transport, sockets: sockets,
-              limiter: CoinbaseVenue.limiter, log: log)
+    let route = MarketRoute(policy: policy, endpoints: endpoints)
+    self.init(route: route, transport: transport, sockets: sockets, limiter: CoinbaseVenue.limiter(route), log: log)
   }
 
   /// 测试用：网关表同时当 kanpan-api 主机（`CoinbaseVenue.endpoints(policy:gateways:)`）。

@@ -79,16 +79,7 @@ enum CoinbaseDTO {
   /// 价格按一位小数摆，`x.25` / `x.75` 这些合法的价位全被四舍五入成相邻的档，
   /// 图上的价格刻度和最新价都对不上成交。字面数本来就在报文里，数它最准，
   /// 也不经过一次浮点换算。科学计数法（`1e-8`、`2.5E-3`）按指数折算。
-  static func decimals(_ text: String) -> Int {
-    let t = text.trimmingCharacters(in: .whitespaces).lowercased()
-    if let e = t.firstIndex(of: "e") {
-      let exponent = Int(t[t.index(after: e)...]) ?? 0
-      return max(0, min(12, decimals(String(t[..<e])) - exponent))
-    }
-    guard let dot = t.firstIndex(of: ".") else { return 0 }
-    let fraction = t[t.index(after: dot)...].reversed().drop { $0 == "0" }
-    return max(0, min(12, fraction.count))
-  }
+  static func decimals(_ text: String) -> Int { venueDecimals(text) }
 
   /// Coinbase 口径的 24h 行情 → 看盘的 `Ticker`。
   ///
@@ -122,11 +113,12 @@ enum CoinbaseDTO {
     var product_id: String?
 
     var bar: Bar? {
-      guard let t = Int64(start), let o = Double(open), let h = Double(high), let l = Double(low),
-            let c = Double(close), let v = Double(volume) else { return nil }
+      // `start` 是秒：乘 1000 之前先看合不合理（原来 `"99999999999999999"` 乘上去溢出闪退）。
+      guard let t = Int64(start).flatMap(WireTime.ms(seconds:)), let o = Double(open), let h = Double(high),
+            let l = Double(low), let c = Double(close), let v = Double(volume) else { return nil }
       // Coinbase 不给主动买量：留 NaN，不填 0（见 `Bar.takerBuy`）。
-      let bar = Bar(openTime: t * 1000, open: o, high: h, low: l, close: c, volume: v)
-      return bar.isValidMarketBar ? bar : nil
+      let bar = Bar(openTime: t, open: o, high: h, low: l, close: c, volume: v)
+      return isPlausibleVenueBar(bar) ? bar : nil
     }
   }
 

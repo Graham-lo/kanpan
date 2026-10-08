@@ -111,16 +111,7 @@ enum BybitDTO {
   }
 
   /// 步长要几位小数才写得下：**按交易所给的那串字面数**，末尾的 0 不算（`0.10` 是 1 位，`0.25` 是 2 位）。
-  static func decimals(_ text: String) -> Int {
-    let t = text.trimmingCharacters(in: .whitespaces).lowercased()
-    if let e = t.firstIndex(of: "e") {
-      let exponent = Int(t[t.index(after: e)...]) ?? 0
-      return max(0, min(12, decimals(String(t[..<e])) - exponent))
-    }
-    guard let dot = t.firstIndex(of: ".") else { return 0 }
-    let fraction = t[t.index(after: dot)...].reversed().drop { $0 == "0" }
-    return max(0, min(12, fraction.count))
-  }
+  static func decimals(_ text: String) -> Int { venueDecimals(text) }
 
   // ---------------------------------------------------------------- 24h 行情 / 资金费率
 
@@ -180,7 +171,7 @@ enum BybitDTO {
     let open = prev.flatMap { $0 > 0 ? $0 : nil }
     let pct = pcnt.map { $0 * 100 } ?? open.map { (last / $0 - 1) * 100 }
     return Ticker(symbol: BybitVenue.key(symbol), last: last, changePercent: pct ?? .nan,
-                  high: high ?? .nan, low: low ?? .nan, quoteVolume: turnover ?? .nan,
+                  high: positiveOrNaN(high), low: positiveOrNaN(low), quoteVolume: nonNegativeOrNaN(turnover),
                   markPrice: mark.flatMap { $0 > 0 ? $0 : nil }, open24h: open, timeMs: timeMs,
                   priceChange: open.map { last - $0 })
   }
@@ -199,7 +190,7 @@ enum BybitDTO {
             let c = num(row[4]), let v = num(row[5]) else { return nil }
       // Bybit 不给主动买量：留 NaN，不填 0（见 `Bar.takerBuy`）。
       let bar = Bar(openTime: t, open: o, high: h, low: l, close: c, volume: v)
-      return bar.isValidMarketBar ? bar : nil
+      return isPlausibleVenueBar(bar) ? bar : nil
     }.sorted { $0.openTime < $1.openTime }
   }
 
@@ -245,6 +236,23 @@ extension BybitDTO {
     }
   }
 
+  /// `tickers.*` 一帧里的数值能不能信：价格类必须是有限正数、量额类有限非负、比率有限。
+  /// 空串是「这一项没变」（增量）或「没有」（快照），不算坏。
+  static func tickerFieldsSane(_ data: [String: Any]) -> Bool {
+    for (key, value) in data {
+      if let s = value as? String, s.isEmpty { continue }
+      let rule: (Double) -> Bool
+      switch key {
+      case "lastPrice", "markPrice", "indexPrice", "prevPrice24h", "highPrice24h", "lowPrice24h": rule = { $0 > 0 }
+      case "turnover24h", "volume24h", "openInterest", "openInterestValue": rule = { $0 >= 0 }
+      case "price24hPcnt", "fundingRate": rule = { _ in true }
+      default: continue
+      }
+      guard let v = DepthWire.number(value), rule(v) else { return false }
+    }
+    return true
+  }
+
   /// 这几样变了才出一条 `Ticker`；这几样变了才出一条标记价。
   private static let tickerFields: Set<String> = ["lastPrice", "prevPrice24h", "price24hPcnt", "highPrice24h",
                                                   "lowPrice24h", "turnover24h", "volume24h"]
@@ -269,7 +277,14 @@ extension BybitDTO {
     var out = WireFrame(confirmed: [topic])
     if topic.hasPrefix("tickers.") {
       guard let data = frame["data"] as? [String: Any] else { return WireFrame() }
-      let symbol = (data["symbol"] as? String) ?? String(topic.dropFirst("tickers.".count))
+      let symbol = String(topic.dropFirst("tickers.".count))
+      // topic 与 data 说的不是同一只：不知道信哪个，整帧丢（原来按 data 改了另一只的合并簿）。
+      // 数值坏的（`NaN`、负价、零价）整帧丢、不进合并簿：原来照样合进去，之后每一帧增量都带着这个坏值，
+      // 最新价被一帧 `"0"` 毒掉以后，直到下一次改最新价为止一条行情都出不来。
+      guard (data["symbol"] as? String).map({ $0 == symbol }) ?? true, tickerFieldsSane(data) else {
+        WireNumber.noteDropped()
+        return WireFrame()
+      }
       let snapshot = (frame["type"] as? String) != "delta"
       let row = book.merge(symbol: symbol, snapshot: snapshot, data: data)
       out.payloads = tickerPayloads(symbol: symbol, row: row, changed: Set(data.keys), snapshot: snapshot, ts: ts)
@@ -316,7 +331,7 @@ extension BybitDTO {
     if snapshot || !changed.isDisjoint(with: markFields), let mark = n("markPrice"), mark > 0 {
       let tick = MarkPriceTick(timeMs: ts ?? 0, fundingRate: n("fundingRate"),
                                nextFundingTimeMs: DepthWire.integer(row["nextFundingTime"]).flatMap { $0 > 0 ? $0 : nil },
-                               indexPrice: n("indexPrice"))
+                               indexPrice: n("indexPrice").flatMap { $0 > 0 ? $0 : nil })
       out.append(.markPrice(symbol: BybitVenue.key(symbol), price: mark, tick: tick))
     }
     return out
@@ -336,7 +351,7 @@ extension BybitDTO {
         WireNumber.noteDropped(); return []
       }
       let bar = Bar(openTime: start, open: o, high: h, low: l, close: c, volume: v)
-      guard bar.isValidMarketBar else { WireNumber.noteDropped(); return [] }
+      guard isPlausibleVenueBar(bar) else { WireNumber.noteDropped(); return [] }
       out.append((start, .kline(KlineEvent(symbol: BybitVenue.key(parts[2]), interval: interval.rawValue,
                                            openTime: start, closed: (k["confirm"] as? Bool) ?? false, bar: bar,
                                            eventTime: DepthWire.integer(k["timestamp"]) ?? ts ?? 0))))

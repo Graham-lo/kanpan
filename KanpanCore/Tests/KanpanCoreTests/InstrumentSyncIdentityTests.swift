@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import KanpanCore
@@ -52,6 +53,48 @@ struct InstrumentSyncIdentityTests {
                 " binance/usd_m/ETHUSDT", "binance/usd_m/ETHUSDT ", "binance//ETHUSDT", "ETHUSDT",
                 "binance/usd_m/ETHUSDT/x", "binance/usd_m/", ""] {
       #expect(!InstrumentID.isSyncKey(bad), "\(bad) 应该拒")
+    }
+  }
+}
+
+/// 三端交叉契约：`Backend/kanpan-api/contract/venue-identity-cases.json`。服务端
+/// `sync_validation::venue_identity_contract_cases`、网页 `venue-identity-contract.test.ts` 读同一份；
+/// 任何一边单改代号规则，自己这一侧就红。
+@Suite("品种身份三端契约（venue-identity-cases.json）")
+struct VenueIdentityContractTests {
+  struct Cases: Decodable { var accept: [String]; var reject: [String] }
+
+  static func load() throws -> Cases {
+    let root = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent()
+    let url = root.appendingPathComponent("Backend/kanpan-api/contract/venue-identity-cases.json")
+    return try JSONDecoder().decode(Cases.self, from: Data(contentsOf: url))
+  }
+
+  @Test("accept 每条都收")
+  func accepts() throws {
+    let c = try Self.load()
+    #expect(c.accept.count >= 10)
+    for key in c.accept { #expect(InstrumentID.isSyncKey(key), "\(key) 三端都该收") }
+  }
+
+  @Test("reject 每条都拒")
+  func rejects() throws {
+    let c = try Self.load()
+    #expect(c.reject.count >= 10)
+    for key in c.reject { #expect(!InstrumentID.isSyncKey(key), "\(key) 三端都该拒") }
+  }
+
+  @Test("两张表不重叠，六家都有收有拒（契约本身没写歪）")
+  func coverage() throws {
+    let c = try Self.load()
+    #expect(Set(c.accept).isDisjoint(with: c.reject))
+    for venue in ["binance", "okx", "bybit", "hyperliquid", "coinbase", "macro"] {
+      #expect(c.accept.contains { $0.hasPrefix(venue + "/") }, "\(venue) 缺 accept 用例")
+    }
+    for venue in ["okx", "bybit", "hyperliquid", "coinbase", "macro"] {
+      #expect(c.reject.contains { $0.hasPrefix(venue + "/") }, "\(venue) 缺 reject 用例")
     }
   }
 }

@@ -145,9 +145,26 @@ final class HyperliquidNames: @unchecked Sendable {
   }
 
   /// 记一份品种表里的全部原名（下架的也记：历史 K 线还拿得到）。只增不删。
+  ///
+  /// 撞名（`KAITO` 与 `kAITO` 大写后是同一个键）：**原名本来就是大写的那只赢**，不看到达顺序。
+  /// 原来后到的覆盖先到的：表里要是 `kAITO` 排在后面，看 KAITO 的人订到、取到的全是千枚计价那只
+  /// （价差一千倍）。千枚那只在看盘里没有自己的键，交给订单流按 `kAITO` 原名折算（`OrderFlowBase`）。
   func record(_ coins: [String]) {
-    lock.lock(); defer { lock.unlock() }
-    for coin in coins where !coin.isEmpty { table[coin.uppercased()] = coin }
+    lock.lock()
+    for coin in coins where !coin.isEmpty {
+      let upper = coin.uppercased()
+      if coin != upper, let held = table[upper], held != coin { continue }
+      table[upper] = coin
+    }
     if !coins.isEmpty { didLoad = true }
+    lock.unlock()
+    // 小写 `k` 打头的千枚计价（`kPEPE`）：订单流只拿得到大写键时（`KPEPE`），按原名折回 PEPE × 1000。
+    OrderFlowBase.registerOriginalNames(coins)
+  }
+
+  /// 这个原名在看盘里有没有自己的键（撞名时输掉的那只没有）。
+  func owns(_ coin: String) -> Bool {
+    lock.lock(); defer { lock.unlock() }
+    return table[coin.uppercased()].map { $0 == coin } ?? true
   }
 }

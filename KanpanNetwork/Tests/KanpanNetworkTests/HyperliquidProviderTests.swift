@@ -90,7 +90,9 @@ private enum HL {
                        names: HyperliquidNames = HyperliquidNames()) -> HyperliquidProvider {
     HyperliquidProvider(policy: policy, gateways: ["gw1.example", "gw2.example:8443"],
                         transport: InfoTransport(server: server),
-                        limiter: VenueRateLimiter(weightPerMinute: 1_000_000, pacer: FastPacer()),
+                        // 阶梯时钟：没人排队就不走针，「首屏这一发记了多少权重」不会因为整包跑满、过了 60ms 真实时间
+                        // （FastPacer 下的一分钟窗口）就被滑出窗口读成 0。
+                        limiter: VenueRateLimiter(weightPerMinute: 1_000_000, pacer: StepPacer()),
                         clock: { now }, names: names)
   }
 

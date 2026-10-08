@@ -100,18 +100,20 @@ public struct HyperliquidProvider: MarketProvider {
     return HyperliquidVenue.coin(key, names: names)
   }
 
+  /// 品种表，顺手记下原名表。大写后撞名、输掉的那只（`KAITO` 在时的 `kAITO`）不列：它没有自己的键，
+  /// 列出来就是两只同键的品种，后到的那只（价差一千倍）会顶掉真的那只。
   @discardableResult
   private func meta(timeout: TimeInterval) async throws -> [HyperliquidDTO.Asset] {
     let assets = try HyperliquidDTO.meta(try await info(["type": "meta"], timeout: timeout))
     names.record(assets.map(\.name))
-    return assets
+    return assets.filter { names.owns($0.name) }
   }
 
-  /// 全市场上下文一次拿回，顺手记下原名表。
+  /// 全市场上下文一次拿回，顺手记下原名表。撞名输掉的那只同样不列（见 `meta`）。
   private func contexts(timeout: TimeInterval) async throws -> [(asset: HyperliquidDTO.Asset, ctx: HyperliquidDTO.Ctx)] {
     let rows = try HyperliquidDTO.metaAndCtxs(try await info(["type": "metaAndAssetCtxs"], timeout: timeout))
     names.record(rows.map(\.asset.name))
-    return rows
+    return rows.filter { names.owns($0.asset.name) }
   }
 
   // ------------------------------------------------------------------ 品种表 / 行情

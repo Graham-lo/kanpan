@@ -96,6 +96,8 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
   private var socket: WSSocket?
   private var wanted: Set<Sub> = []
   private var sent: Set<Sub> = []
+  /// 看门狗判了「等首帧超时、该重发一次」的订阅：仍算已发（退订照样会退它），由订阅同步按批、按间隔再发一遍。
+  private var resend: Set<Sub> = []
   private var syncTask: Task<Void, Never>?
   private var syncToken = 0
   private var runTask: Task<Void, Never>?
@@ -137,6 +139,8 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
   public var currentConnectionID: Int { connectionID }
   /// 退避当前在第几档（测试用）。
   var backoffAttempt: Int { backoff.attempt }
+  /// 等着重发的订阅有几个（测试用）。
+  var resendCount: Int { resend.count }
 
   // ------------------------------------------------------------------ 生命周期
 
@@ -158,6 +162,7 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
   public func replace(topics: [StreamTopic]) async {
     wanted = wire.subs(topics)
     pending = pending.filter { wanted.contains($0.key) }
+    resend.formIntersection(wanted)
     scheduleSync()
   }
 
@@ -168,7 +173,7 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
     watchdogTask?.cancel(); watchdogTask = nil
     syncTask?.cancel(); syncTask = nil; syncToken += 1
     let dying = socket, sink = continuation
-    socket = nil; sent = []; pending = [:]; continuation = nil
+    socket = nil; sent = []; resend = []; pending = [:]; continuation = nil
     sink?.yield(.status(.offline)); sink?.finish()
     await dying?.cancel()
   }
@@ -178,7 +183,7 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
     watchdogTask?.cancel(); watchdogTask = nil
     syncTask?.cancel(); syncTask = nil; syncToken += 1
     let dying = socket, sink = continuation
-    socket = nil; sent = []; pending = [:]; continuation = nil
+    socket = nil; sent = []; resend = []; pending = [:]; continuation = nil
     if let dying { Task { await dying.cancel() } }
     sink?.finish()
   }
@@ -189,7 +194,7 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
   /// 已经判死的连接上重排发送。
   private func reconnect(connection: Int, reason: String) async {
     guard connection == connectionID, let s = socket else { return }
-    socket = nil; sent = []; pending = [:]
+    socket = nil; sent = []; resend = []; pending = [:]
     syncTask?.cancel(); syncTask = nil; syncToken += 1
     cutReason = reason
     log("\(wire.name) WS \(reason)")
@@ -199,7 +204,7 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
   // ------------------------------------------------------------------ 订阅同步
 
   private func scheduleSync() {
-    guard socket != nil, syncTask == nil, wanted != sent else { return }
+    guard socket != nil, syncTask == nil, wanted != sent || !resend.isEmpty else { return }
     syncToken += 1
     let token = syncToken
     syncTask = Task { [weak self] in await self?.sync(token: token) }
@@ -209,13 +214,14 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
     defer {
       if token == syncToken {
         syncTask = nil
-        if !stopped, socket != nil, wanted != sent { scheduleSync() }
+        if !stopped, socket != nil, wanted != sent || !resend.isEmpty { scheduleSync() }
       }
     }
-    while !stopped, !Task.isCancelled, token == syncToken, let socket, wanted != sent {
+    while !stopped, !Task.isCancelled, token == syncToken, let socket, wanted != sent || !resend.isEmpty {
+      resend.formIntersection(wanted)
       let connection = connectionID
       // 退订先于订阅；一帧放多少由那一家定。
-      let drop = sent.subtracting(wanted), add = wanted.subtracting(sent)
+      let drop = sent.subtracting(wanted), add = wanted.subtracting(sent).union(resend.intersection(wanted))
       let (op, batch) = drop.isEmpty ? (VenueControl.subscribe, add) : (.unsubscribe, drop)
       let group = wire.nextBatch(batch)
       guard !group.isEmpty else { return }
@@ -232,10 +238,12 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
       guard token == syncToken, connection == connectionID else { return }
       if op == .subscribe {
         sent.formUnion(group)
+        resend.subtract(group)
         // 连接已经在推之后新增的订阅，逐个等它的第一帧（连接刚连上的那一批由整条连接的窗口管）。
+        // 看门狗要重发的那几个也是从这里发出去的（`resubscribe` 把它们从 `sent` 里拿掉），已经发过几次照记。
         if gotMarket {
           let now = await pacer.nowMs()
-          for sub in group where !confirmed.contains(sub) { pending[sub] = (now, 1) }
+          for sub in group where !confirmed.contains(sub) { pending[sub] = (now, pending[sub]?.attempts ?? 1) }
         }
       } else {
         sent.subtract(group)
@@ -259,7 +267,7 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
         let url = urls[candidate % urls.count]
         let s = try await factory.connect(to: url)
         guard generation == runGeneration, !Task.isCancelled else { await s.cancel(); return }
-        socket = s; sent = []; gotMarket = false; confirmed = []; pending = [:]; cutReason = nil
+        socket = s; sent = []; resend = []; gotMarket = false; confirmed = []; pending = [:]; cutReason = nil
         connected = true
         connectionID += 1
         let connection = connectionID
@@ -284,7 +292,7 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
       watchdogTask?.cancel(); watchdogTask = nil
       cutReason = nil
       let dying = socket
-      socket = nil; sent = []; pending = [:]
+      socket = nil; sent = []; resend = []; pending = [:]
       syncTask?.cancel(); syncTask = nil; syncToken += 1
       await dying?.cancel()
       guard generation == runGeneration, !stopped, !Task.isCancelled else { break }
@@ -323,6 +331,8 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
         // 这一帧证明了哪些订阅已经生效（数据帧、订阅应答都算）。
         for sub in decoded.confirmed {
           confirmed.insert(sub); pending[sub] = nil
+          // 来了数据 / 回执就不是被拒的那个（不点名的报错会把一整帧的订阅都连坐上）。
+          if !topicErrors.isEmpty { topicErrors[wire.label(sub)] = nil }
         }
         if !decoded.payloads.isEmpty { gotMarket = true }
         for p in decoded.payloads { sink.yield(.payload(p)) }
@@ -344,7 +354,10 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
       }
       subs = lastControl.subs
     }
-    for sub in subs {
+    // 只记还想要的：退订招来的报错（上游说「没订过」）不是拒订——原来照样记进 `topicErrors`，
+    // 用户切回这只时它的首帧窗口不再等它，诊断里还挂着一条假报错。
+    let refused = subs.filter { wanted.contains($0) }
+    for sub in refused {
       topicErrors[wire.label(sub)] = message
       pending[sub] = nil
     }
@@ -364,18 +377,27 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
   /// 原来照样「60 秒没有行情 → 重连」，重连上再订、再被拒，每分钟一轮永不停，还每轮把网关主备换一次。
   private func rejected(_ sub: Sub) -> Bool { topicErrors[wire.label(sub)] != nil }
 
-  /// 单个订阅第一次等超时：只重发这一个的 subscribe，发不出去就重连。
-  private func resubscribe(_ sub: Sub, connection: Int) async {
-    guard connection == connectionID, let s = socket, sent.contains(sub), wanted.contains(sub),
-          let entry = pending[sub] else { return }
-    pending[sub] = (await pacer.nowMs(), entry.attempts + 1)
-    lastControl = Control(op: .subscribe, subs: [sub], generation: runGeneration, connection: connection)
-    log("\(wire.name) WS \(wire.label(sub)) 订阅后一直没有推送，重发一次 subscribe")
-    do {
-      let text = try wire.control(.subscribe, [sub])
-      log("WS → \(text)")
-      try await s.send(text)
-    } catch { await reconnect(connection: connection, reason: "控制帧发送失败（\(error)），重连") }
+  /// 这几个订阅第一次等超时：只重发它们的 subscribe。
+  ///
+  /// 不在看门狗里逐个直接发：一圈里过期的可能有几十个（推着行情时一口气加了一批、上游一个都没回），
+  /// 原来每个各发一帧、彼此之间不隔，几十帧连发——Bybit 每条连接每秒最多 10 条入站，当场被踢；
+  /// OKX 每条连接订退合计 480 次 / 小时，一下烧掉一截。这里把它们记进 `resend`、交给订阅同步，
+  /// 由它按那一家的批量（`nextBatch`）和控制帧间隔（`controlGapMs`）重发；已经发过几次照记，再超时就重连。
+  /// 它们仍在「已发」里：重发之前用户切走了，照样退订（不在服务端留一条没人要的订阅）。
+  private func resubscribe(_ subs: [Sub], connection: Int) async {
+    guard connection == connectionID, socket != nil else { return }
+    let now = await pacer.nowMs()
+    guard connection == connectionID, socket != nil else { return }
+    var due: [Sub] = []
+    for sub in subs where sent.contains(sub) && wanted.contains(sub) {
+      guard let entry = pending[sub], entry.attempts < 2 else { continue }
+      pending[sub] = (now, entry.attempts + 1)
+      resend.insert(sub)
+      due.append(sub)
+    }
+    guard !due.isEmpty else { return }
+    log("\(wire.name) WS \(due.map(wire.label).joined(separator: ", ")) 订阅后一直没有推送，重发一次 subscribe")
+    scheduleSync()
   }
 
   /// 应用层保活：到点了就发一句。发不出去就是连接坏了。
@@ -410,14 +432,13 @@ public actor VenueStream<Wire: VenueWire>: MarketStream {
                                reason: "\(Int(silence / 1000)) 秒没有收到任何行情，主动重连")
           return
         }
-        for (sub, entry) in state.pending.sorted(by: { $0.key < $1.key }) where now - entry.sentMs >= silence {
-          if entry.attempts >= 2 {
-            await self.reconnect(connection: connection,
-                                 reason: "\(wire.label(sub)) 重发订阅后仍没有推送，重连")
-            return
-          }
-          await self.resubscribe(sub, connection: connection)
+        let expired = state.pending.filter { now - $0.value.sentMs >= silence }.sorted { $0.key < $1.key }
+        if let (sub, _) = expired.first(where: { $0.value.attempts >= 2 }) {
+          await self.reconnect(connection: connection,
+                               reason: "\(wire.label(sub)) 重发订阅后仍没有推送，重连")
+          return
         }
+        if !expired.isEmpty { await self.resubscribe(expired.map(\.key), connection: connection) }
         await self.keepAliveIfDue(connection: connection, now: now)
       }
     }
