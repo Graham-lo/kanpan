@@ -1,5 +1,5 @@
 // 手机网页 · 「大单与爆仓」弹层：纯函数 + 片段 HTML + 胶水（BigTradeController）在整页 / 骨架 / 现货 / 爆仓空 / 停住
-// 各状态下交给弹层的模型，以及十字线联动（拉到哪根看哪根、抬手 3 秒回本根、点签只换根、点「每根」十字线跳过去）。
+// 各状态下交给弹层的模型，以及十字线联动（拉到哪根看哪根、抬手 3 秒回本根、点泡只换根、点「每根」十字线跳过去）；爆仓何时拉（图上气泡开着就拉，现货 / 宏观不拉）。
 // 场地：node 里假的 DOM 元素与假画布；弹层本体换成只记 update 的替身（真 DOM 走 scripts/m-bigtrade.mjs 截图验收）。
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -170,7 +170,7 @@ class FakeSheet {
 }
 
 interface Rig { c: BigTradeController; sheet: FakeSheet; view: ChartView; port: Record<string, unknown>; emit(type: string, e: unknown): void; clock: { now: number } }
-function rig(o: { sym?: string; force?: BtForce; land?: boolean; liq?: LiqStore; trades?: boolean } = {}): Rig {
+function rig(o: { sym?: string; force?: BtForce; land?: boolean; liq?: LiqStore; trades?: boolean; macro?: boolean } = {}): Rig {
   const sym = o.sym ?? 'BTCUSDT'
   const n = 300
   const op: number[] = [], h: number[] = [], l: number[] = [], cl: number[] = [], v: number[] = []
@@ -193,7 +193,7 @@ function rig(o: { sym?: string; force?: BtForce; land?: boolean; liq?: LiqStore;
   const c = new BigTradeController({
     chart: chart as never, symbol: () => sym, port: () => port as never,
     thresholds: () => ({ usdtPerp: 100_000, spot: 50_000 } as never),
-    isLand: () => !!o.land, isMacro: () => false, openThreshold: back => { back() },
+    isLand: () => !!o.land, isMacro: () => !!o.macro, openThreshold: back => { back() },
     now: () => clock.now, liq: o.liq ?? new LiqStore(() => new Promise(() => { /* 不回 */ })), force: o.force ?? null,
   })
   const sheet = new FakeSheet()
@@ -268,6 +268,28 @@ describe('大单与爆仓 · 弹层各状态的模型', () => {
     expect(liqCardHTML(e)).toContain('今日无爆仓')
   })
 
+  it('爆仓何时拉：弹层关着、图上气泡开着也拉（并进向上 / 向下）；气泡关了且弹层关着不拉；现货 / 宏观 / 强制现货一律不拉', () => {
+    const pulled: string[] = []
+    const store = (): LiqStore => new LiqStore(url => { pulled.push(/base=([^&]+)/.exec(url)?.[1] ?? url); return new Promise(() => { /* 不回 */ }) })
+    const closed = (r: Rig): Rig => { (r.sheet as FakeSheet).closed = true; return r }
+    const r = closed(rig({ liq: store() }))
+    expect(r.c.isOpen).toBe(false)
+    r.c.tick()
+    expect(pulled).toEqual(['BTC'])
+    pulled.length = 0
+    st.bigTradeSigns = false
+    closed(rig({ liq: store() })).c.tick()
+    expect(pulled).toEqual([])
+    rig({ liq: store() }).c.tick()
+    expect(pulled).toEqual(['BTC'])
+    pulled.length = 0
+    st.bigTradeSigns = true
+    closed(rig({ sym: 'BTC-USD', liq: store() })).c.tick()
+    closed(rig({ macro: true, liq: store() })).c.tick()
+    closed(rig({ force: 'spot', liq: store() })).c.tick()
+    expect(pulled).toEqual([])
+  })
+
   it('停住：20 秒没进成交 → 数字变灰、右上写「数据停于 hh:mm」；断网同样', () => {
     const r = rig()
     r.port.lastTradeMs = NOW - STALE_MS - 1000
@@ -325,7 +347,7 @@ describe('大单与爆仓 · 十字线联动', () => {
     expect(r.sheet.last!.hero).toMatchObject({ title: '本根', live: true, rt: '15 分钟' })
   })
 
-  it('开着时点另一枚签：只换根、不关', () => {
+  it('开着时点另一枚泡：只换根、不关', () => {
     const r = rig()
     const tap = (r.c as unknown as { tapSign(s: { t: number }): boolean }).tapSign.bind(r.c)
     expect(tap({ t: TB })).toBe(true)
@@ -333,7 +355,7 @@ describe('大单与爆仓 · 十字线联动', () => {
     expect(r.sheet.last!.hero).toMatchObject({ title: hhmm(TB), rt: '15 分钟' })
   })
 
-  it('横屏只画签不开弹层', () => {
+  it('横屏只画泡不开弹层', () => {
     const r = rig({ land: true })
     ;(r.c as unknown as { sheet: null }).sheet = null
     const tap = (r.c as unknown as { tapSign(s: { t: number }): boolean }).tapSign.bind(r.c)

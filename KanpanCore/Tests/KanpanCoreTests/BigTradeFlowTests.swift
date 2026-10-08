@@ -232,4 +232,36 @@ final class BigTradeFlowTests: XCTestCase {
     XCTAssertEqual(line[95].longUsd, 10)
     XCTAssertEqual(line[94].shortUsd, 20)
   }
+
+  // MARK: - 图上气泡：分钟账并爆仓
+
+  func testTapeTakesLiquidationsAndBarsSplitLongShort() {
+    var book = LiquidationBook(base: "SOL")
+    book.merge(LiquidationPage(tracked: true, rows: [
+      LiquidationRow(minuteMs: t0 + m, longUsd: 400, shortUsd: 0, count: 1),
+      LiquidationRow(minuteMs: t0, longUsd: 100, shortUsd: 50, count: 2),
+      LiquidationRow(minuteMs: t0 + 2 * m, longUsd: 0, shortUsd: 0, count: 0),
+      LiquidationRow(minuteMs: t0 + 4 * m, longUsd: 0, shortUsd: 700, count: 1),
+      LiquidationRow(minuteMs: t0 - 5 * m, longUsd: 9, shortUsd: 9, count: 1),
+    ]), nowMs: t0 + 5 * m)
+    var tape = BigTradeTape(symbol: "SOLUSDT", minutes: [], buy: [], sell: [], floor: 1, lastBigMs: nil, lastBigBuy: true)
+    XCTAssertTrue(tape.isEmpty)
+    tape.setLiquidations(book)
+    XCTAssertFalse(tape.isEmpty, "只有爆仓也算有东西可画")
+    XCTAssertEqual(tape.liqMinutes, [t0 - 5 * m, t0, t0 + m, t0 + 4 * m], "按分钟升序，多空都为零的分钟不要")
+    // 两根：[t0, t0+3m)、[t0+3m, t0+6m)；开盘以前的那分钟不进第一根。
+    let liq = tape.liqBars(opens: [t0, t0 + 3 * m], lastEnd: t0 + 6 * m)
+    XCTAssertEqual(liq.long, [500, 0])
+    XCTAssertEqual(liq.short, [50, 700])
+    XCTAssertEqual(tape.bars(opens: [t0, t0 + 3 * m], lastEnd: t0 + 6 * m).buy, [0, 0], "大单那一路不受影响")
+    // 末根到 lastEnd 为止。
+    XCTAssertEqual(tape.liqBars(opens: [t0, t0 + 3 * m], lastEnd: t0 + 4 * m).short, [50, 0])
+    XCTAssertEqual(tape.liqBars(opens: [], lastEnd: t0).long, [])
+
+    let before = tape
+    tape.setLiquidations(nil)
+    XCTAssertTrue(tape.liqMinutes.isEmpty && tape.liqLong.isEmpty && tape.liqShort.isEmpty)
+    XCTAssertTrue(tape.isEmpty)
+    XCTAssertNotEqual(tape, before, "换爆仓账算变化（图上要重画）")
+  }
 }

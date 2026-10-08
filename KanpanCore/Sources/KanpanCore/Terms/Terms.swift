@@ -47,6 +47,8 @@ public enum BigTradeTerm: String, CaseIterable, Sendable {
   case wall
   case buyWall
   case sellWall
+  case up
+  case down
   case liq
   case longLiq
   case shortLiq

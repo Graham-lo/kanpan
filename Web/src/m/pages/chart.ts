@@ -288,7 +288,7 @@ export function initChart(root: HTMLElement): PageHandle {
     get onBigTrade() { return isMacroSym(sym()) || isLand() || replay ? undefined : () => bt.open() },
     bigTradeText: () => bt.summaryText(),
   }
-  // 图上大单签 + 「大单与爆仓」弹层（开关 Prefs.bigTradeSigns；点签开整页，横屏只画签）
+  // 图上大单与爆仓气泡 + 「大单与爆仓」弹层（开关 Prefs.bigTradeSigns；点泡开整页，横屏只画气泡）
   const btForce = devForce()
   const bt = new BigTradeController({
     chart, symbol: sym, port: () => port,

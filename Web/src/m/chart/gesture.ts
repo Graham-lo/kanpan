@@ -815,7 +815,7 @@ export class ChartGestures {
     g.lastPlotTap = { ms: now, x: p.x, y: p.y }
     // 提醒线（画线删了 / 藏了还在生效的提醒）：十字线没开时点中它就开提醒，不出十字线
     if (this.state?.overlay.crosshair == null && this.v.signalTap?.(p.x, p.y)) return
-    // 图上大单签（44 × 44 命中区）：十字线没开时点中就交给宿主开「大单与爆仓」
+    // 图上气泡（44 × 44 命中区，小圆点不算）：十字线没开时点中就交给宿主开「大单与爆仓」
     if (this.state?.overlay.crosshair == null && this.v.bigTradeTap?.(p.x, p.y)) return
     const r = this.v.renderer
     if (r && OF.orderFlowHit && OF.candleHit && !OF.candleHit(r, p.x, p.y, this.v.width, this.v.height)) {

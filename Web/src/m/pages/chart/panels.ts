@@ -289,7 +289,7 @@ function indicatorSectionsHTML(): string {
 function orderFlowSectionHTML(ctx: PanelContext): string {
   const base = baseOfSymbol(ctx.symbol()).base
   const of: string[] = [`<div class="cp-row"><span class="cp-rn">${dot(swatchVar('ORDERFLOW'))}显示</span>${sw(st.orderFlow, 'of', '显示主力订单流')}</div>`]
-  // 图上大单签（出厂开、跟人走，和上面「显示」互不牵连）+ 「大单与爆仓」弹层入口（照 iOS 10-08）
+  // 图上大单与爆仓气泡（出厂开、跟人走，和上面「显示」互不牵连）+ 「大单与爆仓」弹层入口（照 iOS 10-08）
   of.push(`<div class="cp-row"><span class="cp-rn">${BT.chartMarks}</span>${sw(st.bigTradeSigns, 'bt-signs', BT.chartMarks)}</div>`)
   if (ctx.onBigTrade) {
     const t = ctx.bigTradeText?.() ?? ''

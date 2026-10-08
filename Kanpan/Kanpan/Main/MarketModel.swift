@@ -493,6 +493,7 @@ final class MarketModel {
       // 品种表在换线路 / 换域名时已经整份换过（`routePolicyDidChange`），
       // 这里只按新的那份把品种事实再对一遍。
       Task { await self.refreshInfo() }
+      syncLiquidations()
     case .historyError(let error):
       historyError = error
       holdsFrame = false
@@ -1106,6 +1107,8 @@ final class MarketModel {
       info = seed
       seedStats()
       beginHeaderWait(.all)
+      // 新品种的事实到之前不拉爆仓（`liquidationBase` 认的是事实所属的那只）；到了由 `refreshInfo` 再开。
+      syncLiquidations()
     }
     if cold {
       refreshFunding()
@@ -1207,23 +1210,35 @@ final class MarketModel {
     // 簿和每条大单从哪根 K 线开始挂的都还在；停掉重订就是一本新簿，要重新确认，还挂着的单只能靠日志接回来。
     orderFlow.apply(visible: foreground, to: feed)
     if let lastView { orderFlow.noteView(lastView, symbol: symbol, feed: feed) }
+    syncLiquidations()
   }
 
-  /// 主力订单流开关（`Prefs.orderFlow` 挂单墙、`Prefs.bigTradeSigns` 图上大单签，任一开着就订）。
+  /// 爆仓分钟账开 / 停（`OrderFlowLink.liquidations`，图上气泡与弹层共读）：在前台、有订单流、不是现货，
+  /// 并且图上气泡开着且图看得见、或弹层开着，才每 30 秒拉；换品种在新品种事实到之前先停。重复调用无害。
+  func syncLiquidations() {
+    let want = foreground && capabilities.hasOrderFlow
+      && ((orderFlow.signs && chartVisible) || orderFlow.sheetOpen)
+    let base = want ? orderFlow.liquidationBase(symbol: symbol) : nil
+    orderFlow.liquidations.run(base: base) { [weak self] base, from, to in
+      await self?.liquidations(base: base, fromMs: from, toMs: to)
+    }
+  }
+
+  /// 主力订单流开关（`Prefs.orderFlow` 挂单墙、`Prefs.bigTradeSigns` 图上大单与爆仓气泡，任一开着就订）。
   func setOrderFlow(walls: Bool, signs: Bool) {
     guard walls != orderFlow.walls || signs != orderFlow.signs else { return }
     let was = orderFlow.wanted
     orderFlow.setWanted(walls: walls, signs: signs)
-    if was != orderFlow.wanted { updateMicrostructure() }
+    if was != orderFlow.wanted { updateMicrostructure() } else { syncLiquidations() }
   }
   /// 「大单与爆仓」弹层开 / 关：开着时两个开关都关着也照订逐笔成交。
   func setBigTradeSheet(open: Bool) {
     guard open != orderFlow.sheetOpen else { return }
     let was = orderFlow.wanted
     orderFlow.setSheetOpen(open)
-    if was != orderFlow.wanted { updateMicrostructure() }
+    if was != orderFlow.wanted { updateMicrostructure() } else { syncLiquidations() }
   }
-  /// 爆仓分钟账（kanpan-api /liq），弹层每 30 秒问一次；现货调用方不问。
+  /// 爆仓分钟账（kanpan-api /liq），`LiquidationFeed` 每 30 秒问一次；现货不问。
   func liquidations(base: String, fromMs: Int64, toMs: Int64) async -> LiquidationPage? {
     await feed.liquidations(base: base, fromMs: fromMs, toMs: toMs)
   }
@@ -1695,9 +1710,9 @@ final class MarketModel {
     // 主力订单流只认品种表里的这一份（切品种时顶上的占位信息资产类型、步长都是猜的，
     // 拿它起的簿不会因为真信息到了再重起一遍）。开着指标时顺手再催一次行情流：
     // 首帧先到、品种信息后到的那一拍，行情流因为查不到品种事实没起来。
-    let fresh = orderFlow.noteInfo(found)
+    let fresh = orderFlow.noteInfo(found, symbol: want)
     if orderFlow.wanted { Self.log("主力订单流 品种信息 \(want)：到了｜新 \(fresh)｜前台 \(foreground)") }
-    if fresh, orderFlow.wanted { updateMicrostructure() }
+    if fresh, orderFlow.wanted { updateMicrostructure() } else { syncLiquidations() }
   }
 }
 

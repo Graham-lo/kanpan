@@ -1,14 +1,15 @@
-/* Hkline Web · 主力订单流 2026-10-08：图上「大单签」、底部抽屉四块摘要、爆仓数据、四个开关互不牵连
- * 签：相对档位（最近 300 根的 P85 / P95 / max(P99, 3×P95)，垫绝对下限，数据不变不重算）、一根一枚、另一侧过 P95 才描边、
- *     夹在主图里（让开成交量）、本侧放不下翻到另一侧、两侧都撞退成三角、三角也放不下不画；数据：分钟桶并根、服务端历史接缝；
+/* Hkline Web · 主力订单流 2026-10-08：图上大单与爆仓气泡、底部抽屉四块摘要、爆仓数据、四个开关互不牵连
+ * 气泡（规格 docs/design/大单爆仓气泡-三端规格-2026-10-08.md）：两级金额线（最近 300 根 max(U, D) 的 P90 / P97，垫绝对下限，数据不变不重算）、
+ *     U = 大买 + 空爆 / D = 大卖 + 多爆、一屏最多 6 枚泡、同侧错层、出窗格退成点、根宽不到 4 只画点、躲图例与画线文字；
+ *     数据：分钟桶并根、服务端历史接缝、爆仓分钟行按根并；
  * 抽屉：北京时间零点、三窗口、现货 / 合约与三家占比、价位（浏览器真实价 + 服务端行 × 1 分钟典型价）、最近的墙、
  *     开方比例尺、占比条至少两段、十字线所在根；爆仓：解析、合计、30 秒轮询与失败重试、只留 16 只。 */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flowOf, recordTrade, beat, resetFlows } from '../src/chart/tradeFlow'
 import type { TradeEvent } from '../src/orderflow/feed'
-import { barBig, BigBarCache, TierCache, planTags, tierOf, tiersFrom, quantile, unitFor, ivName, TIER_BARS, type PlanEnv, type TagIn, type BarBig, type Tiers } from '../src/orderflow/bigTags'
+import { barBig, BigBarCache, LevelCache, planBubbles, levelOf, levelsFrom, udOf, quantile, unitFor, ivName, dotRadius, bubbleText, stemEnd, TIER_BARS, BUBBLE, type BubbleEnv, type BubbleIn, type Levels, type LiqBars, type Rect } from '../src/orderflow/bigTags'
 import { dayStart8, dayStartUtc, windows, liveShares, priceLevels, nearestWalls, HOUR, PX_MINUTES } from '../src/orderflow/summary'
-import { parseLiq, sumLiq, LiqStore, LIQ_POLL_MS, LIQ_MAX_SYMBOLS, LIQ_KEEP_MS, type LiqRow } from '../src/orderflow/liquidation'
+import { parseLiq, sumLiq, LiqStore, LiqBarCache, noLiq, LIQ_POLL_MS, LIQ_MAX_SYMBOLS, LIQ_KEEP_MS, type LiqRow } from '../src/orderflow/liquidation'
 import type { BigOrder } from '../src/orderflow/types'
 
 afterEach(() => { resetFlows(); vi.restoreAllMocks(); vi.resetModules() })
@@ -25,16 +26,16 @@ function trade(sym: string, t: number, usd: number, buy: boolean, o: { ex?: stri
 /** 从 a 到 b 每半秒一拍心跳（覆盖区间） */
 function cover(sym: string, a: number, b: number): void { for (let t = a; t <= b; t += 500) beat(sym, t, true) }
 
-describe('档位', () => {
-  it('三档的线：不到 t1 不画、t1 三角、t2 金额签、t3 大签；没有档位一律不画', () => {
-    const k: Tiers = { t1: 100_000, t2: 300_000, t3: 1_000_000 }
-    expect(tierOf(99_999, k)).toBe(0)
-    expect(tierOf(100_000, k)).toBe(1)
-    expect(tierOf(299_999, k)).toBe(1)
-    expect(tierOf(300_000, k)).toBe(2)
-    expect(tierOf(1_000_000, k)).toBe(3)
-    expect(tierOf(5, null)).toBe(0)
-    expect(tierOf(0, k)).toBe(0)
+describe('两级金额线', () => {
+  it('点线 / 泡线：不到点线不画、过点线画点、过泡线画泡；没有金额线一律不画', () => {
+    const k: Levels = { dot: 100_000, bubble: 300_000 }
+    expect(levelOf(99_999, k)).toBe(0)
+    expect(levelOf(100_000, k)).toBe(1)
+    expect(levelOf(299_999, k)).toBe(1)
+    expect(levelOf(300_000, k)).toBe(2)
+    expect(levelOf(5e9, k)).toBe(2)
+    expect(levelOf(5, null)).toBe(0)
+    expect(levelOf(0, k)).toBe(0)
   })
   it('分位数线性插值（同 numpy 默认）', () => {
     expect(quantile([1, 2, 3, 4, 5], 0.5)).toBe(3)
@@ -42,39 +43,43 @@ describe('档位', () => {
     expect(quantile([7], 0.99)).toBe(7)
     expect(quantile([], 0.5)).toBe(0)
   })
-  it('相对档位：P85 / P95 / max(P99, 3×P95)，只看非零的根；绝对下限垫底', () => {
-    const vals = Array.from({ length: 100 }, (_, i) => (i + 1) * 1000).concat([0, 0, 0])   // 1K..100K + 三根没大单
-    const k = tiersFrom(vals, 0)!
-    expect(k.t1).toBeCloseTo(85_150); expect(k.t2).toBeCloseTo(95_050)
-    expect(k.t3).toBeCloseTo(3 * 95_050)   // 3 × P95 比 P99 大
-    // 一屏 100 根里够得上三角的约 15 根
-    expect(vals.filter(v => v >= k.t1).length).toBe(15)
-    const floored = tiersFrom(vals, 200_000)!
-    expect(floored).toEqual({ t1: 200_000, t2: 200_000, t3: 3 * 95_050 })
-    expect(tiersFrom([0, 0], 1)).toBeNull()
+  it('P90 / P97，只看非零的根；绝对下限垫底（两级同一个下限），泡线不低于点线', () => {
+    const vals = Array.from({ length: 100 }, (_, i) => (i + 1) * 1000).concat([0, 0, 0])   // 1K..100K + 三根没数
+    const k = levelsFrom(vals, 0)!
+    expect(k.dot).toBeCloseTo(90_100); expect(k.bubble).toBeCloseTo(97_030)
+    // 一屏 100 根里过点线的 10 根、过泡线的 3 根
+    expect(vals.filter(v => v >= k.dot).length).toBe(10)
+    expect(vals.filter(v => v >= k.bubble).length).toBe(3)
+    expect(levelsFrom(vals, 200_000)).toEqual({ dot: 200_000, bubble: 200_000 })
+    const mid = levelsFrom(vals, 95_000)!
+    expect(mid.dot).toBe(95_000); expect(mid.bubble).toBeCloseTo(97_030)
+    expect(levelsFrom([0, 0], 1)).toBeNull()
   })
-  it('档位缓存：取最近 300 根；数据版本（缓存代数 / 最后一根）不变就不重算', () => {
-    const s = 'SOLUSDT', f = flowOf(s), c = new BigBarCache(), tc = new TierCache()
+  it('缓存：取最近 300 根；数据版本（缓存代数 / 最后一根 / 下限 / 爆仓版本）不变就不重算', () => {
+    const s = 'SOLUSDT', f = flowOf(s), c = new BigBarCache(), lc = new LevelCache()
     const N = 400, now = T0 + N * 60_000
     cover(s, T0, now)
     for (let k = 0; k < N; k++) trade(s, T0 + k * 60_000 + 5, 100_000 + (k < N - TIER_BARS ? 9e7 : k * 1000), true)
     const bars = Array.from({ length: N }, (_, k) => ({ t: T0 + k * 60_000 }))
     const ch = { bars, timeAt: (i: number) => T0 + i * 60_000 }
     c.begin(f, 'SOLUSDT|60000', now)
-    const k1 = tc.get(c, f, ch, now, 0)!
-    expect(tc.computed).toBe(1)
+    const k1 = lc.get(c, f, ch, now, 0)!
+    expect(lc.computed).toBe(1)
     // 最早那 100 根（9 千万）不在最近 300 根里，不进分布
-    expect(k1.t3).toBeLessThan(9e7)
-    expect(tc.get(c, f, ch, now, 0)).toBe(k1)
-    expect(tc.computed).toBe(1)
+    expect(k1.bubble).toBeLessThan(9e7)
+    expect(lc.get(c, f, ch, now, 0)).toBe(k1)
+    expect(lc.computed).toBe(1)
     f.srv.ver++; c.begin(f, 'SOLUSDT|60000', now)
-    tc.get(c, f, ch, now, 0)
-    expect(tc.computed).toBe(2)
-    tc.get(c, f, ch, now, 500_000)   // 下限变了也重算
-    expect(tc.computed).toBe(3)
+    lc.get(c, f, ch, now, 0)
+    expect(lc.computed).toBe(2)
+    lc.get(c, f, ch, now, 500_000)   // 下限变了也重算
+    expect(lc.computed).toBe(3)
+    const liq: LiqBars = { key: 'a', at: () => null }
+    lc.get(c, f, ch, now, 500_000, liq); expect(lc.computed).toBe(4)   // 爆仓版本变了重算
+    lc.get(c, f, ch, now, 500_000, liq); expect(lc.computed).toBe(4)
   })
-  it('档位的分布按买卖里大的那一侧算（和过线比的同一口径）：买卖两边相近的粗周期也有签', () => {
-    const s = 'SOLUSDT', f = flowOf(s), c = new BigBarCache(), tc = new TierCache()
+  it('分布按每根 max(U, D) 算（和过线比的同一口径）：买卖两边相近的粗周期也有泡', () => {
+    const s = 'SOLUSDT', f = flowOf(s), c = new BigBarCache(), lc = new LevelCache()
     const IV = 3_600_000, N = 20, now = T0 + N * IV
     cover(s, T0, now)
     // 20 根 1 小时：每根买 (k+1)×100 万、卖同样多（两边相近）
@@ -82,11 +87,28 @@ describe('档位', () => {
     const bars = Array.from({ length: N }, (_, k) => ({ t: T0 + k * IV }))
     const ch = { bars, timeAt: (i: number) => T0 + i * IV }
     c.begin(f, `SOLUSDT|${IV}`, now)
-    const k = tc.get(c, f, ch, now, 0)!
-    // 线落在单边的分布上（P85 ≈ 1716 万），最大的三根过线；按合计定线（P85 ≈ 3433 万）单边一根都过不了
-    expect(k.t1).toBeLessThan(20_000_000)
-    const over = bars.filter((b, i) => { const d = c.get(f, b.t, ch.timeAt(i + 1), now)!; return Math.max(d.bb, d.bs) >= k.t1 })
-    expect(over.length).toBe(3)
+    const k = lc.get(c, f, ch, now, 0)!
+    // 线落在单边的分布上（P90 = 1810 万），最大的两根过线；按合计定线单边一根都过不了
+    expect(k.dot).toBeCloseTo(18_100_000)
+    const over = bars.filter((b, i) => { const d = c.get(f, b.t, ch.timeAt(i + 1), now)!; return Math.max(d.bb, d.bs) >= k.dot })
+    expect(over.length).toBe(2)
+  })
+  it('爆仓也进分布：只有爆仓的根照样算一根（U / D 合并后的 max）', () => {
+    const s = 'ETHUSDT', f = flowOf(s), c = new BigBarCache(), lc = new LevelCache()
+    const N = 10, now = T0 + N * 60_000
+    cover(s, T0, now)
+    trade(s, T0 + 5, 100_000, true)   // 只有第 0 根有大单
+    const bars = Array.from({ length: N }, (_, k) => ({ t: T0 + k * 60_000 }))
+    const ch = { bars, timeAt: (i: number) => T0 + i * 60_000 }
+    c.begin(f, 'ETHUSDT|60000', now)
+    const without = lc.get(c, f, ch, now, 0)!
+    expect(without).toEqual({ dot: 100_000, bubble: 100_000 })
+    // 每根都有 5 万空爆（向上），第 9 根 9 百万多爆（向下）
+    const liq: LiqBars = { key: 'x', at: t0 => ({ long: t0 === T0 + 9 * 60_000 ? 9e6 : 0, short: 50_000 }) }
+    const withLiq = lc.get(c, f, ch, now, 0, liq)!
+    // 样本：第 0 根 15 万、1..8 根 5 万、第 9 根 900 万
+    expect(withLiq.bubble).toBeGreaterThan(150_000)
+    expect(withLiq.dot).toBeCloseTo(quantile([50_000, 50_000, 50_000, 50_000, 50_000, 50_000, 50_000, 50_000, 150_000, 9e6], 0.9))
   })
   it('单位：这只的大单线 × 10（= 门槛 ÷ 5），不知道就用活动那只的', () => {
     const f = flowOf('SOLUSDT')
@@ -104,67 +126,167 @@ describe('档位', () => {
   })
 })
 
-describe('摆放', () => {
-  const big = (bb: number, bs: number): BarBig => ({ t: 0, t1: 1, bb, bs, bn: null, sn: null, bmax: null, smax: null, spot: null, ex: null, exact: false })
-  const env = (o: Partial<PlanEnv> = {}): PlanEnv => ({
-    tiers: { t1: 100_000, t2: 300_000, t3: 1_000_000 }, spacing: 8, top: 0, bottom: 400, plotW: 800,
-    span: () => ({ hiY: 100, loY: 200 }),
-    measure: t => t.length * 6, text: u => `${Math.round(u / 1000)}K`, avoid: [], ...o,
+describe('U / D 与爆仓并根', () => {
+  it('U = 大买 + 空爆，D = 大卖 + 多爆；缺哪样算 0', () => {
+    expect(udOf({ bb: 100, bs: 20 }, { long: 7, short: 3 })).toEqual({ up: 103, down: 27 })
+    expect(udOf({ bb: 100, bs: 20 }, null)).toEqual({ up: 100, down: 20 })
+    expect(udOf(null, { long: 7, short: 3 })).toEqual({ up: 3, down: 7 })
+    expect(udOf(null, null)).toEqual({ up: 0, down: 0 })
   })
-  it('一根一枚：买卖里大的那一侧（买挂最高价上方、卖挂最低价下方）；另一侧没过 P95 不画', () => {
-    const tags = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 150_000) }], env())
-    expect(tags).toHaveLength(1)
-    expect(tags[0]).toMatchObject({ side: 'buy', kind: 'tag', filled: true })
-    expect(tags[0].y + tags[0].h).toBeLessThanOrEqual(100)
-    const sell = planTags([{ i: 0, t: 0, x: 100, data: big(120_000, 2_000_000) }], env())
-    expect(sell).toHaveLength(1)
-    expect(sell[0]).toMatchObject({ side: 'sell', kind: 'big', filled: true })
-    expect(sell[0].y).toBeGreaterThanOrEqual(200)
+  it('分钟行按本图 K 线并成根（多爆 / 空爆），整分钟落在 [t0, t1) 的都算；一行都没有给 null', () => {
+    const rows = new Map<number, LiqRow>([
+      [T0, [T0, 100, 0, 1, 100, 1, 0, 0]],
+      [T0 + 60_000, [T0 + 60_000, 0, 500, 2, 400, 2, 1, 1]],
+      [T0 + 300_000, [T0 + 300_000, 50, 60, 2, 30, 3, 0, 0]],
+    ])
+    const lc = new LiqBarCache()
+    const lb = lc.of({ rows, tracked: true, ver: 1 }, 'SOL', 300_000)!
+    expect(lb.at(T0, T0 + 300_000)).toEqual({ long: 100, short: 500 })
+    expect(lb.at(T0 + 300_000, T0 + 600_000)).toEqual({ long: 50, short: 60 })
+    expect(lb.at(T0 + 600_000, T0 + 900_000)).toBeNull()
+    expect(lb.at(T0 - 300_000, T0)).toBeNull()
+    // 算过的根不再算；数据版本不变复用同一份
+    const n = lc.computed
+    lb.at(T0, T0 + 300_000); expect(lc.computed).toBe(n)
+    expect(lc.of({ rows, tracked: true, ver: 1 }, 'SOL', 300_000)).toBe(lb)
+    const lb2 = lc.of({ rows, tracked: true, ver: 2 }, 'SOL', 300_000)!
+    expect(lb2).not.toBe(lb); expect(lb2.key).not.toBe(lb.key)
   })
-  it('另一侧自己也过 P95：另画一枚描边签', () => {
-    const tags = planTags([{ i: 0, t: 0, x: 100, data: big(1_500_000, 400_000) }], env())
-    expect(tags).toHaveLength(2)
-    const buy = tags.find(t => t.side === 'buy')!, sell = tags.find(t => t.side === 'sell')!
-    expect(buy).toMatchObject({ kind: 'big', filled: true })
-    expect(sell).toMatchObject({ kind: 'tag', filled: false })
+  it('秒级周期、还没拉到、没有行：不并（null）', () => {
+    const rows = new Map<number, LiqRow>([[T0, [T0, 1, 1, 1, 1, 1, 0, 0]]])
+    const lc = new LiqBarCache()
+    expect(lc.of({ rows, tracked: true, ver: 1 }, 'SOL', 15_000)).toBeNull()
+    expect(lc.of(null, 'SOL', 60_000)).toBeNull()
+    expect(lc.of({ rows: new Map(), tracked: false, ver: 1 }, 'SOL', 60_000)).toBeNull()
   })
-  it('一根太窄就退回三角；签与签不叠', () => {
-    const narrow = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ spacing: 2 }))
-    expect(narrow[0].kind).toBe('tri')
-    const list: TagIn[] = [0, 1, 2].map(i => ({ i, t: i, x: 100 + i * 8, data: big(400_000 + i, 0) }))
-    const tags = planTags(list, env())
-    for (let a = 0; a < tags.length; a++) for (let b = a + 1; b < tags.length; b++) {
-      const p = tags[a], q = tags[b]
-      if (p.kind === 'tri' && q.kind === 'tri') continue
-      expect(p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h).toBe(false)
+  it('没有爆仓项的品种：Coinbase 现货（X-USD）与 DXY', () => {
+    expect(noLiq('BTC-USD')).toBe(true)
+    expect(noLiq('DXY')).toBe(true)
+    expect(noLiq('BTCUSDT')).toBe(false)
+    expect(noLiq('BTCUSD_PERP')).toBe(false)
+  })
+})
+
+describe('气泡摆放', () => {
+  const K: Levels = { dot: 100_000, bubble: 300_000 }
+  const env = (o: Partial<BubbleEnv> = {}): BubbleEnv => ({
+    levels: K, bw: 8, top: 0, bottom: 400, plotW: 800, avoid: [],
+    measure: t => t.length * 6, text: u => `${Math.round(u / 1000)}K`, ...o,
+  })
+  const bar = (o: { i?: number; x?: number; hi?: number; lo?: number; up: number; down: number }): BubbleIn => {
+    const i = o.i ?? 0
+    return { i, t: i * 60_000, x: o.x ?? 100, yHigh: o.hi ?? 100, yLow: o.lo ?? 200, up: o.up, down: o.down }
+  }
+  const circleRect = (x: number, y: number, r: number, a: Rect): boolean => {
+    const cx = Math.max(a.x, Math.min(x, a.x + a.w)), cy = Math.max(a.y, Math.min(y, a.y + a.h))
+    return Math.hypot(x - cx, y - cy) < r
+  }
+
+  it('一根上下各至多一枚：U 挂最高价之上（泡：柄 4）、D 挂最低价之下（点：柄 2、半径 clamp(bw×0.4, 1.5, 2.8)）', () => {
+    const out = planBubbles([bar({ up: 500_000, down: 150_000 })], env())
+    expect(out).toHaveLength(2)
+    const [u, d] = out
+    expect(u).toMatchObject({ side: 'up', bubble: true, text: '500K', anchor: 100, x: 100, usd: 500_000 })
+    // r = max(11 + 6 × min(1, (500K − 300K) / 600K), 字宽 24 / 2 + 4) = 16
+    expect(u.r).toBe(16); expect(u.cy).toBe(100 - 4 - 16)
+    expect(stemEnd(u)).toBe(96)
+    expect(d).toMatchObject({ side: 'down', bubble: false, text: '', anchor: 200 })
+    expect(d.r).toBeCloseTo(2.8); expect(d.cy).toBeCloseTo(200 + 2 + 2.8)
+    expect(dotRadius(2)).toBe(1.5); expect(dotRadius(5)).toBe(2); expect(dotRadius(20)).toBe(2.8)
+  })
+  it('泡的半径随金额长到 17 封顶；字宽撑大优先', () => {
+    const big = planBubbles([bar({ up: 5e6, down: 0 })], env({ measure: () => 4 }))[0]
+    expect(big.r).toBe(BUBBLE.r0 + BUBBLE.rGrow)
+    const at = planBubbles([bar({ up: 300_000, down: 0 })], env({ measure: () => 4 }))[0]
+    expect(at.r).toBe(BUBBLE.r0)
+    const wide = planBubbles([bar({ up: 300_000, down: 0 })], env({ measure: () => 40 }))[0]
+    expect(wide.r).toBe(24)
+  })
+  it('泡里的字去掉末尾 M（1.2M → 1.2），K / B 留着', () => {
+    expect(bubbleText('1.2M')).toBe('1.2'); expect(bubbleText('860K')).toBe('860K'); expect(bubbleText('1.1B')).toBe('1.1B')
+    const [b] = planBubbles([bar({ up: 1.2e6, down: 0 })], env({ text: () => '1.2M' }))
+    expect(b.text).toBe('1.2')
+  })
+  it('不到点线不画；没有金额线不画；输出按根序、同根上侧在前', () => {
+    expect(planBubbles([bar({ up: 99_000, down: 90_000 })], env())).toEqual([])
+    expect(planBubbles([bar({ up: 5e6, down: 5e6 })], env({ levels: null }))).toEqual([])
+    const out = planBubbles([bar({ i: 3, x: 300, up: 0, down: 2e6 }), bar({ i: 1, x: 100, up: 2e5, down: 4e5 })], env())
+    expect(out.map(b => `${b.i}${b.side}`)).toEqual(['1up', '1down', '3down'])
+  })
+  it('一屏带字的泡最多 6 枚：金额大的先占位，其余退成点', () => {
+    const list = Array.from({ length: 10 }, (_, i) => bar({ i, x: 40 + i * 70, up: 1e6 + i * 1000, down: 0 }))
+    const out = planBubbles(list, env())
+    expect(out).toHaveLength(10)
+    expect(out.filter(b => b.bubble).map(b => b.i)).toEqual([4, 5, 6, 7, 8, 9])
+    expect(out.filter(b => !b.bubble).every(b => b.text === '' && b.r === dotRadius(8))).toBe(true)
+  })
+  it('根宽不到 4：全部只画点', () => {
+    const out = planBubbles([bar({ up: 5e6, down: 5e6 })], env({ bw: 3.9 }))
+    expect(out).toHaveLength(2)
+    expect(out.every(b => !b.bubble)).toBe(true)
+    expect(out[0].r).toBe(1.56)
+  })
+  it('同侧错层：挨着的两根往外推一层（大的先占贴近的位置），两枚不相交', () => {
+    const out = planBubbles([bar({ i: 0, x: 100, up: 1e6, down: 0 }), bar({ i: 1, x: 108, up: 2e6, down: 0 })], env())
+    const a = out.find(b => b.i === 1)!, b = out.find(b => b.i === 0)!
+    expect(a.cy).toBe(100 - 4 - a.r)                // 大的贴着最高价
+    expect(b.cy).toBe(a.cy - a.r - b.r - 2)          // 小的往上推一层
+    expect(Math.hypot(a.x - b.x, a.cy - b.cy)).toBeGreaterThanOrEqual(a.r + b.r + 2 - 1e-9)
+    // 下侧同理往下推
+    const dn = planBubbles([bar({ i: 0, x: 100, up: 0, down: 1e6 }), bar({ i: 1, x: 108, up: 0, down: 2e6 })], env())
+    expect(dn[0].cy).toBe(dn[1].cy + dn[1].r + dn[0].r + 2)
+    // 上下两侧互不推
+    const both = planBubbles([bar({ i: 0, x: 100, up: 1e6, down: 1e6 })], env())
+    expect(both[0].cy).toBe(100 - 4 - both[0].r); expect(both[1].cy).toBe(200 + 4 + both[1].r)
+  })
+  it('推出窗格就退成点（不占 6 枚配额）；点也出窗格就不画', () => {
+    // 最大那根的最高价贴着顶：泡放不下 → 点；其余 6 根照样都是泡
+    const list = [bar({ i: 0, x: 40, hi: 20, up: 9e6, down: 0 }), ...Array.from({ length: 6 }, (_, k) => bar({ i: k + 1, x: 120 + k * 80, up: 1e6, down: 0 }))]
+    const out = planBubbles(list, env())
+    const top = out.find(b => b.i === 0)!
+    expect(top).toMatchObject({ bubble: false, text: '' })
+    expect(top.cy).toBeCloseTo(20 - 2 - 2.8)
+    expect(out.filter(b => b.bubble)).toHaveLength(6)
+    // 下沿同理（bottom 让开成交量那一截）
+    const low = planBubbles([bar({ lo: 380, up: 0, down: 2e6 })], env())[0]
+    expect(low).toMatchObject({ bubble: false }); expect(low.cy + low.r).toBeLessThanOrEqual(400)
+    // 最高价已经在窗格顶上：点也放不下
+    expect(planBubbles([bar({ hi: 2, up: 2e6, down: 0 })], env())).toEqual([])
+  })
+  it('横向：根中心在价格轴外的不画；泡右沿出界退成点', () => {
+    expect(planBubbles([bar({ x: -10, up: 2e6, down: 0 }), bar({ i: 1, x: 812, up: 2e6, down: 0 })], env())).toEqual([])
+    const [edge] = planBubbles([bar({ x: 796, up: 2e6, down: 0 })], env())
+    expect(edge.bubble).toBe(false)
+  })
+  it('躲图例 / 画线文字：泡被推到字外面；推不开退成点；点压字不画', () => {
+    const [p] = planBubbles([bar({ up: 2e6, down: 0 })], env({ avoid: [{ x: 0, y: 70, w: 300, h: 20 }] }))
+    expect(p.bubble).toBe(true)
+    expect(p.cy + p.r).toBeLessThanOrEqual(70)
+    // 字一直铺到顶：推不开 → 点（点在字下面 96 附近，不压字）
+    const [q] = planBubbles([bar({ up: 2e6, down: 0 })], env({ avoid: [{ x: 0, y: 0, w: 300, h: 92 }] }))
+    expect(q.bubble).toBe(false)
+    expect(planBubbles([bar({ up: 2e6, down: 0 })], env({ avoid: [{ x: 0, y: 0, w: 300, h: 99 }] }))).toEqual([])
+  })
+  it('随机 200 屏：泡不压字、不出窗格、每屏至多 6 枚；点不压字', () => {
+    let seed = 42
+    const rnd = (lo: number, hi: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return lo + (hi - lo) * (seed / 0x7fffffff) }
+    let total = 0, nb = 0
+    for (let k = 0; k < 200; k++) {
+      const avoid: Rect[] = Array.from({ length: 4 }, () => ({ x: rnd(0, 700), y: rnd(24, 380), w: rnd(20, 120), h: rnd(12, 20) }))
+      const list = Array.from({ length: 80 }, (_, i) => { const hi = rnd(30, 300); return bar({ i, x: 4 + i * 9.5, hi, lo: hi + rnd(2, 80), up: rnd(0, 3e6), down: rnd(0, 3e6) }) })
+      const out = planBubbles(list, env({ bw: 9.5, avoid, top: 24 }))
+      total += out.length
+      const bubbles = out.filter(b => b.bubble)
+      nb += bubbles.length
+      expect(bubbles.length).toBeLessThanOrEqual(BUBBLE.cap)
+      for (const b of out) {
+        for (const a of avoid) expect(circleRect(b.x, b.cy, b.r, a)).toBe(false)
+        expect(b.cy - b.r).toBeGreaterThanOrEqual(24 - 1e-9); expect(b.cy + b.r).toBeLessThanOrEqual(400 + 1e-9)
+        if (b.bubble) { expect(b.cy - b.r).toBeGreaterThanOrEqual(24 + BUBBLE.edge - 1e-9); expect(b.x - b.r).toBeGreaterThanOrEqual(0); expect(b.x + b.r).toBeLessThanOrEqual(800) }
+      }
     }
-  })
-  it('本侧撞上图例 / 画线文字：先翻到 K 线另一侧，颜色与朝向不变', () => {
-    const t = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ avoid: [{ x: 0, y: 70, w: 300, h: 30 }] }))
-    expect(t).toHaveLength(1); expect(t[0]).toMatchObject({ side: 'buy', kind: 'tag' }); expect(t[0].y).toBe(204)
-  })
-  it('两侧都撞：退成三角（先本侧），不往外挪；三角两侧也撞就不画', () => {
-    // 上方盖住签（80–96）但露出三角（90–96）；下方盖住签（204–220）与三角（204–210）
-    const avoid = [{ x: 0, y: 70, w: 300, h: 19 }, { x: 0, y: 200, w: 300, h: 30 }]
-    const t = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ avoid }))
-    expect(t).toHaveLength(1); expect(t[0].kind).toBe('tri'); expect(t[0].y + t[0].h).toBe(96)
-    const none = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ avoid: [{ x: 0, y: 70, w: 300, h: 30 }, avoid[1]] }))
-    expect(none).toHaveLength(0)
-  })
-  it('夹在主图里：顶上没地方的买签翻到最低价下方；卖签掉进成交量那一截（bottom 以下）翻到最高价上方', () => {
-    const top = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ span: () => ({ hiY: 3, loY: 200 }) }))
-    expect(top).toHaveLength(1); expect(top[0]).toMatchObject({ side: 'buy', kind: 'tag' }); expect(top[0].y).toBe(204)
-    const low = planTags([{ i: 0, t: 0, x: 100, data: big(0, 500_000) }], env({ span: () => ({ hiY: 100, loY: 330 }), bottom: 336 }))
-    expect(low).toHaveLength(1); expect(low[0]).toMatchObject({ side: 'sell', kind: 'tag' }); expect(low[0].y + low[0].h).toBe(96)
-    // 两侧签都放不下、三角本侧放得下：退成本侧三角
-    const tri = planTags([{ i: 0, t: 0, x: 100, data: big(0, 500_000) }], env({ span: () => ({ hiY: 12, loY: 320 }), bottom: 336 }))
-    expect(tri).toHaveLength(1); expect(tri[0].kind).toBe('tri'); expect(tri[0].y).toBe(324); expect(tri[0].y + tri[0].h).toBeLessThanOrEqual(336)
-    // 窗格矮到两侧连三角都放不下：不画
-    expect(planTags([{ i: 0, t: 0, x: 100, data: big(0, 500_000) }], env({ span: () => ({ hiY: 5, loY: 330 }), bottom: 336 }))).toHaveLength(0)
-  })
-  it('不越过价格轴：右沿出界的签退成三角', () => {
-    const t = planTags([{ i: 0, t: 0, x: 796, data: big(500_000, 0) }], env())
-    expect(t).toHaveLength(1); expect(t[0].kind).toBe('tri'); expect(t[0].x + t[0].w).toBeLessThanOrEqual(800)
+    expect(total).toBeGreaterThan(1000)
+    expect(nb).toBeGreaterThan(600)
   })
 })
 
@@ -199,7 +321,7 @@ describe('一根的大单合计', () => {
     // 纯浏览器那一根照样精确
     const live = barBig(f, T0 + 3 * 60_000, T0 + 4 * 60_000, T0 + 5 * 60_000)!
     expect(live.exact).toBe(true); expect(live.sn).toBe(1)
-    // 服务端在跟、历史里这分钟没大单 → 这根没有签
+    // 服务端在跟、历史里这分钟没大单 → 这根没有大单
     expect(barBig(f, T0 + 60_000, T0 + 2 * 60_000, T0 + 5 * 60_000)).toBeNull()
   })
   it('缓存：算过的根拖动缩放时不再算；服务端来新行整份作废；有新大单只放掉最近 3 分钟的根', () => {

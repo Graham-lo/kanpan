@@ -91,7 +91,7 @@ export interface Prefs {
   watchMoveAlert: boolean
   /** 自选行上那条 24 小时迷你走势（2026-10-08，出厂开；跟人走） */
   favoritesTrend: boolean
-  /** 图上大单签（2026-10-08，出厂开；跟人走，和挂单墙开关互不牵连） */
+  /** 图上大单与爆仓气泡（2026-10-08，出厂开；跟人走，和挂单墙开关互不牵连） */
   bigTradeSigns: boolean
   notifyListingChanges: boolean
   habitLearning: boolean

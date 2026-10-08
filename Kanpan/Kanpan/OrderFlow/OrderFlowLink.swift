@@ -47,12 +47,12 @@ final class OrderFlowLink {
   /// 行情流推来的最近一帧（只会是当前品种的），去掉了大单成交账（`trades` 另存）：成交账每秒一换，
   /// 跟着它整份换的话挂单墙那层也得每秒重画。画出来一样、时间戳没走过半个心跳的帧不再换。
   private(set) var snapshot: OrderFlowSnapshot?
-  /// 大单成交分钟账（随帧来，每秒最多一换）：图上大单签与「大单与爆仓」弹层用。
+  /// 大单成交分钟账（随帧来，每秒最多一换）：图上大单与爆仓气泡、「大单与爆仓」弹层用。
   private(set) var trades: BigTradeFlow?
-  /// 给图表的大单签分钟序列，按 `trades` 的版本缓存。
-  @ObservationIgnored private var tapeCache: (trades: BigTradeFlow, floor: Double, tape: BigTradeTape)?
-  /// 用户开关：挂单墙（`Prefs.orderFlow`）、图上大单签（`Prefs.bigTradeSigns`）。两个互不依赖，
-  /// 任一开着就订（签要逐笔成交，成交和簿走同一条连接）。
+  /// 给图表的大单与爆仓分钟序列，按 `trades` 的版本与爆仓账版本缓存。
+  @ObservationIgnored private var tapeCache: (trades: BigTradeFlow, floor: Double, liq: Int?, tape: BigTradeTape)?
+  /// 用户开关：挂单墙（`Prefs.orderFlow`）、图上大单与爆仓气泡（`Prefs.bigTradeSigns`）。两个互不依赖，
+  /// 任一开着就订（气泡要逐笔成交，成交和簿走同一条连接）。
   private(set) var walls = false
   private(set) var signs = false
   /// 「大单与爆仓」弹层开着：两个开关都关着也得订着（弹层的数全从逐笔成交来）。
@@ -60,12 +60,16 @@ final class OrderFlowLink {
   var wanted: Bool { walls || signs || sheetOpen }
   /// 「大单与爆仓」弹层的状态（开没开、停在哪档、看哪根、爆仓账）。
   @ObservationIgnored let sheet = BigTradeSheetModel()
+  /// 爆仓分钟账：图上气泡与弹层共读这一本（`MarketModel.syncLiquidations` 开停）。
+  @ObservationIgnored let liquidations = LiquidationFeed()
   /// 用户改过的门槛 / 步长（`Prefs.orderFlowOverrides` 的镜像）。
   @ObservationIgnored private(set) var overrides: [String: OrderFlowOverride] = [:]
   /// 开关开着、在前台——此刻是否真的订着簿。
   private(set) var active = false
   /// 当前品种的事实（面板里「恢复默认」要显示的默认值从这里算）。
   private(set) var currentFacts: OrderFlowFacts?
+  /// `currentFacts` 是哪只品种的（规范写法）：换品种后、新品种信息到之前不拿旧的去拉爆仓。
+  @ObservationIgnored private(set) var currentFactsSymbol: String?
   @ObservationIgnored let facts = OrderFlowFactsTable()
   /// 每次交给行情流都编一个递增序号：各起一个 Task，到达先后不定，行情流按序号丢掉后到的旧调用（审查第 40 项）。
   @ObservationIgnored private var sequence: UInt64 = 0
@@ -126,8 +130,9 @@ final class OrderFlowLink {
   }
 
   #if DEBUG
-    /// UI 测试钩子 `KANPAN_TEST_BIGTRADE_SEED=1`（BigTradeSheetUITests 点签那条）：每帧往成交账里补一笔
-    /// 门槛以上的买单，时刻钉在第一次补的那一分钟，图上必有一枚签可点——用例不再看真成交来不来
+    /// UI 测试钩子 `KANPAN_TEST_BIGTRADE_SEED=1`（BigTradeSheetUITests 点泡那条）：每帧往成交账里补一笔
+    /// 门槛 20 倍的买单（泡线是相对分布的 P97，真成交多的时段 1.2 倍不一定够格成泡），时刻钉在第一次补的
+    /// 那一分钟，图上必有一枚泡可点——用例不再看真成交来不来
     /// （名册不许按数据有没有来跳过）。每帧都补是因为行情流每秒给的是一份新账，不带上一帧补的那笔。
     private static let testSeedSign = ProcessInfo.processInfo.environment["KANPAN_TEST_BIGTRADE_SEED"] == "1"
     @ObservationIgnored private var testSeedMs: Int64?
@@ -137,32 +142,50 @@ final class OrderFlowLink {
       let cut = flow.cut ?? BigTradeFlow.cut(threshold: threshold)
       let t = testSeedMs ?? Int64(Date().timeIntervalSince1970 * 1000)
       testSeedMs = t
-      flow.record(timeMs: t, price: flow.prints.last?.price ?? 0, usd: threshold * 1.2, buy: true, cut: cut)
+      flow.record(timeMs: t, price: flow.prints.last?.price ?? 0, usd: threshold * 20, buy: true, cut: cut)
       trades = flow
     }
   #endif
 
-  /// 大单签的地板（门槛 ÷ 5）：签按相对档位分，地板挡掉清淡时段的小额「大单」。
+  /// 气泡门槛的地板（门槛 ÷ 5）：点线 / 泡线按相对分布定，地板挡掉清淡时段的小额「大单」。
   var signFloor: Double? {
     guard let t = snapshot.flatMap({ BigTradeFlow.threshold($0.thresholds) }) else { return nil }
     return t / 5
   }
 
-  /// 给图表的大单签分钟序列：签关着、这只的成交账还没来是 nil。横屏画线台照画（只是不开弹层）。
+  /// 给图表的大单与爆仓分钟序列：气泡关着、这只的成交账还没来是 nil。横屏画线台照画（只是不开弹层）。
+  /// 爆仓账只在 base 对得上、且不是现货时并进来（现货没有爆仓；宏观品种不挂订单流，到不了这儿）。
   func chartTape(symbol: String) -> BigTradeTape? {
     guard active, signs, let trades, InstrumentID.canonical(trades.symbol) == InstrumentID.canonical(symbol),
           let floor = signFloor else { return nil }
-    if let c = tapeCache, c.trades == trades, c.floor == floor { return c.tape }
-    let tape = trades.tape(nowMs: Int64(Date().timeIntervalSince1970 * 1000), floor: floor)
-    tapeCache = (trades, floor, tape)
+    let book = liquidationBook(symbol: symbol)
+    if let c = tapeCache, c.trades == trades, c.floor == floor, c.liq == book?.version { return c.tape }
+    var tape = trades.tape(nowMs: Int64(Date().timeIntervalSince1970 * 1000), floor: floor)
+    tape.setLiquidations(book)
+    tapeCache = (trades, floor, book?.version, tape)
     return tape
+  }
+
+  /// 该拉哪只的爆仓（`LiquidationBook.base`）：当前品种的事实到了、不是现货才有。
+  func liquidationBase(symbol: String) -> String? {
+    guard let facts = currentFacts, currentFactsSymbol == InstrumentID.canonical(symbol),
+          InstrumentID(symbol).market != "spot" else { return nil }
+    return facts.overrideKey
+  }
+
+  /// 这只品种能并进图 / 弹层的爆仓账（base 对不上、现货给 nil）。
+  func liquidationBook(symbol: String) -> LiquidationBook? {
+    guard let base = liquidationBase(symbol: symbol), let book = liquidations.book, book.base == base else { return nil }
+    return book
   }
 
   /// 当前品种信息到了：记下事实。返回 true 表示这只的事实是新的，调用方要再催行情流一次
   /// （开着指标时，品种信息晚于首帧到达，行情流那一拍因为查不到事实没起来）。
-  func noteInfo(_ info: SymbolInfo) -> Bool {
+  /// `symbol` = 查的是哪只（行情模型手里的规范写法），不给就用品种表那行自己的。
+  func noteInfo(_ info: SymbolInfo, symbol: String? = nil) -> Bool {
     let next = OrderFlowFacts(info: info, turnover24h: nil)
     currentFacts = next
+    currentFactsSymbol = InstrumentID.canonical(symbol ?? info.symbol)
     return facts.set(next, for: info.symbol)
   }
 

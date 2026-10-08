@@ -1,42 +1,50 @@
-/* Hkline 手机网页 · 图上大单签：图层（画布、命中、光环、读屏）
+/* Hkline 手机网页 · 图上大单与爆仓气泡：图层（画布、命中、光环、读屏）
  *
  * 自己一块画布（ChartView.addLayer，插在画线覆盖层下面），几何变了跟着图重画；数据从 BigTradeSource 拿
- * （每根大买 / 大卖合计 + 三档金额线，见 bigTradeSource()，底下是 orderflow/bigTags.ts 的 BigBarCache / TierCache）。
- * 排签是纯函数（bigTradeSigns.ts），这里只把它画出来、接住轻点、给读屏一排隐形按钮。
+ * （每根向上 U = 大买 + 空爆、向下 D = 大卖 + 多爆，加两级金额线，见 bigTradeSource()；底下是 orderflow/bigTags.ts 的
+ * BigBarCache / LevelCache 与 orderflow/liquidation.ts 的 LiqBarCache）。摆放是纯函数（bigTradeSigns.ts → planBubbles），
+ * 这里只把它画出来、接住轻点、给读屏一排隐形按钮。规格 docs/design/大单爆仓气泡-三端规格-2026-10-08.md。
  *
- *   · 轻点：ChartView.bigTradeTap → 44 × 44 命中、取最近的那枚 → onTap(sign)；宿主说接了（返回真）才做反馈：
- *     签放大到 1.3 倍 120 ms 再回（减少动效时不放大）。
- *   · 实时一根新进大单：签外圈扩散一道 8 pt 光环，600 ms ease-out；减少动效时改成 150 ms 的透明度闪一下。
- *   · 读屏：图本身是 role=img，签另给一排隐形按钮（「买方大单 1.2M，12:30 这根」），点它和点签一样。
- *     按钮不吃指针（pointer-events: none），手指照样落在图上走手势；排签 300 ms 内不再动才重建，免得拖图时狂改 DOM。
+ *   · 画法：柄全部先画（只有泡有柄：1.2 宽、方向色 60%），再画小圆点（方向色 85% 实心），最后画泡
+ *     （方向色 16% 填充，深色皮肤 22%；1.4 描边；方向色字居中）。上侧涨色、下侧跌色，没有别的分别。
+ *   · 轻点：ChartView.bigTradeTap → 44 × 44 命中、取最近的那枚泡 → onTap(bubble)；宿主说接了（返回真）才做反馈：
+ *     泡放大到 1.3 倍 120 ms 再回（减少动效时不放大）。小圆点不响应。
+ *   · 实时一根新进大单：那一枚外圈扩散一道 8 pt 光环，600 ms ease-out；减少动效时改成 150 ms 的透明度闪一下。
+ *   · 读屏：图本身是 role=img，泡另给一排隐形按钮（「12:30 向上 1.2M」），点它和点泡一样；小圆点不进。
+ *     按钮不吃指针（pointer-events: none），手指照样落在图上走手势；摆放 300 ms 内不再动才重建，免得拖图时狂改 DOM。
  */
 import type { ChartView, ChartLayerHandle } from './view'
 import type { ChartRenderer } from './renderer'
 import type { BarSeries } from './series'
 import { drawingLabelBoxes, orderFlowAmount } from './renderer.orderflow'
-import { css, textWidth, drawCentered, fillRoundRect, type ChartFontSpec, type Hex } from './paint'
+import { css, alpha, bytes, textWidth, drawCentered, type ChartFontSpec, type Hex } from './paint'
 import { dateParts, pad2 } from './format'
 import { reduceMotion } from './gesture'
-import { planSigns, hitSign, signLabel, SIGN, type Sign, type SignBar } from './bigTradeSigns'
-import { BigBarCache, TierCache, TIER_BARS, type Tiers } from '../../orderflow/bigTags'
+import { planSigns, hitSign, hitBox, signLabel, SIGN, type Sign, type SignBar } from './bigTradeSigns'
+import { BigBarCache, LevelCache, TIER_BARS, BUBBLE, udOf, type Levels, type LiqBars } from '../../orderflow/bigTags'
+import { LiqBarCache } from '../../orderflow/liquidation'
 import { flowOf, type SymbolFlow } from '../../chart/tradeFlow'
 import { BT } from '../../terms'
 
-export const SIGN_FONT: ChartFontSpec = { size: SIGN.capFont, weight: 600, tabular: true }
-const WHITE: Hex = '#FFFFFF'
-const RING_MS = 600
-const FLASH_MS = 150
-const POP_MS = 120
+/** 泡里的字：11、半粗、等宽数字（与 iOS 同） */
+export const SIGN_FONT: ChartFontSpec = { size: BUBBLE.font, weight: 600, tabular: true }
 const ARIA_SETTLE_MS = 300
 
-/** 一张图这一刻的大单数据：每根合计 + 三档金额线。prepare 每画一次调一次（缓存在里面） */
+/** 一根的数：U / D（图上画的）与其中的大买 / 大卖（光环只看大单） */
+export interface BarUDB { up: number; down: number; bb: number; bs: number }
+
+/** 一张图这一刻的数据：每根 U / D + 两级金额线。prepare 每画一次调一次（缓存在里面） */
 export interface BigTradeSource {
-  prepare(series: BarSeries, now: number): { bar(i: number): { bb: number; bs: number } | null; tiers: Tiers | null; live: number } | null
+  prepare(series: BarSeries, now: number): { bar(i: number): BarUDB | null; levels: Levels | null; live: number } | null
 }
 
-/** 用 tradeFlow 的分钟桶 + 服务端历史做源：floor() = 档位的绝对下限（门槛 ÷ 5） */
-export function bigTradeSource(floor: () => number): BigTradeSource {
-  const cache = new BigBarCache(), tc = new TierCache()
+type LiqIn = Parameters<LiqBarCache['of']>[0]
+/** 爆仓分钟账：给品种，返回那份 LiqStore 状态与基础币；现货 / 宏观 / 没开返回 null */
+export type LiqGetter = (symbol: string) => { state: LiqIn; base: string } | null
+
+/** 用 tradeFlow 的分钟桶 + 服务端历史做源：floor() = 金额线的绝对下限（门槛 ÷ 5）；liq 给了就把爆仓按根并进 U / D */
+export function bigTradeSource(floor: () => number, liq?: LiqGetter): BigTradeSource {
+  const cache = new BigBarCache(), lc = new LevelCache(), lq = new LiqBarCache()
   let tailKey = '', tail: { t: number }[] = []
   return {
     prepare(series, now) {
@@ -51,14 +59,18 @@ export function bigTradeSource(floor: () => number): BigTradeSource {
         for (let i = Math.max(0, n - TIER_BARS); i < n; i++) tail.push({ t: series.time(i) })
       }
       const step = series.step
-      const tiers = tc.get(cache, f, { bars: tail, timeAt: () => series.time(n - 1) + step }, now, floor())
+      const src = liq?.(series.symbol) ?? null
+      const lb: LiqBars | null = src ? lq.of(src.state, src.base, step) : null
+      const levels = lc.get(cache, f, { bars: tail, timeAt: () => series.time(n - 1) + step }, now, floor(), lb)
       return {
-        tiers,
+        levels,
         live: f.live,
         bar: i => {
           const t0 = series.time(i), t1 = i + 1 < n ? series.time(i + 1) : t0 + step
-          const d = cache.get(f, t0, t1, now)
-          return d ? { bb: d.bb, bs: d.bs } : null
+          const d = cache.get(f, t0, t1, now), l = lb ? lb.at(t0, t1) : null
+          if (!d && !l) return null
+          const u = udOf(d, l)
+          return { up: u.up, down: u.down, bb: d?.bb ?? 0, bs: d?.bs ?? 0 }
         },
       }
     },
@@ -67,12 +79,15 @@ export function bigTradeSource(floor: () => number): BigTradeSource {
 
 export interface BigTradeLayerOptions {
   source: BigTradeSource
-  /** 点中一枚签：宿主接了（开 / 换弹层）返回真 */
+  /** 点中一枚泡：宿主接了（开 / 换弹层）返回真 */
   onTap: (s: Sign) => boolean
   now?: () => number
 }
 
 const easeOut = (k: number) => 1 - Math.pow(1 - k, 3)
+/** 底色够暗就当深色皮肤（泡填充 22%） */
+const isDark = (bg: Hex): boolean => { const c = bytes(bg); return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b < 128 }
+const aa = (k: number): string => Math.round(Math.max(0, Math.min(1, k)) * 255).toString(16).padStart(2, '0').toUpperCase()
 
 export class BigTradeLayer {
   private handle: ChartLayerHandle
@@ -102,7 +117,7 @@ export class BigTradeLayer {
     this.aria = a
   }
 
-  /** 这一屏排好的签（测试、弹层定位用） */
+  /** 这一屏排好的泡与点（测试、弹层定位用） */
   get current(): readonly Sign[] { return this.signs }
 
   setEnabled(on: boolean): void {
@@ -113,12 +128,12 @@ export class BigTradeLayer {
   }
   get enabled(): boolean { return this.on }
 
-  /** 数据变了（服务端历史到了、门槛变了） */
+  /** 数据变了（服务端历史到了、爆仓补到了、门槛变了） */
   invalidate(): void { if (this.on) this.handle.redraw() }
 
-  /** 点签之外的地方（弹层「每根」）让某根的签弹一下 */
+  /** 点泡之外的地方（弹层「每根」）让某根的泡弹一下；那根只有点就不弹 */
   popAt(t: number): void {
-    if (reduceMotion() || !this.signs.some(s => s.t === t)) return
+    if (reduceMotion() || !this.signs.some(s => s.t === t && s.bubble)) return
     this.pop = { t, start: performance.now() }
     this.animate()
   }
@@ -151,61 +166,88 @@ export class BigTradeLayer {
     this.stepMs = series.step
     const now = this.now()
     const data = series.isEmpty ? null : this.opts.source.prepare(series, now)
-    if (!data || !data.tiers) { this.signs = []; this.syncAria(); return }
+    const K = data?.levels ?? null
+    if (!data || !K) { this.signs = []; this.syncAria(); return }
     const L = r.layout(W, H), pane = L.main, range = r.priceRange(W, H)
     const { lo, hi } = r.visible()
     const bars: SignBar[] = []
     for (let i = Math.max(0, lo); i <= hi && i < series.count; i++) {
       const x = r.x(series.time(i), L.plotW)
       if (x < -4 || x > L.plotW + 4) continue
-      // 没大单的根也进来（胶囊要让开横跨的那几根的高 / 低点），planSigns 自己跳过不够档的
       const d = data.bar(i)
+      if (!d || Math.max(d.up, d.down) < K.dot) continue
       const ha = r.heikin?.bar(i)
       const h = ha ? Math.max(ha.h, ha.l) : series.high[i], l = ha ? Math.min(ha.h, ha.l) : series.low[i]
       const yh = r.yOf(h, pane, range), yl = r.yOf(l, pane, range)
-      bars.push({ i, t: series.time(i), x, yHigh: Math.min(yh, yl), yLow: Math.max(yh, yl), bb: d?.bb ?? 0, bs: d?.bs ?? 0 })
+      bars.push({ i, t: series.time(i), x, yHigh: Math.min(yh, yl), yLow: Math.max(yh, yl), up: d.up, down: d.down })
     }
     const signs = planSigns(bars, {
+      levels: K,
       top: pane.y + Math.max(SIGN.legendBand, r.mainLegendInset(L.plotW)), bottom: pane.y + pane.h, plotW: L.plotW,
-      spacing: r.spacing(L.plotW), tiers: data.tiers,
+      spacing: r.spacing(L.plotW),
       avoid: drawingLabelBoxes(r, pane, range, L),
       measure: t => textWidth(t, SIGN_FONT), fmt: orderFlowAmount,
-      span: spanOf(bars),
     })
     this.signs = signs
     this.watchLive(series, data, signs)
 
     const col = st.input.colors
+    const fillK = isDark(col.bg) ? BUBBLE.fillDark : BUBBLE.fill
+    const colOf = (s: Sign): Hex => (s.side === 'up' ? col.up : col.down)
     const t = performance.now()
+    const popK = (s: Sign): number => {
+      if (!s.bubble || !this.pop || this.pop.t !== s.t) return 1
+      const p = (t - this.pop.start) / SIGN.popMs
+      return p < 1 ? 1 + (SIGN.pop - 1) * Math.sin(Math.PI * p) : 1
+    }
+    const flashA = (s: Sign): number => {
+      if (!this.ring || this.ring.t !== s.t || !reduceMotion()) return 1
+      const p = (t - this.ring.start) / SIGN.flashMs
+      return p < 1 ? 0.35 + 0.65 * Math.abs(1 - 2 * p) : 1
+    }
     ctx.save()
     ctx.beginPath(); ctx.rect(0, pane.y, L.plotW, pane.h); ctx.clip()
+    // 柄全部先画（只有泡有柄）
+    ctx.lineWidth = BUBBLE.stemW
     for (const s of signs) {
-      const c = s.side === 'buy' ? col.up : col.down
-      let a = 1, k = 1
-      if (this.ring && this.ring.t === s.t && reduceMotion()) {
-        const p = (t - this.ring.start) / FLASH_MS
-        if (p < 1) a = 0.35 + 0.65 * Math.abs(1 - 2 * p)
-      }
-      if (this.pop && this.pop.t === s.t) {
-        const p = (t - this.pop.start) / POP_MS
-        if (p < 1) k = 1 + 0.3 * Math.sin(Math.PI * p)
-      }
-      ctx.globalAlpha = a
-      if (k !== 1) {
-        const bx = s.bounds.x + s.bounds.w / 2, by = s.bounds.y + s.bounds.h / 2
-        ctx.save(); ctx.translate(bx, by); ctx.scale(k, k); ctx.translate(-bx, -by)
-      }
-      drawSign(ctx, s, c)
+      if (!s.bubble) continue
+      const rr = s.r * popK(s), end = s.side === 'up' ? s.cy + rr : s.cy - rr
+      if (Math.abs(end - s.anchor) < 0.5) continue
+      ctx.globalAlpha = flashA(s)
+      ctx.strokeStyle = css(alpha(colOf(s), aa(BUBBLE.stemAlpha)))
+      ctx.beginPath(); ctx.moveTo(s.x, s.anchor); ctx.lineTo(s.x, end); ctx.stroke()
+    }
+    // 再画点
+    for (const s of signs) {
+      if (s.bubble) continue
+      ctx.globalAlpha = flashA(s) * BUBBLE.dotAlpha
+      ctx.fillStyle = css(colOf(s))
+      ctx.beginPath(); ctx.arc(s.x, s.cy, s.r, 0, Math.PI * 2); ctx.fill()
+    }
+    // 最后画泡
+    ctx.lineWidth = BUBBLE.stroke
+    for (const s of signs) {
+      if (!s.bubble) continue
+      const c = colOf(s), k = popK(s)
+      ctx.globalAlpha = flashA(s)
+      if (k !== 1) { ctx.save(); ctx.translate(s.x, s.cy); ctx.scale(k, k); ctx.translate(-s.x, -s.cy) }
+      ctx.beginPath(); ctx.arc(s.x, s.cy, s.r, 0, Math.PI * 2)
+      ctx.fillStyle = css(alpha(c, aa(fillK))); ctx.fill()
+      ctx.strokeStyle = css(c); ctx.stroke()
+      drawCentered(ctx, s.text, s.x, s.cy, SIGN_FONT, c)
       if (k !== 1) ctx.restore()
-      if (this.ring && this.ring.t === s.t && !reduceMotion()) {
-        const p = (t - this.ring.start) / RING_MS
-        if (p < 1) {
-          const e = easeOut(p)
-          const r0 = Math.max(s.mark.w, s.mark.h) / 2 + 1
+    }
+    // 新大单光环（点和泡都可能是那一枚）
+    if (this.ring && !reduceMotion()) {
+      const p = (t - this.ring.start) / SIGN.ringMs
+      if (p < 1) {
+        const e = easeOut(p)
+        ctx.lineWidth = 1.5
+        for (const s of signs) {
+          if (s.t !== this.ring.t) continue
           ctx.globalAlpha = 0.8 * (1 - e)
-          ctx.strokeStyle = css(c)
-          ctx.lineWidth = 1.5
-          ctx.beginPath(); ctx.arc(s.cx, s.cy, r0 + 8 * e, 0, Math.PI * 2); ctx.stroke()
+          ctx.strokeStyle = css(colOf(s))
+          ctx.beginPath(); ctx.arc(s.x, s.cy, s.r + 1 + SIGN.ring * e, 0, Math.PI * 2); ctx.stroke()
         }
       }
     }
@@ -213,8 +255,8 @@ export class BigTradeLayer {
     this.syncAria()
   }
 
-  /** 实时一根的主导金额涨了 = 新大单落进来 → 光环 */
-  private watchLive(series: BarSeries, data: { bar(i: number): { bb: number; bs: number } | null; live: number }, signs: Sign[]): void {
+  /** 实时一根的大单金额涨了 = 新大单落进来 → 光环（只看大单；爆仓补数不算「新大单」） */
+  private watchLive(series: BarSeries, data: { bar(i: number): BarUDB | null; live: number }, signs: Sign[]): void {
     const n = series.count
     if (!n) return
     const t = series.time(n - 1), d = data.bar(n - 1)
@@ -232,8 +274,8 @@ export class BigTradeLayer {
     const step = () => {
       this.raf = 0
       const t = performance.now()
-      const ringOn = this.ring != null && t - this.ring.start < (reduceMotion() ? FLASH_MS : RING_MS)
-      const popOn = this.pop != null && t - this.pop.start < POP_MS
+      const ringOn = this.ring != null && t - this.ring.start < (reduceMotion() ? SIGN.flashMs : SIGN.ringMs)
+      const popOn = this.pop != null && t - this.pop.start < SIGN.popMs
       if (!ringOn) this.ring = null
       if (!popOn) this.pop = null
       this.handle.redraw()
@@ -254,8 +296,8 @@ export class BigTradeLayer {
     this.ariaTimer = null
     const run = () => {
       this.ariaTimer = null
-      const list = this.signs.slice().sort((a, b) => a.t - b.t)
-      const key = list.map(s => `${s.t}${s.side}${s.usd}`).join('|')
+      const list = this.signs.filter(s => s.bubble).sort((a, b) => a.t - b.t || (a.side === 'up' ? -1 : 1))
+      const key = list.map(s => `${s.t}${s.side}${s.usd}${Math.round(s.cy)}`).join('|')
       if (key === this.ariaKey) return
       this.ariaKey = key
       this.aria.replaceChildren(...list.map(s => {
@@ -263,9 +305,9 @@ export class BigTradeLayer {
         b.type = 'button'
         b.className = 'm-bigtrade-aria-sign'
         b.setAttribute('aria-label', signLabel(s, orderFlowAmount, this.when(s.t)))
+        const box = hitBox(s)
         Object.assign(b.style, {
-          position: 'absolute', left: `${s.bounds.x + s.bounds.w / 2 - Math.max(SIGN.hit, s.bounds.w) / 2}px`, top: `${s.cy - SIGN.hit / 2}px`,
-          width: `${Math.max(SIGN.hit, s.bounds.w)}px`, height: `${SIGN.hit}px`,
+          position: 'absolute', left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${box.h}px`,
           opacity: '0', pointerEvents: 'none', border: '0', padding: '0', background: 'transparent',
         })
         b.addEventListener('click', () => { if (this.opts.onTap(s)) this.popAt(s.t) })
@@ -274,40 +316,4 @@ export class BigTradeLayer {
     }
     if (now) run(); else this.ariaTimer = setTimeout(run, ARIA_SETTLE_MS)
   }
-}
-
-/** 胶囊横跨的那几根的最高 / 最低（bars 按 x 升序；二分找左沿） */
-export function spanOf(bars: readonly SignBar[]): (x0: number, x1: number) => { hiY: number; loY: number } | null {
-  return (x0, x1) => {
-    let a = 0, b = bars.length
-    while (a < b) { const m = (a + b) >> 1; if (bars[m].x < x0) a = m + 1; else b = m }
-    let hiY = Infinity, loY = -Infinity
-    for (let k = a; k < bars.length && bars[k].x <= x1; k++) {
-      if (bars[k].yHigh < hiY) hiY = bars[k].yHigh
-      if (bars[k].yLow > loY) loY = bars[k].yLow
-    }
-    return hiY === Infinity ? null : { hiY, loY }
-  }
-}
-
-/** 画一枚签（点 / 三角 / 三角 + 金额签）。买三角朝上、卖朝下，翻侧后朝向不变 */
-export function drawSign(ctx: CanvasRenderingContext2D, s: Sign, c: Hex): void {
-  const m = s.mark
-  if (s.shape === 'dot') {
-    const a = ctx.globalAlpha
-    ctx.globalAlpha = a * SIGN.dotAlpha
-    ctx.fillStyle = css(c)
-    ctx.beginPath(); ctx.arc(m.x + m.w / 2, m.y + m.h / 2, m.w / 2, 0, Math.PI * 2); ctx.fill()
-    ctx.globalAlpha = a
-    return
-  }
-  ctx.fillStyle = css(c)
-  ctx.beginPath()
-  if (s.side === 'buy') { ctx.moveTo(m.x, m.y + m.h); ctx.lineTo(m.x + m.w, m.y + m.h); ctx.lineTo(m.x + m.w / 2, m.y) }
-  else { ctx.moveTo(m.x, m.y); ctx.lineTo(m.x + m.w, m.y); ctx.lineTo(m.x + m.w / 2, m.y + m.h) }
-  ctx.closePath(); ctx.fill()
-  const cap = s.cap
-  if (!cap || s.shape !== 'cap') return
-  fillRoundRect(ctx, cap.x, cap.y, cap.w, cap.h, cap.h / 2, c)
-  drawCentered(ctx, s.text, cap.x + cap.w / 2, cap.y + cap.h / 2, SIGN_FONT, WHITE)
 }

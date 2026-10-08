@@ -166,7 +166,7 @@ public struct OrderFlowSnapshot: Sendable, Equatable {
   /// app 手里的品种事实没有成交额，自己查表只会落到「成交额不知道」那一档（第三档）。模型本身不知道，由数据层填。
   public var defaults: OrderFlowThresholds
   public var venues: [OrderFlowVenueStatus]
-  /// 大单成交分钟账（「图上大单签」与「大单与爆仓」弹层用）。数据层每秒最多换一份；挂单墙那一路不看它。
+  /// 大单成交分钟账（图上大单与爆仓气泡与「大单与爆仓」弹层用）。数据层每秒最多换一份；挂单墙那一路不看它。
   public var trades: BigTradeFlow?
 
   public init(symbol: String, phase: Phase, orders: [BigOrder], asOfMs: Int64,

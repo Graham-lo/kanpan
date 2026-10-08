@@ -1,43 +1,57 @@
 import CoreGraphics
-import KanpanCore
 import Foundation
+import KanpanCore
 
-/// 图上「大单签」的纯函数：档位、摆放（翻面 / 退化）、命中（2026-10-08，设计源
-/// `docs/原型-手机大单与爆仓-2026-10-08.html` §05–§12 与 `chartSVG`）。
+/// 图上「大单与爆仓」气泡的纯函数：两级门槛、摆放（错层 / 退成点）、命中、读屏（2026-10-08 定版
+/// 「统一透明泡」，设计源 `docs/prototypes/web-bigtrade-bubbles-2026-10-08.html` 的 `one()`，三端规格
+/// `docs/design/大单爆仓气泡-三端规格-2026-10-08.md`）。
 ///
-/// 规则（和网页版 `Web/src/orderflow/bigTags.ts` 同一口径，手机按原型改了签的样子）：
-/// - 档位按相对分布定：当前周期最近 `tierBars` 根里每根「大买 / 大卖里大的那一侧」的非零分布，
-///   三档 = P85 / P95 / max(P99, 3 × P95)，每档再垫一道绝对下限（门槛 ÷ 5）。
-/// - 一根只画一枚签：买卖里大的那一侧——买挂最高价上方、尖朝上；卖挂最低价下方、尖朝下（颜色与朝向翻面也不变）。
-/// - 一档 = 直径 5 的圆点（方向色 70%）、离高 / 低点 3；二档 = 8 × 7 实心三角、离高 / 低点 4；
-///   三档 = 三角 + 胶囊（高 16、左右各 5、11 号半粗白字、离三角尖 2）。密的周期（一根不到 3 pt）不出胶囊；
-///   稀的周期（一根 ≥ 9 pt，日线这类）二档也出胶囊。
-/// - 胶囊进了图例那一带（顶上 24 pt）/ 掉出主图 / 压到画线文字或别的签：先只把胶囊翻到 K 线另一侧，
-///   再整枚翻过去，两侧都不行就退成三角（先本侧后另一侧），三角也放不下就不画——不往外挪。
-/// - 命中：每枚签按 44 × 44 的热区算，几枚都中取离得最近的那枚。
+/// 规则（和网页版同一口径）：
+/// - 每根只剩两个数：向上 U = 大买 + 空单爆仓，挂最高价之上；向下 D = 大卖 + 多单爆仓，挂最低价之下。
+///   一根最多上下各一枚，图上不分大单还是爆仓。
+/// - 两级门槛：当前周期最近 `tierBars` 根里每根 `max(U, D)` 的非零分布，点线 = P90、泡线 = P97，
+///   都垫同一道绝对下限（门槛 ÷ 5）。不到点线不画，到点线画小圆点，到泡线画带字的透明泡。
+/// - 一屏带字的泡最多 `maxBubbles` 枚：候选按金额降序摆，大的先占位，配额用完的退成点；一根窄于
+///   `bubbleMinSpacing`（按整 pt 比）时全部只画点。
+/// - 点：半径 = 一根宽 × 0.4（夹在 1.5…2.8），离高 / 低点 2；泡：半径 = 11 + 6 × min(1, (v − 泡线) / (泡线 × 2))，
+///   至少容得下字（字宽 / 2 + 4），离高 / 低点 4（这段画柄）。
+/// - 错层：同侧已摆的（点和泡都算）挨得太近就往外推一层，最多推 6 次。
+/// - 贴着主图左右沿的根（最新那根常在最右）：泡往里收到整圆落在主图里，柄仍竖直接到圆周。
+/// - 泡推完出了能落的竖直范围（图例那一带以下、主图下沿以上，各留 4）、或压到画线文字，
+///   就退成点（不占配额）；点也落不下就不画。
+/// - 命中：只认泡（点不响应），44 × 44 热区（泡比热区大就按泡本身），几枚都中取圆心最近的那枚。
 ///
 /// 只聚合、门槛过滤、展示，不做判定。
-public enum BigTradeSigns {
+public enum BigTradeBubbles {
   /// 分布取多少根。
   public static let tierBars = 300
-  public static let dotDiameter: CGFloat = 5
-  public static let dotGap: CGFloat = 3
-  public static let triangleWidth: CGFloat = 8
-  public static let triangleHeight: CGFloat = 7
-  public static let triangleGap: CGFloat = 4
-  public static let capsuleHeight: CGFloat = 16
-  public static let capsulePadding: CGFloat = 5
-  public static let capsuleGap: CGFloat = 2
-  /// 一根窄于这么多就一律不出胶囊（金额签会横跨十几根，看不出是哪根的）。
-  public static let textMinSpacing: CGFloat = 3
-  /// 一根宽到这么多（日线这类稀的周期）二档也出胶囊。
-  public static let sparseCapsuleSpacing: CGFloat = 9
-  /// 胶囊离主图左右边至少留这么多。
-  public static let capsuleEdgeInset: CGFloat = 2
+  /// 点线 / 泡线的分位。
+  public static let dotQuantile = 0.90
+  public static let bubbleQuantile = 0.97
+  /// 一屏带字的泡最多几枚。
+  public static let maxBubbles = 6
+  /// 一根窄于这么多（四舍五入到整 pt 比）就全部只画点。
+  public static let bubbleMinSpacing: CGFloat = 4
+  /// 泡的最小半径与随金额最多再长多少。
+  public static let bubbleBaseRadius: CGFloat = 11
+  public static let bubbleGrowRadius: CGFloat = 6
+  /// 字到泡边至少留多少。
+  public static let textPadding: CGFloat = 4
+  /// 点离高 / 低点、泡离高 / 低点（柄长）。
+  public static let dotStem: CGFloat = 2
+  public static let bubbleStem: CGFloat = 4
+  /// 同侧两枚之间至少留多少、最多错几层。
+  public static let nudgeGap: CGFloat = 2
+  public static let nudgeLimit = 6
+  /// 泡离能落范围上下沿至少留多少。
+  public static let edgeInset: CGFloat = 4
   /// 点击热区边长。
   public static let hitSize: CGFloat = 44
 
-  // MARK: 档位
+  /// 点的半径：跟着一根宽，夹在 1.5…2.8。
+  public static func dotRadius(spacing bw: CGFloat) -> CGFloat { min(2.8, max(1.5, bw * 0.4)) }
+
+  // MARK: 门槛
 
   /// 已升序排好的分位数，线性插值（同 numpy 默认）。
   public static func quantile(_ sorted: [Double], _ q: Double) -> Double {
@@ -49,203 +63,166 @@ public enum BigTradeSigns {
     return i + 1 < n ? sorted[i] + (sorted[i + 1] - sorted[i]) * fr : sorted[i]
   }
 
-  /// 非零的每根金额 → 三档；`floor` = 绝对下限（门槛 ÷ 5）。一根有数的都没有给 nil。
+  /// 每根 `max(U, D)` → 点线 / 泡线；`floor` = 绝对下限（门槛 ÷ 5），两条线都垫。一根有数的都没有给 nil。
   public static func tiers(_ values: [Double], floor: Double) -> BigTradeTiers? {
     let v = values.filter { $0 > 0 && $0.isFinite }.sorted()
     guard !v.isEmpty else { return nil }
     let f = floor > 0 && floor.isFinite ? floor : 0
-    let p85 = quantile(v, 0.85), p95 = quantile(v, 0.95), p99 = quantile(v, 0.99)
-    let t1 = max(p85, f)
-    let t2 = max(p95, f, t1)
-    let t3 = max(p99, 3 * p95, f, t2)
-    return BigTradeTiers(t1: t1, t2: t2, t3: t3)
+    let dot = max(quantile(v, dotQuantile), f)
+    let bubble = max(quantile(v, bubbleQuantile), f, dot)
+    return BigTradeTiers(dot: dot, bubble: bubble)
   }
 
-  /// 0 = 不画；1 圆点；2 三角；3 三角 + 胶囊。
-  public static func tier(of value: Double, _ k: BigTradeTiers?) -> Int {
-    guard let k, value > 0 else { return 0 }
-    if value >= k.t3 { return 3 }
-    if value >= k.t2 { return 2 }
-    if value >= k.t1 { return 1 }
+  /// 0 = 不画；1 = 点；2 = 泡（够格，摆不摆得成泡还看配额与位置）。
+  public static func level(of value: Double, _ k: BigTradeTiers?) -> Int {
+    guard let k, value > 0, value.isFinite else { return 0 }
+    if value >= k.bubble { return 2 }
+    if value >= k.dot { return 1 }
     return 0
+  }
+
+  /// 泡上的字：金额短写去掉 `M`（1.2M → 1.2），十万以上的 K 取整（860K），其余照短写。
+  public static func bubbleText(_ v: Double) -> String {
+    switch volUnit(v, decimals: 1, plainDecimals: 0) {
+    case .t: return toFixed(v / 1e12, 1) + "T"
+    case .b: return toFixed(v / 1e9, 1) + "B"
+    case .m: return toFixed(v / 1e6, 1)
+    case .k:
+      guard v >= 1e5 else { return toFixed(v / 1e3, 1) + "K" }
+      let s = toFixed(v / 1e3, 0)
+      return s == "1000" ? "1.0" : s + "K"
+    case .plain: return toFixed(v, 0)
+    }
   }
 
   // MARK: 摆放
 
-  /// 一屏的签：一根一枚（大的一侧）；金额大的先摆（先占位置）；返回摆得下的那些（按 `index` 升序）。
-  public static func plan(_ bars: [BigTradeSignInput], env: BigTradeSignEnv) -> [BigTradeSign] {
-    struct Cand { let b: BigTradeSignInput; let buy: Bool; let usd: Double; let tier: Int }
+  /// 一屏的点与泡：每根上下各算一枚候选，金额大的先摆；返回摆得下的那些（按 `index` 升序，同根向上在前）。
+  public static func plan(_ bars: [BigTradeBubbleInput], env: BigTradeBubbleEnv) -> [BigTradeBubble] {
+    struct Cand { let b: BigTradeBubbleInput; let up: Bool; let usd: Double; let level: Int }
     var cands: [Cand] = []
-    cands.reserveCapacity(bars.count)
+    cands.reserveCapacity(bars.count * 2)
     for b in bars {
-      let buy = b.buy >= b.sell
-      let usd = buy ? b.buy : b.sell
-      let t = tier(of: usd, env.tiers)
-      if t > 0 { cands.append(Cand(b: b, buy: buy, usd: usd, tier: t)) }
+      let lu = level(of: b.up, env.tiers), ld = level(of: b.down, env.tiers)
+      if lu > 0 { cands.append(Cand(b: b, up: true, usd: b.up, level: lu)) }
+      if ld > 0 { cands.append(Cand(b: b, up: false, usd: b.down, level: ld)) }
     }
-    cands.sort { $0.usd != $1.usd ? $0.usd > $1.usd : $0.b.index > $1.b.index }
+    cands.sort {
+      if $0.usd != $1.usd { return $0.usd > $1.usd }
+      if $0.b.index != $1.b.index { return $0.b.index > $1.b.index }
+      return $0.up && !$1.up
+    }
 
-    var placedCaps: [CGRect] = []
-    var placedMarks: [CGRect] = []
-    var out: [BigTradeSign] = []
+    let dotR = dotRadius(spacing: env.spacing)
+    // 按整 pt 比：出厂间距是 4（铺满主图后实得 3.98 上下），不能因为差一丝就整屏只剩点。
+    let bubblesAllowed = env.spacing.rounded() >= bubbleMinSpacing
+    var placed: [[(x: CGFloat, y: CGFloat, r: CGFloat)]] = [[], []]  // [向上, 向下]
+    var bubbles = 0
+    var out: [BigTradeBubble] = []
     out.reserveCapacity(cands.count)
 
-    func insideV(_ r: CGRect) -> Bool { r.minY >= env.top - 0.001 && r.maxY <= env.bottom + 0.001 }
-    func insideH(_ r: CGRect) -> Bool { r.minX >= -0.001 && r.maxX <= env.plotW + 0.001 }
+    func box(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat) -> CGRect { CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r) }
     func clearOfText(_ r: CGRect) -> Bool { !env.avoid.contains { $0.intersects(r) } }
-    func markOK(_ r: CGRect) -> Bool {
-      insideV(r) && clearOfText(r) && !placedCaps.contains { $0.intersects(r) }
-    }
-    func capOK(_ r: CGRect) -> Bool {
-      insideV(r) && insideH(r) && clearOfText(r)
-        && !placedCaps.contains { $0.intersects(r) } && !placedMarks.contains { $0.intersects(r) }
-    }
 
     for c in cands {
+      let side = c.up ? 0 : 1
       let x = c.b.x
-      let pref = c.buy  // 买默认在上
-      var sign: BigTradeSign?
-      let wantsCap: Bool = {
-        if c.tier >= 3 { return env.spacing >= textMinSpacing }
-        if c.tier == 2 { return env.spacing >= sparseCapsuleSpacing }
-        return false
-      }()
-      if c.tier == 1 {
-        for above in [pref, !pref] {
-          let r = dotRect(x: x, bar: c.b, above: above)
-          if markOK(r) { sign = make(c.b, c.buy, c.tier, c.usd, .dot, r, above, nil, env); break }
+      let anchor = c.up ? c.b.hiY : c.b.loY
+      let dir: CGFloat = c.up ? -1 : 1
+      var bubble = c.level >= 2 && bubblesAllowed && bubbles < maxBubbles
+      var r = dotR
+      var text = ""
+      if bubble {
+        text = env.text(c.usd)
+        let grow = bubbleGrowRadius * CGFloat(min(1, (c.usd - env.tiers.bubble) / (env.tiers.bubble * 2)))
+        r = max(bubbleBaseRadius + grow, env.measure(text) / 2 + textPadding)
+      }
+      // 贴着主图左右沿的那几根（最新那根常在最右）：泡往里收到整圆落在主图里，柄仍从这根竖直接到圆周。
+      var cx = bubble ? min(max(x, r), env.plotW - r) : x
+      var cy = anchor + dir * ((bubble ? bubbleStem : dotStem) + r)
+      for _ in 0..<nudgeLimit {
+        guard let p = placed[side].first(where: { hypot($0.x - cx, $0.y - cy) < $0.r + r + nudgeGap }) else { break }
+        cy = p.y + dir * (p.r + r + nudgeGap)
+      }
+      if bubble {
+        let outV = c.up ? cy - r < env.top + edgeInset : cy + r > env.bottom - edgeInset
+        let outH = 2 * r > env.plotW
+        if outV || outH || !clearOfText(box(cx, cy, r)) {
+          bubble = false; r = dotR; text = ""
+          cx = x
+          cy = anchor + dir * (dotStem + r)
         }
+      }
+      if !bubble {
+        let b = box(x, cy, r)
+        guard b.minY >= env.top - 0.001, b.maxY <= env.bottom + 0.001, clearOfText(b) else { continue }
       } else {
-        if wantsCap {
-          let text = env.text(c.usd)
-          let w = (env.measure(text) + 2 * capsulePadding).rounded(.up)
-          // 胶囊的候选：（三角在哪侧，胶囊在哪侧）
-          let combos: [(Bool, Bool)] = [(pref, pref), (pref, !pref), (!pref, !pref)]
-          for (triAbove, capAbove) in combos {
-            let tri = triangleRect(x: x, bar: c.b, above: triAbove)
-            guard markOK(tri) else { continue }
-            guard let cap = capsuleRect(x: x, width: w, bar: c.b, tri: tri, triAbove: triAbove, above: capAbove, env: env),
-                  capOK(cap), !cap.intersects(tri)
-            else { continue }
-            sign = make(c.b, c.buy, c.tier, c.usd, .triangle, tri, triAbove, (cap, text), env)
-            break
-          }
-        }
-        if sign == nil {
-          for above in [pref, !pref] {
-            let r = triangleRect(x: x, bar: c.b, above: above)
-            if markOK(r) { sign = make(c.b, c.buy, c.tier, c.usd, .triangle, r, above, nil, env); break }
-          }
-        }
+        bubbles += 1
       }
-      if let s = sign {
-        out.append(s)
-        placedMarks.append(s.markRect)
-        if let cap = s.capsule { placedCaps.append(cap) }
-      }
+      placed[side].append((cx, cy, r))
+      out.append(BigTradeBubble(
+        index: c.b.index, t: c.b.t, up: c.up, usd: c.usd, x: x, anchorY: anchor,
+        center: CGPoint(x: cx, y: cy), r: r, isBubble: bubble, text: text))
     }
-    out.sort { $0.index < $1.index }
+    out.sort { $0.index != $1.index ? $0.index < $1.index : ($0.up && !$1.up) }
     return out
-  }
-
-  static func dotRect(x: CGFloat, bar: BigTradeSignInput, above: Bool) -> CGRect {
-    let y = above ? bar.hiY - dotGap - dotDiameter : bar.loY + dotGap
-    return CGRect(x: x - dotDiameter / 2, y: y, width: dotDiameter, height: dotDiameter)
-  }
-
-  static func triangleRect(x: CGFloat, bar: BigTradeSignInput, above: Bool) -> CGRect {
-    let y = above ? bar.hiY - triangleGap - triangleHeight : bar.loY + triangleGap
-    return CGRect(x: x - triangleWidth / 2, y: y, width: triangleWidth, height: triangleHeight)
-  }
-
-  /// 胶囊和三角同侧时贴在三角外沿（离尖 2）；三角在另一侧时胶囊照样离 K 线 4 + 7 + 2，留出三角的位置感。
-  /// 胶囊横跨的那几根若比本根更高 / 更低，让开它们（`env.span`）。横向夹在主图里。
-  static func capsuleRect(
-    x: CGFloat, width w: CGFloat, bar: BigTradeSignInput, tri: CGRect, triAbove: Bool, above: Bool,
-    env: BigTradeSignEnv
-  ) -> CGRect? {
-    let lo = capsuleEdgeInset + w / 2
-    let hi = env.plotW - capsuleEdgeInset - w / 2
-    guard hi >= lo else { return nil }
-    let cx = min(max(x, lo), hi)
-    let span = env.span?(cx - w / 2, cx + w / 2)
-    let off = triangleGap + triangleHeight + capsuleGap
-    if above {
-      var bottom = (triAbove ? tri.minY : bar.hiY - off + capsuleGap) - capsuleGap
-      if let s = span { bottom = min(bottom, s.hiY - capsuleGap) }
-      return CGRect(x: cx - w / 2, y: bottom - capsuleHeight, width: w, height: capsuleHeight)
-    } else {
-      var top = (triAbove ? bar.loY + off - capsuleGap : tri.maxY) + capsuleGap
-      if let s = span { top = max(top, s.loY + capsuleGap) }
-      return CGRect(x: cx - w / 2, y: top, width: w, height: capsuleHeight)
-    }
-  }
-
-  private static func make(
-    _ b: BigTradeSignInput, _ buy: Bool, _ tier: Int, _ usd: Double, _ mark: BigTradeSign.Mark, _ r: CGRect,
-    _ above: Bool, _ cap: (CGRect, String)?, _ env: BigTradeSignEnv
-  ) -> BigTradeSign {
-    BigTradeSign(
-      index: b.index, t: b.t, buy: buy, tier: tier, usd: usd, x: b.x, mark: mark, markRect: r, markAbove: above,
-      capsule: cap?.0, text: cap?.1 ?? env.text(usd))
   }
 
   // MARK: 命中
 
-  /// 44 × 44 热区（以记号中心为中心；胶囊则整块再各向外扩到 44 高），几枚都中取离得最近的那枚。
-  public static func hit(_ p: CGPoint, in signs: [BigTradeSign]) -> BigTradeSign? {
-    var best: (BigTradeSign, CGFloat)?
-    for s in signs {
-      let d = s.distance(to: p)
-      guard d.hit else { continue }
-      if best == nil || d.dist < best!.1 { best = (s, d.dist) }
+  /// 只认泡：44 × 44 热区（泡比热区大就按泡的外框），几枚都中取圆心最近的那枚。
+  public static func hit(_ p: CGPoint, in items: [BigTradeBubble]) -> BigTradeBubble? {
+    var best: (BigTradeBubble, CGFloat)?
+    for b in items where b.isBubble {
+      let half = max(hitSize / 2, b.r)
+      guard abs(p.x - b.center.x) <= half, abs(p.y - b.center.y) <= half else { continue }
+      let d = hypot(p.x - b.center.x, p.y - b.center.y)
+      if best == nil || d < best!.1 { best = (b, d) }
     }
     return best?.0
   }
 
   // MARK: 读屏
 
-  /// 「12:30 大单买入 1.2M」（用词从三端共用的 terms.json 来）。
-  public static func accessibilityLabel(_ s: BigTradeSign, time: String) -> String {
-    BigTradeTerm.signA11y.fill(["t": time, "side": (s.buy ? BigTradeTerm.buy : .sell).text, "v": s.text])
+  /// 「10-08 12:30 向上 1.2M」（用词从三端共用的 terms.json 来）。`amount` = 金额全写（带单位）。
+  public static func accessibilityLabel(_ b: BigTradeBubble, time: String, amount: String) -> String {
+    BigTradeTerm.signA11y.fill(["t": time, "side": (b.up ? BigTradeTerm.up : .down).text, "v": amount])
   }
 }
 
-/// 三档的金额线（已垫过绝对下限）。
+/// 两级金额线（已垫过绝对下限）：到 `dot` 画点，到 `bubble` 画泡。
 public struct BigTradeTiers: Equatable, Sendable {
-  public var t1: Double
-  public var t2: Double
-  public var t3: Double
-  public init(t1: Double, t2: Double, t3: Double) {
-    self.t1 = t1
-    self.t2 = t2
-    self.t3 = t3
+  public var dot: Double
+  public var bubble: Double
+  public init(dot: Double, bubble: Double) {
+    self.dot = dot
+    self.bubble = bubble
   }
 }
 
-/// 一根 K 线进摆放：横坐标、最高 / 最低价的 y、这根的大买 / 大卖金额。
-public struct BigTradeSignInput: Equatable, Sendable {
+/// 一根 K 线进摆放：横坐标、最高 / 最低价的 y、这根向上（大买 + 空单爆仓）/ 向下（大卖 + 多单爆仓）的金额。
+public struct BigTradeBubbleInput: Equatable, Sendable {
   public var index: Int
   public var t: Int64
   public var x: CGFloat
   public var hiY: CGFloat
   public var loY: CGFloat
-  public var buy: Double
-  public var sell: Double
-  public init(index: Int, t: Int64, x: CGFloat, hiY: CGFloat, loY: CGFloat, buy: Double, sell: Double) {
+  public var up: Double
+  public var down: Double
+  public init(index: Int, t: Int64, x: CGFloat, hiY: CGFloat, loY: CGFloat, up: Double, down: Double) {
     self.index = index
     self.t = t
     self.x = x
     self.hiY = hiY
     self.loY = loY
-    self.buy = buy
-    self.sell = sell
+    self.up = up
+    self.down = down
   }
 }
 
-/// 摆放的环境：档位、一根宽、签能落的竖直范围（图例那一带以下、主图下沿以上）、主图宽（价格轴左沿）、
-/// 要让开的文字框（图例、画线文字）、量字宽、金额文案、胶囊横跨那几根的最高 / 最低（可选）。
-public struct BigTradeSignEnv {
+/// 摆放的环境：门槛、一根宽、能落的竖直范围（图例那一带以下、主图下沿以上）、主图宽（价格轴左沿）、
+/// 要让开的文字框（画线文字）、量字宽、泡上的字。
+public struct BigTradeBubbleEnv {
   public var tiers: BigTradeTiers
   public var spacing: CGFloat
   public var top: CGFloat
@@ -254,11 +231,9 @@ public struct BigTradeSignEnv {
   public var avoid: [CGRect]
   public var measure: (String) -> CGFloat
   public var text: (Double) -> String
-  public var span: ((CGFloat, CGFloat) -> (hiY: CGFloat, loY: CGFloat)?)?
   public init(
     tiers: BigTradeTiers, spacing: CGFloat, top: CGFloat, bottom: CGFloat, plotW: CGFloat, avoid: [CGRect] = [],
-    measure: @escaping (String) -> CGFloat, text: @escaping (Double) -> String,
-    span: ((CGFloat, CGFloat) -> (hiY: CGFloat, loY: CGFloat)?)? = nil
+    measure: @escaping (String) -> CGFloat, text: @escaping (Double) -> String = BigTradeBubbles.bubbleText
   ) {
     self.tiers = tiers
     self.spacing = spacing
@@ -268,59 +243,35 @@ public struct BigTradeSignEnv {
     self.avoid = avoid
     self.measure = measure
     self.text = text
-    self.span = span
   }
 }
 
-/// 摆好的一枚签。
-public struct BigTradeSign: Equatable, Sendable {
-  public enum Mark: Sendable { case dot, triangle }
+/// 摆好的一枚：带字的泡，或不带字的小圆点。
+public struct BigTradeBubble: Equatable, Sendable {
   public var index: Int
   public var t: Int64
-  /// 买方（涨色、尖朝上）还是卖方（跌色、尖朝下）——翻面也不变。
-  public var buy: Bool
-  public var tier: Int
+  /// 向上（挂最高价之上、涨色）还是向下（挂最低价之下、跌色）。
+  public var up: Bool
   public var usd: Double
-  /// 这根的横坐标。
+  /// 这根的横坐标（柄的横坐标；泡贴主图左右沿时圆心往里收，不一定等于它）。
   public var x: CGFloat
-  public var mark: Mark
-  /// 圆点 / 三角的外框。
-  public var markRect: CGRect
-  /// 记号落在最高价上方（true）还是最低价下方。
-  public var markAbove: Bool
-  public var capsule: CGRect?
-  /// 金额文案（胶囊上写的；没胶囊也给，读屏用）。
+  /// 锚点：向上是最高价的 y，向下是最低价的 y（柄从这里起）。
+  public var anchorY: CGFloat
+  public var center: CGPoint
+  public var r: CGFloat
+  /// 带字的泡（可点、进读屏）还是小圆点。
+  public var isBubble: Bool
+  /// 泡上的字（点为空）。
   public var text: String
 
-  public var markCenter: CGPoint { CGPoint(x: markRect.midX, y: markRect.midY) }
+  /// 圆的外框。
+  public var bounds: CGRect { CGRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r) }
 
-  /// 三角的三个顶点（买尖朝上、卖尖朝下）。
-  public var trianglePoints: [CGPoint] {
-    let r = markRect
-    return buy
-      ? [CGPoint(x: r.minX, y: r.maxY), CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.midX, y: r.minY)]
-      : [CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.maxX, y: r.minY), CGPoint(x: r.midX, y: r.maxY)]
-  }
-
-  /// 圆环动效的圆心（三角的形心附近 / 圆点中心）。
-  public var pulseCenter: CGPoint { markCenter }
-
-  /// 整枚签的外框（记号 ∪ 胶囊）。
-  public var bounds: CGRect { capsule.map { $0.union(markRect) } ?? markRect }
-
-  func distance(to p: CGPoint) -> (hit: Bool, dist: CGFloat) {
-    let half = BigTradeSigns.hitSize / 2
-    let c = markCenter
-    var best = hypot(p.x - c.x, p.y - c.y)
-    var hit = abs(p.x - c.x) <= half && abs(p.y - c.y) <= half
-    if let cap = capsule {
-      let padY = max(0, (BigTradeSigns.hitSize - cap.height) / 2)
-      let zone = cap.insetBy(dx: -max(0, (BigTradeSigns.hitSize - cap.width) / 2), dy: -padY)
-      if zone.contains(p) { hit = true }
-      let dx = max(cap.minX - p.x, 0, p.x - cap.maxX)
-      let dy = max(cap.minY - p.y, 0, p.y - cap.maxY)
-      best = min(best, hypot(dx, dy))
-    }
-    return (hit, best)
+  /// 柄：从锚点到泡的近边（只有泡画）。
+  /// 泡贴边往里收过时圆心不在这根正上 / 下方，柄仍竖直、接到这根横坐标处的圆周。
+  public var stem: (from: CGPoint, to: CGPoint) {
+    let dx = x - center.x
+    let h = (max(0, r * r - dx * dx)).squareRoot()
+    return (CGPoint(x: x, y: anchorY), CGPoint(x: x, y: up ? center.y + h : center.y - h))
   }
 }

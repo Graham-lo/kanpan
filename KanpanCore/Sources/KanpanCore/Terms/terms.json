@@ -42,6 +42,8 @@
     "wall": "挂单墙",
     "buyWall": "买墙",
     "sellWall": "卖墙",
+    "up": "向上",
+    "down": "向下",
     "liq": "爆仓",
     "longLiq": "多单爆仓",
     "shortLiq": "空单爆仓",

@@ -1,7 +1,7 @@
-// Hkline 手机网页版 · 2026-10-08「图上大单签 + 大单与爆仓」验收（393×852，iPhone 视口）
+// Hkline 手机网页版 · 2026-10-08「图上大单与爆仓气泡 + 大单与爆仓」验收（393×852，iPhone 视口）
 //   node scripts/m-bigtrade.mjs [地址]
 //   默认地址 http://localhost:5178/web/m/（npx vite --port 5178，开发构建才认 ?bt=）；截图落在 docs/acceptance/大单与爆仓-手机-2026-10-08/
-// 走一遍：图上有签 → 点签一开就是整页（那根，每张卡都在）→ 逐根点一根（十字线跳过去）→ 门槛（弹层收下去）→ 关门槛升回来 → 往下拉关 → ‹ 关
+// 走一遍：图上有气泡 → 点泡一开就是整页（那根，每张卡都在）→ 逐根点一根（十字线跳过去）→ 门槛（弹层收下去）→ 关门槛升回来 → 往下拉关 → ‹ 关
 // 再截：三套皮肤 × 浅 / 深的整页（顶 / 底），骨架 / 现货 / 爆仓空 / 停住 / 不跟。有 ✗ 退出码 1。
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
@@ -45,7 +45,7 @@ const hero = p => p.evaluate(() => ({
   await p.waitForFunction(() => document.querySelectorAll('.m-bigtrade-aria-sign').length >= 1, null, { timeout: 40000 }).catch(() => {})
   await sleep(800)
   const signs = await p.evaluate(() => [...document.querySelectorAll('.m-bigtrade-aria-sign')].map(b => { const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, label: b.getAttribute('aria-label') } }))
-  ok(signs.length > 0, `图上有大单签 ${signs.length} 枚${signs[0] ? '，读屏「' + signs[signs.length - 1].label + '」' : ''}`)
+  ok(signs.length > 0, `图上有气泡 ${signs.length} 枚${signs[0] ? '，读屏「' + signs[signs.length - 1].label + '」' : ''}`)
   await shot(p, 'sage-light-signs')
   if (signs.length) {
     const s = signs[Math.max(0, signs.length - 2)]
@@ -53,7 +53,7 @@ const hero = p => p.evaluate(() => ({
     await p.waitForSelector('.bt-wrap.in', { timeout: 5000 }).catch(() => {})
     await sleep(900)
     const h = await hero(p)
-    ok(h.open && h.all && h.height >= 760, `点签一开就是整页（${h.height}px，每根 / 价位 / 门槛都在、没有「展开」）：${h.title} · ${h.rt}`)
+    ok(h.open && h.all && h.height >= 760, `点泡一开就是整页（${h.height}px，每根 / 价位 / 门槛都在、没有「展开」）：${h.title} · ${h.rt}`)
     await shot(p, 'flow-1-sign-open')
   } else {
     await p.evaluate(() => { location.search = '?open=bigtrade' }); await p.waitForSelector('.bt-wrap.in', { timeout: 8000 })

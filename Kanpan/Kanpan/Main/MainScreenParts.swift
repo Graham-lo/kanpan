@@ -320,8 +320,8 @@ struct MainChartView: View {
   let onTapped: () -> Void
   /// 点图上已画的一条复盘记录（P3.7）：打开它的详情。
   var onOpenRecord: (UUID) -> Void = { _ in }
-  /// 点图上的大单签（开「大单与爆仓」弹层 / 换根）。复盘态不接。
-  var onBigTradeTap: ((BigTradeSign) -> Void)? = nil
+  /// 点图上的大单与爆仓气泡（开「大单与爆仓」弹层 / 换根）。复盘态不接。
+  var onBigTradeTap: ((BigTradeBubble) -> Void)? = nil
 
   var body: some View {
     #if DEBUG

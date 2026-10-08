@@ -9,9 +9,9 @@
  * 历史：服务端（kanpan-api）对常驻跟踪的品种每分钟记一行 [分钟, 大买额, 大卖额, 小买额, 小卖额]，
  * 近 3 天（GET /v1/market/orderflow/flow）。没在跟的品种没有历史，从打开页面起算。只聚合，不判定。
  *
- * 图上「大单签」与底部抽屉（2026-10-08）也吃这一份：浏览器这边的桶另记大单的笔数、现货部分、分交易所金额
+ * 图上大单与爆仓气泡与底部抽屉（2026-10-08）也吃这一份：浏览器这边的桶另记大单的笔数、现货部分、分交易所金额
  * 与这一分钟最大的一笔（服务端的行没有这些，历史段只有金额）；大单逐笔的价位另留 2 小时（抽屉的价位块）。
- * srv.ver 在服务端历史每次并进新行时加一，画签的缓存据此作废；live 在每进一笔大单时加一。
+ * srv.ver 在服务端历史每次并进新行时加一，画气泡的缓存据此作废；live 在每进一笔大单时加一。
  */
 import type { Bar, Series, CalcEnv } from './calc'
 import type { TradeEvent } from '../orderflow/feed'
@@ -79,7 +79,7 @@ interface Server {
   bigUsd: number | null
   busy: boolean
   nextAt: number
-  /** 每并进一批新行加一（画签的缓存据此作废） */
+  /** 每并进一批新行加一（画气泡的缓存据此作废） */
   ver: number
 }
 
@@ -238,7 +238,7 @@ function ensureServer(f: SymbolFlow, env: CalcEnv | undefined, now: number): voi
   if (!env) return
   ensureHistory(f, env.invalidate, now)
 }
-/** 要服务端历史的地方（指标、图上大单签、抽屉）都走这里：登记「到了叫我」，到点了在后台增量拉一次 */
+/** 要服务端历史的地方（指标、图上气泡、抽屉）都走这里：登记「到了叫我」，到点了在后台增量拉一次 */
 export function ensureHistory(f: SymbolFlow, onUpdate: () => void, now = Date.now()): void {
   f.listeners.add(onUpdate)
   if (f.srv.busy || before(f.srv.nextAt, Math.max(POLL_MS, RETRY_MS), now) || typeof fetch === 'undefined') return

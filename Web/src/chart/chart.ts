@@ -395,7 +395,7 @@ export class TVChart {
   hoverWall: Wall | null = null
   /** 外挂绘制层（订单流） */
   layers: ChartLayer[] = []
-  /** 这一帧主图上画线 / 交易记号写过字的地方（订单流的大单签要躲开它们，不压也不被压）；每帧画线前清空 */
+  /** 这一帧主图上画线 / 交易记号写过字的地方（订单流的大单与爆仓气泡要躲开它们，不压也不被压）；每帧画线前清空 */
   textRects: { x: number; y: number; w: number; h: number }[] = []
   private layerHover: ChartLayer | null = null
   colors: ThemeColors = { bg: '', grid: '', text: '', text2: '', text3: '', cross: '', crossLabel: '', scaleLine: '', sep: '', up: '', down: '', accent: '', alert: '', line: '' }

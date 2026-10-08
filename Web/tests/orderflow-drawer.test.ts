@@ -109,6 +109,24 @@ describe('只有历史时的写法', () => {
     expect(h).not.toContain('历史回填'); expect(h).not.toContain('hc-src')
     expect(h).not.toContain('最大一笔'); expect(h).not.toContain('现货'); expect(h).not.toContain('>—<')
   })
+  it('悬停卡顶上两行：向上 = 买入 + 空单爆仓、向下 = 卖出 + 多单爆仓，零的那项不写', () => {
+    const d: BarBig = { t: 0, t1: 300_000, bb: 2e6, bs: 1e6, bn: null, sn: null, bmax: null, smax: null, spot: null, ex: null, exact: false } as unknown as BarBig
+    const h = hoverCardHtml(d, '10-08 12:30', '5分', { long: 0, short: 5e5 })
+    const kv = h.slice(h.indexOf('hc-kv'))
+    expect(kv.indexOf('向上')).toBeGreaterThan(-1)
+    expect(kv.indexOf('向上')).toBeLessThan(kv.indexOf('向下'))
+    expect(kv.indexOf('向下')).toBeLessThan(kv.indexOf('卖出'))
+    expect(kv).toContain('空单爆仓'); expect(kv).not.toContain('多单爆仓')
+    expect(kv).toMatch(/向上<\/span><b class="num up">2\.5M</)
+    expect(kv).toMatch(/向下<\/span><b class="num dn">1(\.0)?M</)
+  })
+  it('只有爆仓没有大单的根：只有时间与向上 / 向下两行；没有爆仓项（liq 不传）不加那两行', () => {
+    const h = hoverCardHtml(null, '10-08 12:30', '5分', { long: 3e6, short: 0 })
+    expect(h).toContain('向上'); expect(h).toContain('多单爆仓'); expect(h).not.toContain('hc-net'); expect(h).not.toContain('卖出')
+    const d: BarBig = { t: 0, t1: 300_000, bb: 2e6, bs: 1e6, bn: null, sn: null, bmax: null, smax: null, spot: null, ex: null, exact: false } as unknown as BarBig
+    expect(hoverCardHtml(d, '10-08 12:30', '5分')).not.toContain('向上')
+    expect(hoverCardHtml(d, '10-08 12:30', '5分', null)).toContain('向上')
+  })
   it('pct / signed / tone', () => {
     expect(pct(1, 0)).toBe('—'); expect(pct(1, 3)).toBe('33%')
     expect(signed(0)).toBe('0'); expect(signed(-2e6).startsWith('−')).toBe(true); expect(signed(2e6).startsWith('+')).toBe(true)

@@ -147,7 +147,7 @@ export class ChartView {
   drawingTeardown: (() => void) | null = null
   /** 一下轻点先问画线层：落在提醒线（AlertSignal）上就归它、返回真，图不再当轻点处理 */
   signalTap: ((x: number, y: number) => boolean) | null = null
-  /** 一下轻点接着问图上大单签（bigTradeLayer 赋值）：点中一枚就归它、返回真 */
+  /** 一下轻点接着问图上气泡（bigTradeLayer 赋值）：点中一枚就归它、返回真 */
   bigTradeTap: ((x: number, y: number) => boolean) | null = null
   private _drawingKeyOf: ((s: ChartState) => string) | null = null
   private drawingKey: string | null = null
@@ -158,7 +158,7 @@ export class ChartView {
   private mark: SeriesMark | null = null
   private orderFlowFocus: ChartOrderFlowFocus | null = null
   private dirty: PartsMask = 0
-  /** 附加图层（图上大单签等）：各自一块画布，插在画线覆盖层下面 */
+  /** 附加图层（图上大单与爆仓气泡等）：各自一块画布，插在画线覆盖层下面 */
   private readonly layers: ChartLayer[] = []
   private overlayDirty = false
   private raf = 0

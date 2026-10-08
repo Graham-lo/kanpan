@@ -27,9 +27,9 @@ extension ChartView {
       "开 " + fmtNum(b.open[i], d), "高 " + fmtNum(b.high[i], d),
       "低 " + fmtNum(b.low[i], d), "收 " + fmtNum(b.close[i], d), change,
     ].joined(separator: "，")
-    let sign = bigTradeVoiceOver.map { "，" + $0 } ?? ""
-    guard s.crosshair == nil else { return bar + sign }
-    return "\(InstrumentID(s.symbol.symbol).display)，\(b.interval.display)，最新一根 " + bar + sign
+    let bubble = bigTradeVoiceOver.map { "，" + $0 } ?? ""
+    guard s.crosshair == nil else { return bar + bubble }
+    return "\(InstrumentID(s.symbol.symbol).display)，\(b.interval.display)，最新一根 " + bar + bubble
   }
 
   public override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {

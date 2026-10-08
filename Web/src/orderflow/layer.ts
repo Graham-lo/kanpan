@@ -2,8 +2,12 @@
  *
  * 最底下（成交量柱之下）：深度热力（开了才画）。
  * 蜡烛下面：大单带——只画值得看的几道（取舍见 bands.ts），挂着的铺底、结束的一道细线。
- * 蜡烛上面：结束记号与右端标签（躲开蜡烛）、每根 K 线的大单签（bigTags.ts）、梯子悬停那一行的淡色横带。
- * 大单签不跟着数据层走：多图里每一格都画（非活动格子只有服务端历史），刷新后从服务端历史重画。
+ * 蜡烛上面：结束记号与右端标签（躲开蜡烛）、每根 K 线的大单与爆仓气泡（几何见 bigTags.ts）、梯子悬停那一行的淡色横带。
+ * 气泡：每根上下各至多一枚——向上 U = 大买 + 空爆挂最高价之上（涨色），向下 D = 大卖 + 多爆挂最低价之下（跌色）；
+ *   柄先画，再画小圆点（85% 实心），最后画泡（方向色 16% 填充、深色皮肤 22%，1.4 描边，方向色 11 号字）。
+ *   悬停泡：填充升到 32%、放大 1.1、那根铺淡竖带、弹读数卡（顶上向上 / 向下两行拆出大单与爆仓）；点泡：选中那根、抽屉滚到它。
+ *   小圆点不响应悬停与点击。爆仓用抽屉那份 LiqStore（drawerLiq）按本图 K 线并分钟；现货与 DXY 不拉。
+ * 气泡不跟着数据层走：多图里每一格都画（非活动格子只有服务端历史），刷新后从服务端历史重画。
  * 行高和梯子是同一套「k 个细桶一行」，所以热力的格子、大单带的厚度和梯子的行一一对齐。
  * 时间 t 在图上的 x：timeToX(t) − 半根 K 线宽（一根 K 线的时间段正好铺满它的宽度）。
  */
@@ -12,7 +16,7 @@ import { BT } from '../terms'
 import { st } from '../app/store'
 import type { BigOrder } from './types'
 import { orderId } from './types'
-import { shows } from './settings'
+import { shows, baseOfSymbol } from './settings'
 import { bucketIndex } from './bucket'
 import { rowOf, exName, venueName, outcomeText, EXCHANGE_NAMES } from './aggregate'
 import { HeatCache, percentile, heatAlpha, edgeFade, type HeatCol } from './heat'
@@ -22,9 +26,10 @@ import { OF, rowsPerLine, bandColor, bandInk, isDarkBg, rgbOf, showCard, hideCar
 import { esc } from '../ui/dom'
 import { hexA } from '../util/format'
 import { flowOf, ensureHistory } from '../chart/tradeFlow'
-import { BigBarCache, TierCache, planTags, unitFor, type Tag, type TagIn, type Rect as TagRect, type BarBig } from './bigTags'
+import { BigBarCache, LevelCache, planBubbles, unitFor, udOf, BUBBLE, type Bubble, type BubbleIn, type Rect as BubbleRect, type BarBig, type BarLiq, type LiqBars } from './bigTags'
+import { LiqBarCache, noLiq } from './liquidation'
 import { hoverCardHtml, ivShort } from './drawerView'
-import { drawerChartDrawn } from './drawer'
+import { drawerChartDrawn, drawerLiq } from './drawer'
 
 /** 读数卡分簿那行小字最多点几家（只写各家金额，不写「+N 本」这类计数）。用户 2026-10-08：他关心的是品种和数据，哪家交易所权重不大 */
 export const CARD_BOOKS = 3
@@ -39,27 +44,35 @@ function rrect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: 
 }
 
 const xOf = (g: ChartGeometry, t: number): number => g.timeToX(t) - g.spacing / 2
-/** 成交量垫在主图底部的比例（同 chart.ts 的 VOL_H）：大单签不落进这一截 */
+/** 成交量垫在主图底部的比例（同 chart.ts 的 VOL_H）：气泡不落进这一截 */
 const VOL_H = 0.16
-/** 签离图例文字至少留这么多 */
+/** 气泡离图例文字至少留这么多 */
 const LEGEND_PAD = 4
+/** 悬停 / 点击命中：泡半径外再放宽这么多 */
+const HIT_PAD = 2
 
-/** 每张图此刻画出来的签（压测 / 截图脚本按它找悬停位置；界面不读） */
-export const tagsOf = new WeakMap<TVChart, () => readonly Tag[]>()
+/** 每张图此刻画出来的气泡（压测 / 截图脚本按它找悬停位置；界面不读） */
+export const bubblesOf = new WeakMap<TVChart, () => readonly Bubble[]>()
+/** 一根的数据（悬停卡用）：大单合计（没有大单 null）与爆仓（这只没有爆仓项时 undefined） */
+interface BarCardData { t: number; t1: number; d: BarBig | null; l: BarLiq | null | undefined }
 
 export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: string }): ChartLayer {
   let bands: BandHit[] = []
-  let tags: Tag[] = []
-  /** 鼠标停在哪枚签上（那根的开盘时间）：图上给那根铺一道淡竖带，不然签比根宽、十字线又停在旁边那根，看不出卡上的数是哪根的 */
-  let hoverT: number | null = null
-  tagsOf.set(chart, () => tags)
-  let tagData = new Map<number, BarBig>()
+  let bubbles: Bubble[] = []
+  /** 鼠标停在哪枚泡上（那根的开盘时间 + 哪一侧）：泡放大加深，图上给那根铺一道淡竖带，不然泡比根宽、十字线又停在旁边那根，看不出卡上的数是哪根的 */
+  let hoverB: { t: number; side: Bubble['side'] } | null = null
+  bubblesOf.set(chart, () => bubbles)
+  let barData = new Map<number, BarCardData>()
   const bigCache = new BigBarCache()
-  const tierCache = new TierCache()
+  const levelCache = new LevelCache()
+  const liqCache = new LiqBarCache()
   let flowSym = ''
   const onHistory = (): void => { chart.dirty = true }
-  // 图例是 DOM（左上角），尺寸变了 ResizeObserver 推过来，画签时不去读布局
-  let legend: TagRect | null = null
+  // 爆仓有新数据：这张图重画（图拆了就自己摘掉）
+  const onLiq = (): void => { if (chart.dead) drawerLiq.listeners.delete(onLiq); else chart.dirty = true }
+  drawerLiq.listeners.add(onLiq)
+  // 图例是 DOM（左上角），尺寸变了 ResizeObserver 推过来，画气泡时不去读布局
+  let legend: BubbleRect | null = null
   if (typeof ResizeObserver !== 'undefined' && chart.legendEl) {
     new ResizeObserver(() => {
       const el = chart.legendEl
@@ -226,8 +239,11 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
   }
 
   /** 蜡烛上面：结束记号（峰值前几道，躲开蜡烛）与右端标签（最多 8 个、互不重叠、不压价格轴、不压蜡烛） */
+  /** 这一帧挂单带的金额标签与结束记号占的格（气泡躲开它们；每帧 drawBandMarks 重算） */
+  let markRects: BubbleRect[] = []
   function drawBandMarks(c: CanvasRenderingContext2D, g: ChartGeometry): void {
     const p = plan
+    markRects = []
     if (!p) return
     const top = g.pane.y, bottom = g.pane.y + g.pane.h
     const blocked = (r: Rect): boolean => hitsCandles(g, r)
@@ -240,6 +256,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       if (v.x1 > g.plotW - 2) continue
       const m = placeMark(v.x1, v.mid, S, v.x0, g.spacing, blocked, bottom)
       endMark(c, v.o, m.x, m.y, S, p.dark)
+      markRects.push({ x: m.x - S / 2, y: m.y - S / 2, w: S, h: S })
       marked.add(v.id)
     }
     c.font = canvasFont(11, 600)
@@ -257,6 +274,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       const r = spots[i]
       if (!r) continue
       const v = all[i]
+      markRects.push(r)
       c.fillStyle = hexA(g.colors.bg, p.dark ? 0.55 : 0.6)
       rrect(c, r.x, r.y, r.w, r.h, 3); c.fill()
       c.fillStyle = bandColor(v.o.product, v.o.side, p.dark ? 0.24 : 0.16, p.dark)
@@ -278,8 +296,8 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     }
   }
 
-  function drawTags(c: CanvasRenderingContext2D, g: ChartGeometry): void {
-    tags = []
+  function drawBubbles(c: CanvasRenderingContext2D, g: ChartGeometry): void {
+    bubbles = []
     if (!st.orderFlow) return
     const sym = cellOf().symbol.toUpperCase()
     if (!sym || sym === 'DXY') return
@@ -288,57 +306,75 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     const now = Date.now()
     if (!(g.iv < 60_000)) ensureHistory(f, onHistory, now)
     bigCache.begin(f, `${sym}|${g.iv}`, now)
-    const tiers = tierCache.get(bigCache, f, chart, now, unitFor(f, mine() ? OF.bigTrade : 0))
-    if (!tiers) return
-    const list: TagIn[] = []
-    tagData = new Map()
+    // 爆仓：合约品种才有；秒级周期不并（分钟粒度）
+    let liq: LiqBars | null = null
+    const hasLiq = !noLiq(sym) && g.iv >= 60_000
+    if (hasLiq) {
+      const base = baseOfSymbol(sym).base
+      drawerLiq.ensure(base, now)
+      liq = liqCache.of(drawerLiq.state(base), base, g.iv)
+    }
+    const levels = levelCache.get(bigCache, f, chart, now, unitFor(f, mine() ? OF.bigTrade : 0), liq)
+    if (!levels) return
+    const list: BubbleIn[] = []
+    barData = new Map()
     const lo = Math.max(0, Math.floor(g.from) - 1), hi = Math.ceil(g.to) + 1
     for (let i = lo; i <= hi; i++) {
       const t0 = g.timeOf(i)
       if (t0 > now) break
-      const d = bigCache.get(f, t0, g.timeOf(i + 1), now)
-      if (!d || Math.max(d.bb, d.bs) < tiers.t1) continue
+      const t1 = g.timeOf(i + 1)
+      const d = bigCache.get(f, t0, t1, now), l = liq ? liq.at(t0, t1) : null
+      if (!d && !l) continue
+      const u = udOf(d, l)
+      if (Math.max(u.up, u.down) < levels.dot) continue
+      const b = g.bar(i)
+      if (!b) continue
       const x = g.indexToX(i)
       if (x < -40 || x > g.plotW + 40) continue
-      list.push({ i, t: t0, x, data: d }); tagData.set(t0, d)
+      list.push({ i, t: t0, x, yHigh: g.priceToY(b.h), yLow: g.priceToY(b.l), up: u.up, down: u.down })
+      barData.set(t0, { t: t0, t1, d, l: hasLiq ? l : undefined })
     }
     if (!list.length) return
-    const avoid: TagRect[] = chart.textRects.slice()
+    const avoid: BubbleRect[] = chart.textRects.concat(markRects)
     if (legend) avoid.push(legend)
-    const fontS = canvasFont(11, 600), fontB = canvasFont(13, 700)
-    const yHi = (b: { h: number }) => g.priceToY(b.h), yLo = (b: { l: number }) => g.priceToY(b.l)
+    const font = canvasFont(BUBBLE.font, 650)
+    c.font = font
     const volOn = chart.ind.vol && chart.deg.vol && !chart.hidden.has('vol')
-    tags = planTags(list, {
-      tiers, spacing: g.spacing, top: g.pane.y + 2, bottom: g.pane.y + g.pane.h * (volOn ? 1 - VOL_H : 1) - 2, plotW: g.plotW - 2, avoid,
-      span: (x0, x1) => {
-        const i0 = Math.max(0, Math.round(g.xToIndex(x0))), i1 = Math.round(g.xToIndex(x1))
-        let hiY = Infinity, loY = -Infinity
-        for (let i = i0; i <= i1; i++) { const b = g.bar(i); if (!b) continue; hiY = Math.min(hiY, yHi(b)); loY = Math.max(loY, yLo(b)) }
-        return isFinite(hiY) ? { hiY, loY } : null
-      },
-      measure: (t, big) => { c.font = big ? fontB : fontS; return c.measureText(t).width },
+    bubbles = planBubbles(list, {
+      levels, bw: g.spacing, top: g.pane.y + 2, bottom: g.pane.y + g.pane.h * (volOn ? 1 - VOL_H : 1) - 2, plotW: g.plotW - 2, avoid,
+      measure: t => c.measureText(t).width,
       text: amt,
     })
+    // 开发构建把这一帧的泡挂在画布上（截图脚本 scripts/pc-bigtrade.mjs 据此找泡去悬停 / 点）
+    if (import.meta.env.DEV) (chart.canvas as HTMLCanvasElement & { __bubbles?: unknown }).__bubbles = bubbles.map(b => ({ t: b.t, side: b.side, x: b.x, y: b.cy, r: b.r, text: b.text, bubble: b.bubble }))
     const hiOn = OF.barHi && OF.barHi.symbol === sym && OF.barHi.until > now ? OF.barHi.t : null
-    c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 1
-    for (const t of tags) {
-      const col = t.side === 'buy' ? g.colors.up : g.colors.down
-      if (hiOn === t.t) { c.fillStyle = hexA(col, 0.22); rrect(c, t.x - 4, t.y - 4, t.w + 8, t.h + 8, 6); c.fill() }
-      if (t.kind === 'tri') {
-        const up = t.side === 'buy'
-        c.beginPath()
-        if (up) { c.moveTo(t.cx, t.y); c.lineTo(t.x + t.w, t.y + t.h); c.lineTo(t.x, t.y + t.h) }
-        else { c.moveTo(t.cx, t.y + t.h); c.lineTo(t.x + t.w, t.y); c.lineTo(t.x, t.y) }
-        c.closePath()
-        if (t.filled) { c.fillStyle = col; c.fill() } else { c.strokeStyle = col; c.stroke() }
-        continue
-      }
-      const big = t.kind === 'big'
-      rrect(c, t.x + .5, t.y + .5, t.w - 1, t.h - 1, big ? 4 : 3)
-      if (t.filled) { c.fillStyle = col; c.fill() } else { c.fillStyle = hexA(g.colors.bg, 0.85); c.fill(); c.strokeStyle = col; c.stroke() }
-      c.font = big ? fontB : fontS
-      c.fillStyle = t.filled ? '#fff' : col
-      c.fillText(t.text, t.cx, t.y + t.h / 2 + .5)
+    const hot = (b: Bubble): boolean => b.bubble && (hiOn === b.t || (hoverB != null && hoverB.t === b.t && hoverB.side === b.side))
+    const colOf = (b: Bubble): string => b.side === 'up' ? g.colors.up : g.colors.down
+    const fillA = isDarkBg(g.colors.bg) ? BUBBLE.fillDark : BUBBLE.fill
+    // 柄全部先画（只有泡有柄），再画点，最后画泡
+    c.lineWidth = BUBBLE.stemW
+    for (const b of bubbles) {
+      if (!b.bubble) continue
+      const s = hot(b) ? BUBBLE.hoverScale : 1
+      const end = b.side === 'up' ? b.cy + b.r * s : b.cy - b.r * s
+      if (Math.abs(end - b.anchor) < 0.5) continue
+      c.strokeStyle = hexA(colOf(b), BUBBLE.stemAlpha)
+      c.beginPath(); c.moveTo(b.x, b.anchor); c.lineTo(b.x, end); c.stroke()
+    }
+    for (const b of bubbles) {
+      if (b.bubble) continue
+      c.fillStyle = hexA(colOf(b), BUBBLE.dotAlpha)
+      c.beginPath(); c.arc(b.x, b.cy, b.r, 0, Math.PI * 2); c.fill()
+    }
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = BUBBLE.stroke; c.font = font
+    for (const b of bubbles) {
+      if (!b.bubble) continue
+      const col = colOf(b), on = hot(b), r = b.r * (on ? BUBBLE.hoverScale : 1)
+      c.beginPath(); c.arc(b.x, b.cy, r, 0, Math.PI * 2)
+      c.fillStyle = hexA(col, on ? BUBBLE.fillHover : fillA); c.fill()
+      c.strokeStyle = col; c.stroke()
+      c.fillStyle = col
+      c.fillText(b.text, b.x, b.cy + .5)
     }
     if (hiOn != null) setTimeout(() => { chart.dirty = true }, Math.max(0, OF.barHi!.until - now) + 20)
   }
@@ -405,13 +441,13 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       <div class="of-card-r"><span>挂单名义</span><b class="num">${amt(col.vals[i])}</b></div>${split}`
   }
 
-  // 悬停卡与抽屉「每根」同一套样子（drawerView.hoverCardHtml）
-  function tagCard(t: Tag): string {
-    const d = tagData.get(t.t)
-    return d ? hoverCardHtml(d, mdhm(d.t), ivShort(d.t1 - d.t)) : ''
+  // 悬停卡与抽屉「每根」同一套样子（drawerView.hoverCardHtml），顶上加向上 / 向下两行
+  function bubbleCard(b: Bubble): string {
+    const e = barData.get(b.t)
+    return e ? hoverCardHtml(e.d, mdhm(e.t), ivShort(e.t1 - e.t), e.l) : ''
   }
 
-  /** 一根上的强调色竖带（画在蜡烛下面）：抽屉里点选的那根带底边粗线；鼠标停在签上的那根只有淡带 */
+  /** 一根上的强调色竖带（画在蜡烛下面）：抽屉里点选的那根带底边粗线；鼠标停在泡上的那根只有淡带 */
   function drawBar(c: CanvasRenderingContext2D, g: ChartGeometry, t: number, strong: boolean): void {
     const x = xOf(g, t)
     if (x + g.spacing < 0 || x > g.plotW) return
@@ -427,18 +463,24 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
   function drawSel(c: CanvasRenderingContext2D, g: ChartGeometry): void {
     const s = OF.selBar
     if (s && s.symbol === cellOf().symbol.toUpperCase() && s.iv === g.iv && OF.api?.activeChart()?.chart === chart) drawBar(c, g, s.t, true)
-    if (hoverT != null && hoverT !== s?.t) drawBar(c, g, hoverT, false)
+    if (hoverB != null && hoverB.t !== s?.t) drawBar(c, g, hoverB.t, false)
   }
 
-  /** 签悬停换了根（或离开）就重画一帧 */
-  function setHover(t: number | null): void {
-    if (hoverT === t) return
-    hoverT = t; chart.dirty = true
+  /** 悬停换了泡（或离开）就重画一帧 */
+  function setHover(b: Bubble | null): void {
+    if (hoverB?.t === b?.t && hoverB?.side === b?.side) return
+    hoverB = b ? { t: b.t, side: b.side } : null; chart.dirty = true
   }
 
-  const tagAt = (x: number, y: number): Tag | null => {
-    for (const t of tags) if (x >= t.x - 2 && x <= t.x + t.w + 2 && y >= t.y - 2 && y <= t.y + t.h + 2) return t
-    return null
+  /** 鼠标下的泡（小圆点不算）：落在半径（悬停放大后的）+ 2 以内，取圆心最近的 */
+  const bubbleAt = (x: number, y: number): Bubble | null => {
+    let best: Bubble | null = null, bd = Infinity
+    for (const b of bubbles) {
+      if (!b.bubble) continue
+      const d = Math.hypot(x - b.x, y - b.cy)
+      if (d <= b.r * BUBBLE.hoverScale + HIT_PAD && d < bd) { best = b; bd = d }
+    }
+    return best
   }
 
   const stepK = (g: ChartGeometry): [number, number] | null => {
@@ -464,7 +506,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     over(c, g) {
       geo = g
       if (mine()) drawBandMarks(c, g)
-      drawTags(c, g)
+      drawBubbles(c, g)
       if (mine()) drawHoverRow(c, g)
     },
     after(g) {
@@ -473,9 +515,9 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     },
     hover(x, y, cx, cy) {
       if (!geo) return false
-      const tg = tagAt(x, y)
-      setHover(tg?.t ?? null)
-      if (tg) { showCard(tagCard(tg), cx, cy); return true }
+      const bb = bubbleAt(x, y)
+      setHover(bb)
+      if (bb) { showCard(bubbleCard(bb), cx, cy); return true }
       if (!mine()) { hideCard(); return false }
       const dec = geo.dec
       const step = OF.feed?.model.scheme?.step ?? 0
@@ -490,13 +532,13 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     },
     leave() { setHover(null); hideCard() },
     click(x, y) {
-      const tg = tagAt(x, y)
-      if (tg) {
+      const bb = bubbleAt(x, y)
+      if (bb) {
         const sym = cellOf().symbol.toUpperCase()
-        OF.barHi = { symbol: sym, t: tg.t, until: Date.now() + 1500 }
-        OF.selBar = { symbol: sym, iv: chart.iv, t: tg.t }
+        OF.barHi = { symbol: sym, t: bb.t, until: Date.now() + 1500 }
+        OF.selBar = { symbol: sym, iv: chart.iv, t: bb.t }
         chart.dirty = true
-        OF.revealBar?.(sym, tg.t)
+        OF.revealBar?.(sym, bb.t)
         return true
       }
       if (!mine()) return false

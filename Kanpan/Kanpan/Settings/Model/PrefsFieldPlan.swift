@@ -117,7 +117,7 @@ enum PrefsFieldPlan {
     // 主力订单流：改过的门槛 / 步长（整张表一个键，见 `Prefs.orderFlowOverrides`）。
     // 六合四之前的 `orderFlowFilledBid/Ask`、`orderFlowCancelledBid/Ask` 在服务端 RETIRED_SETTINGS_FIELDS 里退役。
     "orderFlowOverrides": .synced,
-    // 2026-10-08「图上大单签」：个人的看图偏好，换台手机还该是那样，跟账号走。
+    // 2026-10-08 图上大单与爆仓气泡：个人的看图偏好，换台手机还该是那样，跟账号走。
     "bigTradeSigns": .synced,
     // 「按我的习惯自动调整」：开关 + 学到的结论（整份一个对象，≤ 16 KB）。行为日志只在本机。
     "habitLearning": .synced, "learnedDefaults": .synced,

@@ -7,7 +7,7 @@
 //   2. 拷一份：feed 的模型原地改单子（push、改 notional / status），直接交出去的话图表那边按「同一块数组」认缓存会认错，
 //      所以每帧把单子逐条浅拷贝成一份不再变的快照（几千单一次拷贝 < 1 ms，500 ms 一帧）。
 //   3. 拼上品种与默认门槛：symbol 用 feed 规范化后的代号，defaults 取 feed.defaults()（面板「恢复默认」用）。
-//   4. 逐笔记进按品种的成交流（chart/tradeFlow.ts，与电脑网页版同一套接线 orderflow/flowTap.ts）：图上大单签与「大单与爆仓」弹层
+//   4. 逐笔记进按品种的成交流（chart/tradeFlow.ts，与电脑网页版同一套接线 orderflow/flowTap.ts）：图上大单与爆仓气泡与「大单与爆仓」弹层
 //      读它的分钟桶；每出一帧拍一次覆盖心跳；记下正在订那只最近一笔成交的时刻（弹层「数据停在 hh:mm」）。
 //
 // 线路（直连 / 网关）与用户改过的门槛由调用方按需传 options，或随后 setRoute / setOverride；默认直连、不叠用户门槛。
@@ -136,7 +136,7 @@ export class OrderFlowSource {
   private frame(feed: OrderFlowFeed, s: Snapshot): void {
     if (feed !== this.feed) return
     const now = Date.now()
-    // 各家逐笔的覆盖心跳：连接都开着这半秒才算盖住（大单签、弹层合计据此判断哪几分钟能信本机）
+    // 各家逐笔的覆盖心跳：连接都开着这半秒才算盖住（图上气泡、弹层合计据此判断哪几分钟能信本机）
     feedBeat(feed, now)
     if (this.intervalMs > 0 && ago(this.lastEmit, now) < this.intervalMs) return
     this.lastEmit = now

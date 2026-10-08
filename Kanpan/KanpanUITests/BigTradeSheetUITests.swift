@@ -6,7 +6,7 @@ import XCTest
 // 以交易员的身份走一遍：分析面板「主力订单流 › 大单与爆仓」一开就是整页（每张卡都在、没有「展开」）
 // → 点「每根」里一根（十字线跳过去、本根卡改读那一根）→「门槛」开表再取消 → ‹ 收掉。另外两条：
 //   · 往下拉：标题行往下拉就关（只有一档，不再落回半屏）。
-//   · 点图上的大单签：一开就是整页、读的是那一根。
+//   · 点图上的大单与爆仓气泡：一开就是整页、读的是那一根（小圆点不响应，只点泡）。
 // 状态图（首次打开 / 现货 / 今天没爆仓 / 数据停了）用 DEBUG 钩子 `KANPAN_TEST_BIGTRADE_STATE` 钉住。
 // 截图写进 `docs/acceptance/大单与爆仓-手机-2026-10-08/iOS-*.png`。
 @MainActor
@@ -19,8 +19,8 @@ final class BigTradeSheetUITests: KanpanUICase {
     if name.contains("Loading") { env["KANPAN_TEST_BIGTRADE_STATE"] = "loading" }
     if name.contains("Stale") { env["KANPAN_TEST_BIGTRADE_STATE"] = "stale" }
     if name.contains("LiqEmpty") { env["KANPAN_TEST_BIGTRADE_STATE"] = "liqEmpty" }
-    // 点签那条：DEBUG 钩子往成交账里补一笔门槛以上的买单，图上必有签可点（名册不许按数据有没有来跳过）。
-    if name.contains("TapSign") { env["KANPAN_TEST_BIGTRADE_SEED"] = "1" }
+    // 点泡那条：DEBUG 钩子往成交账里补一笔门槛 20 倍的买单，图上必有泡可点（名册不许按数据有没有来跳过）。
+    if name.contains("TapBubble") { env["KANPAN_TEST_BIGTRADE_SEED"] = "1" }
     return env
   }
 
@@ -119,26 +119,28 @@ final class BigTradeSheetUITests: KanpanUICase {
     expectGone(title, Self.short, "从顶上往下拉，弹层没关")
   }
 
-  // MARK: 点签
+  // MARK: 点泡
 
-  func testTapSignOpensFullOnThatBar() throws {
+  func testTapBubbleOpensFullOnThatBar() throws {
     waitForBars()
-    var signs: [[String: Any]] = []
+    var bubbles: [[String: Any]] = []
     let ok = waitUntil(timeout: Self.long, poll: 1) {
-      signs = self.chartInfo()["bigTradeSigns"] as? [[String: Any]] ?? []
-      return !signs.isEmpty
+      let all = self.chartInfo()["bigTradeBubbles"] as? [[String: Any]] ?? []
+      bubbles = all.filter { $0["isBubble"] as? Bool == true }
+      return !bubbles.isEmpty
     }
-    XCTAssertTrue(ok, "开着 KANPAN_TEST_BIGTRADE_SEED 图上也没出大单签（钩子补的那笔没走到图上）")
+    XCTAssertTrue(ok, "开着 KANPAN_TEST_BIGTRADE_SEED 图上也没出大单与爆仓气泡（钩子补的那笔没走到图上）")
     guard ok else { return }
-    let sign = signs.max { ($0["x"] as? Double ?? 0) < ($1["x"] as? Double ?? 0) }!
+    // 金额最大的那枚（钩子补的那笔）。
+    let bubble = bubbles.max { ($0["usd"] as? Double ?? 0) < ($1["usd"] as? Double ?? 0) }!
     let canvas = app.otherElements["chart.canvas"]
     canvas.coordinate(withNormalizedOffset: .zero)
-      .withOffset(CGVector(dx: sign["x"] as? Double ?? 0, dy: sign["y"] as? Double ?? 0)).tap()
-    expectExists(sheet, Self.short, "点了大单签没开弹层")
+      .withOffset(CGVector(dx: bubble["x"] as? Double ?? 0, dy: bubble["y"] as? Double ?? 0)).tap()
+    expectExists(sheet, Self.short, "点了大单与爆仓气泡没开弹层")
     waitForHero()
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.heroTitle.label.contains(":") || self.heroTitle.label.hasPrefix("本根") })
     expectAllCards()
-    shot("flow-0-sign-tap")
+    shot("flow-0-bubble-tap")
     closeSheet()
   }
 

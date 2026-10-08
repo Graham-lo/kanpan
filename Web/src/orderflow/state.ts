@@ -118,11 +118,11 @@ export const OF = {
   focus: null as null | ((o: BigOrder) => void),
   /** 活动格子画完一帧（梯子跟着重画，保证与价格轴对齐） */
   onChartDrawn: null as null | ((chart: TVChart, g: ChartGeometry) => void),
-  /** 大额成交的金额线（门槛 ÷ 5），图上大单签的档位以它为 1 倍 */
+  /** 大额成交的金额线（门槛 ÷ 5），图上气泡两级金额线的绝对下限 */
   bigTrade: 0,
-  /** 图上大单签点了 / 抽屉里点了一行：那一根的签亮 1.5 秒（symbol 大写、t = 那根的开盘时间） */
+  /** 图上气泡点了 / 抽屉里点了一行：那一根的泡亮 1.5 秒（symbol 大写、t = 那根的开盘时间） */
   barHi: null as null | { symbol: string; t: number; until: number },
-  /** 图上点了一枚大单签：抽屉开着就滚到那一根并高亮，没开就打开 */
+  /** 图上点了一枚气泡：抽屉开着就滚到那一根并高亮，没开就打开 */
   revealBar: null as null | ((symbol: string, t: number) => void),
   /** 活动格子十字线所在那根的开盘时间（抽屉按根表同步高亮，drawer.ts 跟着指针移动读出来）；不在图上为 null */
   crossT: null as number | null,

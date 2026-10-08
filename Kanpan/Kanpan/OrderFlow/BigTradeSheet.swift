@@ -13,9 +13,10 @@ private typealias BT = BigTradeTerm
 // （`BigTradeSummary`，四张卡共用这一份）、卡片、挂到主界面的修饰器、分析面板里那一行的实时副文字，
 // 全在这一个文件里。数据全来自已有的两条链路：
 //   · 大单成交分钟账 `OrderFlowLink.trades`（行情流随订单流帧推来；弹层开着时两颗开关都关着也订）；
-//   · 爆仓分钟账 `/liq`（kanpan-api，弹层开着时每 30 秒补一次，现货不取）。
+//   · 爆仓分钟账 `/liq`（kanpan-api），和图上气泡共读 `OrderFlowLink.liquidations` 那一本（`LiquidationFeed`
+//     每 30 秒补一次；弹层开着或图上气泡开着时拉，现货不取）。
 //
-// 入口两个：点图上的大单签（打开即整页，已开着只换根），分析面板「主力订单流 › 大单与爆仓」那一行。
+// 入口两个：点图上的大单与爆仓气泡（打开即整页，已开着只换根），分析面板「主力订单流 › 大单与爆仓」那一行。
 // 十字线联动：按住 / 落在图上时弹层改读那一根，十字线收掉后再停 3 秒、淡回本根。
 
 // MARK: - 状态
@@ -35,13 +36,9 @@ final class BigTradeSheetModel {
   private(set) var crossT: Int64?
   /// 十字线收掉后再留 3 秒的那一根。
   private(set) var heldT: Int64?
-  /// 刚点过的那一根（签 / 「每根」条），亮 1.2 秒。
+  /// 刚点过的那一根（气泡 / 「每根」条），亮 1.2 秒。
   private(set) var highlightT: Int64?
   private(set) var openedAt = Date.distantPast
-  /// 爆仓分钟账（按 base 记；换品种就换一本）。
-  private(set) var book: LiquidationBook?
-  /// 爆仓取不到（行情线路不带订单流目录、服务端出错）：那张卡不出，不挂骨架。
-  private(set) var liqUnavailable = false
 
   @ObservationIgnored private var holdTask: Task<Void, Never>?
   @ObservationIgnored private var highlightTask: Task<Void, Never>?
@@ -50,7 +47,7 @@ final class BigTradeSheetModel {
   /// 弹层此刻读哪一根：十字线那根，或刚收掉还在停留的那根；nil = 正在走那根。
   var focusT: Int64? { crossT ?? heldT }
 
-  /// 点签 / 点分析面板那一行。一开就是整页；已经开着只换根。
+  /// 点气泡 / 点分析面板那一行。一开就是整页；已经开着只换根。
   func open(at t: Int64?) {
     if !presented {
       openedAt = Date()
@@ -97,24 +94,6 @@ final class BigTradeSheetModel {
     let tape = flow.tape(nowMs: nowMs, floor: 0)
     tapeCache = (flow, tape)
     return tape
-  }
-
-  /// 弹层开着时每 30 秒补一次爆仓账（`.task(id: base)` 跑它，弹层关了 / 换品种就取消）。
-  func pollLiquidations(base: String, market: MarketModel) async {
-    if book?.base != base { book = LiquidationBook(base: base); liqUnavailable = false }
-    while !Task.isCancelled {
-      let now = Self.nowMs()
-      let from = book?.fetchFrom(nowMs: now) ?? now - LiquidationBook.keepMs
-      let page = await market.liquidations(base: base, fromMs: from, toMs: now + 60_000)
-      guard !Task.isCancelled, book?.base == base else { return }
-      if let page {
-        book?.merge(page, nowMs: now)
-        liqUnavailable = false
-      } else if book?.tracked == nil {
-        liqUnavailable = true
-      }
-      try? await Task.sleep(for: .milliseconds(LiquidationBook.pollMs))
-    }
   }
 
   static func nowMs(_ date: Date = Date()) -> Int64 { Int64(date.timeIntervalSince1970 * 1000) }
@@ -357,7 +336,6 @@ struct BigTradeSheet: View {
   private var model: BigTradeSheetModel { market.orderFlow.sheet }
   private var link: OrderFlowLink { market.orderFlow }
   private var spot: Bool { market.isSpotInstrument }
-  private var base: String? { link.currentFacts?.overrideKey }
   private var m: LiuliMaterial { LiuliMaterial(t) }
   private var tz: TZOffset { store.prefs.timeZone.offsetMinutes }
 
@@ -371,10 +349,6 @@ struct BigTradeSheet: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("bigtrade.sheet")
-    .task(id: spot || BigTradeSheetTestState.current == .liqEmpty ? nil : base) {
-      guard let base, !spot, BigTradeSheetTestState.current != .liqEmpty else { return }
-      await model.pollLiquidations(base: base, market: market)
-    }
     .sheet(isPresented: $model.editing) {
       OrderFlowEditor(store: store, link: link, symbol: market.symbol)
         .environment(\.panelTheme, t)
@@ -387,7 +361,7 @@ struct BigTradeSheet: View {
   /// 副标题只写品种（现货加「现货」）。用户 2026-10-08：标题没必要写交易所——他关心的是品种和数据，
   /// 哪几家合在一起权重不大；分家的信息留在读数卡与爆仓「最大一笔」里。
   private var subtitle: String {
-    (base ?? SymbolInfo.placeholder(symbol: market.symbol).base) + (spot ? " " + BT.spot.text : "")
+    (link.currentFacts?.overrideKey ?? SymbolInfo.placeholder(symbol: market.symbol).base) + (spot ? " " + BT.spot.text : "")
   }
 
   private var header: some View {
@@ -464,10 +438,12 @@ struct BigTradeSheet: View {
     let snap = link.snapshot.flatMap {
       InstrumentID.canonical($0.symbol) == InstrumentID.canonical(market.symbol) ? $0 : nil
     }
+    // 爆仓账和图上气泡共读一本；base 对不上（换品种中）、现货都是 nil。取不到只在这本账是这只的时候才算。
+    let liqBook = link.liquidationBook(symbol: market.symbol)
     return BigTradeSummary.make(
       flow: flow, tape: model.tape(flow, nowMs: nowMs), series: series, focusT: model.focusT, nowMs: nowMs,
       step: snap?.thresholds.step ?? link.effectiveThresholds(symbol: market.symbol)?.step,
-      orders: snap?.orders ?? [], book: model.book, liqUnavailable: model.liqUnavailable, spot: spot,
+      orders: snap?.orders ?? [], book: liqBook, liqUnavailable: liqBook != nil && link.liquidations.unavailable, spot: spot,
       linkDown: market.linkDown, marketClosed: market.ticker?.marketClosed ?? false,
       decimals: market.info.priceDecimals)
   }

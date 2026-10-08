@@ -1,6 +1,6 @@
 import Foundation
 
-// 大单与爆仓 · 大额成交的分钟桶（2026-10-08，手机「图上大单签」与「大单与爆仓」弹层共用的一份）。
+// 大单与爆仓 · 大额成交的分钟桶（2026-10-08，手机图上大单与爆仓气泡与「大单与爆仓」弹层共用的一份）。
 //
 // 口径照网页版 chart/tradeFlow.ts + orderflow/bigTags.ts（三端一致，那边验过）：
 //   · 主力订单流打开一只品种时连着交易所注册表（`VenueRegistry.orderFlow`：币安、OKX、Coinbase、Bybit、Hyperliquid）
@@ -295,7 +295,8 @@ extension BigTradeFlow: Equatable {
   }
 }
 
-/// 图上大单签吃的那一份：有大单的分钟（升序）与各自的买 / 卖额，图表按自己的 K 线开盘时间并成根。
+/// 图上大单与爆仓气泡吃的那一份：有大单的分钟（升序）与各自的买 / 卖额，外加一份爆仓分钟账
+/// （多单爆仓 / 空单爆仓，升序）；图表按自己的 K 线开盘时间把两份并成根。现货与宏观品种的爆仓账为空。
 public struct BigTradeTape: Sendable, Equatable {
   public var symbol: String
   public var minutes: [Int64]
@@ -303,14 +304,33 @@ public struct BigTradeTape: Sendable, Equatable {
   public var sell: [Double]
   /// 档位的绝对下限（门槛 ÷ 5）。
   public var floor: Double
-  /// 最近一笔大单的时刻与方向（正在走那根的签外圈光环）。
+  /// 最近一笔大单的时刻与方向（正在走那根的气泡外圈光环）。
   public var lastBigMs: Int64?
   public var lastBigBuy: Bool
+  /// 爆仓分钟账：有爆仓的分钟（升序）与该分钟多单爆仓（被动卖，并进向下）/ 空单爆仓（被动买，并进向上）额。
+  public var liqMinutes: [Int64]
+  public var liqLong: [Double]
+  public var liqShort: [Double]
 
   public init(symbol: String, minutes: [Int64], buy: [Double], sell: [Double], floor: Double,
-              lastBigMs: Int64? = nil, lastBigBuy: Bool = true) {
+              lastBigMs: Int64? = nil, lastBigBuy: Bool = true,
+              liqMinutes: [Int64] = [], liqLong: [Double] = [], liqShort: [Double] = []) {
     self.symbol = symbol; self.minutes = minutes; self.buy = buy; self.sell = sell; self.floor = floor
     self.lastBigMs = lastBigMs; self.lastBigBuy = lastBigBuy
+    self.liqMinutes = liqMinutes; self.liqLong = liqLong; self.liqShort = liqShort
+  }
+
+  /// 大单与爆仓都没有：图层不用画。
+  public var isEmpty: Bool { minutes.isEmpty && liqMinutes.isEmpty }
+
+  /// 换上一本爆仓账（按分钟升序摊平；多 / 空都为零的分钟不要）。
+  public mutating func setLiquidations(_ book: LiquidationBook?) {
+    liqMinutes = []; liqLong = []; liqShort = []
+    guard let book else { return }
+    for m in book.rows.keys.sorted() {
+      guard let r = book.rows[m], r.longUsd > 0 || r.shortUsd > 0 else { continue }
+      liqMinutes.append(m); liqLong.append(max(0, r.longUsd)); liqShort.append(max(0, r.shortUsd))
+    }
   }
 
   /// [a, b) 里的买 / 卖合计。
@@ -345,5 +365,25 @@ public struct BigTradeTape: Sendable, Equatable {
       }
     }
     return (bb, bs)
+  }
+
+  /// 爆仓账按同一串开盘时间并成每根的多单爆仓 / 空单爆仓，规矩同 `bars`。
+  public func liqBars(opens: [Int64], lastEnd: Int64) -> (long: [Double], short: [Double]) {
+    var bl = [Double](repeating: 0, count: opens.count), bs = bl
+    guard !opens.isEmpty, !liqMinutes.isEmpty else { return (bl, bs) }
+    var lo = 0, hi = liqMinutes.count
+    while lo < hi {
+      let mid = (lo + hi) / 2
+      if liqMinutes[mid] < opens[0] { lo = mid + 1 } else { hi = mid }
+    }
+    var j = lo
+    for i in opens.indices {
+      let end = i + 1 < opens.count ? opens[i + 1] : lastEnd
+      while j < liqMinutes.count, liqMinutes[j] < end {
+        if liqMinutes[j] >= opens[i] { bl[i] += liqLong[j]; bs[i] += liqShort[j] }
+        j += 1
+      }
+    }
+    return (bl, bs)
   }
 }

@@ -8,7 +8,7 @@
  *   · cumPoints：今日累计净额的点位（迷你走势与拉高后的大图共用）
  * 颜色一律写 CSS 变量（--up / --down / --of-*），皮肤与深浅色跟着变，不在这里挑色。
  */
-import type { BarBig } from './bigTags'
+import { udOf, type BarBig, type BarLiq } from './bigTags'
 import type { LiqRow } from './liquidation'
 import { amt } from './state'
 import { BT, fill } from '../terms'
@@ -91,11 +91,28 @@ export function ivShort(ms: number): string {
   return `${Math.max(1, Math.round(ms / S))}秒`
 }
 
-// ------------------------------------------------------------------ 悬停卡（图上大单签）
+// ------------------------------------------------------------------ 悬停卡（图上大单与爆仓气泡）
 
-/** 图上大单签的悬停卡：时间 · 周期、净额大字 + 对撞条、大卖 / 大买（额 + 笔）、最大一笔、现货 / 合约、各家；
- *  这根有一分钟来自服务端历史（exact = false）时笔数 / 最大一笔 / 来源都没有：这几项直接不摆（不写「—」也不写说明） */
-export function hoverCardHtml(d: BarBig, when: string, iv: string): string {
+/** 悬停卡读数格顶上的向上 / 向下两行（照原型）：「向上 U  买入 x · 空单爆仓 y」「向下 D  卖出 x · 多单爆仓 y」，为 0 的那一项不写 */
+export function udRowsHtml(d: { bb: number; bs: number } | null, l: BarLiq | null): string {
+  const u = udOf(d, l)
+  // 拆分：两项都有写「卖出 X · 多单爆仓 Y」；只有一项时整数就是它，只写来源名（「多单爆仓」）不再重复金额；都没有不写
+  const parts = (a: [string, number], b: [string, number]): string => {
+    const on = [a, b].filter(([, v]) => v > 0)
+    return on.length === 2 ? on.map(([k, v]) => `${k} ${amt(v)}`).join(' · ') : on.length === 1 ? on[0][0] : ''
+  }
+  return `<span>${BT.up}</span><b class="num up">${amt(u.up)}</b><em class="num">${parts([BT.buyShort, d?.bb ?? 0], [BT.shortLiq, l?.short ?? 0])}</em>` +
+    `<span>${BT.down}</span><b class="num dn">${amt(u.down)}</b><em class="num">${parts([BT.sellShort, d?.bs ?? 0], [BT.longLiq, l?.long ?? 0])}</em>`
+}
+
+/** 图上气泡的悬停卡（抽屉「每根」同一套样子）：时间 · 周期、净额大字 + 对撞条；读数格顶上是向上 / 向下两行（大单与爆仓在这里拆开），
+ *  往下大卖 / 大买（额 + 笔）、最大一笔、现货 / 合约、各家。这根只有爆仓没有大单（d = null）时只摆时间与那两行。
+ *  这根有一分钟来自服务端历史（exact = false）时笔数 / 最大一笔 / 来源都没有：这几项直接不摆（不写「—」也不写说明）。
+ *  liq 不传（undefined）= 这只没有爆仓项（现货、DXY）或秒级周期，不加那两行 */
+export function hoverCardHtml(d: BarBig | null, when: string, iv: string, liq?: BarLiq | null): string {
+  const head = `<div class="hc-h"><b class="num">${when}</b>· ${iv}</div>`
+  const ud = liq !== undefined ? udRowsHtml(d, liq) : ''
+  if (!d) return `<div class="hc">${head}<div class="hc-kv">${ud}</div></div>`
   const n = d.bb - d.bs, t = d.bb + d.bs || 1
   const mx = d.exact ? maxOf(d) : null
   const cnt = (k: number | null): string => k == null ? '' : fill(BT.count, { n: k })
@@ -103,10 +120,10 @@ export function hoverCardHtml(d: BarBig, when: string, iv: string): string {
     ? `<span>${BT.maxSingle}</span><b class="num">${mx ? amt(mx.usd) : '—'}</b><em class="${mx ? (mx.buy ? 'up' : 'dn') : ''}">${mx ? (mx.buy ? BT.buyShort : BT.sellShort) : ''}</em></div>` +
       `<div class="hc-src">${srcHtml(d.bb + d.bs, d.spot, d.ex)}</div>`
     : '</div>'
-  return `<div class="hc"><div class="hc-h"><b class="num">${when}</b>· ${iv}</div>` +
+  return `<div class="hc">${head}` +
     `<div class="hc-net"><span class="v num ${tone(n)}">${signed(n)}</span><span class="l">${BT.net}</span></div>` +
     `<div class="hc-fly"><i class="s" style="flex:${(d.bs / t).toFixed(4)}"></i><i class="b" style="flex:${(d.bb / t).toFixed(4)}"></i></div>` +
-    `<div class="hc-kv"><span>${BT.sellShort}</span><b class="num dn">${amt(d.bs)}</b><em class="num">${cnt(d.sn)}</em>` +
+    `<div class="hc-kv">${ud}<span>${BT.sellShort}</span><b class="num dn">${amt(d.bs)}</b><em class="num">${cnt(d.sn)}</em>` +
     `<span>${BT.buyShort}</span><b class="num up">${amt(d.bb)}</b><em class="num">${cnt(d.bn)}</em>` + tail + '</div>'
 }
 

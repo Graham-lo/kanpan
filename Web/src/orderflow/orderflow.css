@@ -301,7 +301,7 @@
 .of-dr .of-empty b { color: var(--text-2); font-weight: 600; font-size: 12px; }
 .of-dr .of-empty svg { opacity: .9; }
 
-/* 图上大单签的悬停卡（与抽屉「每根」同一套样子，drawerView.hoverCardHtml） */
+/* 图上大单与爆仓气泡的悬停卡（与抽屉「每根」同一套样子，drawerView.hoverCardHtml） */
 .of-card:has(> .hc) { width: 256px; min-width: 0; max-width: none; padding: 12px 14px; border-radius: 12px; background: var(--overlay, var(--surface)); line-height: 1.35; }
 .of-card .hc-h { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 11px; }
 .of-card .hc-h b { color: var(--text-1); font-size: 12px; font-weight: 650; }
@@ -315,7 +315,7 @@
 .of-card .hc-kv { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 10px; align-items: baseline; }
 .of-card .hc-kv span { color: var(--text-3); font-size: 11px; }
 .of-card .hc-kv b { font-weight: 600; text-align: right; }
-.of-card .hc-kv em { font-style: normal; color: var(--text-3); font-size: 11px; text-align: right; min-width: 30px; }
+.of-card .hc-kv em { font-style: normal; color: var(--text-3); font-size: 11px; text-align: right; min-width: 30px; white-space: nowrap; }
 .of-card .hc-kv em.up { color: var(--up); }
 .of-card .hc-kv em.dn { color: var(--down); }
 .of-card .hc-src { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); display: grid; gap: 7px; }

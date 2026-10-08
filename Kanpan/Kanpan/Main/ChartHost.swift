@@ -522,8 +522,8 @@ struct ChartHost: UIViewRepresentable {
   var onCrosshair: (Crosshair?) -> Void = { _ in }
   /// 主力订单流选中的那一桶变了（轻点选中 / 十字线停在一条带上）；`nil` = 收卡。见 `ChartView.onOrderFlowFocusChanged`。
   var onOrderFlowFocus: (ChartOrderFlowFocus?) -> Void = { _ in }
-  /// 点中一枚大单签（十字线已落到那一根）。`nil` = 不接（横屏画线台）：签照画，点了照常出十字线。
-  var onBigTradeTap: ((BigTradeSign) -> Void)?
+  /// 点中一枚大单与爆仓气泡（十字线已落到那一根）。`nil` = 不接（横屏画线台）：泡照画，点了照常出十字线。
+  var onBigTradeTap: ((BigTradeBubble) -> Void)?
   var onNeedsHistory: () -> Void = {}
   var onTapped: () -> Void = {}
   /// 图里那些「做了个大动作」的提示，接到外面的 toast 上。

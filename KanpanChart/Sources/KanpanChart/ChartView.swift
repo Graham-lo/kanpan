@@ -45,7 +45,7 @@ public final class ChartView: UIView {
   #endif
   private let crossLayer = CanvasLayer(part: .cross)
   private var canvases: [CanvasLayer] { [plotLayer, liveLayer, crossLayer] }
-  /// 大单签的动效（正在走那根的光环、点中那一下放大）挂在底图之上、最新价之下（`ChartView+BigTrades`）。
+  /// 大单与爆仓气泡的动效（正在走那根的光环、点中那一下放大）挂在底图之上、最新价之下（`ChartView+BigTrades`）。
   let bigTradeFXLayer = CALayer()
 
   /// 客线是临时覆盖，不属于 ChartState / 存档，也不参与画线命中。
@@ -317,11 +317,11 @@ public final class ChartView: UIView {
              "candleBottom": $0.candle.map { $0.bottom as Any } ?? NSNull()] as [String: Any]
           } ?? [:],
           "orderFlowAdoptions": orderFlowAdoptions,
-          // 这一屏的大单签（视图坐标）：UI 用例按它点签、核对与画线文字零相交。
-          "bigTradeSigns": bigTradeSigns.map {
-            ["index": $0.index, "t": $0.t, "buy": $0.buy, "tier": $0.tier, "x": $0.markCenter.x, "y": $0.markCenter.y,
-             "minX": $0.bounds.minX, "minY": $0.bounds.minY, "maxX": $0.bounds.maxX, "maxY": $0.bounds.maxY,
-             "capsule": $0.capsule != nil, "text": $0.text] as [String: Any]
+          // 这一屏的大单与爆仓点 / 泡（视图坐标）：UI 用例按它点泡、核对与画线文字零相交。
+          "bigTradeBubbles": bigTradeBubbles.map {
+            ["index": $0.index, "t": $0.t, "up": $0.up, "usd": $0.usd, "isBubble": $0.isBubble, "x": $0.center.x, "y": $0.center.y,
+             "r": $0.r, "minX": $0.bounds.minX, "minY": $0.bounds.minY, "maxX": $0.bounds.maxX, "maxY": $0.bounds.maxY,
+             "text": $0.text] as [String: Any]
           },
           "bigTradePulses": bigTradePulseCount,
           "orderFlowPlotDirties": orderFlowPlotDirties,
@@ -382,8 +382,8 @@ public final class ChartView: UIView {
   public var onNeedsHistory: (() -> Void)?
   /// 图上轻点了一下（没有十字线、不是双击）。画线选中交给 M7 接。
   public var onTapped: (() -> Void)?
-  /// 点中了一枚大单签（十字线已经落到那一根上）。`nil` = 宿主不接（横屏画线台）：签照画、点了不当签处理。
-  public var onBigTradeTap: ((BigTradeSign) -> Void)?
+  /// 点中了一枚大单与爆仓气泡（十字线已经落到那一根上）。`nil` = 宿主不接（横屏画线台）：泡照画、点了不当泡处理。
+  public var onBigTradeTap: ((BigTradeBubble) -> Void)?
   /// 图自己做了件用户可能没预料到的事，需要外面报一行短提示（比如价格轴双击翻转）。
   /// 只给这种「不说一声就找不回来」的动作用，别拿它做常规反馈。
   public var onNotice: ((String) -> Void)?
@@ -695,7 +695,7 @@ public final class ChartView: UIView {
     if o.orderFlowDisplay != new.orderFlowDisplay || !samePixels(o.orderFlow, new.orderFlow) { p.insert([.plot, .cross]) }
     else if o.orderFlow != new.orderFlow { p.insert(.cross) }
     if o.crosshair != new.crosshair || o.orderFlowSelected != new.orderFlowSelected { p.insert(.cross) }
-    // 大单签画在底图上：分钟账换了（每秒最多一份）只脏底图。
+    // 大单与爆仓气泡画在底图上：分钟账换了（每秒最多一份）只脏底图。
     if o.bigTrades != new.bigTrades { p.insert(.plot) }
     // 倒计时每秒走一格，但它只画在 `liveLayer` 上——只脏 live，别把整张图拖下水
     // （A3.12 要求静止时 CPU < 1%，重画 plot 层就破功了）。倒计时没开就当没变过。

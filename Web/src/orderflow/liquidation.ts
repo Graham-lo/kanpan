@@ -1,4 +1,4 @@
-/* Hkline Web · 主力订单流 · 爆仓（逐分钟合计，抽屉「大单列表」的第四块）
+/* Hkline Web · 主力订单流 · 爆仓（逐分钟合计：抽屉「大单列表」的第四块，也并进图上的大单与爆仓气泡）
  *
  * 为什么：用户 2026-10-08 要在抽屉里一眼看到「这根 / 近 1 小时 / 今天」多头、空头各被强平了多少。
  * 数据由 kanpan-api 常驻跟各家（注册表 LIQ_EX 顺序）的强平推送按分钟并好：
@@ -7,13 +7,16 @@
  * 参考家的强平推送每秒只给一笔，金额是下限。
  *
  * 规则：
- *   · 走 feed.ts 的 getJSON（限流、线路都照它的）；抽屉开着才拉，30 秒补一次，失败 30 秒后再试。
+ *   · 走 feed.ts 的 getJSON（限流、线路都照它的）；抽屉开着或图上气泡开着才拉，30 秒补一次，失败 30 秒后再试。
  *   · 本机留 3 天，最多 16 只（最久没看的那只先丢）。第一次拉 3 天，之后从已有的最后一分钟往前 2 分钟起接着拉（分钟会补齐）。
- *   · 只在抽屉里展示，不并进图上的大单签；没有数据的品种写「这只品种暂无爆仓数据」。
+ *   · 抽屉里单列一块（没有数据的品种写「这只品种暂无爆仓数据」）；图上按本图 K 线开盘时间把分钟行并成根（LiqBarCache），
+ *     多爆算向下 D、空爆算向上 U，和大卖 / 大买合成一枚气泡（bigTags.ts）。现货（X-USD）与宏观品种（DXY）没有爆仓项，不拉。
+ *     秒级周期不并（行是分钟粒度）。
  * 只聚合、展示，不做判定。
  */
 import { getJSON } from './feed'
 import { LIQ_EX } from '../venues'
+import type { BarLiq, LiqBars } from './bigTags'
 
 export { LIQ_EX }
 
@@ -64,6 +67,8 @@ export class LiqStore {
   private map = new Map<string, Entry>()
   /** 有新数据时叫（抽屉据此重画） */
   onUpdate: (() => void) | null = null
+  /** 另外要听新数据的（各张图的气泡层），用完自己删 */
+  readonly listeners = new Set<() => void>()
   constructor(private fetcher: (url: string) => Promise<{ status: number; body: unknown }> = url => getJSON(url, 8000)) {}
 
   private entry(base: string, now: number): Entry {
@@ -103,6 +108,7 @@ export class LiqStore {
         for (const k of [...e.rows.keys()]) if (k < cut) e.rows.delete(k)
         e.ver++
         this.onUpdate?.()
+        for (const fn of this.listeners) fn()
       }
     } catch { /* 30 秒后再试 */ }
     e.busy = false
@@ -115,4 +121,41 @@ export class LiqStore {
     return e ? { rows: e.rows, tracked: e.tracked, ver: e.ver } : null
   }
   size(): number { return this.map.size }
+}
+
+/** 没有爆仓项的品种：Coinbase 现货（X-USD）与宏观品种（DXY） */
+export const noLiq = (sym: string): boolean => /-USD$/.test(sym) || sym === 'DXY'
+
+type LiqState = NonNullable<ReturnType<LiqStore['state']>>
+/** 每张图一份：把分钟行按本图 K 线并成根（多爆 / 空爆）。数据版本、品种、周期不变就复用同一个 LiqBars，按根记住算过的 */
+export class LiqBarCache {
+  private key = ''
+  private bars: LiqBars | null = null
+  /** 并过几根（测试看缓存） */
+  computed = 0
+  of(st: LiqState | null, base: string, iv: number): LiqBars | null {
+    if (!st || !(iv >= 60_000) || !st.rows.size) { this.key = ''; this.bars = null; return null }
+    const key = `${base}|${iv}|${st.ver}|${st.rows.size}`
+    if (key === this.key && this.bars) return this.bars
+    let lo = Infinity, hi = -Infinity
+    for (const k of st.rows.keys()) { if (k < lo) lo = k; if (k > hi) hi = k }
+    const rows = st.rows, memo = new Map<number, { t1: number; v: BarLiq | null }>()
+    const at = (t0: number, t1: number): BarLiq | null => {
+      const e = memo.get(t0)
+      if (e && e.t1 === t1) return e.v
+      this.computed++
+      let long = 0, short = 0, has = false
+      const a = Math.max(Math.ceil(t0 / 60_000) * 60_000, lo), b = Math.min(t1 - 1, hi)
+      for (let m = a; m <= b; m += 60_000) {
+        const r = rows.get(m)
+        if (r) { long += r[1]; short += r[2]; has = true }
+      }
+      const v = has && (long > 0 || short > 0) ? { long, short } : null
+      memo.set(t0, { t1, v })
+      return v
+    }
+    this.key = key
+    this.bars = { key, at }
+    return this.bars
+  }
 }

@@ -2,8 +2,9 @@ import KanpanCore
 import QuartzCore
 import UIKit
 
-/// 大单签在视图这一侧的事（2026-10-08，原型 §07 / §08）：点中、点中那一下放大、正在走那根新来一笔大单的光环、
-/// 宿主让十字线跳到某一根（弹层「每根」条）、读屏。摆放与绘制在 `ChartRenderer+BigTrades`。
+/// 大单与爆仓气泡在视图这一侧的事（2026-10-08 定版「统一透明泡」）：点中泡、点中那一下放大、
+/// 正在走那根新来一笔大单的光环、宿主让十字线跳到某一根（弹层「每根」条）、读屏。
+/// 小圆点只是画出来看的：不响应点击、不进读屏。摆放与绘制在 `ChartRenderer+BigTrades`。
 extension ChartView {
   /// 点中那一下放大到多少、多久（来回各一半）。
   static let bigTradePopScale: CGFloat = 1.3
@@ -13,20 +14,20 @@ extension ChartView {
   static let bigTradeRingDuration: CFTimeInterval = 0.6
   static let bigTradeFlashDuration: CFTimeInterval = 0.15
 
-  /// 轻点落在签上就交给它（宿主接了才算）：点在蜡烛上时只有点进签本身（外扩 8 pt）才算签，其余照旧出十字线。
+  /// 轻点落在泡上就交给它（宿主接了才算）：点在蜡烛上时只有点进泡本身（外扩 8 pt）才算泡，其余照旧出十字线。
   func handleBigTradeTap(at p: CGPoint) -> Bool {
-    guard onBigTradeTap != nil, let renderer, let sign = renderer.bigTradeHit(at: p, size: bounds.size) else { return false }
-    if renderer.candleHit(at: p, size: bounds.size), !sign.bounds.insetBy(dx: -8, dy: -8).contains(p) { return false }
-    tapBigTrade(sign)
+    guard onBigTradeTap != nil, let renderer, let bubble = renderer.bigTradeHit(at: p, size: bounds.size) else { return false }
+    if renderer.candleHit(at: p, size: bounds.size), !bubble.bounds.insetBy(dx: -8, dy: -8).contains(p) { return false }
+    tapBigTrade(bubble)
     return true
   }
 
-  /// 点中一枚签：轻触感、放大一下、十字线落到那一根、告诉宿主。
-  func tapBigTrade(_ sign: BigTradeSign) {
+  /// 点中一枚泡：轻触感、放大一下、十字线落到那一根、告诉宿主。
+  func tapBigTrade(_ bubble: BigTradeBubble) {
     ChartHaptics.magnetTick()
-    popBigTrade(sign)
-    placeCrosshair(atTime: sign.t)
-    onBigTradeTap?(sign)
+    popBigTrade(bubble)
+    placeCrosshair(atTime: bubble.t)
+    onBigTradeTap?(bubble)
   }
 
   /// 十字线跳到开盘时间为 `t` 的那一根（没有正好的取其后最近一根）；滚出屏幕就把视野推到那一根的里侧。
@@ -49,26 +50,25 @@ extension ChartView {
     if viewMoved { onViewChanged?(s.view) }
   }
 
-  /// 这一屏的签（测试与宿主读）。
-  public var bigTradeSigns: [BigTradeSign] { renderer?.bigTradeSigns(size: bounds.size) ?? [] }
+  /// 这一屏的点与泡（测试与宿主读）。
+  public var bigTradeBubbles: [BigTradeBubble] { renderer?.bigTradeBubbles(size: bounds.size) ?? [] }
 
   // MARK: 动效
 
-  /// 点中那一下：把这枚签单独画一张，放大 1.3 倍再回来（「减少动效」开着不放大）。
-  private func popBigTrade(_ sign: BigTradeSign) {
+  /// 点中那一下：把这枚泡单独画一张，以圆心放大 1.3 倍再回来（「减少动效」开着不放大）。
+  private func popBigTrade(_ bubble: BigTradeBubble) {
     guard !ChartHaptics.reduceMotion, window != nil, let colors = state?.colors else { return }
+    let dark = state?.dark ?? false
     let pad: CGFloat = 4
-    let box = sign.bounds.insetBy(dx: -pad, dy: -pad)
+    let box = bubble.bounds.insetBy(dx: -pad, dy: -pad)
     let img = UIGraphicsImageRenderer(bounds: box).image { c in
-      ChartRenderer.paintBigTradeSign(c.cgContext, sign, colors: colors, scale: 1)
+      ChartRenderer.paintBigTradeBubble(c.cgContext, bubble, colors: colors, dark: dark, scale: 1)
     }
     let l = CALayer()
     l.contents = img.cgImage
     l.contentsScale = img.scale
-    let c = sign.markCenter
-    l.anchorPoint = CGPoint(x: (c.x - box.minX) / box.width, y: (c.y - box.minY) / box.height)
     l.bounds = CGRect(origin: .zero, size: box.size)
-    l.position = c
+    l.position = bubble.center
     let a = CABasicAnimation(keyPath: "transform.scale")
     a.fromValue = 1; a.toValue = Self.bigTradePopScale
     a.duration = Self.bigTradePopDuration / 2
@@ -81,24 +81,24 @@ extension ChartView {
     CATransaction.commit()
   }
 
-  /// 正在走的那一根新来了一笔大单：在它的签外圈扩一道光环。换品种、第一次灌账、签不在这一屏都不响。
+  /// 正在走的那一根新来了一笔大单：在它那一侧的点或泡外圈扩一道光环。换品种、第一次灌账、这根没画都不响。
   func pulseBigTradeIfNew(from old: ChartState?, to new: ChartState) {
     guard let o = old, let before = o.bigTrades, let tape = new.bigTrades, before.symbol == tape.symbol,
           let ms = tape.lastBigMs, ms > (before.lastBigMs ?? .min), !new.series.isEmpty,
           ms >= new.series.lastTime, ms < new.series.lastTime + new.series.step,
-          window != nil, let sign = renderer?.bigTradeLiveSign(size: bounds.size)
+          window != nil, let bubble = renderer?.bigTradeLiveBubble(size: bounds.size)
     else { return }
-    pulseBigTrade(sign)
+    pulseBigTrade(bubble)
     #if DEBUG
     bigTradePulseCount += 1
     #endif
   }
 
-  func pulseBigTrade(_ sign: BigTradeSign) {
+  func pulseBigTrade(_ bubble: BigTradeBubble) {
     guard let colors = state?.colors else { return }
-    let color = Paint.cg(sign.buy ? colors.up : colors.down)
-    let c = sign.pulseCenter
-    let r0 = max(sign.markRect.width, sign.markRect.height) / 2 + 1
+    let color = Paint.cg(bubble.up ? colors.up : colors.down)
+    let c = bubble.center
+    let r0 = bubble.r + 1
     func circle(_ r: CGFloat) -> CGPath { CGPath(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r), transform: nil) }
     let ring = CAShapeLayer()
     ring.frame = bounds
@@ -136,21 +136,26 @@ extension ChartView {
 
   // MARK: 读屏
 
-  /// 十字线（或最新一根）那一根有签就念一句「买方大单 1.2M，12:30 这根」。
-  var bigTradeVoiceOver: String? {
-    guard let s = state, let renderer, s.series.count > 0 else { return nil }
+  /// 十字线（或最新一根）那一根的泡（只认泡，点不进读屏），向上在前。
+  private var bigTradeFocusBubbles: [BigTradeBubble] {
+    guard let s = state, let renderer, s.series.count > 0 else { return [] }
     let i = s.crosshair.map { min(max($0.index, 0), s.series.count - 1) } ?? (s.series.count - 1)
-    guard let sign = renderer.bigTradeSigns(size: bounds.size).first(where: { $0.index == i }) else { return nil }
-    return renderer.bigTradeAccessibilityLabel(sign)
+    return renderer.bigTradeBubbles(size: bounds.size).filter { $0.index == i && $0.isBubble }
   }
 
-  /// 读屏的自定义动作：这一根有签、宿主接了，就给一个「打开大单与爆仓」。
+  /// 那一根有泡就念「10-08 12:30 向上 1.2M」，上下都有就两句。
+  var bigTradeVoiceOver: String? {
+    guard let renderer else { return nil }
+    let items = bigTradeFocusBubbles
+    guard !items.isEmpty else { return nil }
+    return items.map { renderer.bigTradeAccessibilityLabel($0) }.joined(separator: "，")
+  }
+
+  /// 读屏的自定义动作：这一根有泡、宿主接了，就给一个「打开大单与爆仓」。
   func bigTradeAccessibilityActions() -> [UIAccessibilityCustomAction] {
-    guard onBigTradeTap != nil, let s = state, let renderer, s.series.count > 0 else { return [] }
-    let i = s.crosshair.map { min(max($0.index, 0), s.series.count - 1) } ?? (s.series.count - 1)
-    guard let sign = renderer.bigTradeSigns(size: bounds.size).first(where: { $0.index == i }) else { return [] }
+    guard onBigTradeTap != nil, let bubble = bigTradeFocusBubbles.first else { return [] }
     return [UIAccessibilityCustomAction(name: BigTradeTerm.open.text) { [weak self] _ in
-      self?.tapBigTrade(sign); return true
+      self?.tapBigTrade(bubble); return true
     }]
   }
 }

@@ -1,10 +1,11 @@
-/* Hkline 手机网页 · 图上大单签 + 「大单与爆仓」弹层的胶水（照 iOS / 原型 docs/原型-手机大单与爆仓-2026-10-08.html）
+/* Hkline 手机网页 · 图上大单与爆仓气泡 + 「大单与爆仓」弹层的胶水（照 iOS / 原型 docs/原型-手机大单与爆仓-2026-10-08.html；
+ * 气泡规格 docs/design/大单爆仓气泡-三端规格-2026-10-08.md）
  *
  * 一处管三件事：
- *   · 图层：BigTradeLayer 挂在行情图上，开关跟 Prefs.bigTradeSigns（出厂开、跟人走，和挂单墙互不牵连）；宏观品种（DXY）不画。
- *   · 数据：签或弹层要时叫数据口 setSigns 订逐笔；分钟桶 + 服务端 /flow 历史走 tradeFlow.ensureHistory；
- *     爆仓 /liq 只在弹层开着时 30 秒补一次，现货与宏观不拉。
- *   · 弹层：点签开整页（横屏只画签不开）；开着时再点签只换根；「每根」里点哪根 / 十字线落在哪根，本根卡片就看哪根，抬手 3 秒回到本根。
+ *   · 图层：BigTradeLayer 挂在行情图上，开关跟 Prefs.bigTradeSigns（出厂开、跟人走，和挂单墙互不牵连；大单与爆仓同开同关）；宏观品种（DXY）不画。
+ *   · 数据：气泡或弹层要时叫数据口 setSigns 订逐笔；分钟桶 + 服务端 /flow 历史走 tradeFlow.ensureHistory；
+ *     爆仓 /liq 在图层开着或弹层开着时 30 秒补一次（并进气泡的 U / D），现货与宏观不拉。
+ *   · 弹层：点泡开整页（横屏只画泡不开）；开着时再点泡只换根；「每根」里点哪根 / 十字线落在哪根，本根卡片就看哪根，抬手 3 秒回到本根。
  * 页面藏起来时停 1 秒的钟；换品种时摘掉旧品种的历史监听。
  */
 import { st, save } from '../../app/store'
@@ -64,7 +65,7 @@ export class BigTradeController {
   private sheet: BigTradeSheet | null = null
   private timer: ReturnType<typeof setInterval> | null = null
   private returnTimer: ReturnType<typeof setTimeout> | null = null
-  /** 十字线 / 点签挑的那根；null = 本根 */
+  /** 十字线 / 点泡挑的那根；null = 本根 */
   private pick: { t: number; from: 'cross' | 'sign' | 'bars' } | null = null
   private sym = ''
   private seen = { live: -1, ver: -1 }
@@ -76,9 +77,13 @@ export class BigTradeController {
   constructor(private readonly d: BigTradeDeps) {
     this.now = d.now ?? Date.now
     this.liq = d.liq ?? new LiqStore()
-    this.liq.onUpdate = () => this.refresh()
+    this.liq.onUpdate = () => { this.layer.invalidate(); this.refresh() }
     this.layer = new BigTradeLayer(d.chart.view, {
-      source: bigTradeSource(() => tierFloor(this.d.thresholds())),
+      source: bigTradeSource(() => tierFloor(this.d.thresholds()), sym => {
+        if (!this.wantsLiq(sym)) return null
+        const base = baseOfSymbol(sym).base
+        return { state: this.liq.state(base), base }
+      }),
       onTap: s => this.tapSign(s),
       now: this.now,
     })
@@ -213,10 +218,14 @@ export class BigTradeController {
       this.seen = { live: f.live, ver: f.srv.ver }
       this.layer.invalidate()
     }
-    if (this.isOpen) {
-      if (!isSpotSymbol(sym) && this.d.force !== 'spot') this.liq.ensure(baseOfSymbol(sym).base, now)
-      this.refresh()
-    }
+    // 爆仓：图层开着（并进气泡）或弹层开着都要
+    if ((st.bigTradeSigns || this.isOpen) && this.wantsLiq(sym)) this.liq.ensure(baseOfSymbol(sym).base, now)
+    if (this.isOpen) this.refresh()
+  }
+
+  /** 这只有没有爆仓项：现货（X-USD）、宏观、截图强制「现货」都没有 */
+  private wantsLiq(sym: string): boolean {
+    return !!sym && !isSpotSymbol(sym) && !this.d.isMacro() && this.d.force !== 'spot'
   }
 
   refresh(): void {
@@ -353,7 +362,7 @@ export class BigTradeController {
   }
 }
 
-/** 开着签的偏好开关（分析面板那颗） */
+/** 图上气泡的偏好开关（分析面板那颗） */
 export function toggleSigns(): void { st.bigTradeSigns = !st.bigTradeSigns; save() }
 
 /** 开发构建里 ?bt=loading|spot|liqEmpty|stale|untracked（截图用） */

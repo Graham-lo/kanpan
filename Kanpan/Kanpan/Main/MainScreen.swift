@@ -316,7 +316,7 @@ struct MainScreen: View {
         .presentationBackground(theme.app)
         .preferredColorScheme(effectiveTheme.forced)
     }
-    // 「大单与爆仓」弹层（点图上大单签、或分析面板那一行开）。半屏时图还能摸，十字线落哪根弹层就读哪根。
+    // 「大单与爆仓」弹层（点图上大单与爆仓气泡、或分析面板那一行开）。半屏时图还能摸，十字线落哪根弹层就读哪根。
     .bigTradeSheet(market: market, store: store, proxy: proxy, theme: theme, scheme: effectiveTheme.forced,
                    enabled: tab == .chart && !landscape && !reviewChart.active && !draw.active && !drawingCanvasOnly)
     .fullScreenCover(isPresented: $symbolSearch.allShown, onDismiss: { symbolSearch.allDismissed() }) {
@@ -1331,7 +1331,7 @@ struct MainScreen: View {
       say: { say($0) },
       onTapped: { dismissPanel() },
       onOpenRecord: { openReview(id: $0.uuidString) },
-      // 点图上的大单签：第一次开「大单与爆仓」半屏，开着时只换到那一根。
+      // 点图上的大单与爆仓气泡：第一次开「大单与爆仓」整页，开着时只换到那一根。
       onBigTradeTap: { market.orderFlow.sheet.open(at: $0.t) })
   }
 

@@ -94,7 +94,7 @@ public struct ChartState: Sendable, Equatable {
     /// 轻点选中的那一条合并带（详情卡、描边）：存「桶 × 侧 × 类」，画和出卡时到最新快照里现合一份
     /// （金额、状态会变）；快照里这一桶没单了就等于没选中。换品种、换周期清掉；永不落盘。
     public var orderFlowSelected: OrderFlowGroupKey? = nil
-    /// 图上大单签吃的分钟账（ChartRenderer+BigTrades）。`nil` = 开关关着 / 这只没有订单流；永不落盘。
+    /// 图上大单与爆仓气泡吃的分钟账（大单 + 爆仓，ChartRenderer+BigTrades）。`nil` = 开关关着 / 这只没有订单流；永不落盘。
     public var bigTrades: BigTradeTape? = nil
     public var depth: OrderBook? = nil
     /// 「本根还有多久收」用的当前时刻（毫秒）。`nil` 就不画倒计时。

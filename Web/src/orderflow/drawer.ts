@@ -4,7 +4,7 @@
  *   1. 汇总：今日净额大字 + 今日累计净额迷你走势；本根 / 近1时 / 今日三行对撞条（卖在左、买在右、金额写在条里，每行按自己比）；
  *      底部现货 / 合约、币安 / OKX / Coinbase 占比（只用浏览器近 1 小时记到的，只有历史时写「—」）。
  *      抽屉拉高（> 300）时迷你走势换成一张大图：累计净额 · 8:00 起 + 逐根净额柱与整点刻度。
- *   2. 每根：跟当前周期，最新在上，只列有大单签的那几根（与图上同一套相对档位）。时间 | 对撞条 | 净额 | 笔数（买 / 卖）|
+ *   2. 每根：跟当前周期，最新在上，只列图上有气泡（或小圆点）且有大单的那几根（与图上同一套两级金额线，向上 / 向下含爆仓）。时间 | 对撞条 | 净额 | 笔数（买 / 卖）|
  *      最大（方向点 + 额）| 来源（各家细带）；卡宽 ≥ 640 时多一列现货、时间带日期、整列共用一把尺子，窄时每行自己比。
  *      正在走的那根带一个强调色小点；图上十字线停在哪根，那一行灰底 + 时间反白；点一行选中（强调色底与边线、图上那根一道竖带），再点取消。
  *   3. 价位：近 1 小时大单最集中的卖 / 买各三档，按真实价摆在一根竖轴上（挤了互相让开）；现价反白标签 + 虚线；
@@ -24,10 +24,10 @@ import { kindName, baseOf } from '../market/symbols'
 import { flowOf, ensureHistory, type SymbolFlow } from '../chart/tradeFlow'
 import type { TVChart } from '../chart/chart'
 import { baseOfSymbol } from './settings'
-import { BigBarCache, TierCache, unitFor, sumBig, type BarBig } from './bigTags'
+import { BigBarCache, LevelCache, unitFor, sumBig, udOf, type BarBig } from './bigTags'
 import { windows, liveShares, priceLevels, nearestWalls, dayStartUtc, HOUR, PX_MINUTES, type WinSum, type Wall, type TypicalAt } from './summary'
 import { klines } from '../market'
-import { LiqStore, sumLiq, LIQ_EX, type LiqSum } from './liquidation'
+import { LiqStore, LiqBarCache, noLiq, sumLiq, LIQ_EX, type LiqSum } from './liquidation'
 import { OF, feedIdleText, amt, hm, mdhm, px, decFor } from './state'
 import {
   DASH, signed, tone, pct, bfHtml, seg3, VENUES, srcHtml, maxOf, ivShort, levelsSvg, svgWrap,
@@ -40,7 +40,7 @@ const MAX_ROWS = 200
 /** 抽屉比这高就是「拉高」：汇总换大图、爆仓多一个「近1时 ▸」 */
 const TALL_H = 300
 const SHORT_H = 240, LONG_H = 480
-/** 图上点过的最早那根：列表至少列到它（否则点一枚很早的签，抽屉里找不到那一行） */
+/** 图上点过的最早那根：列表至少列到它（否则点一枚很早的气泡，抽屉里找不到那一行） */
 let reachT = Infinity
 
 let slot: HTMLElement | null = null
@@ -48,7 +48,8 @@ let root: HTMLElement | null = null
 const q = <T extends HTMLElement = HTMLElement>(k: string): T | null => root?.querySelector<T>(`[data-k="${k}"]`) ?? null
 const liq = new LiqStore()
 const cache = new BigBarCache()
-const tierCache = new TierCache()
+const levelCache = new LevelCache()
+const liqCache = new LiqBarCache()
 let lastAt = 0
 let lastKey = ''
 let histSym = ''
@@ -185,8 +186,10 @@ function buildRows(c: Ctx): void {
   rows = []
   const { chart, f, now } = c
   cache.begin(f, `${c.sym}|${c.iv}`, now)
-  const tiers = tierCache.get(cache, f, chart, now, c.unit)
-  if (!tiers) return
+  const base = baseOfSymbol(c.sym).base
+  const lb = !noLiq(c.sym) && c.iv >= MIN ? liqCache.of(liq.state(base), base, c.iv) : null
+  const levels = levelCache.get(cache, f, chart, now, c.unit, lb)
+  if (!levels) return
   let start = Infinity
   for (const k of f.min.keys()) { start = k; break }
   for (const k of f.sec.keys()) { start = Math.min(start, k); break }
@@ -197,7 +200,9 @@ function buildRows(c: Ctx): void {
     const t1 = i + 1 < bars.length ? bars[i + 1].t : chart.timeAt(i + 1)
     if (t1 <= start) break
     const d = cache.get(f, t, t1, now)
-    if (d && Math.max(d.bb, d.bs) >= tiers.t1) rows.push({ t, t1, d, close: bars[i].c })
+    if (!d) continue
+    const u = udOf(d, lb ? lb.at(t, t1) : null)
+    if (Math.max(u.up, u.down) >= levels.dot) rows.push({ t, t1, d, close: bars[i].c })
   }
 }
 
@@ -277,7 +282,7 @@ function onRowClick(e: MouseEvent): void {
   paintBars()
 }
 
-/** 图上点了一枚签：抽屉没开就打开，开着就滚到那一行（并选中它） */
+/** 图上点了一枚气泡：抽屉没开就打开，开着就滚到那一行（并选中它） */
 function revealBar(_sym: string, t: number): void {
   pendingReveal = t
   // 点的是 200 行之外更早的那根：列表一直往回列到它（换品种 / 周期才收回去）

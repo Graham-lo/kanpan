@@ -1,168 +1,116 @@
-// 手机网页 · 图上大单签：纯函数（移植自 KanpanChart/Tests/KanpanChartTests/BigTradeSignsTests.swift，两端同一份规则）
-// + 图层（ChartView.addLayer 上真排一屏：命中、读屏、画线文字零相交）。
+// 手机网页 · 图上大单与爆仓气泡：纯函数（与 iOS KanpanChart/Tests/KanpanChartTests/BigTradeSignsTests.swift 同一份规格，
+// docs/design/大单爆仓气泡-三端规格-2026-10-08.md；摆放与电脑网页同一个 planBubbles，细的几何在 orderflow-bigtags.test.ts）
+// + 图层（ChartView.addLayer 上真排一屏：命中只认泡、读屏只列泡、画线文字零相交）+ 数据源（爆仓按根并进 U / D）。
 // 场地：node 里假的 DOM 元素与假画布（只记调用），帧循环不跑。
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { SIGN, planSigns, hitSign, signLabel, type SignBar, type SignEnv } from '../src/m/chart/bigTradeSigns'
-import { BigTradeLayer, spanOf, type BigTradeSource } from '../src/m/chart/bigTradeLayer'
-import type { Rect, Tiers } from '../src/orderflow/bigTags'
+import { SIGN, planSigns, hitSign, hitBox, signLabel, type SignBar, type SignEnv } from '../src/m/chart/bigTradeSigns'
+import { BigTradeLayer, bigTradeSource, type BigTradeSource } from '../src/m/chart/bigTradeLayer'
+import { BUBBLE, type Levels, type Rect } from '../src/orderflow/bigTags'
+import type { LiqRow } from '../src/orderflow/liquidation'
 import { ViewWindow } from '../src/m/chart/geometry'
 import { BarSeries, INTERVAL_STEP } from '../src/m/chart/series'
 import { makeState, withOverlay } from '../src/m/chart/state'
 import type { ChartState } from '../src/m/chart/state'
 import { ChartView } from '../src/m/chart/view'
 import { decodeDrawing } from '../src/m/chart/draw/drawing'
-import { drawingLabelBoxes } from '../src/m/chart/renderer.orderflow'
+import { drawingLabelBoxes, orderFlowAmount } from '../src/m/chart/renderer.orderflow'
 
-const K: Tiers = { t1: 100_000, t2: 300_000, t3: 1_000_000 }
+const K: Levels = { dot: 100_000, bubble: 300_000 }
 
 function env(o: Partial<SignEnv> = {}): SignEnv {
   return {
-    tiers: K, spacing: 8, top: 24, bottom: 400, plotW: 800, avoid: [],
+    levels: K, spacing: 8, top: 24, bottom: 400, plotW: 800, avoid: [],
     measure: t => t.length * 6, fmt: v => `${Math.round(v / 1000)}K`, ...o,
   }
 }
-function bar(o: { i?: number; x?: number; hi?: number; lo?: number; buy: number; sell: number }): SignBar {
+function bar(o: { i?: number; x?: number; hi?: number; lo?: number; up: number; down: number }): SignBar {
   const i = o.i ?? 0
-  return { i, t: i * 60_000, x: o.x ?? 100, yHigh: o.hi ?? 100, yLow: o.lo ?? 200, bb: o.buy, bs: o.sell }
+  return { i, t: i * 60_000, x: o.x ?? 100, yHigh: o.hi ?? 100, yLow: o.lo ?? 200, up: o.up, down: o.down }
 }
-const maxY = (r: Rect) => r.y + r.h, maxX = (r: Rect) => r.x + r.w
-const inter = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+const circleHits = (x: number, y: number, r: number, a: Rect): boolean => {
+  const cx = Math.max(a.x, Math.min(x, a.x + a.w)), cy = Math.max(a.y, Math.min(y, a.y + a.h))
+  return Math.hypot(x - cx, y - cy) < r
+}
 
-describe('大单签 · 一根一枚', () => {
-  it('大的那一侧：二档买 = 最高价上方 4 的实心三角，三档卖 = 最低价下方 4 + 离尖 2 的胶囊', () => {
-    const [s, ...rest] = planSigns([bar({ buy: 500_000, sell: 150_000 })], env())
+describe('气泡 · 一根上下各至多一枚', () => {
+  it('U 过泡线 = 最高价之上的带字泡（涨色侧），D 过点线 = 最低价之下的小圆点', () => {
+    const [u, d, ...rest] = planSigns([bar({ up: 500_000, down: 150_000 })], env())
     expect(rest).toEqual([])
-    expect(s.side).toBe('buy'); expect(s.tier).toBe(2); expect(s.shape).toBe('tri'); expect(s.cap).toBeNull(); expect(s.above).toBe(true)
-    expect(maxY(s.mark)).toBe(96); expect(s.mark.w).toBe(8); expect(s.mark.h).toBe(7)
-    const [t] = planSigns([bar({ buy: 120_000, sell: 2_000_000 })], env())
-    expect(t.side).toBe('sell'); expect(t.tier).toBe(3); expect(t.above).toBe(false)
-    expect(t.mark.y).toBe(204)
-    expect(t.cap!.y).toBe(maxY(t.mark) + 2); expect(t.cap!.h).toBe(16)
-    expect(t.cap!.w).toBe('2000K'.length * 6 + 10)
-    expect(t.text).toBe('2000K')
+    expect(u).toMatchObject({ side: 'up', bubble: true, text: '500K', anchor: 100 })
+    expect(u.cy + u.r).toBe(96)
+    expect(d).toMatchObject({ side: 'down', bubble: false, text: '', anchor: 200 })
+    expect(d.cy - d.r).toBeCloseTo(202)
   })
-
-  it('一档是直径 5 的圆点、离高点 3；没过线不画', () => {
-    const [s] = planSigns([bar({ buy: 150_000, sell: 0 })], env())
-    expect(s.shape).toBe('dot'); expect(s.tier).toBe(1); expect(s.cap).toBeNull()
-    expect([s.mark.w, s.mark.h]).toEqual([5, 5]); expect(maxY(s.mark)).toBe(97)
-    expect(planSigns([bar({ buy: 99_000, sell: 90_000 })], env())).toEqual([])
-    expect(planSigns([bar({ buy: 5e6, sell: 0 })], env({ tiers: null }))).toEqual([])
+  it('没过点线不画；没有金额线不画', () => {
+    expect(planSigns([bar({ up: 99_000, down: 90_000 })], env())).toEqual([])
+    expect(planSigns([bar({ up: 5e6, down: 0 })], env({ levels: null }))).toEqual([])
   })
-
-  it('密的周期（一根 < 3）三档也不出胶囊；稀的周期（一根 ≥ 9）二档也出胶囊', () => {
-    expect(planSigns([bar({ buy: 2e6, sell: 0 })], env({ spacing: 2 }))[0]).toMatchObject({ shape: 'tri', cap: null })
-    expect(planSigns([bar({ buy: 5e5, sell: 0 })], env({ spacing: 10 }))[0].cap).not.toBeNull()
-    expect(planSigns([bar({ buy: 5e5, sell: 0 })], env({ spacing: 6 }))[0].cap).toBeNull()
+  it('一根宽不到 4：全部只画点', () => {
+    const out = planSigns([bar({ up: 2e6, down: 2e6 })], env({ spacing: 3 }))
+    expect(out).toHaveLength(2); expect(out.every(s => !s.bubble)).toBe(true)
   })
-})
-
-describe('大单签 · 翻面 / 退化', () => {
-  it('胶囊撞字：只把胶囊翻到另一侧，三角不动', () => {
-    const [s] = planSigns([bar({ buy: 2e6, sell: 0 })], env({ avoid: [{ x: 0, y: 70, w: 300, h: 16 }] }))
-    expect(s.side).toBe('buy'); expect(s.above).toBe(true); expect(maxY(s.mark)).toBe(96)
-    expect(s.capAbove).toBe(false); expect(s.cap!.y).toBe(213) // 最低价 200 + 4 + 7 + 2
+  it('一屏带字的泡最多 6 枚，大的先占位，其余退成点；输出按根序', () => {
+    const bars = Array.from({ length: 9 }, (_, i) => bar({ i, x: 40 + i * 80, up: 1e6 + i * 1000, down: 0 }))
+    const out = planSigns(bars, env())
+    expect(out.map(s => s.i)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8])
+    expect(out.filter(s => s.bubble).map(s => s.i)).toEqual([3, 4, 5, 6, 7, 8])
   })
-
-  it('三角也撞：整枚翻过去，颜色与朝向不变（side 仍是买）', () => {
-    const [s] = planSigns([bar({ buy: 2e6, sell: 0 })], env({ avoid: [{ x: 0, y: 70, w: 300, h: 30 }] }))
-    expect(s.side).toBe('buy'); expect(s.above).toBe(false); expect(s.flipped).toBe(true); expect(s.mark.y).toBe(204)
-    expect(s.cap!.y).toBe(213)
+  it('同侧挨上了往外推一层（大的先占位）；推出图例带（顶上 24 + 4）就退成点', () => {
+    const out = planSigns([bar({ i: 0, x: 100, hi: 200, up: 1e6, down: 0 }), bar({ i: 1, x: 106, hi: 200, up: 2e6, down: 0 })], env())
+    const [a, b] = out
+    expect(a.bubble && b.bubble).toBe(true)
+    expect(b.cy + b.r).toBe(196)
+    expect(Math.hypot(a.x - b.x, a.cy - b.cy)).toBeGreaterThanOrEqual(a.r + b.r + 2 - 1e-9)
+    const [c] = planSigns([bar({ i: 0, x: 100, up: 1e6, down: 0 }), bar({ i: 1, x: 106, up: 2e6, down: 0 })], env())
+    expect(c.bubble).toBe(false)
+    const [t] = planSigns([bar({ hi: 50, up: 2e6, down: 0 })], env())
+    expect(t.bubble).toBe(false); expect(t.cy - t.r).toBeGreaterThanOrEqual(24)
   })
-
-  it('两侧胶囊都撞：退成本侧三角；三角也放不下就不画', () => {
-    const avoid = [{ x: 0, y: 70, w: 300, h: 16 }, { x: 0, y: 212, w: 300, h: 30 }]
-    const [s] = planSigns([bar({ buy: 2e6, sell: 0 })], env({ avoid }))
-    expect(s).toMatchObject({ shape: 'tri', cap: null, above: true }); expect(maxY(s.mark)).toBe(96)
-    const all = [{ x: 0, y: 70, w: 300, h: 30 }, { x: 0, y: 200, w: 300, h: 30 }]
-    expect(planSigns([bar({ buy: 2e6, sell: 0 })], env({ avoid: all }))).toEqual([])
-  })
-
-  it('胶囊进图例带（顶上 24）就翻面；三角也进就整枚到最低价下方', () => {
-    const [s] = planSigns([bar({ hi: 50, buy: 2e6, sell: 0 })], env())
-    expect(s.above).toBe(true); expect(s.mark.y).toBeGreaterThanOrEqual(24); expect(s.cap!.y).toBe(213)
-    const [t] = planSigns([bar({ hi: 30, buy: 2e6, sell: 0 })], env())
-    expect(t.above).toBe(false); expect(t.mark.y).toBe(204)
-  })
-
-  it('掉出主图下沿就翻到上方；两侧都放不下不画', () => {
-    const [s] = planSigns([bar({ hi: 100, lo: 330, buy: 0, sell: 2e6 })], env({ bottom: 336 }))
-    expect(s.side).toBe('sell'); expect(s.above).toBe(true); expect(maxY(s.mark)).toBe(96)
-    expect(planSigns([bar({ hi: 30, lo: 330, buy: 0, sell: 2e6 })], env({ bottom: 336 }))).toEqual([])
-  })
-
-  it('胶囊横向夹在主图里（左右各留 2）', () => {
-    const [s] = planSigns([bar({ x: 796, buy: 2e6, sell: 0 })], env())
-    expect(maxX(s.cap!)).toBeLessThanOrEqual(798); expect(s.cap!.x).toBeGreaterThanOrEqual(2)
-    const [l] = planSigns([bar({ x: 3, buy: 2e6, sell: 0 })], env())
-    expect(l.cap!.x).toBeGreaterThanOrEqual(2)
-  })
-
-  it('胶囊让开横跨的那几根（邻根更高）', () => {
-    const [s] = planSigns([bar({ buy: 2e6, sell: 0 })], env({ span: () => ({ hiY: 80, loY: 200 }) }))
-    expect(maxY(s.cap!)).toBeLessThanOrEqual(78)
-  })
-
-  it('spanOf：只取横跨范围内那几根的最高 / 最低', () => {
-    const bars = [0, 1, 2, 3].map(i => bar({ i, x: 10 + i * 10, hi: 100 - i * 10, lo: 200 + i, buy: 0, sell: 0 }))
-    expect(spanOf(bars)(15, 32)).toEqual({ hiY: 80, loY: 202 })
-    expect(spanOf(bars)(100, 120)).toBeNull()
-  })
-
-  it('胶囊与胶囊不叠，大的先占位，输出按根序', () => {
-    const bars = Array.from({ length: 6 }, (_, i) => bar({ i, x: 100 + i * 8, buy: 1e6 + i * 1000, sell: 0 }))
-    const signs = planSigns(bars, env())
-    expect(signs.length).toBe(6)
-    const caps = signs.flatMap(s => (s.cap ? [s.cap] : []))
-    expect(caps.length).toBeGreaterThan(0)
-    for (let a = 0; a < caps.length; a++) for (let b = a + 1; b < caps.length; b++) expect(inter(caps[a], caps[b])).toBe(false)
-    expect(signs[signs.length - 1].cap).not.toBeNull()
-    expect(signs.map(s => s.i)).toEqual([0, 1, 2, 3, 4, 5])
-  })
-
-  it('和画线文字零相交、不进图例带、不出主图（随机 200 屏）', () => {
+  it('和画线文字零相交、不进图例带、不出主图、每屏至多 6 枚泡（随机 200 屏）', () => {
     let seed = 42
     const rnd = (lo: number, hi: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return lo + (hi - lo) * (seed / 0x7fffffff) }
     let total = 0
     for (let k = 0; k < 200; k++) {
       const avoid: Rect[] = Array.from({ length: 4 }, () => ({ x: rnd(0, 700), y: rnd(24, 380), w: rnd(20, 120), h: rnd(12, 20) }))
-      const bars = Array.from({ length: 80 }, (_, i) => { const hi = rnd(30, 300); return bar({ i, x: 4 + i * 9.5, hi, lo: hi + rnd(2, 80), buy: rnd(0, 3e6), sell: rnd(0, 3e6) }) })
+      const bars = Array.from({ length: 80 }, (_, i) => { const hi = rnd(30, 300); return bar({ i, x: 4 + i * 9.5, hi, lo: hi + rnd(2, 80), up: rnd(0, 3e6), down: rnd(0, 3e6) }) })
       const signs = planSigns(bars, env({ spacing: 9.5, avoid }))
       total += signs.length
+      expect(signs.filter(s => s.bubble).length).toBeLessThanOrEqual(6)
       for (const s of signs) {
-        for (const a of avoid) { expect(inter(a, s.mark)).toBe(false); if (s.cap) expect(inter(a, s.cap)).toBe(false) }
-        expect(s.bounds.y).toBeGreaterThanOrEqual(24); expect(maxY(s.bounds)).toBeLessThanOrEqual(400)
+        for (const a of avoid) expect(circleHits(s.x, s.cy, s.r, a)).toBe(false)
+        expect(s.cy - s.r).toBeGreaterThanOrEqual(24 - 1e-9); expect(s.cy + s.r).toBeLessThanOrEqual(400 + 1e-9)
       }
     }
     expect(total).toBeGreaterThan(1000)
   })
 })
 
-describe('大单签 · 命中与读屏', () => {
-  it('44 热区，几枚都中取最近的那枚', () => {
-    const signs = planSigns([bar({ i: 0, x: 100, buy: 5e5, sell: 0 }), bar({ i: 1, x: 112, buy: 6e5, sell: 0 })], env())
-    expect(signs.length).toBe(2)
-    const a = signs[0]
-    expect(hitSign(signs, a.cx - 20, a.cy + 20)?.i).toBe(0)
-    expect(hitSign(signs, 107, a.cy)?.i).toBe(1)
-    expect(hitSign(signs, 104, a.cy)?.i).toBe(0)
-    expect(hitSign(signs, a.cx, a.cy - 30)).toBeNull()
+describe('气泡 · 命中与读屏', () => {
+  it('44 × 44 命中、几枚都中取圆心最近的；小圆点不响应', () => {
+    const signs = planSigns([bar({ i: 0, x: 100, up: 5e5, down: 0 }), bar({ i: 1, x: 140, up: 6e5, down: 0 })], env())
+    const [a, b] = signs
+    expect(a.bubble && b.bubble).toBe(true)
+    expect(hitSign(signs, a.x - 20, a.cy + 20)?.i).toBe(0)
+    expect(hitSign(signs, 121, a.cy)?.i).toBe(1)
+    expect(hitSign(signs, 119, a.cy)?.i).toBe(0)
+    expect(hitSign(signs, a.x, a.cy - 30)).toBeNull()
     expect(hitSign(signs, 300, 300)).toBeNull()
+    const [dot] = planSigns([bar({ up: 150_000, down: 0 })], env())
+    expect(dot.bubble).toBe(false)
+    expect(hitSign([dot], dot.x, dot.cy)).toBeNull()
   })
-
-  it('点胶囊整块也算点中（胶囊翻到了另一侧也一样）', () => {
-    const [s] = planSigns([bar({ buy: 2e6, sell: 0 })], env({ avoid: [{ x: 0, y: 70, w: 300, h: 16 }] }))
-    expect(hitSign([s], s.cap!.x + s.cap!.w / 2, s.cap!.y + s.cap!.h / 2)?.i).toBe(0)
+  it('命中框以圆心为心，泡大于 44 时按泡', () => {
+    expect(hitBox({ x: 100, cy: 50, r: 12 })).toEqual({ x: 78, y: 28, w: 44, h: 44 })
+    expect(hitBox({ x: 100, cy: 50, r: 30 })).toEqual({ x: 70, y: 20, w: 60, h: 60 })
   })
-
-  it('读屏文案「12:30 大单买入 1200K」', () => {
-    const [s] = planSigns([bar({ buy: 1.2e6, sell: 0 })], env())
-    expect(signLabel(s, env().fmt, '12:30')).toBe('12:30 大单买入 1200K')
-    expect(signLabel({ side: 'sell', usd: 3e5 }, env().fmt, '10月8日')).toBe('10月8日 大单卖出 300K')
+  it('读屏文案「12:30 向上 1.2M」/「10月8日 向下 300.0K」', () => {
+    const [s] = planSigns([bar({ up: 1.2e6, down: 0 })], env())
+    expect(signLabel(s, orderFlowAmount, '12:30')).toBe('12:30 向上 1.2M')
+    expect(signLabel({ side: 'down', usd: 3e5 }, orderFlowAmount, '10月8日')).toBe(`10月8日 向下 ${orderFlowAmount(3e5)}`)
   })
-
   it('尺寸与 iOS 同值', () => {
-    expect(SIGN).toMatchObject({ dot: 5, dotGap: 3, triW: 8, triH: 7, triGap: 4, capH: 16, capPadX: 5, capGap: 2, capFont: 11, legendBand: 24, hit: 44 })
+    expect(SIGN).toMatchObject({ legendBand: 24, hit: 44, pop: 1.3, popMs: 120, ring: 8, ringMs: 600, flashMs: 150 })
+    expect(BUBBLE).toMatchObject({ cap: 6, minBw: 4, font: 11, r0: 11, rGrow: 6, stem: 4, dotStem: 2, fill: 0.16, fillDark: 0.22, stroke: 1.4, dotAlpha: 0.85 })
   })
 })
 
@@ -220,12 +168,16 @@ function state(count = 300): ChartState {
   return makeState({ series, symbol: { symbol: 'BTCUSDT', base: 'BTC', priceDecimals: 2 }, view: new ViewWindow(series.lastTime + span * 0.05, span), overlays: [], subs: [] })
 }
 
-/** 每 3 根一枚，金额从 0.2M 往上走，最后几根够顶档 */
+/** 每 3 根一枚，金额从 0.2M 往上走，后面的根过泡线 */
 function source(): BigTradeSource {
   return {
     prepare: series => ({
-      tiers: K, live: 0,
-      bar: i => (i % 3 === 0 ? { bb: i % 2 ? 0 : 2e5 + (i / series.count) * 3e6, bs: i % 2 ? 2e5 + (i / series.count) * 3e6 : 0 } : null),
+      levels: K, live: 0,
+      bar: i => {
+        if (i % 3) return null
+        const v = 2e5 + (i / series.count) * 3e6
+        return i % 2 ? { up: 0, down: v, bb: 0, bs: v } : { up: v, down: 0, bb: v, bs: 0 }
+      },
     }),
   }
 }
@@ -239,50 +191,57 @@ function rig(onTap: (s: { i: number }) => boolean = () => true) {
   return { v, layer }
 }
 
-describe('大单签 · 图层', () => {
-  it('一屏排出签：只在主图里、不进图例带、一根至多一枚', () => {
+describe('气泡 · 图层', () => {
+  it('一屏排出：只在主图里、不进图例带、一根同侧至多一枚、带字的泡至多 6 枚', () => {
     const { v, layer } = rig()
     const L = v.renderer!.layout(v.width, v.height)
     const signs = layer.current
     expect(signs.length).toBeGreaterThan(5)
-    expect(new Set(signs.map(s => s.i)).size).toBe(signs.length)
+    expect(new Set(signs.map(s => `${s.i}${s.side}`)).size).toBe(signs.length)
     for (const s of signs) {
-      expect(s.bounds.y).toBeGreaterThanOrEqual(L.main.y + SIGN.legendBand - 0.001)
-      expect(maxY(s.bounds)).toBeLessThanOrEqual(L.main.y + L.main.h + 0.001)
-      expect(s.bounds.x).toBeGreaterThanOrEqual(-0.001); expect(maxX(s.bounds)).toBeLessThanOrEqual(L.plotW + 0.001)
+      expect(s.cy - s.r).toBeGreaterThanOrEqual(L.main.y + SIGN.legendBand - 0.001)
+      expect(s.cy + s.r).toBeLessThanOrEqual(L.main.y + L.main.h + 0.001)
+      expect(s.x).toBeGreaterThanOrEqual(-0.001); expect(s.x).toBeLessThanOrEqual(L.plotW + 0.001)
     }
-    expect(signs.some(s => s.shape === 'cap')).toBe(true)
+    const nb = signs.filter(s => s.bubble).length
+    expect(nb).toBeGreaterThan(0); expect(nb).toBeLessThanOrEqual(6)
+    expect(signs.some(s => !s.bubble)).toBe(true)
   })
 
-  it('轻点落在签上：交给宿主（返回真 = 手势不再当轻点）；宿主不接（横屏）就照常', () => {
+  it('轻点落在泡上：交给宿主（返回真 = 手势不再当轻点）；宿主不接（横屏）就照常；点在小圆点上不算', () => {
     const taps: number[] = []
     let accept = true
     const { v, layer } = rig(s => { taps.push(s.i); return accept })
-    const s = layer.current[layer.current.length - 1]
-    expect(v.bigTradeTap!(s.cx, s.cy)).toBe(true)
+    const s = layer.current.filter(x => x.bubble).pop()!
+    expect(v.bigTradeTap!(s.x, s.cy)).toBe(true)
     expect(taps).toEqual([s.i])
+    const dot = layer.current.find(x => !x.bubble && layer.current.filter(y => y.bubble).every(y => Math.abs(y.x - x.x) > 30 || Math.abs(y.cy - x.cy) > 30))
+    if (dot) expect(v.bigTradeTap!(dot.x, dot.cy)).toBe(false)
     accept = false
-    expect(v.bigTradeTap!(s.cx, s.cy)).toBe(false)
+    expect(v.bigTradeTap!(s.x, s.cy)).toBe(false)
     expect(v.bigTradeTap!(-500, -500)).toBe(false)
     layer.setEnabled(false)
     v.redrawNow()
     expect(layer.current).toEqual([])
-    expect(v.bigTradeTap!(s.cx, s.cy)).toBe(false)
+    expect(v.bigTradeTap!(s.x, s.cy)).toBe(false)
     layer.destroy()
     expect(v.bigTradeTap).toBeNull()
   })
 
-  it('读屏：一枚一个隐形按钮，文案「时间 大单买入 / 卖出 金额」，点它等于点签', () => {
+  it('读屏：只给泡一个隐形按钮（小圆点不进），文案「时间 向上 / 向下 金额」，点它等于点泡', () => {
     vi.useFakeTimers()
     const taps: number[] = []
     const { layer } = rig(s => { taps.push(s.i); return true })
     vi.advanceTimersByTime(400)
     const aria = (layer as unknown as { aria: { children: Record<string, unknown>[] } }).aria
-    expect(aria.children.length).toBe(layer.current.length)
-    const b = aria.children[0] as { getAttribute(k: string): string; click(): void }
-    expect(b.getAttribute('aria-label')).toMatch(/^\d\d:\d\d 大单(买入|卖出) [\d.]+[KMB]?$/)
+    const bubbles = layer.current.filter(s => s.bubble).sort((a, b) => a.t - b.t)
+    expect(aria.children.length).toBe(bubbles.length)
+    expect(aria.children.length).toBeLessThan(layer.current.length)
+    const b = aria.children[0] as { getAttribute(k: string): string; click(): void; className: string }
+    expect(b.className).toBe('m-bigtrade-aria-sign')
+    expect(b.getAttribute('aria-label')).toMatch(/^\d\d:\d\d 向(上|下) [\d.]+[KMB]?$/)
     b.click()
-    expect(taps).toEqual([layer.current[0].i])
+    expect(taps).toEqual([bubbles[0].i])
   })
 
   it('和画线文字零相交（真画线：几条水平线压在 K 线高点附近）', () => {
@@ -297,18 +256,43 @@ describe('大单签 · 图层', () => {
     const boxes = drawingLabelBoxes(r, L.main, r.priceRange(v.width, v.height), L)
     expect(boxes.length).toBe(ps.length)
     let n = 0
-    for (const s of layer.current) for (const b of boxes) { n++; expect(inter(s.mark, b)).toBe(false); if (s.cap) expect(inter(s.cap, b)).toBe(false) }
+    for (const s of layer.current) for (const b of boxes) { n++; expect(circleHits(s.x, s.cy, s.r, b)).toBe(false) }
     expect(n).toBeGreaterThan(0)
     expect(before).toBeGreaterThan(0)
   })
 })
 
+describe('气泡 · 数据源并爆仓', () => {
+  function series(): BarSeries {
+    const n = 10, o = Array(n).fill(100), h = Array(n).fill(101), l = Array(n).fill(99)
+    return new BarSeries({ symbol: 'LIQTUSDT', interval: '5m', t0: 1_760_000_100_000, step: 300_000, open: o, high: h, low: l, close: o, volume: Array(n).fill(1) })
+  }
+  it('空爆并进向上、多爆并进向下；只有爆仓的根也有数，金额线从合并后的数定', () => {
+    const s = series(), T = s.time(0)
+    const rows = new Map<number, LiqRow>()
+    for (let k = 0; k < 10; k++) rows.set(T + k * 300_000 + 60_000, [T + k * 300_000 + 60_000, k === 9 ? 5e6 : 0, 100_000, 1, 0, 0, 0, 0])
+    const seen: string[] = []
+    const src = bigTradeSource(() => 0, sym => { seen.push(sym); return { state: { rows, tracked: true, ver: 1 }, base: 'LIQT' } })
+    const d = src.prepare(s, T + 10 * 300_000)!
+    expect(seen[0]).toBe('LIQTUSDT')
+    expect(d.bar(0)).toEqual({ up: 100_000, down: 0, bb: 0, bs: 0 })
+    expect(d.bar(9)).toEqual({ up: 100_000, down: 5e6, bb: 0, bs: 0 })
+    expect(d.levels).not.toBeNull()
+    expect(d.levels!.bubble).toBeGreaterThan(100_000)
+  })
+  it('不给爆仓（现货 / 宏观 / 没开）：只看大单，没有大单就没有金额线', () => {
+    const s = series()
+    const d = bigTradeSource(() => 0, () => null).prepare(s, s.time(9) + 300_000)!
+    expect(d.bar(0)).toBeNull(); expect(d.levels).toBeNull()
+    expect(bigTradeSource(() => 0).prepare(s, s.time(9) + 300_000)!.levels).toBeNull()
+  })
+})
+
 // ------------------------------------------------------------------ 压测：1m × 500 根，真数据源
 
-describe('大单签 · 压测', () => {
-  it('1m × 500 根满屏：签这层每帧 p95 ≤ 1 ms（这一层是加在原帧上的全部开销）', async () => {
+describe('气泡 · 压测', () => {
+  it('1m × 500 根满屏：气泡这层每帧 p95 ≤ 1 ms（这一层是加在原帧上的全部开销）', async () => {
     const { recordTrade, beat, resetFlows } = await import('../src/chart/tradeFlow')
-    const { bigTradeSource } = await import('../src/m/chart/bigTradeLayer')
     const { withViewport } = await import('../src/m/chart/state')
     resetFlows()
     const N = 500, step = 60_000, t0 = Math.floor(Date.now() / step) * step - (N - 1) * step
@@ -346,7 +330,7 @@ describe('大单签 · 压测', () => {
     times.sort((x, y) => x - y)
     const p95 = times[Math.floor(times.length * 0.95)]
     expect(p95, `p95 ${p95.toFixed(3)} ms`).toBeLessThanOrEqual(1)
-    console.log(`[大单签压测] 1m × 500：每帧 p50 ${times[200].toFixed(3)} ms，p95 ${p95.toFixed(3)} ms，签 ${layer.current.length} 枚`)
+    console.log(`[气泡压测] 1m × 500：每帧 p50 ${times[200].toFixed(3)} ms，p95 ${p95.toFixed(3)} ms，气泡与点 ${layer.current.length} 枚`)
     layer.destroy(); resetFlows()
   })
 })

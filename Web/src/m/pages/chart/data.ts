@@ -2,7 +2,7 @@
  *
  * - 估值两项（预期净利润、营收）：从 market/meta.ts 那份 /v1/market/meta 的行里取（和总供应量同一次请求，
  *   不再自己另发一次），只留 forwardEarnings / revenue（总供应量由 meta.ts 写进 Sym.supply）。
- * - 主力订单流数据口：照 chart/orderflow.source.ts 的 createOrderFlowPort 包 OrderFlowSource，（③ 图上大单签另算一个理由，见 createPagePort）
+ * - 主力订单流数据口：照 chart/orderflow.source.ts 的 createOrderFlowPort 包 OrderFlowSource，（③ 图上大单与爆仓气泡另算一个理由，见 createPagePort）
  *   多两件事——① setOverride：「主力订单流」门槛改完立刻生效（createOrderFlowPort 对同一品种
  *   setWanted 直接 return，换不了门槛）；② 记下最新快照的生效门槛与默认值，给门槛编辑器用。
  */
@@ -46,7 +46,7 @@ export interface PagePort extends OrderFlowPort {
   /** 行情页藏起来时停掉订阅（簿与成交的几条 WS、500ms 评估），记住想要的品种；resume 再按它重开 */
   suspend(): void
   resume(): void
-  /** 图上大单签要不要逐笔（与挂单墙开关互不牵连）：只开签时数据层照跑、但快照不交给图（图上不画墙） */
+  /** 图上气泡要不要逐笔（与挂单墙开关互不牵连）：只开气泡时数据层照跑、但快照不交给图（图上不画墙） */
   setSigns(on: boolean, symbol: string): void
   /** 最新快照的生效门槛 / 叠改动之前的默认门槛（还没到是 null） */
   readonly thresholds: Thresholds | null
@@ -59,8 +59,8 @@ export interface PagePort extends OrderFlowPort {
 }
 
 /**
- * 两个理由要数据层：挂单墙（图 setWanted）与图上大单签（setSigns）。任一个要就订；
- * 只有墙要时才把快照交给图——只开签时图上不画墙，墙关掉的那一刻交一个 null 清掉。
+ * 两个理由要数据层：挂单墙（图 setWanted）与图上大单与爆仓气泡（setSigns）。任一个要就订；
+ * 只有墙要时才把快照交给图——只开气泡时图上不画墙，墙关掉的那一刻交一个 null 清掉。
  */
 export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, override: (sym: string) => Override | null, startSuspended = false): PagePort {
   let thresholds: Thresholds | null = null, defaults: Thresholds | null = null
@@ -110,7 +110,7 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
       const was = walls
       walls = onOff
       want(symbol)
-      // 只关墙、签还在订：图上的墙清掉；只开墙、签早在订：手上的最新一帧马上交给图
+      // 只关墙、气泡还在订：图上的墙清掉；只开墙、气泡早在订：手上的最新一帧马上交给图
       if (was && !walls && signs) push(null)
       else if (!was && walls && last && src.current === symbol.toUpperCase()) push(last)
     },
