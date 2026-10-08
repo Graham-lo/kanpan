@@ -9,9 +9,14 @@
  *   · 一分钟取哪份：整分钟在覆盖区间里用浏览器的；否则服务端有这行用服务端的；服务端在跟、落在它的历史里却没有行 = 没成交；
  *     再不然用浏览器攒到的那一部分。周期粗于 1 分钟时前端按分钟并；秒级周期只有浏览器的秒桶。
  *   · 笔数、最大一笔、现货 / 合约与三家的占比只有浏览器记（服务端的行没有）：一根里只要有一分钟的大单金额来自服务端，这几项就是 null（界面写「—」或不写）。
- *   · 档位单位 = 门槛 ÷ 5（和成交带的「大额」同一条线）：≥ 1 倍画 6 px 三角，≥ 3 倍画带金额的圆角签，≥ 10 倍画 13 px 粗体大签。
- *   · 两侧都够格时，金额大的那侧实心、另一侧只描边。签不压 K 线（按签横跨的那几根的最高 / 最低让开），
- *     不压图例、不压画线的文字、签与签不叠；放不下就往外挪一格，再不行退回三角，三角也撞上就不画。
+ *   · 档位按相对分布定（2026-10-08 验收：按绝对门槛一屏四百多枚、整张图被盖满）：当前周期最近 300 根（不足就取有的）
+ *     每根「大买 + 大卖」的非零分布，三档 = P85（6 px 三角）/ P95（带金额的圆角签）/ max(P99, 3 × P95)（13 px 粗体大签），
+ *     每档再垫一道绝对下限 = 门槛 ÷ 5（和成交带的「大额」同一条线）。和档位比的是签上写的那一侧的金额，
+ *     所以签越大写的数越大。分布只在数据版本变了（缓存作废 / 新开一根）才重算。
+ *   · 一根只画一枚签：买卖里大的那一侧（买挂高点上、卖挂低点下）；另一侧只有自己也过 P95 才另画一枚描边签。
+ *     悬停卡两侧都写。
+ *   · 签夹在主图窗格里（成交量垫在主图底部 16% 时也让开那一截）、不越过价格轴；不压 K 线（按签横跨的那几根的最高 / 最低让开），
+ *     和图例文字、画线文字、别的签相交就退化成三角，三角也放不下就不画——不往外挪（挪远了就看不出是哪根的）。
  *   · 缓存：每张图一份「根 → 合计」；服务端历史有新行时整份作废，最近 3 分钟内的根在有新大单或每 5 秒重算，其余的根算过就不再算。
  *     多图时非活动格子没有实时桶，拖动缩放只是查表。
  * 只聚合、门槛过滤、展示，不做判定。
@@ -78,12 +83,58 @@ export function unitFor(f: SymbolFlow | null, fallback: number): number {
 }
 
 export type Tier = 0 | 1 | 2 | 3
-export function tierOf(v: number, unit: number): Tier {
-  if (!(unit > 0) || !(v > 0)) return 0
-  if (v >= unit * 10) return 3
-  if (v >= unit * 3) return 2
-  if (v >= unit) return 1
+/** 三档的金额线（已垫过绝对下限） */
+export interface Tiers { t1: number; t2: number; t3: number }
+export function tierOf(v: number, k: Tiers | null): Tier {
+  if (!k || !(v > 0)) return 0
+  if (v >= k.t3) return 3
+  if (v >= k.t2) return 2
+  if (v >= k.t1) return 1
   return 0
+}
+
+/** 分布取多少根 */
+export const TIER_BARS = 300
+/** 已排好序（升序）的分位数，线性插值（同 numpy 默认） */
+export function quantile(sorted: readonly number[], q: number): number {
+  const n = sorted.length
+  if (!n) return 0
+  const pos = (n - 1) * Math.min(1, Math.max(0, q)), i = Math.floor(pos), fr = pos - i
+  return i + 1 < n ? sorted[i] + (sorted[i + 1] - sorted[i]) * fr : sorted[i]
+}
+/** 非零的每根合计 → 三档；floor = 绝对下限（门槛 ÷ 5）。一根有数的都没有给 null */
+export function tiersFrom(vals: readonly number[], floor: number): Tiers | null {
+  const v = vals.filter(x => x > 0).sort((a, b) => a - b)
+  if (!v.length) return null
+  const f = floor > 0 ? floor : 0
+  const p85 = quantile(v, 0.85), p95 = quantile(v, 0.95), p99 = quantile(v, 0.99)
+  const t1 = Math.max(p85, f), t2 = Math.max(p95, f, t1), t3 = Math.max(p99, 3 * p95, f, t2)
+  return { t1, t2, t3 }
+}
+
+/** 一张图的 K 线（只要时间）：bars 升序、timeAt(n) 给最后一根之后那根的开盘时间 */
+export interface BarsLike { bars: readonly { t: number }[]; timeAt: (i: number) => number }
+/** 最近 TIER_BARS 根的分布 → 三档。结果按「缓存代数 + 最后一根 + 下限」记住，数据没变就不重算 */
+export class TierCache {
+  private key = ''
+  private val: Tiers | null = null
+  /** 重算过几次（测试看缓存有没有生效） */
+  computed = 0
+  get(cache: BigBarCache, f: SymbolFlow, ch: BarsLike, now: number, floor: number): Tiers | null {
+    const n = ch.bars.length
+    if (!n) return null
+    const key = `${cache.gen}|${ch.bars[n - 1].t}|${n}|${floor}`
+    if (key === this.key) return this.val
+    this.key = key; this.computed++
+    const vals: number[] = []
+    for (let i = n - 1; i >= Math.max(0, n - TIER_BARS); i--) {
+      const t0 = ch.bars[i].t, t1 = i + 1 < n ? ch.bars[i + 1].t : ch.timeAt(n)
+      const d = cache.get(f, t0, t1, now)
+      if (d) vals.push(d.bb + d.bs)
+    }
+    this.val = tiersFrom(vals, floor)
+    return this.val
+  }
 }
 
 /** 每张图一份：根的开盘时间 → 合计（null = 这根没有大单） */
@@ -98,16 +149,20 @@ export class BigBarCache {
   private map = new Map<number, { v: BarBig | null; t1: number }>()
   /** 算过多少根（测试与压测看缓存有没有生效） */
   computed = 0
+  /** 每作废一次加一（档位的分布据此重算） */
+  gen = 0
   /** 每次画之前调一次：品种 / 周期变了、服务端历史有新行时整份作废；有新大单或过了 5 秒，把最近 3 分钟内的根放掉重算 */
   begin(f: SymbolFlow, key: string, now: number): void {
     if (key !== this.key || f.srv.ver !== this.srvVer || this.map.size > CACHE_CAP) {
-      this.map.clear(); this.key = key; this.srvVer = f.srv.ver; this.live = f.live; this.tick = Math.floor(now / TICK_MS)
+      this.map.clear(); this.key = key; this.srvVer = f.srv.ver; this.live = f.live; this.tick = Math.floor(now / TICK_MS); this.gen++
       return
     }
     const tk = Math.floor(now / TICK_MS)
     if (f.live === this.live && tk === this.tick) return
     this.live = f.live; this.tick = tk
-    for (const [t, e] of this.map) if (e.t1 > now - HOT_MS) this.map.delete(t)
+    let n = 0
+    for (const [t, e] of this.map) if (e.t1 > now - HOT_MS) { this.map.delete(t); n++ }
+    if (n) this.gen++
   }
   get(f: SymbolFlow, t0: number, t1: number, now: number): BarBig | null {
     const e = this.map.get(t0)
@@ -144,8 +199,9 @@ export interface Tag {
   cx: number
 }
 export interface PlanEnv {
-  unit: number
+  tiers: Tiers
   spacing: number
+  /** 签能落的竖直范围（主图窗格内、让开成交量那一截）与横向右界（价格轴左沿） */
   top: number
   bottom: number
   plotW: number
@@ -164,21 +220,25 @@ export const BIG_H = 20
 /** 一根宽不到这么多像素就只画三角（金额签必然横跨十几根，看不出是哪根的） */
 export const TEXT_MIN_SPACING = 3
 
-/** 一屏的签：大的先摆（大的先占位置）；返回摆得下的那些 */
+/** 一屏的签：一根一枚（大的一侧），另一侧过 P95 才另画描边签；大的先摆（先占位置）；返回摆得下的那些 */
 export function planTags(list: TagIn[], env: PlanEnv): Tag[] {
   type Cand = { b: TagIn; side: 'buy' | 'sell'; usd: number; tier: Tier; filled: boolean }
   const cands: Cand[] = []
+  const K = env.tiers
   for (const b of list) {
-    const tb = tierOf(b.data.bb, env.unit), ts = tierOf(b.data.bs, env.unit)
-    const both = tb > 0 && ts > 0
-    if (tb > 0) cands.push({ b, side: 'buy', usd: b.data.bb, tier: tb, filled: !both || b.data.bb >= b.data.bs })
-    if (ts > 0) cands.push({ b, side: 'sell', usd: b.data.bs, tier: ts, filled: !both || b.data.bs > b.data.bb })
+    const buyMain = b.data.bb >= b.data.bs
+    const mainUsd = buyMain ? b.data.bb : b.data.bs, otherUsd = buyMain ? b.data.bs : b.data.bb
+    const tm = tierOf(mainUsd, K)
+    if (!tm) continue
+    cands.push({ b, side: buyMain ? 'buy' : 'sell', usd: mainUsd, tier: tm, filled: true })
+    const to = tierOf(otherUsd, K)
+    if (to >= 2) cands.push({ b, side: buyMain ? 'sell' : 'buy', usd: otherUsd, tier: to, filled: false })
   }
   cands.sort((p, q) => q.usd - p.usd)
   const placed: Rect[] = []
   const out: Tag[] = []
-  const free = (r: Rect): boolean => r.y >= env.top && r.y + r.h <= env.bottom && r.x >= 0 && r.x + r.w <= env.plotW &&
-    !env.avoid.some(a => hit(a, r)) && !placed.some(a => hit(a, r))
+  const inside = (r: Rect): boolean => r.y >= env.top && r.y + r.h <= env.bottom && r.x >= 0 && r.x + r.w <= env.plotW
+  const free = (r: Rect): boolean => inside(r) && !env.avoid.some(a => hit(a, r)) && !placed.some(a => hit(a, r))
   for (const c of cands) {
     const up = c.side === 'buy', x = c.b.x
     let kind: Tag['kind'] = c.tier === 3 ? 'big' : c.tier === 2 ? 'tag' : 'tri'
@@ -189,26 +249,16 @@ export function planTags(list: TagIn[], env: PlanEnv): Tag[] {
       const w = Math.ceil(env.measure(text, big)) + (big ? 12 : 10), h = big ? BIG_H : TAG_H
       const sp = env.span(x - w / 2, x + w / 2)
       if (sp) {
-        let y = up ? sp.hiY - GAP - h : sp.loY + GAP
-        for (let k = 0; k < 3 && !done; k++) {
-          const r = { x: x - w / 2, y, w, h }
-          if (free(r)) { done = { i: c.b.i, t: c.b.t, side: c.side, kind, filled: c.filled, text, usd: c.usd, ...r, cx: x } }
-          else {
-            // 往外挪：越过挡住它的那块
-            const blk = [...env.avoid, ...placed].filter(a => hit(a, r))
-            if (!blk.length) break
-            y = up ? Math.min(...blk.map(a => a.y)) - 2 - h : Math.max(...blk.map(a => a.y + a.h)) + 2
-          }
-        }
+        const r = { x: x - w / 2, y: up ? sp.hiY - GAP - h : sp.loY + GAP, w, h }
+        if (free(r)) done = { i: c.b.i, t: c.b.t, side: c.side, kind, filled: c.filled, text, usd: c.usd, ...r, cx: x }
       }
     }
     if (!done) {
       const sp = env.span(x - TRI_W / 2, x + TRI_W / 2)
       if (sp) {
         const r = { x: x - TRI_W / 2, y: up ? sp.hiY - GAP - TRI_H : sp.loY + GAP, w: TRI_W, h: TRI_H }
-        // 三角之间不比（一根一侧只有一个）；只躲文字与已摆的金额签
-        if (r.y >= env.top && r.y + r.h <= env.bottom && !env.avoid.some(a => hit(a, r)) && !placed.some(a => a.h > TRI_H && hit(a, r)))
-          done = { i: c.b.i, t: c.b.t, side: c.side, kind: 'tri', filled: c.filled, text: '', usd: c.usd, ...r, cx: x }
+        // 三角之间不比（挨着的两根各一枚，宽 7 px 在密的周期会擦边，不算撞）
+        if (inside(r) && !env.avoid.some(a => hit(a, r)) && !placed.some(a => a.h > TRI_H && hit(a, r))) done = { i: c.b.i, t: c.b.t, side: c.side, kind: 'tri', filled: c.filled, text: '', usd: c.usd, ...r, cx: x }
       }
     }
     if (done) { out.push(done); placed.push(done) }

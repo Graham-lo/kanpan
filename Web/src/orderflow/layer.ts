@@ -20,7 +20,7 @@ import { OF, rowsPerLine, bandColor, bandInk, isDarkBg, rgbOf, showCard, hideCar
 import { esc } from '../ui/dom'
 import { hexA } from '../util/format'
 import { flowOf, ensureHistory } from '../chart/tradeFlow'
-import { BigBarCache, planTags, unitFor, ivName, type Tag, type TagIn, type Rect as TagRect, type BarBig } from './bigTags'
+import { BigBarCache, TierCache, planTags, unitFor, ivName, type Tag, type TagIn, type Rect as TagRect, type BarBig } from './bigTags'
 import { EXCHANGE_NAMES as EXN } from './aggregate'
 
 interface BandHit { x0: number; x1: number; y0: number; y1: number; o: BigOrder; id: string }
@@ -32,6 +32,10 @@ function rrect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: 
 }
 
 const xOf = (g: ChartGeometry, t: number): number => g.timeToX(t) - g.spacing / 2
+/** 成交量垫在主图底部的比例（同 chart.ts 的 VOL_H）：大单签不落进这一截 */
+const VOL_H = 0.16
+/** 签离图例文字至少留这么多 */
+const LEGEND_PAD = 4
 
 /** 每张图此刻画出来的签（压测 / 截图脚本按它找悬停位置；界面不读） */
 export const tagsOf = new WeakMap<TVChart, () => readonly Tag[]>()
@@ -42,6 +46,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
   tagsOf.set(chart, () => tags)
   let tagData = new Map<number, BarBig>()
   const bigCache = new BigBarCache()
+  const tierCache = new TierCache()
   let flowSym = ''
   const onHistory = (): void => { chart.dirty = true }
   // 图例是 DOM（左上角），尺寸变了 ResizeObserver 推过来，画签时不去读布局
@@ -49,7 +54,8 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
   if (typeof ResizeObserver !== 'undefined' && chart.legendEl) {
     new ResizeObserver(() => {
       const el = chart.legendEl
-      legend = el.offsetWidth && el.offsetHeight ? { x: el.offsetLeft - 2, y: el.offsetTop - 2, w: el.offsetWidth + 4, h: el.offsetHeight + 4 } : null
+      const P = LEGEND_PAD
+      legend = el.offsetWidth && el.offsetHeight ? { x: el.offsetLeft - P, y: el.offsetTop - P, w: el.offsetWidth + 2 * P, h: el.offsetHeight + 2 * P } : null
     }).observe(chart.legendEl)
   }
   let heat: HeatDraw | null = null
@@ -266,9 +272,9 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     if (sym !== flowSym) { if (flowSym) flowOf(flowSym).listeners.delete(onHistory); flowSym = sym }
     const now = Date.now()
     if (!(g.iv < 60_000)) ensureHistory(f, onHistory, now)
-    const unit = unitFor(f, mine() ? OF.bigTrade : 0)
-    if (!(unit > 0)) return
     bigCache.begin(f, `${sym}|${g.iv}`, now)
+    const tiers = tierCache.get(bigCache, f, chart, now, unitFor(f, mine() ? OF.bigTrade : 0))
+    if (!tiers) return
     const list: TagIn[] = []
     tagData = new Map()
     const lo = Math.max(0, Math.floor(g.from) - 1), hi = Math.ceil(g.to) + 1
@@ -276,7 +282,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       const t0 = g.timeOf(i)
       if (t0 > now) break
       const d = bigCache.get(f, t0, g.timeOf(i + 1), now)
-      if (!d || (d.bb < unit && d.bs < unit)) continue
+      if (!d || Math.max(d.bb, d.bs) < tiers.t1) continue
       const x = g.indexToX(i)
       if (x < -40 || x > g.plotW + 40) continue
       list.push({ i, t: t0, x, data: d }); tagData.set(t0, d)
@@ -286,8 +292,9 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     if (legend) avoid.push(legend)
     const fontS = canvasFont(11, 600), fontB = canvasFont(13, 700)
     const yHi = (b: { h: number }) => g.priceToY(b.h), yLo = (b: { l: number }) => g.priceToY(b.l)
+    const volOn = chart.ind.vol && chart.deg.vol && !chart.hidden.has('vol')
     tags = planTags(list, {
-      unit, spacing: g.spacing, top: g.pane.y + 2, bottom: g.pane.y + g.pane.h - 2, plotW: g.plotW, avoid,
+      tiers, spacing: g.spacing, top: g.pane.y + 2, bottom: g.pane.y + g.pane.h * (volOn ? 1 - VOL_H : 1) - 2, plotW: g.plotW - 2, avoid,
       span: (x0, x1) => {
         const i0 = Math.max(0, Math.round(g.xToIndex(x0))), i1 = Math.round(g.xToIndex(x1))
         let hiY = Infinity, loY = -Infinity
@@ -422,10 +429,6 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     after(g) { if (mine()) OF.onChartDrawn?.(chart, g) },
     hover(x, y, cx, cy) {
       if (!geo) return false
-      if (mine()) {
-        const t = geo.timeOf(Math.round(geo.xToIndex(x)))
-        if (OF.crossT !== t) { OF.crossT = t; OF.onCross?.() }
-      }
       const tg = tagAt(x, y)
       if (tg) { showCard(tagCard(tg, geo), cx, cy); return true }
       if (!mine()) { hideCard(); return false }
@@ -440,7 +443,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       hideCard()
       return false
     },
-    leave() { hideCard(); if (OF.crossT != null && mine()) { OF.crossT = null; OF.onCross?.() } },
+    leave() { hideCard() },
     click(x, y) {
       const tg = tagAt(x, y)
       if (tg) {
