@@ -264,8 +264,10 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
 
   /// 右边：价格在前、涨跌药丸在后，横排（2026-09-25 照用户给的富途式自选表改）。
   /// 价格靠右贴着药丸，药丸定宽，于是两列各自成一条竖线。
+  /// 没有走势线那一格时（开关关着、板块页）价格与药丸隔 16：药丸是一块带底的色块，
+  /// 隔 12 读起来像价格粘在它上面（用户 2026-10-08）。
   private var quoteColumn: some View {
-    HStack(spacing: Space.m) {
+    HStack(spacing: trend == nil ? Space.l : Space.m) {
       Text(priceText)
         .font(SymbolRowFont.liuliPrice).monospacedDigit()
         .lineLimit(1).minimumScaleFactor(0.7)

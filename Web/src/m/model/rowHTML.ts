@@ -63,7 +63,7 @@ export function liuliRowHTML(f: RowFacts, d: LiuliData, first: boolean, extraCls
     + `<div class="lr-in">${liuliBadgeHTML(f.base, f.asset)}`
     + `<div class="lr-name"><div class="lr-top"><span class="lr-base">${esc(f.base)}</span>${f.quote ? `<span class="lr-quote">${esc(f.quote)}</span>` : idxName(f) ? `<span class="lr-quote">${esc(idxName(f))}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
     + `<div class="lr-meta num"><span class="lr-vol">成交额 ${esc(volText(d.vol))}</span>${d.extra ?? ''}</div></div>`
-    + `<div class="lr-right"><span class="${price.cls}">${esc(price.text)}</span>${d.trend === undefined ? pillHTML(d.pct, undefined, !!d.gone, !!d.closed)
+    + `<div class="lr-right${d.trend === undefined ? ' solo' : ''}"><span class="${price.cls}">${esc(price.text)}</span>${d.trend === undefined ? pillHTML(d.pct, undefined, !!d.gone, !!d.closed)
       : `<span class="lr-tp"><span class="lr-trend">${d.trend}</span>${pillHTML(d.pct, undefined, !!d.gone, !!d.closed)}</span>`}</div>`
     + `</div></div>`
 }

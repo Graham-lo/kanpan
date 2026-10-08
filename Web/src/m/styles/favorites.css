@@ -78,6 +78,8 @@ html[data-theme="dark"] .fav-cat.on { box-shadow: 0 3px 12px color-mix(in srgb, 
 .lr-meta { font: var(--t-caption2); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .lr-lead.up { color: var(--up) }
 .lr-right { display: flex; align-items: center; gap: var(--s-m); flex: none }
+/* 没有走势线（开关关着 / 板块页）：价格与药丸之间放宽一档到 16，不然价格像粘在药丸色块上（用户 2026-10-08） */
+.lr-right.solo { gap: var(--s-l) }
 .lr-price { font: var(--t-body-emph); color: var(--ink); font-family: var(--font-ui); font-variant-numeric: tabular-nums; text-align: right; min-width: 64px }
 .lr-price.skel { display: inline-block; width: 70px; min-width: 70px; height: 13px; border-radius: 4px; background: var(--lg-rule, color-mix(in srgb, var(--ink) 9%, transparent)) }
 .stale .lr-price { color: var(--stale) }
