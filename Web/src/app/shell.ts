@@ -28,7 +28,7 @@ export function applyTheme(): void {
   r.dataset.theme = st.theme
   r.dataset.skin = st.skin
   r.dataset.updown = st.updown
-  const b = $('#hdrTheme'); if (b) b.innerHTML = I(st.theme === 'dark' ? 'sun' : 'moon')
+  const b = $('#hdrTheme'); if (b) b.innerHTML = I(st.theme === 'dark' ? 'moon' : 'sun')
   hooks.onTheme.forEach(fn => fn())
 }
 

@@ -107,9 +107,12 @@ function guessSym(k: string): Pick<Sym, 'base' | 'kind'> & { dec?: number; macro
   const base = baseOf(k)
   return { base, kind: kindOfUnderlying(undefined, base) }
 }
-/** 精度也先按 K 线里出现过的小数位猜（最多 8 位） */
+/** 精度也先按 K 线里出现过的小数位猜（最多 8 位），再按价位封顶：有效数字最多 7 位（81,081.7 最多 2 位、2,430 最多 3 位）。
+ *  算出来的价（宏观源、聚合）带浮点尾巴时不至于猜成 8 位、价格轴先宽，表一到又缩回去 */
 export function decOfBars(bars?: readonly Bar[]): number | null {
   if (!bars?.length) return null
+  const px = Math.abs(bars[bars.length - 1].c)
+  const cap = px > 0 && isFinite(px) ? Math.max(0, Math.min(8, 7 - (Math.floor(Math.log10(px)) + 1))) : 8
   let d = 0
   for (let i = Math.max(0, bars.length - 60); i < bars.length; i++) {
     const b = bars[i]
@@ -119,7 +122,23 @@ export function decOfBars(bars?: readonly Bar[]): number | null {
       if (n > d) d = n
     }
   }
-  return Math.min(8, d)
+  return Math.min(cap, d)
+}
+/** 冷启动骨架那一帧的价格轴：图上还没有 K 线时轴宽按「100」量（chart.ts axisW），真价位是 81,081.7 或 0.0091234，
+ *  K 线一到轴宽一跳、整块绘图区跟着挪。品种表（本机缓存那份就够）里有现价与精度：挑一个小数位数，让「100.xx…」量出来
+ *  和真价位的轴标签一样宽，骨架就按最终的轴宽摆；K 线到了 setData 换回真精度。表里没有现价（首次打开、宏观源）就不动 */
+function holdAxisWidth(cell: Cell): void {
+  const ch = cell.chart, s = sym(cfg(cell).symbol), px = s?.price
+  if (ch.bars.length || !s || px == null || !(px > 0)) return
+  // 量字用图自己的画布：它挂在页面里、继承了等宽数字等排版，另起一块离屏画布量出来要窄两三像素
+  const c = ch.ctx
+  c.save(); c.font = ch.font
+  const w = (t: string): number => Math.max(56, Math.ceil(c.measureText(t).width) + 20)   // 和 axisW 同一算法
+  const want = w(fmt(px, st.chartSettings.precision ?? s.dec))
+  let best = ch.meta.dec, gap = Math.abs(w(fmt(100, best)) - want)
+  for (let d = 0; d <= 12; d++) { const g = Math.abs(w(fmt(100, d)) - want); if (g < gap) { gap = g; best = d } }
+  c.restore()
+  if (best !== ch.meta.dec) { ch.meta = { ...ch.meta, dec: best }; ch.dirty = true }
 }
 const settingsHost = { apply: () => applyChartSettings(), base: () => active()?.chart.baseColors }
 /** 图表设置变了（对话框里改、别的设备同步来）：所有格子换上同一份，品种名与精度跟着刷新 */
@@ -229,7 +248,7 @@ function linkView(from: Cell, t0: number, t1: number): void {
   let oi = 0, oiFirst = -1
   for (let j = 0; j < b.length; j++) if (b[j].oi != null) { oi++; if (oiFirst < 0) oiFirst = j }
   return { symbol: k.symbol, iv: k.iv, oi, oiFirst, t0: g ? g.timeOf(g.from) : null, t1: g ? g.timeOf(g.to) : null, cross: c.chart.extCross, deg: c.chart.deg, bars: b.length, spacing: c.chart.spacing, plotW: c.chart.plotW(), panes: c.chart._panes?.map(p => [p.id, p.y, p.h]),
-    metaSym: c.chart.meta.symbol, metaIv: c.chart.iv, last: b[b.length - 1]?.c ?? null, lastT: b[b.length - 1]?.t ?? null, holes, empty: !$('.cell-empty', c.el).hidden }
+    metaSym: c.chart.meta.symbol, metaIv: c.chart.iv, dec: c.chart.meta.dec, aw: c.chart.aw, last: b[b.length - 1]?.c ?? null, lastT: b[b.length - 1]?.t ?? null, holes, empty: !$('.cell-empty', c.el).hidden }
 })
 ;(globalThis as unknown as { __px?: (s: string) => number | null }).__px = s => sym(s)?.price ?? null
 ;(globalThis as unknown as { __stream?: () => unknown }).__stream = streamDebug
@@ -449,7 +468,7 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
     return
   }
   // 旧图留着、淡下去，图例先换成新品种加「载入中」；还没有图就是骨架
-  if (!showing) cell.chart.setPending(metaFor(c))
+  if (!showing) { cell.chart.setPending(metaFor(c)); holdAxisWidth(cell) }
   if (pre) cell.hold = pre.hold                    // 冷启动先发的那次：缓冲它开着，接过来
   else if (siv) { cell.hold = pushKey(c.symbol, siv); pushes.open(cell.hold) }
   const alive = () => token === cell.loadToken && !cell.chart.dead
@@ -755,7 +774,7 @@ export function renderToolbar(): void {
     <span class="tb-sep"></span>
     <button class="tb-btn" id="tbInd" aria-label="指标" data-tip="指标" data-kbd="/">${I('indicators')}<span class="tb-label">指标</span></button>
     <button class="tb-btn${st.compareSymbols.length ? ' on' : ''}" id="tbCompare" aria-label="对比" data-tip="叠加别的品种，按百分比比涨跌">${I('compare')}<span class="tb-label">对比</span>${st.compareSymbols.length ? `<span class="num tb-count">${st.compareSymbols.length}</span>` : ''}</button>
-    <button class="tb-btn" id="tbAlert" aria-label="提醒" data-tip="在现价创建提醒" data-kbd="Alt A">${I('bellPlus')}<span class="tb-label">提醒</span></button>
+    <button class="tb-btn" id="tbAlert" aria-label="提醒" data-tip="在现价创建提醒" data-kbd="Alt A">${I('bell')}<span class="tb-label">提醒</span></button>
     <button class="tb-btn" id="tbNote" aria-label="记一笔" data-tip="把这一刻记下来">${I('note')}<span class="tb-label">记一笔</span></button>
     ${heatButtonHTML()}
     <div class="tb-right">
@@ -966,9 +985,12 @@ function renderSlots(): void {
 }
 
 // ------------------------------------------------------------ 侧栏
-const RAIL: [PanelId, string, string][] = [['watch', 'star', '自选'], ['alerts', 'bell', '提醒'], ['flow', 'layers', '主力订单流'], ['notes', 'note', '笔记'], ['trades', 'trades', '成交']]
+const RAIL: [PanelId, string, string][] = [['watch', 'list', '自选'], ['alerts', 'bell', '提醒'], ['flow', 'flow', '主力订单流'], ['notes', 'note', '笔记'], ['trades', 'trades', '成交']]
 export function renderRail(): void {
-  $('#rail').innerHTML = RAIL.map(([k, ic, l]) => `<button class="ibtn ${st.panel === k ? 'on' : ''}" data-panel="${k}" aria-label="${l}" aria-pressed="${st.panel === k}" data-tip="${l}" data-tip-side="left">${I(ic)}${k === 'alerts' && activeAlerts().length ? `<span class="dot">${activeAlerts().length}</span>` : ''}</button>`).join('') +
+  // 有生效中的提醒：铃的右上角一颗强调色小点（不写数目，数目在提醒页里；提示里带上）
+  const live = activeAlerts().length
+  $('#rail').innerHTML = RAIL.map(([k, ic, l]) => { const n = k === 'alerts' ? live : 0, lab = n ? `${l}（${n} 条生效中）` : l
+    return `<button class="ibtn ${st.panel === k ? 'on' : ''}" data-panel="${k}" aria-label="${lab}" aria-pressed="${st.panel === k}" data-tip="${lab}" data-tip-side="left">${I(ic)}${n ? '<span class="qdot" aria-hidden="true"></span>' : ''}</button>` }).join('') +
     `<div class="rail-spacer"></div>
     <button class="ibtn" id="railKeys" aria-label="快捷键" data-tip="快捷键" data-kbd="?" data-tip-side="left">${I('info')}</button>`
 }
@@ -1556,7 +1578,7 @@ function afterUniverse(): void {
     // 先前因为连不上而空着报错的格子：表通了，重取
     cells.forEach(c => { if ($('.cell-empty', c.el)?.hidden === false) reload.add(c) })
   }
-  cells.forEach(c => { if (reload.has(c)) void loadCell(c); else c.chart.setMeta(metaFor(cfg(c), c.chart.bars)) })
+  cells.forEach(c => { if (reload.has(c)) void loadCell(c); else { c.chart.setMeta(metaFor(cfg(c), c.chart.bars)); holdAxisWidth(c) } })
   refreshStreams()
   renderToolbar(); renderPanel(); updateStale(); paintConn()
   if (S.live === false && !failToast && !S.universeAt) {
@@ -1570,9 +1592,19 @@ function afterUniverse(): void {
  *  其余各格并行取（bootInParallel）。读本机 K 线最多等 150 ms，盘慢就不等它 */
 async function bootCells(): Promise<void> {
   await klineDiskReady()
+  await tableBeforeDiskBars()
   bootInParallel()
   buildCells()
   afterUniverse()
+}
+
+/** 本机 K 线留底首帧就摆出来，价格轴要按品种表里的精度量——先按 K 线猜、表到了再换精度，轴宽就跳一下。
+ *  表还在读盘（几毫秒）且真有格子要摆留底时等它这一下，最多 150 ms；首次打开没有留底就不等（K 线请求不往后推） */
+let universeP: Promise<unknown> | null = null
+function tableBeforeDiskBars(): Promise<unknown> | undefined {
+  if (S.symbols.size || S.live != null || !universeP) return
+  if (!st.cells.some(c => diskBars(c.symbol, c.iv))) return
+  return Promise.race([universeP, new Promise(r => setTimeout(r, 150))])
 }
 
 // ------------------------------------------------------------ 启动
@@ -1687,7 +1719,7 @@ export async function initChart(): Promise<void> {
 
   // 品种表先发（本机有上次那份就同步摆上、网络那份后台取），格子、K 线与推送下一拍再并行起：建 WS、算订阅要同步占 5 ms 左右，
   // 放在同一拍里会把品种表的三个请求和 DOMContentLoaded 一起往后推；K 线用低优先级，不在同一条 HTTP/2 连接上抢品种表的带宽
-  const universe = loadUniverse()
+  const universe = universeP = loadUniverse()
   const fromDisk = S.live == null && S.symbols.size > 0   // 本机那份已经摆上：网络失败的重试由 market 自己管
   const booted = new Promise<void>(r => setTimeout(() => { void bootCells().then(r) }, 0))
   await universe

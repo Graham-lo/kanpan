@@ -354,7 +354,7 @@ export function toggleHeat(): void {
 /** 工具栏上「热力」按钮（放在「记一笔」后面）。 */
 export function heatButtonHTML(): string {
   const on = OF.prefs.heat
-  return `<button class="tb-btn ${on ? 'on' : ''}" id="tbHeat" aria-label="热力" aria-pressed="${on}" data-tip="${on ? '关掉' : '打开'}深度热力：各家挂单按价位的浓淡铺在 K 线下面">${I('layers')}<span class="tb-label">热力</span></button>`
+  return `<button class="tb-btn ${on ? 'on' : ''}" id="tbHeat" aria-label="热力" aria-pressed="${on}" data-tip="${on ? '关掉' : '打开'}深度热力：各家挂单按价位的浓淡铺在 K 线下面">${I('heat')}<span class="tb-label">热力</span></button>`
 }
 
 // ------------------------------------------------------------------ 指标面板里的一行
@@ -382,26 +382,29 @@ export function indicatorRowClick(t: HTMLElement): boolean {
 
 // ------------------------------------------------------------------ 侧栏「主力订单流」面板
 
-/** 四行开关前面的小图标（照 docs/prototypes/web-bigtrade-drawer-2026-10-08.html）：
- *  一块 28 px 的渐变底 + 18 px 的小图，颜色全走皮肤变量（墙紫 / 涨跌 / 强调色 / 热力橙紫）。 */
+/** 四行开关前面的小图标：「质感」一套（docs/prototypes/web-visual-2026-10-08.html §ofTiles）——
+ *  和左右栏同一块中性磨砂底（styles/icons.css 的 .of-p-row .tgi），18 格小图；强调 / 涨 / 跌三色在 oklch 里色度 × .6、明度不动，
+ *  热力的亮格用皮肤强调字色；主力订单流两根横带在竖条两侧留缝（和右栏那只同一画法）；抽屉上的两道小白条改成底块中间色（看着是镂空）。 */
 const svg18 = (body: string): string => `<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">${body}</svg>`
-const TILE: Record<string, string> = {
-  flow: `<span class="tgi" style="background:linear-gradient(135deg,var(--of-wall-a),color-mix(in srgb,var(--of-wall) 26%,transparent))">${svg18(
-    '<rect x="1" y="4" width="16" height="3" rx="1.5" fill="var(--of-wall)" opacity=".55"/><rect x="1" y="11" width="16" height="3" rx="1.5" fill="var(--of-wall)" opacity=".85"/>' +
-    '<rect x="5" y="2" width="2" height="14" rx="1" fill="var(--up)"/><rect x="11" y="5" width="2" height="10" rx="1" fill="var(--down)"/>')}</span>`,
-  ladder: `<span class="tgi" style="background:linear-gradient(135deg,var(--of-up-a),var(--of-down-a))">${svg18(
-    '<rect x="3" y="2" width="12" height="2.4" rx="1.2" fill="var(--down)" opacity=".55"/><rect x="6" y="5.6" width="9" height="2.4" rx="1.2" fill="var(--down)"/>' +
-    '<rect x="7" y="10" width="8" height="2.4" rx="1.2" fill="var(--up)"/><rect x="2" y="13.6" width="13" height="2.4" rx="1.2" fill="var(--up)" opacity=".55"/>')}</span>`,
-  drawer: `<span class="tgi" style="background:linear-gradient(135deg,var(--accent-soft),color-mix(in srgb,var(--accent) 22%,transparent))">${svg18(
-    '<rect x="2" y="10" width="14" height="6" rx="2" fill="var(--accent)"/><rect x="2" y="2" width="14" height="6" rx="2" fill="var(--accent)" opacity=".28"/>' +
-    '<rect x="5" y="12.2" width="4" height="1.6" rx=".8" fill="#fff"/><rect x="10" y="12.2" width="3" height="1.6" rx=".8" fill="#fff" opacity=".7"/>')}</span>`,
-  heat: `<span class="tgi" style="background:linear-gradient(135deg,var(--of-wall-a),color-mix(in srgb,var(--alert-line) 14%,transparent))">${svg18(
-    [0, 1, 2, 3].map(c => [0, 1, 2, 3].map(r =>
-      `<rect x="${1 + c * 4.2}" y="${1 + r * 4.2}" width="3.4" height="3.4" rx=".8" fill="${(c + r) % 3 ? 'var(--of-wall)' : 'var(--alert-line)'}" opacity="${(.25 + ((c * 3 + r * 5) % 7) / 9).toFixed(2)}"/>`).join('')).join(''))}</span>`,
+const rr = (x: number, y: number, w: number, h: number, rx: number, c: string, o = 1): string =>
+  `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${c}"${o === 1 ? '' : ` opacity="${o}"`}/>`
+const QA = 'var(--ofq-a)', QU = 'var(--ofq-u)', QD = 'var(--ofq-d)', QH = 'var(--qac)', QM = 'var(--qtm)'
+let ofMask = 0
+const TILE: Record<string, () => string> = {
+  flow: () => {
+    const id = 'ofq' + (++ofMask)
+    return `<span class="tgi">${svg18(
+      `<mask id="${id}" maskUnits="userSpaceOnUse" x="-2" y="-2" width="22" height="22"><rect x="-2" y="-2" width="22" height="22" fill="#fff"/><path d="M6 .5V17.5M12 3.5V16.5" stroke="#000" stroke-width="4.2" stroke-linecap="round"/></mask>` +
+      `<g mask="url(#${id})">${rr(1, 4, 16, 3, 1.5, QA, .4)}${rr(1, 11, 16, 3, 1.5, QA, .7)}</g>${rr(5, 2, 2, 14, 1, QU)}${rr(11, 5, 2, 10, 1, QD)}`)}</span>`
+  },
+  ladder: () => `<span class="tgi">${svg18(rr(3, 2, 12, 2.4, 1.2, QD, .55) + rr(6, 5.6, 9, 2.4, 1.2, QD) + rr(7, 10, 8, 2.4, 1.2, QU) + rr(2, 13.6, 13, 2.4, 1.2, QU, .55))}</span>`,
+  drawer: () => `<span class="tgi">${svg18(rr(2, 10, 14, 6, 2, QA) + rr(2, 2, 14, 6, 2, QA, .28) + rr(5, 12.2, 4, 1.6, .8, QM) + rr(10, 12.2, 3, 1.6, .8, QM, .7))}</span>`,
+  heat: () => `<span class="tgi">${svg18([0, 1, 2, 3].map(c => [0, 1, 2, 3].map(r =>
+    rr(1 + c * 4.2, 1 + r * 4.2, 3.4, 3.4, .8, (c + r) % 3 ? QA : QH, +(.25 + ((c * 3 + r * 5) % 7) / 9).toFixed(2))).join('')).join(''))}</span>`,
 }
 
 const sw = (id: string, label: string, on: boolean, tip: string): string =>
-  `<div class="of-p-row" data-tip="${tip}">${TILE[id] ?? ''}<span class="l">${label}</span><button class="switch" role="switch" data-ofp="${id}" aria-checked="${on}" aria-label="${label}"></button></div>`
+  `<div class="of-p-row" data-tip="${tip}">${TILE[id]?.() ?? ''}<span class="l">${label}</span><button class="switch" role="switch" data-ofp="${id}" aria-checked="${on}" aria-label="${label}"></button></div>`
 
 /** 图表页 panelFlow 调：整块重画。 */
 export function flowPanel(el: HTMLElement): void {

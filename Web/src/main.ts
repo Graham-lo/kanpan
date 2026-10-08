@@ -2,6 +2,7 @@
 import './styles/app.css'
 import './styles/workbench.css'
 import './styles/drawbar.css'
+import './styles/icons.css'
 import { st, save, onStorageFull } from './app/store'
 import { applyQueryTo, strippedUrl } from './app/query'
 import { installShell, applyTheme, renderHeader, go } from './app/shell'

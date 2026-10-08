@@ -70,7 +70,7 @@ export function renderDrawbar(): void {
   bindFlyHover(bar)
   const btn = (t: DrawingType, all: string, name: string, kbd: string) => {
     const on = tool === t
-    return `<button class="ibtn" data-tool="${t}" data-tools="${all}" aria-label="${esc(name)}" data-tip="${esc(name)}${on && sticky ? '（连续画中，右键或 Esc 退出）' : '（双击连续画）'}" data-kbd="${kbd}" data-tip-side="right" aria-pressed="${on}">${I(t)}${on && sticky ? '<span class="sticky-dot" aria-hidden="true"></span>' : ''}</button>`
+    return `<button class="ibtn" data-tool="${t}" data-tools="${all}" aria-label="${esc(name)}" data-tip="${esc(name)}${on && sticky ? '（连续画中，右键或 Esc 退出）' : '（双击连续画）'}" data-kbd="${kbd}" data-tip-side="right" aria-pressed="${on}">${I('draw:' + t)}${on && sticky ? '<span class="sticky-dot" aria-hidden="true"></span>' : ''}</button>`
   }
   const scroll = bar.scrollTop
   bar.innerHTML = `<button class="ibtn" data-tool="cursor" aria-label="十字光标" data-tip="十字光标" data-kbd="Esc" data-tip-side="right" aria-pressed="${!tool}">${I('cursor')}</button><div class="grp-sep"></div>` +
@@ -121,7 +121,7 @@ function flyout(b: HTMLElement, gid: string): void {
   clearTimeout(hoverTimer)
   const r = (b.closest('.tool-grp') as HTMLElement).getBoundingClientRect()
   const bar = (b.closest('#drawbar') as HTMLElement | null)?.getBoundingClientRect() ?? r
-  const items: MenuItem[] = [{ header: g.name }, ...g.tools.map(([t, name, kbd]): MenuItem => ({ icon: t, label: name, sc: kbd, checked: tool === t, run: () => selectTool(t) }))]
+  const items: MenuItem[] = [{ header: g.name }, ...g.tools.map(([t, name, kbd]): MenuItem => ({ icon: 'draw:' + t, label: name, sc: kbd, checked: tool === t, run: () => selectTool(t) }))]
   const m = menu(items, bar.right + 2, r.top - 4, { width: 285, returnFocus: b })
   m.classList.add('tool-fly')
   // 靠下的组：菜单往上挪到刚好放得下，不整块翻到按钮上面去
@@ -134,7 +134,7 @@ function flyout(b: HTMLElement, gid: string): void {
   m.addEventListener('dblclick', e => {
     const mi = tgt(e).closest<HTMLElement>('.mi'); if (!mi) return
     const it = items[+(mi.dataset.k || 0)]
-    if (it !== '-' && it.icon) { sticky = true; selectTool(it.icon as DrawingType, true) }
+    if (it !== '-' && it.icon) { sticky = true; selectTool(it.icon.replace(/^draw:/, '') as DrawingType, true) }
   })
 }
 
@@ -266,7 +266,7 @@ function renderQuick(): void {
   const sym = host.symbolOf(c)
   const canAlert = drawingCanAlert(d.type), hasAlert = canAlert && !!drawingAlertOf(sym, d.id)
   const dash: 'solid' | Dash = d.dash === 'dashed' || d.dash === 'dotted' ? d.dash : 'solid'
-  el.innerHTML = `<span class="dq-kind" data-tip="${esc(toolName(d.type))}">${I(d.type, 'icon-16')}</span>` +
+  el.innerHTML = `<span class="dq-kind" data-tip="${esc(toolName(d.type))}">${I('draw:' + d.type, 'icon-16')}</span>` +
     (k.color ? `<span class="tb-sep"></span><button class="dq-color" data-q="palette" aria-label="颜色" data-tip="颜色" ${locked ? 'disabled' : ''} aria-haspopup="menu"><span class="swatch" style="background:${esc(cur)}"></span>${I('chevronDown', 'icon-12')}</button>
       ${recent.map(x => swatchBtn(x, false, '最近用过的颜色')).join('')}` : '') +
     (k.width ? `<span class="tb-sep"></span><button class="ibtn xs" data-q="width" aria-label="粗细 ${w} px" data-tip="粗细" ${locked ? 'disabled' : ''} aria-haspopup="menu">${widthSvg(w)}</button>` : '') +

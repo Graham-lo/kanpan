@@ -1,60 +1,52 @@
-/* Hkline Web · 左侧画线工具栏（2026-10-08 照 TradingView 的尺寸重排）
+/* Hkline Web · 左侧画线工具栏（尺寸照 TradingView，图标照 2026-10-08「质感」定版）
  *
- *   · 列宽 52；每颗按钮占满整行 52 × 38、上下紧挨，图标 28 × 28 略偏左，右沿 11 px 留给展开箭头条
+ *   · 列宽 52；每颗按钮占满整行 52 × 38、上下紧挨；按钮本身不铺底，图标是一块 32 的磨砂块（20 字形），
+ *     悬停 / 选中 / 删除悬停的样子都在块上（styles/icons.css）；块左 5 px，右沿 11 px 留给展开箭头条
  *   · 多于一把的组：右沿一条 11 × 34 的箭头条（4 × 7 小三角），平时淡显、悬停这一组时亮起；点它或停在上面展开整组
- *   · 分隔：13 px 间距里一条 1 px 线
+ *   · 分组之间留 13 px 空，不画线
+ *   · 连续画：块右下角一颗 6 px 强调色小点
  *   · 窗口矮到放不下时整列滚动（不溢出、不压扁按钮），十六格布局和窄窗口一样
- *   · 展开的菜单 285 宽、紧贴工具栏右沿；每行 40 高、14 号字、28 图标，快捷键靠右淡色；组名 11 号字淡色
- * 这里覆盖 app.css 里老的 .drawbar 规则（那份文件别的窗口也在改，工具栏的样式都收在这一份）
+ *   · 展开的菜单 285 宽、紧贴工具栏右沿；每行 36 高、13 号字、26 磨砂块，选中行字加粗 + 块选中；快捷键靠右淡色；组名 11 号字淡色
  */
-:root { --drawbar-w: 52px; }
-
 .drawbar {
-  align-items: stretch; gap: 0; padding: 4px 0; min-height: 0;
+  grid-column: 1; grid-row: 2; display: flex; flex-direction: column;
+  align-items: stretch; gap: 0; padding: 4px 0 6px; min-height: 0;
   overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none;
 }
 .drawbar::-webkit-scrollbar { display: none; }
 .drawbar .spacer { flex: 1 0 0; min-height: 0; }
-.drawbar .grp-sep { flex: none; width: auto; height: 1px; margin: 6px 10px; background: var(--line); }
+.drawbar .grp-sep { flex: none; height: 13px; }
 
 .drawbar .ibtn {
-  flex: none; width: 100%; height: 38px; border-radius: 0; background: transparent;
-  display: flex; align-items: center; justify-content: flex-start; padding: 0 0 0 9px;
+  flex: none; position: relative; width: 100%; height: 38px; border-radius: 0;
+  display: flex; align-items: center; justify-content: flex-start; padding: 0 0 0 5px;
 }
-.drawbar .ibtn::before {
-  content: ""; position: absolute; left: 5px; top: 2px; width: 36px; height: 34px; border-radius: 6px;
-  background: transparent; transition: background var(--d-fast) var(--ease);
+.drawbar .sticky-dot {
+  position: absolute; left: 34px; bottom: 5px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 1.5px var(--frame); pointer-events: none;
 }
-.drawbar .ibtn > .icon { position: relative; width: 28px; height: 28px; }
-.drawbar .ibtn:hover { background: transparent; }
-.drawbar .ibtn:hover::before { background: var(--surface-3); }
-.drawbar .ibtn[aria-pressed="true"] { background: transparent; }
-.drawbar .ibtn[aria-pressed="true"]::before { background: var(--accent-soft); }
-.drawbar .ibtn:focus-visible { outline: none; }
-.drawbar .ibtn:focus-visible::before { box-shadow: 0 0 0 2px var(--accent); }
-.drawbar .sticky-dot { right: 13px; bottom: 5px; }
 
 .drawbar .tool-grp { flex: none; position: relative; display: block; height: 38px; }
 .drawbar .fly-chev {
   position: absolute; right: 0; top: 2px; width: 11px; height: 34px; display: grid; place-items: center;
-  border-radius: 4px; color: var(--text-3); opacity: .45; background: transparent;
+  border-radius: 4px; color: var(--text-3); opacity: .55; background: transparent;
   transition: opacity var(--d-fast) var(--ease), background var(--d-fast) var(--ease), color var(--d-fast) var(--ease);
 }
 .drawbar .fly-chev .chev { width: 4px; height: 7px; display: block; }
 .drawbar .tool-grp:hover .fly-chev, .drawbar .fly-chev:focus-visible, .drawbar .tool-grp.fly-open .fly-chev { opacity: 1; color: var(--text-2); }
-.drawbar .fly-chev:hover, .drawbar .tool-grp.fly-open .fly-chev { background: var(--surface-3); color: var(--text-1); }
+.drawbar .fly-chev:hover, .drawbar .tool-grp.fly-open .fly-chev { background: var(--frame-hover); color: var(--text-1); }
 .drawbar .fly-chev:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-.menu.tool-fly { width: 285px; min-width: 285px; padding: 4px 0; }
+.menu.tool-fly { width: 285px; min-width: 285px; padding: 6px; border-radius: 10px; }
 .menu.tool-fly .mh {
-  height: 30px; display: flex; align-items: center; padding: 0 14px;
-  font-size: var(--t11); font-weight: 600; letter-spacing: .4px; color: var(--text-3);
+  height: auto; display: block; padding: 4px 8px 5px;
+  font-size: var(--t11); font-weight: 500; letter-spacing: .4px; color: var(--text-3);
 }
-.menu.tool-fly .mi { height: 40px; gap: 10px; padding: 0 14px 0 10px; border-radius: 0; font-size: var(--t14); }
-.menu.tool-fly .mi .icon { width: 28px; height: 28px; flex: none; }
-.menu.tool-fly .mi .sc { margin-left: auto; font-size: var(--t12); color: var(--text-3); white-space: nowrap; }
-.menu.tool-fly .mi.checked { background: var(--accent-soft); color: var(--accent-text); }
-.menu.tool-fly .mi.checked .icon { color: var(--accent-text); }
+.menu.tool-fly .mi { height: 36px; gap: 10px; padding: 0 10px 0 5px; border-radius: 7px; font-size: var(--t13); color: var(--text-1); }
+.menu.tool-fly .mi:hover, .menu.tool-fly .mi.active { background: color-mix(in srgb, var(--text-1) 5%, transparent); }
+.menu.tool-fly .mi .sc { margin-left: auto; font-size: var(--t11); color: var(--text-3); white-space: nowrap; }
+.menu.tool-fly .mi.checked { background: none; color: var(--text-1); font-weight: 600; }
+.menu.tool-fly .mi.checked:hover, .menu.tool-fly .mi.checked.active { background: color-mix(in srgb, var(--text-1) 5%, transparent); }
 
 /* 原地改字：贴在字块上的输入框（文字注释 / 气泡标注 / 旗标） */
 .draw-text-edit {

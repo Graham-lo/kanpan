@@ -34,4 +34,9 @@ describe('品种表还没到时按 K 线猜价格精度', () => {
     expect(decOfBars([])).toBeNull()
     expect(decOfBars(undefined)).toBeNull()
   })
+  it('按价位封顶（有效数字最多 7 位）：带浮点尾巴的算出价不猜成 8 位、表到了价格轴再缩回去', () => {
+    expect(decOfBars([{ t: 0, o: 83844.30000001, h: 83850.1, l: 83800, c: 83844.3, v: 1 }])).toBe(2)
+    expect(decOfBars([{ t: 0, o: 102.318000793, h: 102.4, l: 102.2, c: 102.318, v: 1 }])).toBe(4)
+    expect(decOfBars([{ t: 0, o: 0.0091234, h: 0.0091301, l: 0.0091, c: 0.0091234, v: 1 }])).toBe(7)
+  })
 })
