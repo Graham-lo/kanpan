@@ -63,7 +63,8 @@ const LINE_NAMES: Partial<Record<IndicatorId, string[]>> = {
 /** 一个指标的各列：列名「中文名 + 线名 / 周期」，单线带参数；不是逐根对齐的输出（成交量分布这类）不导 */
 export function indicatorColumns(id: CalcId, series: readonly Series[], n: number, params: { periods?: number[] } & Record<string, unknown> | undefined): CsvColumn[] {
   const cat = CATALOG[id]; if (!cat) return []
-  const base = cat.cn || cat.name
+  // 列名用界面上的名字（三端共用 indicators.json）；目录里的 cn 只是搜索别名
+  const base = cat.name
   const ok = series.filter(s => s.length === n)
   if (!ok.length || ok.length !== series.length) return []
   const names = LINE_NAMES[id] ?? cat.labels

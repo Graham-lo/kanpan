@@ -1957,3 +1957,20 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   `pages/chart.ts ensureOI`：缓存出的图只有近 30 天那段有值时整段再问一次（原来看最后一根有值就只刷尾巴，归档永远补不上）；`__cells` 多报 `oi / oiFirst`。
   归档地址走页面同源（直打线上那台没有跨域头），本机开发 `vite.config.ts` 代理 `/oi`。
   测试 `tests/oi-live-tail.test.ts`（翻页 / 归档分段 / 张数×收盘 / 2020-09 之前不问 / 归档失败）。线上验：BTC 1 时 1803 根全有，SOL 日线 1800 根有 1773（最早 27 天归档没有该品种的日文件，空着是对的）。
+
+## 62. 10-08：指标名与出厂参数三端只有一份（`KanpanCore/Sources/KanpanCore/Indicator/indicators.json`）
+
+- **唯一来源**：`indicators.json` 以 iOS `IndicatorID` rawValue 为键，每项 `{ name, params }`。用户定的名字：MA / EMA / BOLL / VWAP / MACD / RSI / KDJ 用英文，
+  其余中文（成交量、随机强弱、真实波幅、持仓量、多空比、买卖比、基差、超级趋势、抛物线、主力订单流、动向指标、累计量差）；参数为 iOS 出厂值，RSI 各端统一 [14]。
+  改名字或出厂参数**只改这一个文件**，三端跟着变。
+- **iOS**：KanpanCore 把它作为 SwiftPM 资源（`Package.swift resources: .process`）；`IndicatorID.name / defaultParams` 读静态缓存 `catalog`，读不到时
+  Release 回落 rawValue / []、Debug `assertionFailure`。`IndicatorCatalogTests` 守「每个 case 一项、名字非空、没有多余键」。界面上的指标名（图例、术语卡标题、提醒）一律 `IndicatorID.x.name`，
+  「均线类」这类泛称照旧。
+- **RSI 改成可变周期列表**（和 MA / EMA / 成交量一样，`IndicatorID.hasVariablePeriods`，标签「周期1…N」、线名 RSI6 / RSI12…）：
+  `IndicatorParamRule.sanitize` 对可变周期的指标保留用户存的条数，老用户存的三条 [6,12,24] 不会被截成一条。
+- **手机网页**：`Web/src/m/indicator/ids.ts` 直接 import 这份 JSON（NAME / defaultParams / hasVariablePeriods），`m/app/prefs.ts DEFAULT_PARAMS`、`m/pages/chart/logic.ts VARIABLE_PARAMS` 由它派生；
+  `vite.config.ts server.fs.allow` 放行 `../KanpanCore/Sources/KanpanCore/Indicator`（只影响开发服务器，build / vitest 不需要）。
+- **电脑网页**：`Web/src/chart/sharedIndicators.ts` 按每只一张键表把 JSON 参数数组翻成 PC 参数对象（macd [fast, slow, signal]、boll [n, k]、kdj [n, m1, m2]、
+  stochrsi [n, stoch, m1, m2]、st [n, k]、atr / rsi / dmi [n]，ma / ema 整串当 periods；vol 在 PC 上没有参数）。PC 独有的额外参数作为 extras 跟在后面（动向指标的 ADX 平滑 m1）。
+  `calc.ts / indicators.ts / mainIndicators.ts / oscillators.ts` 的目录项用 `shared(id)`；`cn` 只作搜索别名（均线、布林带、平滑异同…），界面与 CSV 列名用 `name`。
+  PC 独有的指标（一目均衡表、威廉指标…）名字仍在各自目录里。测试 `Web/tests/shared-indicators.test.ts`。

@@ -10,6 +10,7 @@
  * 只从 calc.ts 拿类型，运行时不反向依赖它（calc.ts 把这里的表并进 Calc / CATALOG）。
  */
 import type { Bar, Series, IndParams, CatalogEntry, CalcEnv } from './calc'
+import { shared } from './sharedIndicators'
 
 export type MoreMainId =
   | 'wma' | 'hma' | 'dema' | 'tema' | 'smma' | 'vwma' | 'lsma' | 'alma' | 'mcg'
@@ -344,7 +345,7 @@ export const MORE_MAIN_CATALOG: Record<MoreMainId, CatalogEntry> = {
   kc: { name: '肯特纳通道', cn: '', place: 'main', params: { n: 20, k: 2 }, colors: [BLUE, BLUE, BLUE], labels: BAND3 },
   dc: { name: '唐奇安通道', cn: '', place: 'main', params: { n: 20 }, colors: [ORANGE, BLUE, BLUE], labels: BAND3 },
   env: { name: '包络线', cn: '', place: 'main', params: { n: 20, k: 10 }, colors: [ORANGE, BLUE, BLUE], labels: BAND3 },
-  sar: { name: '抛物线 SAR', cn: '', place: 'main', params: {}, colors: [BLUE] },
+  sar: { ...shared('sar'), cn: '', place: 'main', colors: [BLUE] },
   vstop: { name: '波动止损', cn: '', place: 'main', params: { n: 20, k: 2 }, colors: ['#009688', '#F44336'], labels: ['多', '空'] },
   alligator: { name: '鳄鱼线', cn: '', place: 'main', params: {}, colors: [BLUE, '#E91E63', '#66BB6A'], labels: ['颚', '齿', '唇'] },
   fractals: { name: '威廉分形', cn: '', place: 'main', params: { n: 2 }, colors: ['#009688', '#F44336'], labels: ['上', '下'] },

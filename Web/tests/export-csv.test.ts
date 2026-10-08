@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildCsv, csvFileName, indicatorColumns, num, shIso, shStamp } from '../src/chart/exportCsv'
-import { Calc, CATALOG, type Bar } from '../src/chart/calc'
+import { Calc, type Bar } from '../src/chart/calc'
 
 const H = 3600e3
 const T0 = Date.UTC(2026, 9, 7, 0, 0) // 上海 08:00
@@ -53,13 +53,13 @@ describe('CSV 导出', () => {
   it('指标列名：中文名 + 线名 / 周期；单线带参数；长度对不上的不导', () => {
     const b = bars(40)
     const ma = indicatorColumns('ma', Calc.ma(b, { periods: [5, 10] }, undefined as never), b.length, { periods: [5, 10] })
-    expect(ma.map(c => c.name)).toEqual(['均线 5', '均线 10'])
+    expect(ma.map(c => c.name)).toEqual(['MA 5', 'MA 10'])
     const boll = indicatorColumns('boll', Calc.boll(b, { n: 20, k: 2 }, undefined as never), b.length, { n: 20, k: 2 })
-    expect(boll.map(c => c.name)).toEqual(['布林带 中轨', '布林带 上轨', '布林带 下轨'])
+    expect(boll.map(c => c.name)).toEqual(['BOLL 中轨', 'BOLL 上轨', 'BOLL 下轨'])
     const macd = indicatorColumns('macd', Calc.macd(b, { fast: 12, slow: 26, signal: 9 }, undefined as never), b.length, { fast: 12, slow: 26, signal: 9 })
-    expect(macd.map(c => c.name)).toEqual([`${CATALOG.macd.cn} 快线`, `${CATALOG.macd.cn} 慢线`, `${CATALOG.macd.cn} 柱`])
+    expect(macd.map(c => c.name)).toEqual(['MACD 快线', 'MACD 慢线', 'MACD 柱'])
     const rsi = indicatorColumns('rsi', [new Array(40).fill(50)], 40, { n: 14 })
-    expect(rsi.map(c => c.name)).toEqual([`${CATALOG.rsi.cn}(14)`])
+    expect(rsi.map(c => c.name)).toEqual(['RSI(14)'])
     expect(indicatorColumns('rsi', [new Array(39).fill(50)], 40, { n: 14 })).toEqual([])
   })
 })

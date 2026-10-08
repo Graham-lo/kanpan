@@ -255,7 +255,7 @@ export function openCreateAlert(symbol: string, price?: number | null, preset: C
     const dir = kind === 'ma_cross' ? draft.maDir : kind === 'rsi_level' ? draft.rsiDir : draft.brDir
     const maRow = (which: 'fast' | 'slow', label: string): string => {
       const l = draft[which]
-      return `<div class="field"><label for="a${which}N">${label}</label><div class="ma-line">${segOf(`a${which}Ma`, [['sma', '简单均线'], ['ema', '指数均线']], l.ma, `ma-${which}`, false)}${numInput(`a${which}N`, l.period, `${label}长度`)}</div></div>`
+      return `<div class="field"><label for="a${which}N">${label}</label><div class="ma-line">${segOf(`a${which}Ma`, [['sma', 'MA'], ['ema', 'EMA']], l.ma, `ma-${which}`, false)}${numInput(`a${which}N`, l.period, `${label}长度`)}</div></div>`
     }
     let body = ''
     if (kind === 'ma_cross') body = `<div class="ind-pair">${maRow('fast', '快线')}${maRow('slow', '慢线')}</div>`

@@ -11,6 +11,7 @@
 import type { Bar, Series, IndParams, CatalogEntry, CalcEnv } from './calc'
 import { calcCvd, calcWhale } from './tradeFlow'
 import * as Osc from './oscillators'
+import { shared } from './sharedIndicators'
 
 export type ExtraMainId = 'vwap' | 'st' | 'ichi' | 'vpvr' | 'keys'
 export type ExtraSubId = 'cvd' | 'atr' | 'obv' | 'stochrsi' | 'cci' | 'wr' | 'whale'
@@ -225,15 +226,15 @@ export const EXTRA_CALC: Record<ExtraMainId | ExtraSubId, Fn> = {
 }
 
 export const EXTRA_CATALOG: Record<ExtraMainId | ExtraSubId, CatalogEntry> = {
-  vwap: { name: '成交均价', cn: '', place: 'main', params: {}, colors: ['#2962FF', '#4CAF50', '#4CAF50', '#808000', '#808000'] },
-  st: { name: '超级趋势', cn: '', place: 'main', params: { n: 10, k: 3 }, colors: ['#4CAF50', '#F23645'] },
+  vwap: { ...shared('vwap'), cn: '', place: 'main', colors: ['#2962FF', '#4CAF50', '#4CAF50', '#808000', '#808000'] },
+  st: { ...shared('st'), cn: '', place: 'main', colors: ['#4CAF50', '#F23645'] },
   ichi: { name: '一目均衡表', cn: '', place: 'main', params: { tenkan: 9, kijun: 26, senkou: 52 }, colors: ['#2962FF', '#B71C1C', '#A5D6A7', '#EF9A9A', '#43A047'] },
   vpvr: { name: '成交量分布', cn: '', place: 'main', params: {}, colors: [] },
   keys: { name: '关键价位', cn: '', place: 'main', params: {}, colors: [] },
-  cvd: { name: '累计量差', cn: '', place: 'sub', params: {}, colors: ['#2962FF', '#06B6D4', '#8B5CF6'], labels: ['', '现货', '合约'] },
-  atr: { name: '真实波幅', cn: '', place: 'sub', params: { n: 14 }, colors: ['#B71C1C'] },
+  cvd: { ...shared('cvd'), cn: '', place: 'sub', colors: ['#2962FF', '#06B6D4', '#8B5CF6'], labels: ['', '现货', '合约'] },
+  atr: { ...shared('atr'), cn: '', place: 'sub', colors: ['#B71C1C'] },
   obv: { name: '能量潮', cn: '', place: 'sub', params: {}, colors: ['#2962FF'] },
-  stochrsi: { name: '随机强弱', cn: '', place: 'sub', params: { n: 14, stoch: 14, m1: 3, m2: 3 }, colors: ['#2962FF', '#FF6D00'] },
+  stochrsi: { ...shared('stochrsi'), cn: '', place: 'sub', colors: ['#2962FF', '#FF6D00'] },
   cci: { name: '顺势指标', cn: '', place: 'sub', params: { n: 20 }, colors: ['#2962FF'] },
   wr: { name: '威廉指标', cn: '', place: 'sub', params: { n: 14 }, colors: ['#7E57C2'] },
   whale: { name: '大单与散户累计量差', cn: '', place: 'sub', params: {}, colors: ['#F7A600', '#26A69A'], labels: ['大单', '散户'] },

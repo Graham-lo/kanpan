@@ -11,6 +11,7 @@ export type Series = (number | null)[]
 import { EXTRA_CALC, EXTRA_CATALOG, type ExtraMainId, type ExtraSubId } from './indicators'
 import { OSC_CALC, OSC_CATALOG, type OscId } from './oscillators'
 import { MORE_MAIN_CALC, MORE_MAIN_CATALOG, MORE_MAIN_IDS, type MoreMainId } from './mainIndicators'
+import { shared } from './sharedIndicators'
 
 export type IndicatorId = 'ma' | 'ema' | 'boll' | 'vol' | 'macd' | 'rsi' | 'kdj' | 'oi' | ExtraMainId | ExtraSubId | MoreMainId | OscId
 export type MainId = 'ma' | 'ema' | 'boll' | ExtraMainId | MoreMainId
@@ -136,17 +137,18 @@ export const Calc: Record<CalcId, CalcFn> = {
 }
 
 // 指标目录：名字、默认参数、线色。副图最多 MAX_SUBS 个。
-// 默认参数与 iOS / 手机网页（m/app/prefs DEFAULT_PARAMS）同一组：同一个人没改过参数时，电脑和手机上的 MACD / EMA / RSI 读数一样
-// （RSI 2026-10-08 起各端统一 14，与 TradingView 默认相同）。线色照 TradingView 内置指标默认（见 tests/tvDefaults.test.ts）。
+// 三端都有的指标（MA / EMA / BOLL / MACD / RSI / KDJ …）名字与出厂参数只从 KanpanCore/…/Indicator/indicators.json 来
+// （sharedIndicators.ts 翻成这里的参数对象），iOS、手机网页读同一份；cn 只是搜索别名，界面不展示。
+// 线色照 TradingView 内置指标默认（见 tests/tvDefaults.test.ts）。
 export const CATALOG: Record<IndicatorId, CatalogEntry> = {
-  ma: { name: 'MA', cn: '均线', place: 'main', params: { periods: [10, 30, 120, 256] }, colors: ['#F6C309', '#FB9800', '#FB6500', '#F60C0C'] },
-  ema: { name: 'EMA', cn: '指数均线', place: 'main', params: { periods: [12, 144, 169, 200] }, colors: ['#2962FF', '#FF6D00', '#43A047', '#E91E63'] },
-  boll: { name: 'BOLL', cn: '布林带', place: 'main', params: { n: 20, k: 2 }, colors: ['#2962FF', '#F23645', '#089981'] },
-  vol: { name: '成交量', cn: '成交量', place: 'overlay' },
-  macd: { name: 'MACD', cn: '平滑异同', place: 'sub', params: { fast: 10, slow: 30, signal: 9 }, colors: ['#2962FF', '#FF6D00'] },
-  rsi: { name: 'RSI', cn: '相对强弱', place: 'sub', params: { n: 14 }, colors: ['#7E57C2'] },
-  kdj: { name: 'KDJ', cn: '随机指标', place: 'sub', params: { n: 9, m1: 3, m2: 3 }, colors: ['#2962FF', '#FF6D00', '#AB47BC'] },
-  oi: { name: '持仓量', cn: '持仓量', place: 'sub', params: {}, colors: ['#2962FF'] },
+  ma: { ...shared('ma'), cn: '均线', place: 'main', colors: ['#F6C309', '#FB9800', '#FB6500', '#F60C0C'] },
+  ema: { ...shared('ema'), cn: '指数均线', place: 'main', colors: ['#2962FF', '#FF6D00', '#43A047', '#E91E63'] },
+  boll: { ...shared('boll'), cn: '布林带', place: 'main', colors: ['#2962FF', '#F23645', '#089981'] },
+  vol: { ...shared('vol'), cn: '成交量', place: 'overlay' },
+  macd: { ...shared('macd'), cn: '平滑异同', place: 'sub', colors: ['#2962FF', '#FF6D00'] },
+  rsi: { ...shared('rsi'), cn: '相对强弱', place: 'sub', colors: ['#7E57C2'] },
+  kdj: { ...shared('kdj'), cn: '随机指标', place: 'sub', colors: ['#2962FF', '#FF6D00', '#AB47BC'] },
+  oi: { ...shared('oi'), cn: '持仓量', place: 'sub', colors: ['#2962FF'] },
   ...EXTRA_CATALOG,
   ...MORE_MAIN_CATALOG,
   ...OSC_CATALOG,

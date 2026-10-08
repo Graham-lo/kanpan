@@ -15,6 +15,7 @@
  * - 前面不够窗口的根一律 null。所有计算 O(n)（滑窗求和、单调队列求最值、EMA 递推），康纳 RSI 的百分位排名 O(n log n)。
  */
 import type { Bar, Series, IndParams, CatalogEntry, CalcEnv } from './calc'
+import { sharedName, sharedParams } from './sharedIndicators'
 
 export type OscId =
   | 'stoch' | 'dmi' | 'mfi' | 'aroon' | 'cmf' | 'chosc' | 'ao' | 'ac' | 'mom' | 'roc'
@@ -514,7 +515,7 @@ const sub = (name: string, params: IndParams, colors: string[], labels?: string[
   ({ name, cn: '', place: 'sub', params, colors, labels: labels ?? colors.map(() => '') })
 export const OSC_CATALOG: Record<OscId, CatalogEntry> = {
   stoch: sub('随机指标', { n: 14, m1: 1, m2: 3 }, ['#2962FF', '#FF6D00'], ['K', 'D']),
-  dmi: sub('动向指标', { n: 14, m1: 14 }, ['#2962FF', '#FF6D00', '#F50057'], ['正向', '负向', '趋向']),
+  dmi: sub(sharedName('dmi'), sharedParams('dmi', { m1: 14 })!, ['#2962FF', '#FF6D00', '#F50057'], ['正向', '负向', '趋向']),
   mfi: sub('资金流量', { n: 14 }, ['#7E57C2']),
   aroon: sub('阿隆', { n: 14 }, ['#FB8C00', '#2962FF'], ['上', '下']),
   cmf: sub('蔡金资金流', { n: 20 }, ['#43A047']),
