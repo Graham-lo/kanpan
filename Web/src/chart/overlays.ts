@@ -177,13 +177,13 @@ export function drawSubLevels(ch: TVChart, p: Pane, _r: PriceRange, id: string):
   if (id === 'cvd') drawCvdSeams(ch, p)
 }
 
-/** 累计量差的历史段（只有币安）/ 实时段（三家）分界：竖虚线，线两边底部各一个小字 */
+/** 累计量差的历史段（只有币安）/ 实时段（各家）分界：竖虚线，线两边底部各一个小字 */
 function drawCvdSeams(ch: TVChart, p: Pane): void {
   const s = ch.series.cvd?.[1]
   if (!s) return
   const c: Ctx = ch.ctx, PW = ch.plotW(), col = hexA(ch.colors.text3 || '#888', 0.85)
   const from = Math.max(1, Math.floor(ch.xToIndex(0)) - 1), to = Math.min(s.length - 1, Math.ceil(ch.xToIndex(PW)) + 1)
-  // 只画一条分界虚线，不写「币安 / 三家」这类口径文字（图上不放解释性文案）
+  // 只画一条分界虚线，不写「币安 / 各家」这类口径文字（图上不放解释性文案）
   const seam = (at: number) => {
     const x = Math.round(ch.indexToX(at)) + .5
     if (x < 0 || x > PW) return

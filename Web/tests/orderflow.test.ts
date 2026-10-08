@@ -257,7 +257,7 @@ describe('热力', () => {
     expect(cols).toHaveLength(2)
     expect(cols[0].dur).toBe(30_000)
     expect(cols[0].lo).toBe(640); expect(cols[0].n).toBe(2)
-    expect(cols[0].data[0]).toBe(1e6); expect(cols[0].data[3]).toBe(2e6)
+    expect(cols[0].data[0]).toBe(1e6); expect(cols[0].data[5]).toBe(2e6)
     expect(cols[0].split).toBe(false)
     expect(cols[1].data[0]).toBe(1e6)
     // 1000PEPE：服务端按每个币，图上一格 = 1000 个
@@ -275,7 +275,7 @@ describe('热力', () => {
     const cols = parseHeat({ step: 100, bucketMs: 5000, rows: [[0, 64_000, 1000, 0]] }, 10, 1)!
     expect(cols[0].lo).toBe(6400)
     expect(cols[0].n).toBe(10)
-    for (let i = 0; i < 10; i++) expect(cols[0].data[i * 3]).toBeCloseTo(100)
+    for (let i = 0; i < 10; i++) expect(cols[0].data[i * 5]).toBeCloseTo(100)
   })
 
   it('放粗的回填列能被跨进窗口的查询找到；clearBack 清掉', () => {
@@ -291,16 +291,18 @@ describe('热力', () => {
     expect(s.backVersion).toBe(v + 1)
   })
 
-  it('实时每秒一列、三家分通道，不到门槛 5% 的桶不计；实时开始之后不再用回填', () => {
+  it('实时每秒一列、五家分通道，不到门槛 5% 的桶不计；实时开始之后不再用回填', () => {
     const s = new HeatStore(10)
     const f = emptyFine(10, [
       { id: 'a', exchange: 'binance', label: '币安', product: 'usdtPerp', instrument: 'X' },
       { id: 'b', exchange: 'okx', label: 'OKX', product: 'usdtPerp', instrument: 'Y' },
       { id: 'c', exchange: 'coinbase', label: 'Coinbase', product: 'spot', instrument: 'Z' },
+      { id: 'd', exchange: 'bybit', label: 'Bybit', product: 'usdtPerp', instrument: 'X' },
+      { id: 'e', exchange: 'hyperliquid', label: 'Hyperliquid', product: 'usdtPerp', instrument: 'B' },
     ])
     f.mid = 1000
-    f.bid.set(99, { total: 0, byVenue: new Float64Array([100_000, 60_000, 10]) })
-    f.ask.set(100, { total: 0, byVenue: new Float64Array([0, 0, 80_000]) })
+    f.bid.set(99, { total: 0, byVenue: new Float64Array([100_000, 60_000, 10, 70_000, 0]) })
+    f.ask.set(100, { total: 0, byVenue: new Float64Array([0, 0, 80_000, 0, 90_000]) })
     const th = { usdtPerp: 1_000_000, spot: 1_000_000 }
     expect(s.sample(f, th, 5_400)).toBe(true)
     expect(s.sample(f, th, 5_900)).toBe(true) // 同一秒：替换
@@ -309,13 +311,15 @@ describe('热力', () => {
     const col = s.live[0]
     expect(col.t).toBe(5_000)
     expect(col.split).toBe(true)
-    const i99 = (99 - col.lo) * 3
+    const i99 = (99 - col.lo) * 5
     expect(col.data[i99]).toBe(100_000)
     expect(col.data[i99 + 1]).toBe(60_000)
     expect(col.data[i99 + 2]).toBe(0) // 10 美元 < 5 万，不计
-    expect(col.data[(100 - col.lo) * 3 + 2]).toBe(80_000)
+    expect(col.data[i99 + 3]).toBe(70_000) // Bybit
+    expect(col.data[(100 - col.lo) * 5 + 2]).toBe(80_000)
+    expect(col.data[(100 - col.lo) * 5 + 4]).toBe(90_000) // Hyperliquid
 
-    s.addBackfill([{ t: 0, dur: 5000, lo: 99, n: 1, data: new Float32Array([7, 0, 0]), split: false }, { t: 5000, dur: 5000, lo: 99, n: 1, data: new Float32Array([9, 0, 0]), split: false }])
+    s.addBackfill([{ t: 0, dur: 5000, lo: 99, n: 1, data: new Float32Array([7, 0, 0, 0, 0]), split: false }, { t: 5000, dur: 5000, lo: 99, n: 1, data: new Float32Array([9, 0, 0, 0, 0]), split: false }])
     const ts: number[] = []
     s.forEach(0, 10_000, c => ts.push(c.t))
     expect(ts).toEqual([0, 5000, 6000])
@@ -324,13 +328,13 @@ describe('热力', () => {
   it('画面网格：每格取样本平均，亮度基准是可见格子的 p95，1 分钟图按秒成列', () => {
     const s = new HeatStore(1)
     const mk = (t: number, v: number): { t: number; dur: number; lo: number; n: number; data: Float32Array; split: boolean } =>
-      ({ t, dur: 1000, lo: 10, n: 2, data: new Float32Array([v, 0, 0, 0, v, 0]), split: true })
+      ({ t, dur: 1000, lo: 10, n: 2, data: new Float32Array([v, 0, 0, 0, 0, 0, v, 0, 0, 0]), split: true })
     s.live = [mk(0, 10), mk(1000, 30), mk(2000, 100)]
     const g = buildGrid(s, [0, 2000, 3000], 10, 11, 1, 5000)!
     expect(g.cols).toBe(2); expect(g.rows).toBe(2)
     expect(g.values[0]).toBe(20) // (10 + 30) / 2
     expect(g.values[2]).toBe(100)
-    expect(g.parts[3 * 1 + 1]).toBe(20) // 第 0 列第 1 行在 OKX 通道
+    expect(g.parts[5 * 1 + 1]).toBe(20) // 第 0 列第 1 行在 OKX 通道（五家，stride 5）
     expect(g.p95).toBeGreaterThan(20)
     expect(g.splitKnown[0]).toBe(1)
     // k = 2：两个细桶并一行

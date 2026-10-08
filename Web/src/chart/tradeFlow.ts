@@ -1,9 +1,9 @@
-/* Hkline Web · 三家逐笔成交的分桶（「累计量差」的实时段、「大单与散户累计量差」）
+/* Hkline Web · 各家逐笔成交的分桶（「累计量差」的实时段、「大单与散户累计量差」）
  *
- * 实时：主力订单流的数据层（orderflow/feed.ts）打开一只品种时连着币安、OKX、Coinbase 三家全部簿的逐笔成交，
+ * 实时：主力订单流的数据层（orderflow/feed.ts）打开一只品种时连着各家（src/venues 注册表）全部簿的逐笔成交，
  * 每一笔按成交时刻落进「秒」与「分钟」两种桶（秒桶留 6 小时、分钟桶留 3 天），分现货 / 合约 / 币安 U 本位这一只、
  * 大单（≥ 大单线）/ 散户（< 1 万美元）记主动买、主动卖的美元额。数据层每半秒一拍心跳（连接都开着才算），
- * 连续的心跳连成「覆盖区间」：一根 K 线整个落在覆盖区间里，才拿三家的数算，否则只有币安 K 线自带的主动买入。
+ * 连续的心跳连成「覆盖区间」：一根 K 线整个落在覆盖区间里，才拿各家的数算，否则只有币安 K 线自带的主动买入。
  * 数据层只跟着活动格子的品种开，所以多图时只有活动格子有实时段。
  *
  * 历史：服务端（kanpan-api）对常驻跟踪的品种每分钟记一行 [分钟, 大买额, 大卖额, 小买额, 小卖额]，
@@ -18,6 +18,7 @@ import type { TradeEvent } from '../orderflow/feed'
 import type { Product } from '../orderflow/types'
 import { baseOfSymbol } from '../orderflow/settings'
 import { before } from '../util/clock'
+import { EXCHANGE_CH, EXCHANGE_COUNT, isPrimary } from '../venues'
 
 /** 散户线：一笔不到 1 万美元 */
 export const SMALL_USD = 10_000
@@ -39,14 +40,14 @@ export interface Print { usd: number; price: number; exchange: string; product: 
 export interface BigPrint { t: number; price: number; usd: number; buy: boolean }
 const PRINT_KEEP_MS = 2 * 3_600_000
 const PRINT_CAP = 40_000
-/** 交易所 → 下标（币安 / OKX / Coinbase），和 orderflow/aggregate.ts 的 EXCHANGE_CH 同一顺序 */
-const EX_IDX: Record<string, number> = { binance: 0, okx: 1, coinbase: 2 }
+/** 交易所 → 下标：注册表（src/venues）的 EXCHANGE_CH，热力、抽屉分项同一顺序 */
+const EX_IDX = EXCHANGE_CH
 
 /** 一个桶：美元额 */
 export interface Cell {
   /** 现货主动买 / 卖 */
   sb: number; ss: number
-  /** 合约（三家全部合约）主动买 / 卖 */
+  /** 合约（各家全部合约）主动买 / 卖 */
   cb: number; cs: number
   /** 其中币安 U 本位这一只（和 K 线自带的主动买入是同一份成交） */
   ub: number; us: number
@@ -56,15 +57,15 @@ export interface Cell {
   /** 以下只有浏览器这边记（服务端的行没有）：大单笔数、大单里现货的买 / 卖、大单分交易所（买 + 卖）、最大一笔 */
   bn: number; sn: number
   bsb: number; bss: number
-  bx: [number, number, number]
+  bx: number[]
   bmax: Print | null; smax: Print | null
 }
-export const cell = (): Cell => ({ sb: 0, ss: 0, cb: 0, cs: 0, ub: 0, us: 0, bb: 0, bs: 0, rb: 0, rs: 0, bn: 0, sn: 0, bsb: 0, bss: 0, bx: [0, 0, 0], bmax: null, smax: null })
+export const cell = (): Cell => ({ sb: 0, ss: 0, cb: 0, cs: 0, ub: 0, us: 0, bb: 0, bs: 0, rb: 0, rs: 0, bn: 0, sn: 0, bsb: 0, bss: 0, bx: new Array<number>(EXCHANGE_COUNT).fill(0), bmax: null, smax: null })
 const bigger = (a: Print | null, b: Print | null): Print | null => !b ? a : !a || b.usd > a.usd ? b : a
 export function addCell(a: Cell, b: Cell): void {
   a.sb += b.sb; a.ss += b.ss; a.cb += b.cb; a.cs += b.cs; a.ub += b.ub; a.us += b.us; a.bb += b.bb; a.bs += b.bs; a.rb += b.rb; a.rs += b.rs
   a.bn += b.bn; a.sn += b.sn; a.bsb += b.bsb; a.bss += b.bss
-  a.bx[0] += b.bx[0]; a.bx[1] += b.bx[1]; a.bx[2] += b.bx[2]
+  for (let i = 0; i < a.bx.length; i++) a.bx[i] += b.bx[i] ?? 0
   a.bmax = bigger(a.bmax, b.bmax); a.smax = bigger(a.smax, b.smax)
 }
 
@@ -144,7 +145,7 @@ export function recordTrade(symbol: string, ev: TradeEvent, cut: number | null):
   if (v.product === 'spot') { if (buy) c.sb = usd; else c.ss = usd }
   else {
     if (buy) c.cb = usd; else c.cs = usd
-    if (v.exchange === 'binance' && v.product === 'usdtPerp' && v.instrument.toUpperCase() === f.symbol) { if (buy) c.ub = usd; else c.us = usd }
+    if (isPrimary(v.exchange) && v.product === 'usdtPerp' && v.instrument.toUpperCase() === f.symbol) { if (buy) c.ub = usd; else c.us = usd }
   }
   const big = f.cut
   if (big != null && usd >= big) {
@@ -256,7 +257,7 @@ function barDeltaBinance(b: Bar): number {
 }
 
 /** 累计量差：[合计, 现货, 合约]。
- *  整根落在覆盖区间里的 K 线（实时段）：合计 = 币安 U 本位（K 线自带的 2 × 主动买入 − 成交额）+ 三家其余的现货与合约；
+ *  整根落在覆盖区间里的 K 线（实时段）：合计 = 币安 U 本位（K 线自带的 2 × 主动买入 − 成交额）+ 各家其余的现货与合约；
  *  现货、合约两条线只在实时段有值，从进入实时段前一根的合计处分叉出来。其余的 K 线（历史段）只有币安。 */
 export function cvdFlow(bars: Bar[], iv: number, f: SymbolFlow | null, now = Date.now()): Series[] {
   const n = bars.length

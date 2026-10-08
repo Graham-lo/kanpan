@@ -15,7 +15,7 @@ export const GLOSSARY: Record<string, string> = {
   市值: '总供应量 × 现价。',
   跑赢大盘: '这段时间里，板块成员跑赢全市场等权平均的有几只（分母是有行情的成员数）。',
   中位涨跌: '板块里所有品种涨跌幅排在正中间的那个数，不会被一两只暴涨暴跌的带偏。',
-  主力订单流: '币安、OKX、Coinbase 现货三家挂单簿合在一起，只画超过门槛的大单。',
+  主力订单流: '币安、OKX、Coinbase、Bybit、Hyperliquid 各家挂单簿合在一起，只画超过门槛的大单。',
 }
 export function term(k: string, label = k): string { return `<span class="term" data-term="${k}" tabindex="0">${label}</span>` }
 

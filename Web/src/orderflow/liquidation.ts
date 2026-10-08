@@ -1,10 +1,10 @@
 /* Hkline Web · 主力订单流 · 爆仓（逐分钟合计，抽屉「大单列表」的第四块）
  *
  * 为什么：用户 2026-10-08 要在抽屉里一眼看到「这根 / 近 1 小时 / 今天」多头、空头各被强平了多少。
- * 数据由 kanpan-api 常驻跟币安、OKX 的强平推送按分钟并好：
+ * 数据由 kanpan-api 常驻跟各家（注册表 LIQ_EX 顺序）的强平推送按分钟并好：
  *   GET /v1/market/orderflow/liq?base=SOL&from=<ms>&to=<ms>
- *   → { base, tracked, rows: [[分钟毫秒, 多头爆仓额, 空头爆仓额, 笔数, 最大一笔额, 最大一笔价, 最大一笔方向(0 多头被平 / 1 空头被平), 交易所(0 币安 / 1 OKX)]] }
- * 币安的强平推送每秒只给一笔，金额是下限（见名词解释「爆仓」）。
+ *   → { base, tracked, rows: [[分钟毫秒, 多头爆仓额, 空头爆仓额, 笔数, 最大一笔额, 最大一笔价, 最大一笔方向(0 多头被平 / 1 空头被平), 交易所(LIQ_EX 下标)]] }
+ * 参考家的强平推送每秒只给一笔，金额是下限。
  *
  * 规则：
  *   · 走 feed.ts 的 getJSON（限流、线路都照它的）；抽屉开着才拉，30 秒补一次，失败 30 秒后再试。
@@ -13,17 +13,22 @@
  * 只聚合、展示，不做判定。
  */
 import { getJSON } from './feed'
+import { LIQ_EX } from '../venues'
 
-/** [分钟, 多头额, 空头额, 笔数, 最大一笔额, 最大一笔价, 方向 0 多 / 1 空, 交易所 0 币安 / 1 OKX] */
+export { LIQ_EX }
+
+/** [分钟, 多头额, 空头额, 笔数, 最大一笔额, 最大一笔价, 方向 0 多 / 1 空, 交易所（LIQ_EX 下标）] */
 export type LiqRow = [number, number, number, number, number, number, number, number]
 export interface LiqBody { base: string; tracked: boolean; rows: LiqRow[] }
 
 export const LIQ_KEEP_MS = 3 * 86_400_000
 export const LIQ_POLL_MS = 30_000
 export const LIQ_MAX_SYMBOLS = 16
-export const LIQ_EX = ['币安', 'OKX'] as const
 
 const num = (v: unknown): number | null => typeof v === 'number' && Number.isFinite(v) ? v : null
+
+/** 「哪家」下标：认得的（0..LIQ_EX.length-1）原样，其余当 0 */
+const liqEx = (v: number | null): number => (v != null && Number.isInteger(v) && v >= 0 && v < LIQ_EX.length ? v : 0)
 
 /** 解析服务端的回包；格式不对返回 null，个别坏行跳过 */
 export function parseLiq(body: unknown): LiqBody | null {
@@ -36,7 +41,7 @@ export function parseLiq(body: unknown): LiqBody | null {
     const v = r.map(num)
     const m = v[0], lo = v[1], sh = v[2], n = v[3]
     if (m == null || lo == null || sh == null || n == null) continue
-    rows.push([m, Math.max(0, lo), Math.max(0, sh), Math.max(0, n), v[4] ?? 0, v[5] ?? 0, v[6] === 1 ? 1 : 0, v[7] === 1 ? 1 : 0])
+    rows.push([m, Math.max(0, lo), Math.max(0, sh), Math.max(0, n), v[4] ?? 0, v[5] ?? 0, v[6] === 1 ? 1 : 0, liqEx(v[7])])
   }
   return { base: typeof b.base === 'string' ? b.base : '', tracked: b.tracked === true, rows }
 }

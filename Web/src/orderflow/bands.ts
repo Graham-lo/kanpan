@@ -6,7 +6,13 @@
  * 挂着的带浓淡 0.14–0.20（最大的最深）；结束的只画一道细线 + 小记号，底色 ≤ 0.08；
  * □ / ▲ 记号只给峰值前 MAX_MARKS 的结束带，而且不许压在蜡烛上；右端标签最多 MAX_LABELS 个、互不重叠。
  * 这些上限是模块常量，不做成用户设置。
+ *
+ * 2026-10-08 起 PC 也按合并带画（和 iOS、手机网页同一套 OrderFlowGroup：桶 × 侧 × 类 × 时间段切段，
+ * 相邻桶并墙）：一道带 = 一堵墙，读数卡一本簿一行（「Bybit 永续 1.2M」）。
  */
+import type { BigOrder } from './types'
+import { orderId } from './types'
+import { OrderFlowGroup, OrderFlowKey, type OrderFlowBook } from './group'
 
 export const MAX_LIVE_BANDS = 8
 export const MAX_ENDED_BANDS = 4
@@ -119,3 +125,53 @@ export function placeMark(
   }
   return { x, y: axisY - s / 2 - 2, onAxis: true }
 }
+
+// ------------------------------------------------------------------ 合并带（PC 与手机同一套 OrderFlowGroup）
+
+export interface WallOpts {
+  /** 切段 / 并墙的时间容差（OrderFlowGroup.mergeGapMs(一根 K 线)） */
+  gapMs: number
+  /** 已结束的段活不过这么久就不画（一根 K 线） */
+  minLifeMs: number
+  step: number | null
+}
+
+/** 同一批单（快照数组）× 同一组参数只并一次：十六张图同一品种、每帧重画都走缓存 */
+const wallCache = new WeakMap<readonly BigOrder[], Map<string, OrderFlowGroup[]>>()
+
+/** 过滤后的单 → 合并带（按 drawOrder 排好）。orders 是快照里的原数组（缓存键），keep 是显示开关 */
+export function mergedWalls(orders: readonly BigOrder[], keep: (o: BigOrder) => boolean, keepKey: string, o: WallOpts): OrderFlowGroup[] {
+  const k = `${keepKey}|${o.gapMs}|${o.minLifeMs}|${o.step ?? ''}`
+  let m = wallCache.get(orders)
+  if (!m) { m = new Map(); wallCache.set(orders, m) }
+  const hit = m.get(k)
+  if (hit) return hit
+  const out = OrderFlowGroup.groups(orders.filter(keep), o.gapMs, o.minLifeMs, o.step)
+  m.set(k, out)
+  return out
+}
+
+/** 被点中的那一单所在的墙；它那一段被当碎屑去掉了就单独给它建一道（点中的总要画出来） */
+export function wallOf(walls: readonly OrderFlowGroup[], highlight: string | null, orders: readonly BigOrder[], step: number | null): OrderFlowGroup | null {
+  if (!highlight) return null
+  for (const w of walls) if (w.members.some(m => orderId(m) === highlight)) return w
+  const o = orders.find(x => orderId(x) === highlight)
+  return o ? OrderFlowGroup.make(OrderFlowKey.of(o), [o], null, step) : null
+}
+
+/** 一道带的身份：墙里包含被点中的那一单就用它（高亮、联动梯子都按单 id），否则用墙里最大那本簿的最新一单 */
+export function wallId(w: OrderFlowGroup, highlight: string | null): string {
+  if (highlight && w.members.some(m => orderId(m) === highlight)) return highlight
+  return orderId(w.books[0]?.latest ?? w.members[0])
+}
+
+export interface BookRow { book: OrderFlowBook; usd: number }
+
+/** 读数卡一本簿一行：挂着的写此刻名义，结束的写它的峰值；按金额从大到小（一样按簿 id） */
+export function bookRows(w: OrderFlowGroup, peakOf: (o: BigOrder) => number): BookRow[] {
+  return w.books.map(b => ({ book: b, usd: b.latest.status === 'live' ? b.latest.notional : peakOf(b.latest) }))
+    .sort((a, b) => b.usd - a.usd || (a.book.venueID < b.book.venueID ? -1 : a.book.venueID > b.book.venueID ? 1 : a.book.bucket - b.book.bucket))
+}
+
+/** 一道带的峰值（排名、标签用）：各本簿金额之和 */
+export const wallPeak = (rows: readonly BookRow[]): number => rows.reduce((a, r) => a + r.usd, 0)

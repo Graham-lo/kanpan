@@ -5,7 +5,7 @@
  *     一个细桶在图上 ≤ 32 px 时按图的价格轴对齐（行不到 14 px 就 2 / 5 / 10 倍地并），
  *     细桶比 32 px 还高（图放得很大、步长又粗）就不硬对齐——每行 20 px、中间价钉在图上中间价的高度，价格范围往外放宽。
  *   · 左右两半：中列往左是买（涨色）、往右是卖（跌色）；淡色是累计、实色是这一行本身；有大单的行左边 3 px 竖条 + 胶囊。
- *   · 中列 56 px：从打开这只品种起、这一行的主动买 − 主动卖净额（三家逐笔合流），两侧各一条 0.2 透明度的买 / 卖细条。
+ *   · 中列 56 px：从打开这只品种起、这一行的主动买 − 主动卖净额（各家逐笔合流），两侧各一条 0.2 透明度的买 / 卖细条。
  *   · 右上「深度 / 变化」：变化 = 这一行现在的挂单 − 窗口开始时的挂单（买卖分开），窗口只有「1 小时 / 1 天」；
  *     点一行在卡片里画这一价位在窗口里的小折线。不做真假判定。
  * 滚轮缩放价格轴（图也跟着缩）；深度模式点一行 = 建提醒；拖到图上 = 画水平线；双击 = 图回到中间价。
@@ -151,7 +151,7 @@ export function drawLadder(chart: TVChart, g: ChartGeometry): void {
   if (!feed || !fine || !step || fine.step !== step || !fine.ready) {
     empty.hidden = false
     empty.style.top = `${(yTop + yBot) / 2 - 12}px`
-    empty.textContent = !feed ? (OF.pending ? '正在连三家交易所的盘口…' : '') : feed.isCalibrating ? '正在按盘口深度定门槛…' : !step ? '正在取步长…' : '正在连三家交易所的盘口…'
+    empty.textContent = !feed ? (OF.pending ? '正在连各家交易所的盘口…' : '') : feed.isCalibrating ? '正在按盘口深度定门槛…' : !step ? '正在取步长…' : '正在连各家交易所的盘口…'
     info.textContent = ''
     return
   }
@@ -195,7 +195,7 @@ export function drawLadder(chart: TVChart, g: ChartGeometry): void {
   info.textContent = `每行 ${px(rs, decFor(rs, 0))}` + (delta
     ? (winStart != null ? ` · 变化自 ${hm(winStart)} 起` : '')
     : (since != null ? ` · 成交自 ${hm(since)} 起` : ''))
-  info.dataset.tip = `${fine.ready}/${fine.venues.length} 本簿` + (since != null ? ` · 中列是 ${hm(since)} 打开这只品种以来三家的主动买 − 主动卖` : '') +
+  info.dataset.tip = `${fine.ready}/${fine.venues.length} 本簿` + (since != null ? ` · 中列是 ${hm(since)} 打开这只品种以来各家的主动买 − 主动卖` : '') +
     (delta && start ? ` · 变化的起点来自${start.from === 'server' ? '服务端深度快照' : '本页实时记录（服务端没跟这只或还没取到）'}` : '') +
     (sc.aligned ? '' : ' · 图放得很大，梯子每行定高、价格范围放宽了')
   const C = g.colors

@@ -6,7 +6,7 @@
  * 规则：
  *   · 三个窗口：本根（当前周期正在走的那根）、近 1 小时（滚动）、今日（北京时间 8 点 = UTC 0 点起，和日线同一个换根点）。金额来自 tradeFlow 的分钟桶
  *     （浏览器记的 + 服务端历史，取法同 bigTags.sumBig）；笔数只有整段都来自浏览器时才有。
- *   · 现货 / 合约、三家的占比只拿浏览器近 1 小时记到的大单算（服务端历史没有这几项），一笔都没有就不画。
+ *   · 现货 / 合约、各家的占比只拿浏览器近 1 小时记到的大单算（服务端历史没有这几项），一笔都没有就不画。
  *   · 价位：近 1 小时（最近 60 个整分钟）的大单按订单流的细步长分桶，买、卖各取金额最大的三档。每分钟取哪份同上：
  *     浏览器整分钟都在记的用逐笔成交的真实价；否则服务端有这分钟的行就把它的大买 / 大卖整份记在那分钟 1 分钟 K 线的
  *     典型价 (高 + 低 + 收) / 3 上（服务端行没有价，这是能拿到的最近似的价）；服务端在跟却没有行 = 没成交；
@@ -18,6 +18,7 @@
 import type { SymbolFlow } from '../chart/tradeFlow'
 import type { BigOrder } from './types'
 import { sumBig } from './bigTags'
+import { EXCHANGE_COUNT } from '../venues'
 
 export const HOUR = 3_600_000
 export const DAY = 86_400_000
@@ -46,17 +47,18 @@ export function windows(f: SymbolFlow, barT0: number, barT1: number, now: number
   }
 }
 
-export interface Shares { total: number; spot: number; contract: number; ex: [number, number, number] }
-/** 近 1 小时浏览器记到的大单：现货 / 合约、三家各占多少（只用本机的分钟桶）。一笔都没有给 null */
+/** ex：各家（EXCHANGE_CH 顺序）买 + 卖 */
+export interface Shares { total: number; spot: number; contract: number; ex: number[] }
+/** 近 1 小时浏览器记到的大单：现货 / 合约、各家各占多少（只用本机的分钟桶）。一笔都没有给 null */
 export function liveShares(f: SymbolFlow, now: number): Shares | null {
   const from = Math.floor((now - HOUR) / 60_000) * 60_000
   let total = 0, spot = 0
-  const ex: [number, number, number] = [0, 0, 0]
+  const ex = new Array<number>(EXCHANGE_COUNT).fill(0)
   for (const [k, c] of f.min) {
     if (k < from) continue
     if (k > now) break
     total += c.bb + c.bs; spot += c.bsb + c.bss
-    ex[0] += c.bx[0]; ex[1] += c.bx[1]; ex[2] += c.bx[2]
+    for (let i = 0; i < ex.length; i++) ex[i] += c.bx[i] ?? 0
   }
   return total > 0 ? { total, spot, contract: Math.max(0, total - spot), ex } : null
 }

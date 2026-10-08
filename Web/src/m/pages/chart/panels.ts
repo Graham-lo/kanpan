@@ -37,6 +37,7 @@ import {
 import { TERMS, splitPair } from './header'
 import type { PagePort } from './data'
 import { notePriceAxisPicked } from '../habitsRuntime'
+import { BT } from '../../../terms'
 
 // ───────────────────────────── 术语（照 iOS Glossary：只给读不出意思的短名挂问号）
 
@@ -257,7 +258,7 @@ export function analysisHTML(ctx: PanelContext): string {
   const base = baseOfSymbol(ctx.symbol()).base
   const of: string[] = [`<div class="cp-row"><span class="cp-rn">${dot(swatchVar('ORDERFLOW'))}显示</span>${sw(st.orderFlow, 'of', '显示主力订单流')}</div>`]
   // 图上大单签（出厂开、跟人走，和上面「显示」互不牵连）+ 「大单与爆仓」弹层入口（照 iOS 10-08）
-  of.push(`<div class="cp-row"><span class="cp-rn">图上大单签</span>${sw(st.bigTradeSigns, 'bt-signs', '图上大单签')}</div>`)
+  of.push(`<div class="cp-row"><span class="cp-rn">${BT.chartMarks}</span>${sw(st.bigTradeSigns, 'bt-signs', BT.chartMarks)}</div>`)
   if (ctx.onBigTrade) {
     const t = ctx.bigTradeText?.() ?? ''
     of.push(`<button type="button" class="cp-row cp-tap" data-act="bt-open"><span class="cp-rn">大单与爆仓</span><span class="cp-meta num" data-bt-meta>${esc(t)}</span>${chevron()}</button>`)

@@ -8,15 +8,14 @@ import type { BigOrder, BookSide, Product } from './types'
 import { isContract, usdOf } from './types'
 import type { OrderFlowModel } from './model'
 import { bucketIndex } from './bucket'
+import { EXCHANGE_CH, EXCHANGE_NAMES, exName, isPrimary } from '../venues'
 
 export interface VenueMeta { id: string; exchange: string; label: string; product: Product; instrument: string }
 
-/** 三家交易所在热力里的通道号（stride 3）。 */
-export const EXCHANGE_CH: Record<string, number> = { binance: 0, okx: 1, coinbase: 2 }
-export const EXCHANGE_NAMES = ['币安', 'OKX', 'Coinbase']
+/** 各家交易所在热力里的通道号与显示名（注册表顺序，stride = 家数） */
+export { EXCHANGE_CH, EXCHANGE_NAMES, exName }
 
 export const PRODUCT_SHORT: Record<Product, string> = { spot: '现货', usdtPerp: '永续', coinPerp: '币本位', delivery: '交割' }
-export const exName = (e: string): string => EXCHANGE_NAMES[EXCHANGE_CH[e] ?? -1] ?? e
 export const venueName = (label: string, p: Product): string => `${label}${PRODUCT_SHORT[p]}`
 
 /** 一个细桶：各本簿在这一侧的美元名义（下标对齐 FineBook.venues）。 */
@@ -28,7 +27,7 @@ export interface FineBook {
   venues: VenueMeta[]
   bid: Map<number, FineCell>
   ask: Map<number, FineCell>
-  /** 参考中间价：图上这只合约自己那本簿（币安 U 本位）；没有就取各本现货 / 永续中间价的中位数 */
+  /** 参考中间价：图上这只合约自己那本簿（参考家的 U 本位）；没有就取各本现货 / 永续中间价的中位数 */
   mid: number | null
   bestBid: number | null
   bestAsk: number | null
@@ -61,7 +60,7 @@ export function buildFine(model: OrderFlowModel, radiusBps: number, nowMs: numbe
     out.ready++
     const m = b.mid()
     if (m != null) {
-      const ref = refInstrument ? b.venue.instrument === refInstrument && b.venue.exchange === 'binance' : b.venue.product === 'usdtPerp' && b.venue.exchange === 'binance'
+      const ref = refInstrument ? b.venue.instrument === refInstrument && isPrimary(b.venue.exchange) : b.venue.product === 'usdtPerp' && isPrimary(b.venue.exchange)
       if (ref) {
         out.mid = m
         out.bestBid = b.book.bids.bestPrice()

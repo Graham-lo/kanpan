@@ -3,12 +3,12 @@
  * 流动性：中间价 ±2.5% 以内的买、卖挂单名义，30 分钟一个点，最多 48 个点。
  *   · 历史从服务端深度快照补（一次要 24 小时、30 分钟一格、价格按这 24 小时的高低收窄），之后每 5 分钟只补最后两格；
  *     服务端没跟的品种回空，就只有打开这页之后的实时点（每 5 秒一次，同一格里取平均）。不造数据。
- *   · 每一格的「中间价」用币安 30 分钟 K 线的 (高 + 低 + 收) ÷ 3；取不到就用这一格买卖的分界。
- * 成交：三家 30 分钟 K 线。币安（现货 + U 本位）按主动买额拆出买、卖；OKX、Coinbase 的 K 线没有主动买，只计总额。
- * 每秒成交：三家逐笔进来的笔数，最近 10 秒的平均，外加最近两分钟的小折线。
- * 金额一律美元名义（K 线的计价额；Coinbase 用成交量 × 收盘价）。
+ *   · 每一格的「中间价」用参考家 30 分钟 K 线的 (高 + 低 + 收) ÷ 3；取不到就用这一格买卖的分界。
+ * 成交：各家登记的 30 分钟 K 线（src/venues 的 klines30m）。K 线带主动买额的（takerSplit）拆出买、卖，其余只计总额。
+ * 每秒成交：各家逐笔进来的笔数，最近 10 秒的平均，外加最近两分钟的小折线。
+ * 金额一律美元名义（K 线的计价额；没有计价额的用成交量 × 收盘价）。
  */
-import type { DepthBook } from './adapters'
+import { EXCHANGE_CH, EXCHANGE_COUNT, midRank, venueAdapter, type DepthBook, type Kline } from '../venues'
 import type { FineBook } from './aggregate'
 import type { Thresholds } from './types'
 import { getJSON } from './feed'
@@ -26,70 +26,35 @@ const RETRY_MS = 30_000
 
 export const slotOf = (t: number): number => Math.floor(t / SLOT_MS) * SLOT_MS
 
-// ------------------------------------------------------------------ K 线（三家 30 分钟）
+// ------------------------------------------------------------------ K 线（各家 30 分钟，请求与解析在 src/venues）
 
-export interface Kline { t: number; h: number; l: number; c: number; quote: number; buy: number | null }
-export interface VolSlot { t: number; total: number; bnBuy: number; bnSell: number; okx: number; cb: number }
+export type { Kline }
+/** 一格：total 各家合计；buy / sell 是 K 线带主动买的那几家拆出的买、卖；ex[i] 是第 i 家（EXCHANGE_CH）的总额 */
+export interface VolSlot { t: number; total: number; buy: number; sell: number; ex: number[] }
 
-/** 币安 [开盘时间, 开, 高, 低, 收, 量, 收盘时间, 计价额, 笔数, 主动买量, 主动买计价额, _] */
-export function parseBinanceKlines(body: unknown, priceFactor = 1): Kline[] {
-  if (!Array.isArray(body)) return []
-  const out: Kline[] = []
-  for (const r of body) {
-    if (!Array.isArray(r)) continue
-    const t = +r[0], h = +r[2], l = +r[3], c = +r[4], q = +r[7], b = +r[10]
-    if (!Number.isFinite(t) || !(q >= 0)) continue
-    out.push({ t, h: h * priceFactor, l: l * priceFactor, c: c * priceFactor, quote: q, buy: Number.isFinite(b) ? b : null })
-  }
-  return out
-}
-/** OKX {data:[[ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]]}，新的在前 */
-export function parseOkxCandles(body: unknown, priceFactor = 1): Kline[] {
-  const d = (body as { data?: unknown })?.data
-  if (!Array.isArray(d)) return []
-  const out: Kline[] = []
-  for (const r of d) {
-    if (!Array.isArray(r)) continue
-    const t = +r[0], q = +r[7]
-    if (!Number.isFinite(t) || !(q >= 0)) continue
-    out.push({ t, h: +r[2] * priceFactor, l: +r[3] * priceFactor, c: +r[4] * priceFactor, quote: q, buy: null })
-  }
-  return out.sort((a, b) => a.t - b.t)
-}
-/** Coinbase {candles:[{start(秒), low, high, open, close, volume(币)}]} → 计价额 = 量 × 收盘 */
-export function parseCoinbaseCandles(body: unknown, priceFactor = 1): Kline[] {
-  const d = (body as { candles?: unknown })?.candles
-  if (!Array.isArray(d)) return []
-  const out: Kline[] = []
-  for (const r of d) {
-    const o = r as Record<string, unknown>
-    const t = +(o.start as string) * 1000, c = +(o.close as string), v = +(o.volume as string)
-    if (!Number.isFinite(t) || !(c > 0) || !(v >= 0)) continue
-    out.push({ t, h: +(o.high as string) * priceFactor, l: +(o.low as string) * priceFactor, c: c * priceFactor, quote: v * c, buy: null })
-  }
-  return out.sort((a, b) => a.t - b.t)
-}
-
-/** 几家的 K 线并成 48 格：币安拆买卖，OKX / Coinbase 只计总额。 */
+/** 几家的 K 线并成 48 格：带主动买的家拆买卖，其余只计总额。 */
 export function mergeVol(src: { exchange: string; k: Kline[] }[], now: number): VolSlot[] {
   const first = slotOf(now) - (SLOTS - 1) * SLOT_MS
   const slots: VolSlot[] = []
-  for (let i = 0; i < SLOTS; i++) slots.push({ t: first + i * SLOT_MS, total: 0, bnBuy: 0, bnSell: 0, okx: 0, cb: 0 })
-  for (const s of src) for (const k of s.k) {
-    const i = Math.round((slotOf(k.t) - first) / SLOT_MS)
-    if (i < 0 || i >= SLOTS) continue
-    const x = slots[i]
-    x.total += k.quote
-    if (s.exchange === 'binance') { const b = k.buy ?? 0; x.bnBuy += b; x.bnSell += Math.max(0, k.quote - b) }
-    else if (s.exchange === 'okx') x.okx += k.quote
-    else x.cb += k.quote
+  for (let i = 0; i < SLOTS; i++) slots.push({ t: first + i * SLOT_MS, total: 0, buy: 0, sell: 0, ex: new Array<number>(EXCHANGE_COUNT).fill(0) })
+  for (const s of src) {
+    const split = venueAdapter(s.exchange)?.takerSplit === true
+    const ch = EXCHANGE_CH[s.exchange]
+    for (const k of s.k) {
+      const i = Math.round((slotOf(k.t) - first) / SLOT_MS)
+      if (i < 0 || i >= SLOTS) continue
+      const x = slots[i]
+      x.total += k.quote
+      if (ch != null) x.ex[ch] += k.quote
+      if (split) { const b = k.buy ?? 0; x.buy += b; x.sell += Math.max(0, k.quote - b) }
+    }
   }
   return slots
 }
 
 interface KlineReq { exchange: string; product: string; url: string; parse: (b: unknown) => Kline[] }
 
-/** 这只品种三家 30 分钟 K 线的请求（只要现货与 U 本位永续；币本位、交割是张数计价，不并） */
+/** 这只品种各家 30 分钟 K 线的请求（各家登记的；只要现货与 U 本位永续，币本位、交割是张数计价，不并） */
 export function klineRequests(books: DepthBook[], now: number): KlineReq[] {
   const out: KlineReq[] = []
   const seen = new Set<string>()
@@ -97,27 +62,18 @@ export function klineRequests(books: DepthBook[], now: number): KlineReq[] {
     const v = b.venue, key = `${v.exchange}|${v.product}|${v.instrument}`
     if (seen.has(key) || (v.product !== 'spot' && v.product !== 'usdtPerp')) continue
     seen.add(key)
-    const ins = encodeURIComponent(v.instrument), f = b.priceFactor
-    if (v.exchange === 'binance') out.push({
-      exchange: 'binance', product: v.product, parse: x => parseBinanceKlines(x, f),
-      url: v.product === 'spot' ? `https://data-api.binance.vision/api/v3/klines?symbol=${ins}&interval=30m&limit=${SLOTS}`
-        : `https://fapi.binance.com/fapi/v1/klines?symbol=${ins}&interval=30m&limit=${SLOTS}`,
-    })
-    else if (v.exchange === 'okx') out.push({ exchange: 'okx', product: v.product, parse: x => parseOkxCandles(x, f), url: `https://www.okx.com/api/v5/market/candles?instId=${ins}&bar=30m&limit=${SLOTS}` })
-    else if (v.exchange === 'coinbase') {
-      const end = Math.ceil(now / 1000), start = Math.floor((slotOf(now) - (SLOTS - 1) * SLOT_MS) / 1000)
-      out.push({ exchange: 'coinbase', product: 'spot', parse: x => parseCoinbaseCandles(x, f), url: `/v1/market/raw/products/${ins}/candles?source=coinbase&granularity=THIRTY_MINUTE&start=${start}&end=${end}` })
-    }
+    const r = venueAdapter(v.exchange)?.klines30m?.(b, now, SLOTS)
+    if (r) out.push({ exchange: v.exchange, product: v.product, url: r.url, parse: r.parse })
   }
   return out
 }
 
 type Status = 'idle' | 'loading' | 'ok' | 'down'
 
-/** 24 小时成交：每分钟刷一次三家 K 线。 */
+/** 24 小时成交：每分钟刷一次各家 K 线。 */
 export class VolSource {
   slots: VolSlot[] = []
-  /** 各家各产品的 K 线（流动性用币安的算每格中间价） */
+  /** 各家各产品的 K 线（流动性用参考家的算每格中间价） */
   raw: { exchange: string; product: string; k: Kline[] }[] = []
   status: Status = 'idle'
   /** 这次并进来的有哪几家 */
@@ -148,10 +104,9 @@ export class VolSource {
       .finally(() => { if (gen === this.gen) this.busy = false })
   }
 
-  /** 每一格的参考中间价（图上的单位）：币安 U 本位优先，其次币安现货、OKX、Coinbase；(高 + 低 + 收) ÷ 3 */
+  /** 每一格的参考中间价（图上的单位）：按注册表顺序，同一家永续在前、现货在后；(高 + 低 + 收) ÷ 3 */
   mids(): Map<number, number> {
-    const order = ['binance|usdtPerp', 'binance|spot', 'okx|usdtPerp', 'okx|spot', 'coinbase|spot']
-    const src = [...this.raw].sort((a, b) => order.indexOf(`${a.exchange}|${a.product}`) - order.indexOf(`${b.exchange}|${b.product}`))
+    const src = [...this.raw].sort((a, b) => midRank(a.exchange, a.product) - midRank(b.exchange, b.product))
     const m = new Map<number, number>()
     for (const s of src) for (const k of s.k) { const t = slotOf(k.t); if (!m.has(t) && k.h > 0 && k.l > 0) m.set(t, (k.h + k.l + k.c) / 3) }
     return m

@@ -13,7 +13,7 @@
 | `paint.ts` | KanpanChart Paint + Palette（颜色读 CSS 变量 `--k-*` / `--of-*`） |
 | `state.ts` | KanpanChart ChartState（input / viewport / overlay 三层不可变） |
 | `renderer*.ts` | ChartRenderer（+Sub、+Compare、+Probe、+OrderFlow） |
-| `orderflowGroup.ts` | OrderFlowGroup |
+| `../../orderflow/group.ts`（PC 与手机共用） | OrderFlowGroup |
 | `gesture.ts` | ChartGesture + ChartView+Gesture |
 | `view.ts` / `view.parts.ts` | ChartView（三层画布 + 画线盖层、rAF 脏标记） |
 | `drawing.ts` / `draw/**` | KanpanCore Drawing + ChartView+Drawing |
@@ -34,7 +34,7 @@ const chart = createChart(host, {
   overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],     // 副图最多 3 个，多的丢掉
   barSpacing: prefs.barSpacing,                        // 上次捏到的根宽，缺省 4
   streams: names => setStreams([...pageStreams, ...names]), // 图要订的推送流，由页面合并后交给 market
-  orderFlowSource: push => myPort,                     // 可选：主力订单流数据口；不传用默认 createOrderFlowPort（三家聚合，品种类型 / 24h 额取全市场表，线路跟 S.route），传 null 不订
+  orderFlowSource: push => myPort,                     // 可选：主力订单流数据口；不传用默认 createOrderFlowPort（各家聚合，品种类型 / 24h 额取全市场表，线路跟 S.route），传 null 不订
   compareSymbols: prefs.compareSymbols,                // 可选：对比品种键（binance/usd_m/ETHUSDT），最多三只
   depth: prefs.depth,                                  // 可选：盘口五档
   priceMode: 'percent',                                // log / linear / percent

@@ -267,7 +267,6 @@ export class BigTradeController {
     const stoppedAt = force === 'stale' ? now - 25_000 : lastTrade || now
     let rt: string
     if (stale) rt = `数据停在 ${this.label(stoppedAt, 60_000)}`
-    else if (this.pick?.from === 'cross' && !live) rt = '抬手回到本根'
     else rt = live ? `${ivName(step)} · 还在走` : ivName(step)
     const hero: HeroModel = {
       title: live ? '本根' : `该根 ${this.label(t0, step)}`, live, rt,

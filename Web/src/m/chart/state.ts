@@ -15,8 +15,8 @@ import { toFixed } from './format'
 import type { ChartColors, Hex } from './paint'
 import { FALLBACK_COLORS } from './paint'
 import type { Drawing } from './drawing'
-import type { OrderFlowSnapshot, OrderFlowDisplay, OrderFlowGroupKey } from './orderflowGroup'
-import { defaultOrderFlowDisplay } from './orderflowGroup'
+import type { OrderFlowSnapshot, OrderFlowDisplay, OrderFlowGroupKey } from '../../orderflow/group'
+import { defaultOrderFlowDisplay } from '../../orderflow/group'
 
 /** 图表要知道的品种信息（SymbolInfo 的子集）。 */
 export interface SymbolInfo {

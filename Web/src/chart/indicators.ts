@@ -2,7 +2,7 @@
  *
  * 主图：VWAP（±1σ / ±2σ）、超级趋势、一目均衡表、成交量分布（VPVR，按可见区间现算，见 overlays.ts）、
  *       关键价位（昨高低、上周高低、今开、昨日控制点与价值区，见 keyLevels.ts）
- * 副图：CVD（主动买卖累计差；实时段三家、拆现货合约，见 tradeFlow.ts）、ATR、OBV、随机 RSI、CCI、威廉指标、
+ * 副图：CVD（主动买卖累计差；实时段各家、拆现货合约，见 tradeFlow.ts）、ATR、OBV、随机 RSI、CCI、威廉指标、
  *       大单与散户累计量差（见 tradeFlow.ts）
  *
  * 只从 calc.ts 拿类型，运行时不反向依赖它（calc.ts 把这里的表并进 Calc / CATALOG），
@@ -162,7 +162,7 @@ export function ichimoku(bars: Bar[], tenkan: number, kijun: number, senkou: num
 }
 
 // ------------------------------------------------------------ 副图
-/** CVD（只看 K 线自带的主动买入）：从第一根加载进来的 K 线起，逐根累加主动买卖差。图上用的是 tradeFlow.calcCvd（实时段加三家） */
+/** CVD（只看 K 线自带的主动买入）：从第一根加载进来的 K 线起，逐根累加主动买卖差。图上用的是 tradeFlow.calcCvd（实时段加各家） */
 export function cvd(bars: Bar[]): Series[] {
   let s = 0
   return [bars.map(b => (s += barDelta(b)))]

@@ -2,15 +2,16 @@
 // （外加 KanpanCore 里渲染要用的：OrderFlowSettings.swift 的 OrderFlowDisplay、BigOrder+Display.swift 的
 // thicknessQuarters / thicknessTier、OrderFlowSnapshot、InstrumentID.canonical）
 //
-// 主力订单流 · 手机布局的「一段一条带」：按「价位桶 × 买卖侧 × 类（现货 / 合约）× 时间段」切段，
+// 主力订单流 · 「一段一条带」（PC 与手机网页共用，2026-10-08 从 m/chart 挪来）：按「价位桶 × 买卖侧 × 类（现货 / 合约）× 时间段」切段，
 // 去掉活不过一根 K 线的已结束段，再把同侧同类、桶号相邻、时间上连着的段并成一堵墙（最多 5 个桶、成块）。
 // 只是画法合并——feed 交出来的逐单不动，图例「主力 买 X · 卖 Y」仍按逐单求和。算法、常量与 Swift 逐条一致，
 // 设计理由见 Swift 原文件头。
 //
 // 数据类型直接用 PC 与手机共用的 src/orderflow/types.ts（BigOrder 字段与服务端、iOS 同名）。
 
-import type { BigOrder, BookSide, Product, Thresholds } from '../../orderflow/types'
-import { isContract, orderId } from '../../orderflow/types'
+import type { BigOrder, BookSide, Product, Thresholds } from './types'
+import { isContract, orderId } from './types'
+import { PRIMARY } from '../venues'
 
 // ------------------------------------------------------------------ KanpanCore 渲染用的小件
 
@@ -54,13 +55,13 @@ export interface OrderFlowSnapshot {
   venues?: { id: string; label: string; exchange: string; product: Product; instrument: string; ready: boolean }[]
 }
 
-/** InstrumentID.canonical：「venue/market/SYMBOL」；只写代号的按币安 U 本位。 */
+/** InstrumentID.canonical：「venue/market/SYMBOL」；只写代号的按主交易所 U 本位（注册表的 PRIMARY）。 */
 export function canonicalSymbol(raw: string): string {
   const t = raw.trim()
   if (!t) return ''
   const parts = t.split('/')
   if (parts.length === 3) return `${parts[0].toLowerCase()}/${parts[1].toLowerCase()}/${parts[2].toUpperCase()}`
-  return 'binance/usd_m/' + t.toUpperCase()
+  return `${PRIMARY.key}/usd_m/` + t.toUpperCase()
 }
 
 const sameThresholds = (a: Thresholds | undefined, b: Thresholds | undefined): boolean =>

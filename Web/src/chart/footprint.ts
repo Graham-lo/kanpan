@@ -7,7 +7,7 @@
  * 数据：
  *   历史 —— 服务端按（分钟 × 价位桶）攒好的（market/footprintApi.ts），按可见范围按窗去要，缓存照 fineVolume.ts：
  *           每只品种留一段连续的分钟，防抖、同一时刻只有一个请求、失败 30 秒内不再试，要回来置脏重画——画的那一帧从不等它。
- *   实时 —— 订单流数据层（orderflow/index.ts）收到的三家逐笔，按同一个步长分到（分钟 × 价位桶）里。
+ *   实时 —— 订单流数据层（orderflow/index.ts）收到的各家逐笔，按同一个步长分到（分钟 × 价位桶）里。
  *   每一分钟用哪份：这一分钟整个落在逐笔的覆盖区间里（判定直接用 tradeFlow.ts 的 covered，和累计量差同一口径）就用实时的，
  *   否则用服务端的；粗周期（5 分、15 分、1 小时……）在这里把分钟并起来。秒级周期不支持（菜单里置灰）。
  *
@@ -105,7 +105,7 @@ export function mergeMinutes(minutes: readonly { t: number; rows: readonly FootR
   return out
 }
 
-// ------------------------------------------------------------ 实时：三家逐笔分到（分钟 × 价位桶）
+// ------------------------------------------------------------ 实时：各家逐笔分到（分钟 × 价位桶）
 interface Live { step: number; minutes: Map<number, Map<number, [number, number]>>; touched: number }
 const live = new Map<string, Live>()
 /** 服务端给过的步长（按品种） */

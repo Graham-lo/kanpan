@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { TradeLadder, deltaPct, fromMidPct, signedPct } from '../src/orderflow/tradeLadder'
 import { parseHeatSplit, colSum, colRows, scopedHeatUrl, type SplitCol } from '../src/orderflow/heatFetch'
 import { snapFine, deltaRows, firstFrom, niceCeil, rowSeries, sparkSVG } from '../src/orderflow/depthDelta'
-import { parseBinanceKlines, parseOkxCandles, parseCoinbaseCandles, mergeVol, mergeLiq, liqOfCol, TpsMeter, SLOT_MS, SLOTS, slotOf } from '../src/orderflow/stats'
+import { parseBinanceKlines } from '../src/venues/binance'
+import { parseOkxCandles } from '../src/venues/okx'
+import { parseCoinbaseCandles } from '../src/venues/coinbase'
+import { mergeVol, mergeLiq, liqOfCol, TpsMeter, SLOT_MS, SLOTS, slotOf } from '../src/orderflow/stats'
 import { Tape, bpsOf, bpsText, tapeRowH, tapeRowAlpha, TAPE_ROW_SMALL, TAPE_ROW_BIG } from '../src/orderflow/tape'
 import type { FineBook, VenueMeta } from '../src/orderflow/aggregate'
 
@@ -155,8 +158,8 @@ describe('24 小时成交 / 流动性 / 每秒成交', () => {
       { exchange: 'coinbase', k: [{ t: slotOf(now), h: 0, l: 0, c: 0, quote: 50, buy: null }] },
     ], now)
     expect(s.length).toBe(SLOTS)
-    expect(s[0]).toEqual({ t: first, total: 1200, bnBuy: 600, bnSell: 400, okx: 200, cb: 0 })
-    expect(s[SLOTS - 1]).toMatchObject({ t: slotOf(now), total: 50, cb: 50 })
+    expect(s[0]).toEqual({ t: first, total: 1200, buy: 600, sell: 400, ex: [1000, 200, 0, 0, 0] })
+    expect(s[SLOTS - 1]).toMatchObject({ t: slotOf(now), total: 50, ex: [0, 0, 50, 0, 0] })
   })
   it('liqOfCol：中间价 ±2.5%；没给中间价按买卖分界算', () => {
     // 步长 1000：格 95..104 = 95 000..105 000

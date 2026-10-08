@@ -155,10 +155,10 @@ describe('大单签 · 命中与读屏', () => {
     expect(hitSign([s], s.cap!.x + s.cap!.w / 2, s.cap!.y + s.cap!.h / 2)?.i).toBe(0)
   })
 
-  it('读屏文案「买方大单 1200K，12:30 这根」', () => {
+  it('读屏文案「12:30 大单买入 1200K」', () => {
     const [s] = planSigns([bar({ buy: 1.2e6, sell: 0 })], env())
-    expect(signLabel(s, env().fmt, '12:30')).toBe('买方大单 1200K，12:30 这根')
-    expect(signLabel({ side: 'sell', usd: 3e5 }, env().fmt, '10月8日')).toBe('卖方大单 300K，10月8日 这根')
+    expect(signLabel(s, env().fmt, '12:30')).toBe('12:30 大单买入 1200K')
+    expect(signLabel({ side: 'sell', usd: 3e5 }, env().fmt, '10月8日')).toBe('10月8日 大单卖出 300K')
   })
 
   it('尺寸与 iOS 同值', () => {
@@ -272,7 +272,7 @@ describe('大单签 · 图层', () => {
     expect(v.bigTradeTap).toBeNull()
   })
 
-  it('读屏：一枚一个隐形按钮，文案「买方 / 卖方大单 金额，时间 这根」，点它等于点签', () => {
+  it('读屏：一枚一个隐形按钮，文案「时间 大单买入 / 卖出 金额」，点它等于点签', () => {
     vi.useFakeTimers()
     const taps: number[] = []
     const { layer } = rig(s => { taps.push(s.i); return true })
@@ -280,7 +280,7 @@ describe('大单签 · 图层', () => {
     const aria = (layer as unknown as { aria: { children: Record<string, unknown>[] } }).aria
     expect(aria.children.length).toBe(layer.current.length)
     const b = aria.children[0] as { getAttribute(k: string): string; click(): void }
-    expect(b.getAttribute('aria-label')).toMatch(/^(买方|卖方)大单 [\d.]+[KMB]?，\d\d:\d\d 这根$/)
+    expect(b.getAttribute('aria-label')).toMatch(/^\d\d:\d\d 大单(买入|卖出) [\d.]+[KMB]?$/)
     b.click()
     expect(taps).toEqual([layer.current[0].i])
   })

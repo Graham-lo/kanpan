@@ -11,6 +11,7 @@
 import type { BarBig } from './bigTags'
 import type { LiqRow } from './liquidation'
 import { amt } from './state'
+import { EXCHANGE_COLORS, EXCHANGE_NAMES } from '../venues'
 
 export const MINUS = '−'
 export const DASH = '<span class="dash">—</span>'
@@ -48,16 +49,17 @@ export function bfHtml({ s, b, max, half, tw }: BfIn): string {
   return `<div class="bf">${side(s, 's')}${side(b, 'b')}</div>`
 }
 
-/** 三段细带（三家 / 现货合约）：没有数据画一条底轨 */
+/** 三段细带（各家 / 现货合约）：没有数据画一条底轨 */
 export function seg3(parts: readonly [number, string][] | null, cls = 'seg3'): string {
   const tot = parts ? parts.reduce((a, [v]) => a + v, 0) : 0
   if (!parts || !(tot > 0)) return `<div class="${cls}"><i style="flex:1;background:var(--of-track)"></i></div>`
   return `<div class="${cls}">${parts.filter(([v]) => v > 0).map(([v, c]) => `<i style="flex:${(v / tot).toFixed(4)};background:${c}"></i>`).join('')}</div>`
 }
 
-export const VENUES: readonly [string, string][] = [['币安', 'var(--of-bn)'], ['OKX', 'var(--of-okx)'], ['Coinbase', 'var(--of-cb)']]
+/** 各家名字 + 颜色（顺序与 EXCHANGE_CH 一致），全从注册表来 */
+export const VENUES: readonly [string, string][] = EXCHANGE_NAMES.map((n, i) => [n, EXCHANGE_COLORS[i]] as [string, string])
 
-/** 现货 / 合约 + 三家占比两条（汇总底部、悬停卡共用）；spot / ex 为 null（只有历史）时数字写「—」、条是底轨 */
+/** 现货 / 合约 + 各家占比两条（汇总底部、悬停卡共用）；spot / ex 为 null（只有历史）时数字写「—」、条是底轨 */
 export function srcHtml(tot: number, spot: number | null, ex: readonly number[] | null): string {
   const has = tot > 0
   const sp = spot != null && has ? spot : null
@@ -90,7 +92,7 @@ export function ivShort(ms: number): string {
 
 // ------------------------------------------------------------------ 悬停卡（图上大单签）
 
-/** 图上大单签的悬停卡：时间 · 周期、净额大字 + 对撞条、大卖 / 大买（额 + 笔）、最大一笔、现货 / 合约、三家；
+/** 图上大单签的悬停卡：时间 · 周期、净额大字 + 对撞条、大卖 / 大买（额 + 笔）、最大一笔、现货 / 合约、各家；
  *  这根有一分钟来自服务端历史（exact = false）时笔数 / 最大一笔 / 来源都没有：这几项直接不摆（不写「—」也不写说明） */
 export function hoverCardHtml(d: BarBig, when: string, iv: string): string {
   const n = d.bb - d.bs, t = d.bb + d.bs || 1

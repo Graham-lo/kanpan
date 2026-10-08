@@ -14,6 +14,7 @@
 //     sidebar     PC 宽侧栏 300 只自选闲置 2 分钟：持仓额请求数、限流账本写盘（F1 / F2 / F4）
 //     tabs-m      手机四页来回点 50 轮：ticker/24hr 全量次数、推送握手次数（F5 / F6 / F7）
 //     scan-m      手机顶栏横滑连扫 100 只：行情类请求数、停下那只的首屏 K 线（F8）
+//     of5         五家订单流满载（Bybit / HL 按 10-08 录帧速率 ×4 合成）：十六图常态 / 十字线 / 滚轮每帧 p50 / p95，对照不发帧
 // 基线数字见 docs/acceptance/深度审查-Web-2026-10-05/F-性能与压测/报告.md
 import { preview, launch, INSTR, metrics, line, mockKlines, measure, realPrices, sleep, med, pct, diffGl, PC, M, NOVA, heavyPc, heavyM, newCtx } from './f-lib.mjs'
 
@@ -532,7 +533,136 @@ async function scanM() {
   } finally { await browser.close(); stop() }
 }
 
-const SEGS = { cold, 'leak-pc': leakPc, 'leak-m': leakM, idle, big, hf, storage, server, sidebar, 'tabs-m': tabsM, 'scan-m': scanM }
+// ───────── 五家订单流满载：十六图（每格三副图）+ 订单流，币安 / OKX / Coinbase 走真流，Bybit / Hyperliquid 走合成帧
+//   node scripts/f-perf.mjs of5
+//   合成速率照 2026-10-08 实测录帧（Bybit linear 4 只币 7 分钟 30852 帧：orderbook 8407 + publicTrade 22287，增量最多 1832 档；
+//   HL 5 本 7 分钟 632 帧 l2Book + 2396 帧 trades）——这里把 4 只币的量全压到图上这一只（BTC）的每一本 Bybit 簿上（×4），
+//   spot / linear / inverse 三本都按这个速率，HL 也按 ×4。品种表在线上那份后面补上 Bybit 三本 + HL 一本（服务端没上线前也能量）。
+//   对照：同一页先量「Bybit / HL 不发帧」再量「满载」，十字线 / 滚轮各再量一遍。
+async function of5() {
+  const { url, stop } = await preview()
+  const browser = await launch()
+  const out = []
+  try {
+    const hp = await heavyPc()
+    hp.orderFlow = true
+    const { ctx } = await newCtx(browser, PC, { 'hkline-web-v1': JSON.stringify(hp) }, { delay: 30, local: true, depth: 80000 })
+    const px0 = (await realPrices()).BTCUSDT || 100000
+    const extra = [
+      { exchange: 'bybit', product: 'usdtPerp', instrument: 'BTCUSDT', notional: { kind: 'linear', multiplier: 1 }, tick: 0.1 },
+      { exchange: 'bybit', product: 'spot', instrument: 'BTCUSDT', notional: { kind: 'linear', multiplier: 1 }, tick: 0.1 },
+      { exchange: 'bybit', product: 'coinPerp', instrument: 'BTCUSD', notional: { kind: 'inverse', contractUsd: 1 }, tick: 0.5 },
+      { exchange: 'hyperliquid', product: 'usdtPerp', instrument: 'BTC', notional: { kind: 'linear', multiplier: 1 }, tick: 1 },
+    ]
+    await ctx.route(/\/v1\/market\/orderflow\/instruments\?/, async route => {
+      const cors = { 'access-control-allow-origin': route.request().headers().origin || '*', 'access-control-allow-credentials': 'true' }
+      let venues = []
+      try { const r = await route.fetch({ timeout: 15000 }); venues = (await r.json()).venues || [] } catch { /* 线上表拿不到就只有补的这几本 */ }
+      const base = new URL(route.request().url()).searchParams.get('base')
+      if (base === 'BTC') venues = [...venues.filter(v => v.exchange !== 'bybit' && v.exchange !== 'hyperliquid'), ...extra]
+      route.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify({ venues }) }).catch(() => {})
+    })
+    const LOAD = { on: false, churn: false, sent: 0, bytes: 0 }
+    const rnd = (a, b) => a + Math.random() * (b - a)
+    // Bybit：一条连接一个 category；订到的每本簿各一套 u 计数，先发 1000 档快照，再按速率发增量与成交
+    await ctx.routeWebSocket(/\/v1\/market\/ws\/bybit|stream\.bybit\.com\/v5\/public/, ws => {
+      const books = new Map() // symbol → { u, tick }
+      const timers = []
+      const send = o => { const t = JSON.stringify(o); LOAD.sent++; LOAD.bytes += t.length; ws.send(t) }
+      // 墙：每侧 6 道固定价位 30–80 个币，5 秒左右撤一道再挂回（真盘口的样子）；极端档（churn）每帧随机 1% 的档冒 20–80 个币
+      const WALL_IX = [37, 120, 260, 410, 640, 880]
+      const qty = () => rnd(0.001, 2).toFixed(4)
+      const side = (n, tick, sign) => Array.from({ length: n }, (_, i) => [(px0 + sign * tick * (i + 1)).toFixed(1), WALL_IX.includes(i + 1) ? rnd(30, 80).toFixed(4) : qty()])
+      const snapshot = (sym, b) => { b.u += 1; send({ topic: `orderbook.1000.${sym}`, type: 'snapshot', ts: Date.now(), data: { s: sym, b: side(1000, b.tick, -1), a: side(1000, b.tick, 1), u: b.u, seq: b.u } }) }
+      const delta = (sym, b) => {
+        const n = Math.random() < 0.1 ? 1832 : Math.floor(rnd(40, 200))
+        const pick = sign => Array.from({ length: n >> 1 }, () => { const ix = Math.floor(rnd(1, 1000)); return WALL_IX.includes(ix) ? null : [(px0 + sign * b.tick * ix).toFixed(1), (Math.random() < 0.15 ? 0 : LOAD.churn && Math.random() < 0.01 ? rnd(20, 80) : rnd(0.001, 2)).toFixed(4)] }).filter(Boolean)
+        b.flip = (b.flip || 0) + 1
+        const wall = sign => (b.flip % 100 === 0 ? [[(px0 + sign * b.tick * WALL_IX[(b.flip / 100) % 6]).toFixed(1), Math.floor(b.flip / 100) % 2 ? rnd(30, 80).toFixed(4) : '0']] : [])
+        b.u += 1
+        send({ topic: `orderbook.1000.${sym}`, type: 'delta', ts: Date.now(), data: { s: sym, b: [...pick(-1), ...wall(-1)], a: [...pick(1), ...wall(1)], u: b.u, seq: b.u } })
+      }
+      const trades = sym => send({ topic: `publicTrade.${sym}`, type: 'snapshot', ts: Date.now(), data: Array.from({ length: 1 + Math.floor(rnd(0, 3)) }, () => ({ T: Date.now(), s: sym, S: Math.random() < 0.5 ? 'Buy' : 'Sell', v: rnd(0.001, 3).toFixed(4), p: (px0 + rnd(-2, 2)).toFixed(1), L: 'PlusTick', i: String(Math.random()), BT: false, RPI: false })) })
+      ws.onMessage(m => {
+        let r; try { r = JSON.parse(String(m)) } catch { return }
+        if (r.op === 'ping') return ws.send(JSON.stringify({ success: true, ret_msg: 'pong', op: 'ping' }))
+        if (r.op !== 'subscribe') return
+        ws.send(JSON.stringify({ success: true, ret_msg: 'subscribe', op: 'subscribe' }))
+        for (const a of r.args || []) {
+          const mm = /^orderbook\.\d+\.(.+)$/.exec(a)
+          if (!mm) continue
+          const sym = mm[1], b = books.get(sym) || { u: 0, tick: sym.endsWith('USD') ? 0.5 : 0.1 }
+          books.set(sym, b)
+          setTimeout(() => snapshot(sym, b), 50)
+        }
+      })
+      // 增量 20 帧/秒、成交 53 帧/秒（每本）
+      timers.push(setInterval(() => { if (LOAD.on) for (const [s, b] of books) if (b.u) delta(s, b) }, 50))
+      timers.push(setInterval(() => { if (LOAD.on) for (const s of books.keys()) trades(s) }, 19))
+      ws.onClose(() => timers.forEach(clearInterval))
+    })
+    // HL 中继：每帧整本 20 档（BTC 4 位有效数字 = 10 美元一格），6 帧/秒；成交 23 帧/秒
+    await ctx.routeWebSocket(/\/v1\/market\/ws\/hyperliquid/, ws => {
+      const coins = new Set(), timers = []
+      const send = o => { const t = JSON.stringify(o); LOAD.sent++; LOAD.bytes += t.length; ws.send(t) }
+      const g = Math.round(px0 / 10) * 10
+      const lv = sign => Array.from({ length: 20 }, (_, i) => ({ px: (g + sign * 10 * (i + (sign > 0 ? 1 : 0))).toFixed(1), sz: (i === 7 || i === 15 ? rnd(40, 90) : LOAD.churn && Math.random() < 0.05 ? rnd(30, 90) : rnd(1, 20)).toFixed(5), n: 10 }))
+      const book = c => send({ channel: 'l2Book', data: { coin: c, time: Date.now(), levels: [lv(-1), lv(1)] } })
+      ws.onMessage(m => {
+        let r; try { r = JSON.parse(String(m)) } catch { return }
+        if (r.method === 'ping') return ws.send(JSON.stringify({ channel: 'pong' }))
+        if (r.method !== 'subscribe') return
+        ws.send(JSON.stringify({ channel: 'subscriptionResponse', data: r }))
+        if (r.subscription?.type === 'l2Book') { coins.add(r.subscription.coin); setTimeout(() => book(r.subscription.coin), 50) }
+      })
+      timers.push(setInterval(() => { if (LOAD.on) for (const c of coins) book(c) }, 167))
+      timers.push(setInterval(() => { if (LOAD.on) for (const c of coins) send({ channel: 'trades', data: [{ coin: c, side: Math.random() < 0.5 ? 'B' : 'A', px: (px0 + rnd(-5, 5)).toFixed(1), sz: rnd(0.001, 2).toFixed(5), time: Date.now(), tid: Math.floor(Math.random() * 1e12) }] }) }, 43))
+      ws.onClose(() => timers.forEach(clearInterval))
+    })
+    const page = await ctx.newPage()
+    const cdp = await ctx.newCDPSession(page); await cdp.send('Performance.enable')
+    const errs = []; page.on('pageerror', e => errs.push(String(e)))
+    await page.goto(url + '#chart')
+    await page.waitForFunction(() => window.__cells?.()?.length === 16 && window.__cells().every(c => c.bars > 0), null, { timeout: 60000 })
+    await sleep(8000)
+    const grid = await page.evaluate(() => { const cs = [...document.querySelectorAll('.chart-cell')].map(e => e.getBoundingClientRect()); const x = Math.min(...cs.map(r => r.x)), y = Math.min(...cs.map(r => r.y)); return { x, y, w: Math.max(...cs.map(r => r.right)) - x, h: Math.max(...cs.map(r => r.bottom)) - y } })
+    const rect = await page.evaluate(() => { const r = document.querySelector('.chart-cell .canvas-host').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
+    const venues = () => page.evaluate(() => (window.__of?.()?.venues || []).map(v => `${v.exchange}:${v.product}:${v.ready ? 'ready' : '…'}`))
+    const row = async (name, fn) => {
+      const s0 = LOAD.sent, b0 = LOAD.bytes, t0 = Date.now()
+      const r = await measure(page, cdp, fn)
+      const m = await metrics(cdp, page, false)
+      const sec = (Date.now() - t0) / 1000
+      const gc = await metrics(cdp, page)
+      const o = { 段: name, ...r, 合成帧每秒: Math.round((LOAD.sent - s0) / sec), 合成KB每秒: Math.round((LOAD.bytes - b0) / sec / 1024), 堆: m.heap, GC后堆: gc.heap, 节点: m.nodes, 大单: await page.evaluate(() => window.__of?.()?.orders) }
+      console.log(JSON.stringify(o)); out.push(o); return o
+    }
+    const sweep = async () => { for (let i = 0; i < 600; i++) { const t = i / 600; await page.mouse.move(grid.x + 20 + (grid.w - 40) * ((t * 4) % 1), grid.y + 20 + (grid.h - 40) * t); await sleep(4) } }
+    const cx = rect.x + rect.w * 0.5, cy = rect.y + rect.h * 0.3
+    const wheel = async () => { await page.mouse.move(cx, cy); for (let i = 0; i < 300; i++) { await page.mouse.wheel(0, i % 60 < 30 ? 40 : -40); await sleep(4) } }
+    await row('四家真流（Bybit / HL 不发帧）常态 10 秒', () => sleep(10000))
+    await row('四家真流 十字线扫十六格 600 下', sweep)
+    await row('四家真流 第一格滚轮 300 下', wheel)
+    LOAD.on = true
+    await sleep(3000)
+    console.log(JSON.stringify({ 订单流簿: await venues(), 大单: await page.evaluate(() => window.__of?.()?.orders) }))
+    await row('五家满载 常态 10 秒', () => sleep(10000))
+    await row('五家满载 十字线扫十六格 600 下', sweep)
+    await row('五家满载 第一格滚轮 300 下', wheel)
+    await row('五家满载 常态 30 秒（看堆是否涨）', () => sleep(30000))
+    LOAD.churn = true
+    await row('极端：每帧随机冒大单 常态 10 秒', () => sleep(10000))
+    await row('极端：每帧随机冒大单 十字线扫十六格 600 下', sweep)
+    await row('极端：每帧随机冒大单 常态 30 秒', () => sleep(30000))
+    LOAD.churn = false
+    await row('回到正常满载 30 秒（堆回落）', () => sleep(30000))
+    console.log(JSON.stringify({ 订单流簿: await venues(), 大单: await page.evaluate(() => window.__of?.()?.orders), 报错: errs.slice(0, 5) }))
+    await ctx.close()
+  } finally { await browser.close(); stop() }
+  return out
+}
+
+const SEGS = { cold, 'leak-pc': leakPc, 'leak-m': leakM, idle, big, hf, storage, server, sidebar, 'tabs-m': tabsM, 'scan-m': scanM, of5 }
 if (!SEGS[SEG]) { console.error('未知段 ' + SEG + '；可选 ' + Object.keys(SEGS).join(' ')); process.exit(2) }
 await SEGS[SEG]()
 process.exit(0)

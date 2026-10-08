@@ -24,8 +24,8 @@ import { OrientedPriceScale } from './orientedPrice'
 import type { ChartColors } from './paint'
 import { readChartColors, skinKey } from './paint'
 import type { Drawing } from './drawing'
-import type { OrderFlowDisplay, OrderFlowSnapshot } from './orderflowGroup'
-import { defaultOrderFlowDisplay } from './orderflowGroup'
+import type { OrderFlowDisplay, OrderFlowSnapshot } from '../../orderflow/group'
+import { defaultOrderFlowDisplay } from '../../orderflow/group'
 import type { ChartOrderFlowFocus } from './view'
 import { ChartView } from './view'
 import type { ExternalID } from './external.source'
@@ -1108,7 +1108,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
 
   resetFeed()
   subscribe()
-  // 没传就用默认的三家聚合源（orderflow.source.ts）；传 null 表示这张图不要订单流数据（测试、截图）。
+  // 没传就用默认的各家聚合源（orderflow.source.ts）；传 null 表示这张图不要订单流数据（测试、截图）。
   const orderFlowFactory = opts.orderFlowSource === undefined ? (opts.offline ? null : createOrderFlowPort) : opts.orderFlowSource
   if (orderFlowFactory) {
     orderFlowPort = orderFlowFactory(snap => {

@@ -94,10 +94,13 @@ describe('只有历史时的写法', () => {
   })
   it('srcHtml：spot / ex 为 null 时数字全是「—」、条是底轨', () => {
     const h = srcHtml(5e6, null, null)
-    expect((h.match(/<b class="num">—<\/b>/g) ?? []).length).toBe(5)
+    expect((h.match(/<b class="num">—<\/b>/g) ?? []).length).toBe(7) // 现货、合约 + 五家
     expect(h).toContain('var(--of-track)')
-    const live = srcHtml(100, 25, [50, 30, 20])
-    expect(live).toContain('25%'); expect(live).toContain('75%'); expect(live).toContain('50%')
+    const live = srcHtml(100, 25, [40, 20, 10, 18, 12])
+    expect(live).toContain('25%'); expect(live).toContain('75%'); expect(live).toContain('40%')
+    for (const n of ['币安', 'OKX', 'Coinbase', 'Bybit', 'Hyperliquid']) expect(live).toContain(n)
+    expect(live).toContain('18%'); expect(live).toContain('12%')
+    expect(live).toContain('var(--of-bybit)'); expect(live).toContain('var(--of-hl)')
   })
   it('悬停卡：只有历史的根不摆笔数 / 最大一笔 / 来源，也不写说明', () => {
     const d: BarBig = { t: 0, t1: 300_000, bb: 2e6, bs: 1e6, bn: null, sn: null, bmax: null, smax: null, spot: null, ex: null, exact: false } as unknown as BarBig

@@ -1,7 +1,7 @@
 /* Hkline Web · 主力订单流 · 控制器（设计稿 2.1–2.7）
  *
  * 图表页只通过 installOrderFlow(api) 和几个 HTML 片段接进来；这里负责：
- *   · 数据层的生命周期：跟着活动格子的品种开一个 OrderFlowFeed（三家一起连），换品种就换，
+ *   · 数据层的生命周期：跟着活动格子的品种开一个 OrderFlowFeed（各家一起连），换品种就换，
  *     没有任何展示需要它（图上订单流、梯子、热力、小部件、面板都关着）或离开图表页一分钟后就停；
  *   · 每帧（半秒）把快照分发给图上层、梯子、小部件、抽屉、面板；
  *   · 深度热力：实时每秒一列，实时开始之前的时段向服务端要回填（按返回的 bucketMs 画列宽）；
@@ -77,7 +77,7 @@ export function installOrderFlow(a: Api): void {
 /** 有没有哪个展示在用订单流的数据。 */
 function needed(): boolean {
   if (st.orderFlow || st.slots.ladder || st.slots.drawer || OF.prefs.heat) return true
-  // 副图「累计量差」的三家实时段、「大单与散户累计量差」都靠这里的逐笔成交
+  // 副图「累计量差」的各家实时段、「大单与散户累计量差」都靠这里的逐笔成交
   if (st.ind.subs.includes('cvd') || st.ind.subs.includes('whale')) return true
   if (footprintWanted()) return true
   if (st.panel === 'flow') return true
@@ -192,7 +192,7 @@ function onFrame(s: Snapshot): void {
   if (!f || !api) return
   const now = Date.now()
   OF.snap = s
-  // 三家逐笔的覆盖心跳：连接都开着这半秒才算盖住（副图累计量差 / 大单与散户）
+  // 各家逐笔的覆盖心跳：连接都开着这半秒才算盖住（副图累计量差 / 大单与散户）
   feedBeat(f, now)
   OF.fine = buildFine(f.model, D.fineRadiusBps, now)
   if (OF.prefs.heat && OF.fine) {
@@ -354,7 +354,7 @@ export function toggleHeat(): void {
 /** 工具栏上「热力」按钮（放在「记一笔」后面）。 */
 export function heatButtonHTML(): string {
   const on = OF.prefs.heat
-  return `<button class="tb-btn ${on ? 'on' : ''}" id="tbHeat" aria-label="热力" aria-pressed="${on}" data-tip="${on ? '关掉' : '打开'}深度热力：三家挂单按价位的浓淡铺在 K 线下面">${I('layers')}<span class="tb-label">热力</span></button>`
+  return `<button class="tb-btn ${on ? 'on' : ''}" id="tbHeat" aria-label="热力" aria-pressed="${on}" data-tip="${on ? '关掉' : '打开'}深度热力：各家挂单按价位的浓淡铺在 K 线下面">${I('layers')}<span class="tb-label">热力</span></button>`
 }
 
 // ------------------------------------------------------------------ 指标面板里的一行
@@ -362,7 +362,7 @@ export function heatButtonHTML(): string {
 export function indicatorRowHTML(): string {
   const on = st.orderFlow
   return `<div class="ind-row ${settingsLayerOpen() ? 'of-set-open' : ''}" data-of-row tabindex="0" role="checkbox" aria-checked="${on}">
-    <span class="check-box ${on ? 'on' : ''}">${on ? I('check', 'icon-16') : ''}</span><span class="nm">主力订单流<small>三家大额挂单画在图上</small></span>
+    <span class="check-box ${on ? 'on' : ''}">${on ? I('check', 'icon-16') : ''}</span><span class="nm">主力订单流<small>各家大额挂单画在图上</small></span>
     <span class="tag">主图</span>
     <button class="ibtn xs" data-of-set aria-label="门槛与步长" data-tip="门槛与步长">${I('gear', 'icon-16')}</button></div>`
 }
@@ -394,7 +394,7 @@ export function flowPanel(el: HTMLElement): void {
     <div class="scroll of-p">
       <div class="sec-title">显示</div>
       ${sw('flow', '图上订单流', st.orderFlow, '大额挂单画成横带垫在 K 线下面，成交的大单打点')}
-      ${sw('ladder', '深度梯子', st.slots.ladder, '价格轴右边的一列三家合并盘口，和图同一根价格轴')}
+      ${sw('ladder', '深度梯子', st.slots.ladder, '价格轴右边的一列各家合并盘口，和图同一根价格轴')}
       ${sw('drawer', '大单列表', st.slots.drawer, '图下面的抽屉，列出这只品种所有大单')}
       ${sw('heat', '深度热力', OF.prefs.heat, '每秒记一列挂单浓淡，之前的时段从服务端补')}
       <div class="sec-title">门槛<span class="faint">${a ? esc(baseOfSymbol(a.symbol.toUpperCase()).base) : ''}</span></div>
@@ -433,7 +433,7 @@ function updateFlowPanel(force = false): void {
   const thr = el.querySelector<HTMLElement>('#ofpThr')
   if (!thr) return
   let thrHTML: string
-  if (!f) thrHTML = `<div class="of-wait faint">${OF.pending ? '正在接三家盘口…' : '打开上面任意一项后开始接三家盘口'}</div>`
+  if (!f) thrHTML = `<div class="of-wait faint">${OF.pending ? '正在接各家盘口…' : '打开上面任意一项后开始接各家盘口'}</div>`
   else {
     const t = s?.thresholds ?? f.model.thresholds
     const own = st.orderFlowOverrides[f.base] || {}

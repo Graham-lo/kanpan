@@ -7,7 +7,7 @@ import type { BigOrder } from '../../orderflow/types'
 import type { Bar } from './series'
 import type { Drawing, DrawingKind } from './drawing'
 import { drawingWith } from './drawing'
-import type { OrderFlowSnapshot } from './orderflowGroup'
+import type { OrderFlowSnapshot } from '../../orderflow/group'
 import { createChart } from './index'
 
 const N = 6000, STEP = 60_000

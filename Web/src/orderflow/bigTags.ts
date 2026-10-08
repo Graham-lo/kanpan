@@ -8,7 +8,7 @@
  * 规则：
  *   · 一分钟取哪份：整分钟在覆盖区间里用浏览器的；否则服务端有这行用服务端的；服务端在跟、落在它的历史里却没有行 = 没成交；
  *     再不然用浏览器攒到的那一部分。周期粗于 1 分钟时前端按分钟并；秒级周期只有浏览器的秒桶。
- *   · 笔数、最大一笔、现货 / 合约与三家的占比只有浏览器记（服务端的行没有）：一根里只要有一分钟的大单金额来自服务端，这几项就是 null（界面写「—」或不写）。
+ *   · 笔数、最大一笔、现货 / 合约与各家的占比只有浏览器记（服务端的行没有）：一根里只要有一分钟的大单金额来自服务端，这几项就是 null（界面写「—」或不写）。
  *   · 档位按相对分布定（2026-10-08 验收：按绝对门槛一屏四百多枚、整张图被盖满）：当前周期最近 300 根（不足就取有的）
  *     每根「大买 / 大卖里大的那一侧」的非零分布（2026-10-08 改：原来按「大买 + 大卖」合计定线、再拿单边去比，
  *     1 时 / 4 时 / 日线买卖两边相近时一根都过不了线，用户切到粗周期看到签「不出来」），三档 = P85（6 px 三角）/ P95（带金额的圆角签）/ max(P99, 3 × P95)（13 px 粗体大签），
@@ -36,9 +36,9 @@ export interface BarBig {
   sn: number | null
   bmax: Print | null
   smax: Print | null
-  /** 大单里现货的买 + 卖、三家各自（买 + 卖） */
+  /** 大单里现货的买 + 卖、各家各自（买 + 卖） */
   spot: number | null
-  ex: [number, number, number] | null
+  ex: number[] | null
   exact: boolean
 }
 
@@ -74,7 +74,7 @@ export function barBig(f: SymbolFlow, t0: number, t1: number, now: number): BarB
   return {
     t: t0, t1, bb: c.bb, bs: c.bs,
     bn: exact ? c.bn : null, sn: exact ? c.sn : null, bmax: exact ? c.bmax : null, smax: exact ? c.smax : null,
-    spot: exact ? c.bsb + c.bss : null, ex: exact ? [c.bx[0], c.bx[1], c.bx[2]] : null, exact,
+    spot: exact ? c.bsb + c.bss : null, ex: exact ? [...c.bx] : null, exact,
   }
 }
 

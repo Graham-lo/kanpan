@@ -15,6 +15,7 @@
  */
 import type { Rect, Tiers } from '../../orderflow/bigTags'
 import { hit, tierOf } from '../../orderflow/bigTags'
+import { BT, fill } from '../../terms'
 
 export type SignShape = 'dot' | 'tri' | 'cap'
 export type SignSide = 'buy' | 'sell'
@@ -223,7 +224,7 @@ export function hitSign(signs: readonly Sign[], x: number, y: number): Sign | nu
   return best
 }
 
-/** 读屏：「买方大单 1.2M，12:30 这根」（日线及以上写「10月8日 这根」） */
+/** 读屏：「12:30 大单买入 1.2M」（日线及以上写「10月8日 大单买入 1.2M」；用词从三端共用的 terms.json 来） */
 export function signLabel(s: Pick<Sign, 'side' | 'usd'>, fmt: (usd: number) => string, when: string): string {
-  return `${s.side === 'buy' ? '买方' : '卖方'}大单 ${fmt(s.usd)}，${when} 这根`
+  return fill(BT.signA11y, { t: when, side: s.side === 'buy' ? BT.buy : BT.sell, v: fmt(s.usd) })
 }

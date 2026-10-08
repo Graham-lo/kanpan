@@ -136,6 +136,8 @@ export class LocalBook {
       case 'strictIncrementing':
         if (first.previousFinalUpdateID != null || first.finalUpdateID !== L + 1) this.failSequence('snapshotDoesNotOverlap')
         break
+      case 'snapshotOnly':
+        this.failSequence('unexpectedDelta')
     }
     this.applyLevels(first)
     this.lastUpdateID = first.finalUpdateID
@@ -165,6 +167,8 @@ export class LocalBook {
       case 'strictIncrementing':
         if (d.previousFinalUpdateID != null || d.firstUpdateID !== prev + 1 || d.finalUpdateID !== d.firstUpdateID) this.failSequence('sequenceGap')
         break
+      case 'snapshotOnly':
+        this.failSequence('unexpectedDelta')
     }
     this.applyLevels(d)
     this.lastUpdateID = d.finalUpdateID
@@ -174,7 +178,7 @@ export class LocalBook {
 
   replaceFromStreamSnapshot(s: BookSnapshot): void {
     this.validateIdentity(s.connection)
-    if (this.lastUpdateID != null && s.lastUpdateID < this.lastUpdateID) this.failSequence('regressedStreamSnapshot')
+    if (this.lastUpdateID != null && !s.restart && s.lastUpdateID < this.lastUpdateID) this.failSequence('regressedStreamSnapshot')
     if (s.requestedLevels <= 0 || s.bids.length > s.requestedLevels || s.asks.length > s.requestedLevels) this.failSequence('invalidSnapshotCoverage')
     this.beginResync(s.connection)
     this.coverage = coverageOf(s)

@@ -29,8 +29,8 @@ import type { ChartFontSpec, Hex } from './paint'
 import { ChartFont, bytes, contrast, css, drawCentered, drawLeft, orderFlowUnfilled, rgba, roundRectPath, textHeight, textWidth } from './paint'
 import { effectivePriceMode } from './state'
 import { DrawAxes, drawingGeometry, measureDrawLabel } from './drawing'
-import type { OrderFlowCardCandle, OrderFlowCardPlacement, OrderFlowDisplay, OrderFlowGroupKey, OrderFlowSnapshot } from './orderflowGroup'
-import { OrderFlowCardBudget, OrderFlowGroup, OrderFlowKey, canonicalSymbol, displayShows, orderFlowDisplayEqual, wallGroup } from './orderflowGroup'
+import type { OrderFlowCardCandle, OrderFlowCardPlacement, OrderFlowDisplay, OrderFlowGroupKey, OrderFlowSnapshot } from '../../orderflow/group'
+import { OrderFlowCardBudget, OrderFlowGroup, OrderFlowKey, canonicalSymbol, displayShows, orderFlowDisplayEqual, wallGroup } from '../../orderflow/group'
 
 // ------------------------------------------------------------------ 常量（Swift 的 static let，数值照抄）
 

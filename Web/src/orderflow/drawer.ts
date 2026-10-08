@@ -5,7 +5,7 @@
  *      底部现货 / 合约、币安 / OKX / Coinbase 占比（只用浏览器近 1 小时记到的，只有历史时写「—」）。
  *      抽屉拉高（> 300）时迷你走势换成一张大图：累计净额 · 8:00 起 + 逐根净额柱与整点刻度。
  *   2. 每根：跟当前周期，最新在上，只列有大单签的那几根（与图上同一套相对档位）。时间 | 对撞条 | 净额 | 笔数（买 / 卖）|
- *      最大（方向点 + 额）| 来源（三家细带）；卡宽 ≥ 640 时多一列现货、时间带日期、整列共用一把尺子，窄时每行自己比。
+ *      最大（方向点 + 额）| 来源（各家细带）；卡宽 ≥ 640 时多一列现货、时间带日期、整列共用一把尺子，窄时每行自己比。
  *      正在走的那根带一个强调色小点；图上十字线停在哪根，那一行灰底 + 时间反白；点一行选中（强调色底与边线、图上那根一道竖带），再点取消。
  *   3. 价位：近 1 小时大单最集中的卖 / 买各三档，按真实价摆在一根竖轴上（挤了互相让开）；现价反白标签 + 虚线；
  *      最近的卖墙 / 买墙一道淡紫底带，右端一个小圆环（满一圈 = 挂了 1 小时）+ 「N分」，点墙图挪过去。
@@ -17,7 +17,6 @@
 import { st, save } from '../app/store'
 import { sizes, saveSizes } from '../app/sizes'
 import { I } from '../ui/dom'
-import { GLOSSARY, term } from '../ui/overlay'
 import { patchKeyedRows } from '../ui/patch'
 import { sym as symOf } from '../ui/common'
 import { kindName, baseOf } from '../market/symbols'
@@ -33,8 +32,6 @@ import {
   DASH, signed, tone, pct, bfHtml, seg3, VENUES, srcHtml, maxOf, ivShort, levelsSvg, svgWrap,
   pickBucket, liqBuckets, liqSvg, cumSvg, hourTicks, LIQ_BUCKETS, NET_BUCKETS,
 } from './drawerView'
-
-GLOSSARY['爆仓'] = '仓位保证金不够、被交易所强制平掉。这里是币安、OKX 两家按分钟的合计：空头被平往上画、多头被平往下画。币安的强平推送每秒只给一笔，金额是下限。'
 
 const MIN = 60_000
 const DAY = 86_400_000
@@ -97,7 +94,7 @@ export function mountDrawer(el: HTMLElement): void {
         <div class="lv" data-k="lv"></div>
       </section>
       <section class="of-blk of-lqc" aria-label="爆仓">
-        <div class="ct"><span class="gl" style="background:var(--down)"></span>${term('爆仓')}<span class="r" data-k="lqlg"><span class="lg dn">多</span><span class="lg up">空</span></span></div>
+        <div class="ct"><span class="gl" style="background:var(--down)"></span>爆仓<span class="r" data-k="lqlg"><span class="lg dn">多</span><span class="lg up">空</span></span></div>
         <div class="lq-c" data-k="lqc"></div>
         <div class="lq-w" data-k="lqw"></div>
         <div class="lmax" data-k="lmax"></div>

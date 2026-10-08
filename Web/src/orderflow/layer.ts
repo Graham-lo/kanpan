@@ -13,10 +13,11 @@ import type { BigOrder } from './types'
 import { orderId } from './types'
 import { shows } from './settings'
 import { bucketIndex } from './bucket'
-import { rowOf, exName, venueName, outcomeText, EXCHANGE_NAMES } from './aggregate'
+import { rowOf, exName, venueName, outcomeText, EXCHANGE_NAMES, PRODUCT_SHORT } from './aggregate'
 import { HeatCache, percentile, heatAlpha, edgeFade, type HeatCol } from './heat'
-import { pickBands, liveAlpha, placeLabels, placeMark, MAX_MARKS, ENDED_LINE, HIGHLIGHT_ALPHA, type Rect } from './bands'
-import { OF, rowsPerLine, bandColor, bandInk, isDarkBg, rgbOf, showCard, hideCard, amt, hms, mdhm, durShort, PRODUCT_FULL, decFor, px, peak, canvasFont } from './state'
+import { pickBands, liveAlpha, placeLabels, placeMark, mergedWalls, wallOf, wallId, bookRows, wallPeak, MAX_MARKS, ENDED_LINE, HIGHLIGHT_ALPHA, type Rect, type BookRow } from './bands'
+import { OrderFlowGroup } from './group'
+import { OF, rowsPerLine, bandColor, bandInk, isDarkBg, rgbOf, showCard, hideCard, amt, hms, mdhm, durShort, decFor, px, peak, canvasFont } from './state'
 import { esc } from '../ui/dom'
 import { hexA } from '../util/format'
 import { flowOf, ensureHistory } from '../chart/tradeFlow'
@@ -24,7 +25,9 @@ import { BigBarCache, TierCache, planTags, unitFor, type Tag, type TagIn, type R
 import { hoverCardHtml, ivShort } from './drawerView'
 import { drawerChartDrawn } from './drawer'
 
-interface BandHit { x0: number; x1: number; y0: number; y1: number; o: BigOrder; id: string }
+interface BandHit { x0: number; x1: number; y0: number; y1: number; v: Vis }
+/** 一道要画的带：一堵墙（w）+ 它的代表单（o：最大那本簿的最新一单，定颜色和记号）+ 读数卡的分簿行 */
+interface Vis { o: BigOrder; w: OrderFlowGroup; rows: BookRow[]; id: string; live: boolean; x0: number; x1: number; y0: number; h: number; mid: number; pk: number }
 interface HeatDraw { cols: HeatCol[]; xs: number[]; ws: number[]; rowLo: number; rowHi: number; k: number; step: number; top: number; bottom: number }
 
 function rrect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -146,7 +149,6 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     heat = { cols, xs, ws, rowLo, rowHi, k, step, top: g.pane.y, bottom: g.pane.y + g.pane.h }
   }
 
-  interface Vis { o: BigOrder; id: string; live: boolean; x0: number; x1: number; y0: number; h: number; mid: number; pk: number }
   /** 这一帧要画的带（under 画底、over 画记号和标签共用） */
   let plan: { live: Vis[]; ended: Vis[]; dark: boolean } | null = null
 
@@ -165,7 +167,8 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     return false
   }
 
-  /** 蜡烛下面：挂着的带铺底（0.14–0.20，最大的最深），结束的只画一道细线；不描边 */
+  /** 蜡烛下面：一堵墙一道带（同侧同类、相邻桶、时间上连着的并成一道，和手机同一套 OrderFlowGroup）；
+   *  挂着的铺底（0.14–0.20，最大的最深），结束的只画一道细线；不描边 */
   function drawBands(c: CanvasRenderingContext2D, g: ChartGeometry, k: number, step: number): void {
     bands = []
     plan = null
@@ -174,22 +177,28 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     const rs = step * k
     const tFrom = g.timeOf(g.from - 1), tTo = g.timeOf(g.to + 2)
     const top = g.pane.y, bottom = g.pane.y + g.pane.h
+    const disp = OF.prefs.display
+    const bar = Math.max(0, g.iv || 0)
+    const opts = { gapMs: OrderFlowGroup.mergeGapMs(bar), minLifeMs: bar, step: snap.thresholds?.step ?? step }
+    const walls = mergedWalls(snap.orders, o => shows(disp, o), JSON.stringify(disp), opts)
+    const hlWall = wallOf(walls, OF.highlight, snap.orders, opts.step)
+    const list = hlWall && !walls.includes(hlWall) ? [...walls, hlWall] : walls
     const cands: Vis[] = []
-    for (const o of snap.orders) {
-      if (!shows(OF.prefs.display, o)) continue
-      const end = o.endMs
+    for (const w of list) {
+      const end = w.endMs
       if (end != null && end < tFrom) continue
-      if (o.firstSeenMs > tTo) continue
-      const r = rowOf(o.bucket, k)
-      const yT = g.priceToY((r + 1) * rs), yB = g.priceToY(r * rs)
+      if (w.firstSeenMs > tTo) continue
+      const rLo = rowOf(w.bucketLow, k), rHi = rowOf(w.bucketHigh, k)
+      const yT = g.priceToY((rHi + 1) * rs), yB = g.priceToY(rLo * rs)
       const mid = (yT + yB) / 2
       if (mid > bottom || mid < top) continue
-      const h = Math.max(3, Math.min(24, yB - yT))
-      const x0 = Math.max(-2, xOf(g, o.firstSeenMs))
+      const h = Math.max(3, Math.min(24 * (rHi - rLo + 1), yB - yT))
+      const x0 = Math.max(-2, xOf(g, w.firstSeenMs))
       const x1 = end == null ? g.plotW : Math.min(g.plotW, xOf(g, end))
       if (x1 < 0 || x0 > g.plotW) continue
-      const id = orderId(o)
-      cands.push({ o, id, live: end == null, x0, x1: Math.max(x0 + 2, x1), y0: mid - h / 2, h, mid, pk: peak(o, id) })
+      const rows = bookRows(w, m => peak(m, orderId(m)))
+      const top1 = rows[0]?.book.latest ?? w.members[0]
+      cands.push({ o: top1, w, rows, id: wallId(w, OF.highlight), live: end == null, x0, x1: Math.max(x0 + 2, x1), y0: mid - h / 2, h, mid, pk: wallPeak(rows) })
     }
     const dark = isDarkBg(g.colors.bg)
     const pick = pickBands(cands, OF.highlight)
@@ -199,7 +208,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       const hl = OF.highlight === v.id
       c.fillStyle = bandColor(v.o.product, v.o.side, hl ? 0.9 : ENDED_LINE[dark ? 'dark' : 'light'], dark)
       c.fillRect(v.x0, Math.round(v.mid) - (hl ? 1 : 0), v.x1 - v.x0, hl ? 2 : 1)
-      bands.push({ x0: v.x0, x1: v.x1, y0: v.mid - 4, y1: v.mid + 4, o: v.o, id: v.id })
+      bands.push({ x0: v.x0, x1: v.x1, y0: v.mid - 4, y1: v.mid + 4, v })
     }
     // 挂着的：小的先画、大的后画
     const n = pick.live.length
@@ -209,7 +218,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       c.fillStyle = bandColor(v.o.product, v.o.side, hl ? HIGHLIGHT_ALPHA : liveAlpha(rank, n, dark), dark)
       c.fillRect(v.x0, v.y0, v.x1 - v.x0, v.h)
       if (hl) { c.strokeStyle = g.colors.accent; c.lineWidth = 1; c.strokeRect(v.x0 + .5, v.y0 + .5, v.x1 - v.x0 - 1, v.h - 1) }
-      bands.push({ x0: v.x0, x1: v.x1, y0: v.y0, y1: v.y0 + v.h, o: v.o, id: v.id })
+      bands.push({ x0: v.x0, x1: v.x1, y0: v.y0, y1: v.y0 + v.h, v })
     }
   }
 
@@ -234,7 +243,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     c.textBaseline = 'middle'
     c.textAlign = 'left'
     const all = [...p.live, ...p.ended]
-    const texts = all.map(v => `${amt(v.pk)} ${venueName(exName(v.o.exchange), v.o.product)}`)
+    const texts = all.map(v => bandLabel(v))
     const H = 16
     const reqs = all.map((v, i) => ({
       right: (v.live ? v.x1 - 6 : v.x1 - (marked.has(v.id) ? 12 : 4)), left: v.x0 + 2,
@@ -339,24 +348,40 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     c.fillRect(0, y0, g.plotW, Math.max(1, y1 - y0))
   }
 
+  /** 右端标签：金额 + 最大那本簿（「1.8M Bybit永续」）；墙里不止一本簿再写「+N」 */
+  function bandLabel(v: Vis): string {
+    const top1 = v.rows[0]?.book ?? v.o
+    const more = v.rows.length > 1 ? ` +${v.rows.length - 1}` : ''
+    return `${amt(v.pk)} ${venueName(exName(top1.exchange), top1.product)}${more}`
+  }
+
+  /** 读数卡（§64 悬停卡的样子）：头一行类 · 侧 · 价位；大字合计；一本簿一行（「Bybit 永续 1.2M」，金额从大到小）；再是时间与成交 */
   function bandCard(b: BandHit, dec: number, step: number): string {
-    const o = b.o
-    const d = decFor(step, dec)
-    const lo = o.bucket * step, hi = lo + step
+    const { w, rows } = b.v
+    const st0 = w.step ?? step
+    const d = decFor(st0, dec)
+    const lo = st0 > 0 ? w.bucketLow * st0 : w.priceLow, hi = st0 > 0 ? (w.bucketHigh + 1) * st0 : w.priceHigh
     const now = Date.now()
-    const pk = peak(o, b.id)
-    const rows: [string, string][] = [
-      ['价位', `${px(lo, d)} – ${px(hi, d)}`],
-      ['首见', mdhm(o.firstSeenMs)],
-      ['结束', o.endMs == null ? `挂着 · 已 ${durShort(now - o.firstSeenMs)}` : `${mdhm(o.endMs)} · 挂了 ${durShort(o.endMs - o.firstSeenMs)}`],
-      ['峰值', amt(pk)],
-      ['剩余', o.status === 'live' ? amt(o.notional) : '—'],
-      ['累计成交', o.filledNotional > 0 ? amt(o.filledNotional) : '—'],
-      ['结局', outcomeText(o)],
+    const buy = w.side === 'bid'
+    const kind = w.contract ? '合约' : '现货'
+    const head = `<div class="hc-h"><i class="sw" style="background:${bandColor(b.v.o.product, w.side, 1)}"></i><b>${kind} · <span class="${buy ? 'up' : 'dn'}">${buy ? '买单' : '卖单'}</span></b>· <span class="num">${px(lo, d)} – ${px(hi, d)}</span></div>`
+    const net = `<div class="hc-net"><span class="v num ${buy ? 'up' : 'dn'}">${amt(b.v.pk)}</span><span class="l">${w.isLive ? '挂着' : '已结束'}</span></div>`
+    const bookKv = rows.map(r => {
+      const bk = r.book
+      const name = `${exName(bk.exchange)} ${PRODUCT_SHORT[bk.product]}`
+      const em = w.isRange ? px(bk.bucket * st0, d) : bk.orders > 1 ? `${bk.orders} 单` : ''
+      return `<span>${esc(name)}</span><b class="num">${amt(r.usd)}</b><em class="num">${em}</em>`
+    }).join('')
+    const one = w.members.length === 1 ? w.members[0] : null
+    const fill = w.filledNotional > 0 ? `${amt(w.filledNotional)}` : '—'
+    const meta: [string, string, string][] = [
+      ['首见', mdhm(w.firstSeenMs), ''],
+      ['结束', w.endMs == null ? `已 ${durShort(now - w.firstSeenMs)}` : mdhm(w.endMs), w.endMs == null ? '' : durShort(w.endMs - w.firstSeenMs)],
+      ['累计成交', fill, w.filledNotional > 0 ? `${Math.round(w.fillRatio * 100)}%` : ''],
     ]
-    const ex = exName(o.exchange)
-    return `<div class="of-card-h"><i style="background:${bandColor(o.product, o.side, 1)}"></i>${esc(ex)} · ${PRODUCT_FULL[o.product]} · <b class="${o.side === 'bid' ? 'up' : 'down'}">${o.side === 'bid' ? '买单' : '卖单'}</b></div>` +
-      rows.map(([k, v]) => `<div class="of-card-r"><span>${k}</span><b class="num">${v}</b></div>`).join('')
+    if (one && !w.isLive) meta.push(['结局', outcomeText(one), ''])
+    const metaKv = meta.map(([k, v, em]) => `<span>${k}</span><b class="num">${v}</b><em class="num">${em}</em>`).join('')
+    return `<div class="hc hc-band">${head}${net}<div class="hc-kv">${bookKv}</div><div class="hc-kv hc-meta">${metaKv}</div></div>`
   }
 
   function heatCard(x: number, y: number, g: ChartGeometry): string | null {
@@ -372,7 +397,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     if (i < 0 || i >= col.n || !(col.vals[i] > 0)) return null
     const rs = h.step * h.k
     const d = decFor(rs, g.dec)
-    const parts = [col.parts[i * 3], col.parts[i * 3 + 1], col.parts[i * 3 + 2]]
+    const parts = EXCHANGE_NAMES.map((_, q) => col.parts[i * EXCHANGE_NAMES.length + q])
     const split = col.split
       ? EXCHANGE_NAMES.map((n, q) => `<div class="of-card-r"><span>${n}</span><b class="num">${parts[q] > 0 ? amt(parts[q]) : '—'}</b></div>`).join('')
       : ''
@@ -479,7 +504,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       if (!mine()) return false
       for (let i = bands.length - 1; i >= 0; i--) {
         const b = bands[i]
-        if (x >= b.x0 && x <= b.x1 + 4 && y >= b.y0 - 1 && y <= b.y1 + 1) { OF.highlight = b.id; chart.dirty = true; OF.reveal?.(b.id); return true }
+        if (x >= b.x0 && x <= b.x1 + 4 && y >= b.y0 - 1 && y <= b.y1 + 1) { OF.highlight = b.v.id; chart.dirty = true; OF.reveal?.(b.v.id); return true }
       }
       return false
     },

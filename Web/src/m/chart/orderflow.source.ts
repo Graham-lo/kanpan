@@ -1,4 +1,4 @@
-// 手机网页版 · 主力订单流的数据源：把共用的 OrderFlowFeed（src/orderflow/feed.ts，PC 版同一套三家聚合的簿）
+// 手机网页版 · 主力订单流的数据源：把共用的 OrderFlowFeed（src/orderflow/feed.ts，PC 版同一套各家聚合的簿）
 // 包成图表要的 OrderFlowSnapshot（state.overlay.orderFlow）。
 //
 // 只做三件事：
@@ -20,7 +20,7 @@ import type { BarSeries, Interval } from './series'
 import type { ViewWindow } from './geometry'
 import type { Snapshot } from '../../orderflow/model'
 import type { Override } from '../../orderflow/settings'
-import type { OrderFlowSnapshot } from './orderflowGroup'
+import type { OrderFlowSnapshot } from '../../orderflow/group'
 import { ago } from '../../util/clock'
 import { feedBeat, recordFeedTrade } from '../../orderflow/flowTap'
 
@@ -136,7 +136,7 @@ export class OrderFlowSource {
   private frame(feed: OrderFlowFeed, s: Snapshot): void {
     if (feed !== this.feed) return
     const now = Date.now()
-    // 三家逐笔的覆盖心跳：连接都开着这半秒才算盖住（大单签、弹层合计据此判断哪几分钟能信本机）
+    // 各家逐笔的覆盖心跳：连接都开着这半秒才算盖住（大单签、弹层合计据此判断哪几分钟能信本机）
     feedBeat(feed, now)
     if (this.intervalMs > 0 && ago(this.lastEmit, now) < this.intervalMs) return
     this.lastEmit = now

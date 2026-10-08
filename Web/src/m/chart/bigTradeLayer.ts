@@ -20,6 +20,7 @@ import { reduceMotion } from './gesture'
 import { planSigns, hitSign, signLabel, SIGN, type Sign, type SignBar } from './bigTradeSigns'
 import { BigBarCache, TierCache, TIER_BARS, type Tiers } from '../../orderflow/bigTags'
 import { flowOf, type SymbolFlow } from '../../chart/tradeFlow'
+import { BT } from '../../terms'
 
 export const SIGN_FONT: ChartFontSpec = { size: SIGN.capFont, weight: 600, tabular: true }
 const WHITE: Hex = '#FFFFFF'
@@ -96,7 +97,7 @@ export class BigTradeLayer {
     const a = document.createElement('div')
     a.className = 'm-bigtrade-aria'
     Object.assign(a.style, { position: 'absolute', inset: '0', pointerEvents: 'none', overflow: 'hidden' })
-    a.setAttribute('aria-label', '图上大单签')
+    a.setAttribute('aria-label', BT.chartMarks)
     view.el.appendChild(a)
     this.aria = a
   }

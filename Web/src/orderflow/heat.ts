@@ -1,7 +1,7 @@
 /* Hkline Web · 主力订单流 · 深度热力
  *
- * 实时：每秒从聚合好的细桶里取中间价 ±5% 的一列（三家分通道），环形存 2 小时。
- * 回填：GET /v1/market/orderflow/heat（三家合起来、价格按「每个币」计）。2026-09-29 起按可见范围收窄：
+ * 实时：每秒从聚合好的细桶里取中间价 ±5% 的一列（各家分通道），环形存 2 小时。
+ * 回填：GET /v1/market/orderflow/heat（各家合起来、价格按「每个币」计）。2026-09-29 起按可见范围收窄：
  *       时间取看得到的那段、价格取可见中点 ±5%（可见高度更大时放宽，至多 ±50%），bucketMs 给一格约 2 像素的提示。一行代表多长以服务端返回的
  *       bucketMs 为准（默认 5 秒，行数超过 20 万时服务端自动放粗到 10/30/60 秒乃至 5–60 分钟），列宽照它画，
  *       不假定 5 秒；没跟踪的品种返回空行。只用在实时列开始之前的时段；接口不在就只有实时，不造数据。
@@ -12,12 +12,14 @@
 import type { Thresholds } from './types'
 import { bucketIndex } from './bucket'
 import { EXCHANGE_CH, rowOf, type FineBook } from './aggregate'
+import { EXCHANGE_COUNT } from '../venues'
 
 export const HEAT_RADIUS = 0.05
 export const HEAT_LIVE_CAP = 7200
 export const HEAT_BACK_CAP = 40_000
 export const HEAT_MIN_FRACTION = 0.05
-const STRIDE = 3
+/** 每格分几家（注册表的家数，通道号见 EXCHANGE_CH） */
+export const STRIDE = EXCHANGE_COUNT
 
 export interface HeatColumn {
   t: number
@@ -26,7 +28,7 @@ export interface HeatColumn {
   /** 第一个细桶号 */
   lo: number
   n: number
-  /** n × 3：币安 / OKX / Coinbase 的买卖合计美元名义；回填没有分家，全记在第 0 通道 */
+  /** n × STRIDE：各家（EXCHANGE_CH 顺序）的买卖合计美元名义；回填没有分家，全记在第 0 通道 */
   data: Float32Array
   split: boolean
 }
@@ -224,7 +226,7 @@ export interface HeatGrid {
   step: number
   /** cols × rows 的平均值（没有样本的格子是 0） */
   values: Float32Array
-  /** cols × rows × 3 分家（回填格子全在第 0 通道，splitKnown 标 0） */
+  /** cols × rows × STRIDE 分家（回填格子全在第 0 通道，splitKnown 标 0） */
   parts: Float32Array
   splitKnown: Uint8Array
   p95: number
@@ -237,9 +239,9 @@ export interface HeatCol {
   lo: number
   n: number
   vals: Float32Array
-  /** n × 3 分家 */
+  /** n × STRIDE 分家 */
   parts: Float32Array
-  /** 这一列里有实时样本（分得出三家） */
+  /** 这一列里有实时样本（分得出各家） */
   split: boolean
   samples: number
   builtAt: number
@@ -288,11 +290,12 @@ export function aggregateColumn(store: HeatStore, t0: number, t1: number, k: num
     const d = col.data
     for (let i = 0; i < col.n; i++) {
       const b = i * STRIDE
-      const v = d[b] + d[b + 1] + d[b + 2]
+      let v = 0
+      for (let q = 0; q < STRIDE; q++) v += d[b + q]
       if (!(v > 0)) continue
       const r = rowOf(col.lo + i, k) - lo
       vals[r] += v
-      parts[r * STRIDE] += d[b]; parts[r * STRIDE + 1] += d[b + 1]; parts[r * STRIDE + 2] += d[b + 2]
+      for (let q = 0; q < STRIDE; q++) parts[r * STRIDE + q] += d[b + q]
     }
   }
   if (samples > 1) {

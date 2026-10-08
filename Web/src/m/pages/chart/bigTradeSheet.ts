@@ -163,7 +163,7 @@ export function liqCells(rows: Iterable<LiqRow>, now: number): { start: number; 
 const skel = (style: string): string => `<span class="bt-skel" style="${style}"></span>`
 
 function heroSkelHTML(): string {
-  return `<div class="bt-card bt-hero"><h5>本根<span class="rt">第一次打开</span></h5>
+  return `<div class="bt-card bt-hero"><h5>本根<span class="rt"></span></h5>
     <div class="bt-amts">${skel('width:88px;height:22px')}${skel('width:88px;height:22px')}</div>
     <div class="bt-vs bt-skel" style="margin-top:12px"></div>
     <div class="bt-rows"><span class="lab">近 1 小时</span><div class="bt-vs s bt-skel"></div><span class="lab">今日</span><div class="bt-vs s bt-skel"></div></div></div>`
@@ -179,16 +179,15 @@ export function liqCardHTML(m: LiqModel | null, full: boolean): string {
   if (!m) return ''
   if (m.state === 'loading') return `<div class="bt-card thin"><h5>爆仓</h5><div class="bt-vs s bt-skel" style="margin:4px 0 10px"></div>${skel('display:block;height:14px;width:60%')}</div>`
   if (m.state === 'none') return `<div class="bt-card thin"><h5>爆仓</h5><div class="bt-empty"><b>这只品种暂无爆仓数据</b></div></div>`
-  if (m.today.long + m.today.short <= 0) return `<div class="bt-card thin" data-liq="empty"><h5>爆仓<span class="rt">近 1 小时</span></h5><div class="bt-empty"><b>今天还没有人被打爆</b>多空都稳着</div></div>`
+  if (m.today.long + m.today.short <= 0) return `<div class="bt-card thin" data-liq="empty"><h5>爆仓<span class="rt">近 1 小时</span></h5><div class="bt-empty"><b>今日无爆仓</b></div></div>`
   const h = m.hour
-  const mid = h.long + h.short <= 0 ? '这一小时多空都稳着' : h.long >= h.short ? '多头被打得更狠' : '空头被打得更狠'
   const mx = m.today.max
   const maxLine = mx
     ? `<span>今日最大 <b class="${mx[6] === 0 ? 'down' : 'up'}">${mx[6] === 0 ? '多单' : '空单'} ${esc(fmt(mx[4]))}</b> @ ${esc(m.maxPrice)} · ${esc(m.maxWhen)}</span>`
     : '<span></span>'
   return `<div class="bt-card thin" data-liq="data"><h5>爆仓<span class="rt">近 1 小时</span></h5>
     ${vsHTML(h.short, h.long, true).replace('class="bt-vs s"', 'class="bt-vs s liq"')}
-    <div class="bt-ends"><b class="up">空爆 ${esc(fmt(h.short))}</b><span>${mid}</span><b class="down">多爆 ${esc(fmt(h.long))}</b></div>
+    <div class="bt-ends"><b class="up">空爆 ${esc(fmt(h.short))}</b><span></span><b class="down">多爆 ${esc(fmt(h.long))}</b></div>
     <div class="bt-mini">${maxLine}${full ? `<span>24h 多爆 <b>${esc(fmt(m.day.long))}</b> · 空爆 <b>${esc(fmt(m.day.short))}</b></span>` : ''}</div></div>`
 }
 
@@ -213,7 +212,7 @@ export function barsCardHTML(bars: BarCol[], sel: number | null, flash: number |
   })
   sv += '</svg>'
   const mid = bars[Math.floor((bars.length - 1) / 2)]
-  return `<div class="bt-card" data-card="bars"><h5>每根<span class="rt">近 ${bars.length} 根 · 点一根十字线就跳过去</span></h5>
+  return `<div class="bt-card" data-card="bars"><h5>每根<span class="rt">近 ${bars.length} 根</span></h5>
     <div class="bt-scroll">${sv}</div>
     <div class="bt-mini"><span>${esc(bars[0].label)}</span><span>${esc(mid.label)}</span><span>${esc(bars[bars.length - 1].label)}</span></div></div>`
 }
@@ -248,7 +247,7 @@ export function liqDayCardHTML(m: LiqModel | null): string {
   const max = mx1 ? `<div class="bt-liqmax"><span class="ic ${mx1[6] === 0 ? 'down' : 'up'}">${mx1[6] === 0 ? '多' : '空'}</span>
     <span class="t">今日最大一笔 · ${mx1[6] === 0 ? '多单' : '空单'}爆仓<small>${esc(m.maxWhen)} · ${esc(m.maxPrice)} · ${LIQ_EX[mx1[7]] ?? '币安'}</small></span>
     <span class="v ${mx1[6] === 0 ? 'down' : 'up'}">${esc(fmt(mx1[4]))}</span></div>` : ''
-  return `<div class="bt-card" data-card="liq24"><h5>爆仓<span class="rt">24 小时 · 每格 15 分钟</span></h5><div class="bt-scroll">${sv}</div>
+  return `<div class="bt-card" data-card="liq24"><h5>爆仓<span class="rt">24 小时</span></h5><div class="bt-scroll">${sv}</div>
     <div class="bt-mini"><span>${esc(m.from)}</span><span>多爆 <b class="down">${esc(fmt(m.day.long))}</b> · 空爆 <b class="up">${esc(fmt(m.day.short))}</b></span><span>现在</span></div>${max}</div>`
 }
 
@@ -325,7 +324,7 @@ export class BigTradeSheet {
             <div class="bt-amts"><b class="up"><span data-r="bb"></span><small data-n="bn"></small></b><b class="down"><span data-r="bs"></span><small data-n="sn"></small></b></div>
             <div class="bt-vs" data-vs="bar"><div class="b"></div><div class="a"></div><span class="net"></span></div>
           </div>
-          <div class="bt-empty bt-hero-empty" hidden><b>这根还没有大单</b>门槛以上的成交一出现就在这里</div>
+          <div class="bt-empty bt-hero-empty" hidden><b>这根还没有大单</b></div>
           <div class="bt-rows">
             <span class="lab">近 1 小时</span>${this.rowHTML('hour')}
             <span class="lab">今日</span>${this.rowHTML('today')}
@@ -333,7 +332,7 @@ export class BigTradeSheet {
           <div class="bt-hint bt-untracked" hidden>这只品种只算打开以后的成交</div>
         </div>
         <div class="bt-liq"></div>
-        <button type="button" class="bt-hint bt-more">上拉看每根 · 价位 · 24 小时爆仓</button>
+        <button type="button" class="bt-hint bt-more">每根 · 价位 · 24 小时爆仓</button>
         <div class="bt-full">
           <div class="bt-bars"></div><div class="bt-lad"></div><div class="bt-liqday"></div>
           <button type="button" class="bt-card thin bt-thr"><span class="l">门槛</span><span class="v"></span><span class="go">改 ›</span></button>

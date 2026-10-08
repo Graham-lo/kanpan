@@ -11,7 +11,7 @@ import { I, esc } from '../ui/dom'
 import { patchAttr, patchClass, patchShell, patchStyle, patchText, rowPool } from '../ui/patch'
 import { toast } from '../ui/overlay'
 import { hexA } from '../util/format'
-import { pressure, steppedBook, exName, venueName, PRODUCT_SHORT, type FineBook } from './aggregate'
+import { pressure, steppedBook, exName, venueName, PRODUCT_SHORT, EXCHANGE_CH, type FineBook } from './aggregate'
 import { orderId, type BigOrder, type Product } from './types'
 import { tapeBase, bpsText, tapeRowH, tapeRowAlpha, TAPE_ROW_SMALL, type TapeRow } from './tape'
 import { parseAmount } from './settings'
@@ -331,7 +331,7 @@ function updateBook(): void {
   const feed = OF.feed, fine = OF.fine
   const pEl = el.querySelector<HTMLElement>('#ofPress')!, vEl = el.querySelector<HTMLElement>('#ofVenues')!, bEl = el.querySelector<HTMLElement>('#ofBook')!
   if (!feed || !fine || !fine.ready) {
-    const w = `<div class="of-wait faint">${feed ? '正在连三家交易所的盘口…' : '打开指标「主力订单流」或深度梯子后开始接盘口'}</div>`
+    const w = `<div class="of-wait faint">${feed ? '正在连各家交易所的盘口…' : '打开指标「主力订单流」或深度梯子后开始接盘口'}</div>`
     patchShell(pEl, w, w); patchShell(vEl, '', ''); patchShell(bEl, '', '')
     return
   }
@@ -351,7 +351,7 @@ function updateBook(): void {
   const pTop = pEl.firstElementChild!, pBar = pEl.lastElementChild!
   pTop.querySelectorAll('[data-of="band"]').forEach(c => patchAttr(c, 'aria-pressed', String(Number((c as HTMLElement).dataset.v) === band)))
   patchText(pTop.children[1], `买 ${unitAmt(t.bid, mid)}`); patchText(pTop.children[2], `卖 ${unitAmt(t.ask, mid)}`)
-  patchAttr(pBar, 'data-tip', `中间价 ±${band}% 以内三家所有簿的买卖挂单名义`)
+  patchAttr(pBar, 'data-tip', `中间价 ±${band}% 以内各家所有簿的买卖挂单名义`)
   patchStyle(pBar.children[0], 'width', `${(share * 100).toFixed(1)}%`)
   patchText(pBar.children[2], `${(share * 100).toFixed(0)}%`); patchText(pBar.children[3], `${((1 - share) * 100).toFixed(0)}%`)
   // 各家：交易所 × 产品，同一格里几本（比如两个交割）加总
@@ -367,8 +367,7 @@ function updateBook(): void {
   }
   const order: Product[] = ['usdtPerp', 'spot', 'coinPerp', 'delivery']
   prods.sort((a, b) => order.indexOf(a) - order.indexOf(b))
-  const exOrder = ['binance', 'okx', 'coinbase']
-  exs.sort((a, b) => exOrder.indexOf(a) - exOrder.indexOf(b))
+  exs.sort((a, b) => (EXCHANGE_CH[a] ?? 99) - (EXCHANGE_CH[b] ?? 99))
   let maxSide = 0
   for (const c of cells.values()) maxSide = Math.max(maxSide, c.bid, c.ask)
   maxSide ||= 1
@@ -509,7 +508,7 @@ function drawTape(): void {
   const downT = css.getPropertyValue('--down-text').trim() || down
   const hover = css.getPropertyValue('--surface-2').trim() || '#F6F7F9'
   const rows0 = tapePaused ?? OF.tape.visible(tapeMin(), Math.max(1, Math.ceil(H / TAPE_ROW_SMALL)))
-  if (!OF.feed) { tapeShown = []; tapeYs = []; hint(c, W, H, text3, feedIdleText('打开指标「主力订单流」后显示三家合并成交')); return }
+  if (!OF.feed) { tapeShown = []; tapeYs = []; hint(c, W, H, text3, feedIdleText('打开指标「主力订单流」后显示各家合并成交')); return }
   if (!rows0.length) { tapeShown = []; tapeYs = []; hint(c, W, H, text3, `还没有 ≥ ${amt(tapeMin())} 的成交`); return }
   const big = OF.bigTrade || Infinity
   const base = OF.bigTrade > 0 ? OF.bigTrade * 5 : 0

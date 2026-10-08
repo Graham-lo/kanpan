@@ -169,19 +169,21 @@ describe('摆放', () => {
 })
 
 describe('一根的大单合计', () => {
-  it('浏览器的分钟桶按根并：金额、笔数、最大一笔、现货与三家', () => {
+  it('浏览器的分钟桶按根并：金额、笔数、最大一笔、现货与五家', () => {
     const s = 'SOLUSDT'
     cover(s, T0, T0 + 5 * 60_000)
     trade(s, T0 + 10_000, 120_000, true, { ex: 'okx', product: 'spot', price: 101 })
     trade(s, T0 + 70_000, 300_000, true, { price: 102 })
     trade(s, T0 + 200_000, 50_000, false, { ex: 'coinbase', product: 'spot' })
     trade(s, T0 + 200_000, 5_000, false)   // 不到大单线，不算
+    trade(s, T0 + 210_000, 80_000, true, { ex: 'bybit' })
+    trade(s, T0 + 220_000, 60_000, false, { ex: 'hyperliquid' })
     const b = barBig(flowOf(s), T0, T0 + 5 * 60_000, T0 + 5 * 60_000)!
-    expect(b.bb).toBe(420_000); expect(b.bs).toBe(50_000)
-    expect(b.bn).toBe(2); expect(b.sn).toBe(1)
+    expect(b.bb).toBe(500_000); expect(b.bs).toBe(110_000)
+    expect(b.bn).toBe(3); expect(b.sn).toBe(2)
     expect(b.bmax?.usd).toBe(300_000); expect(b.bmax?.price).toBe(102)
     expect(b.spot).toBe(170_000)
-    expect(b.ex).toEqual([300_000, 120_000, 50_000])
+    expect(b.ex).toEqual([300_000, 120_000, 50_000, 80_000, 60_000])
     expect(b.exact).toBe(true)
   })
   it('接缝：覆盖之前的分钟用服务端的行（只有金额，笔数等给 null）；覆盖之后用浏览器的', () => {
@@ -243,15 +245,17 @@ describe('抽屉 · 汇总', () => {
     expect(w.hour).toMatchObject({ bb: 300_000, bs: 200_000 })
     expect(w.today).toMatchObject({ bb: 400_000, bs: 200_000, bn: 2, sn: 1 })
   })
-  it('近 1 小时的现货 / 合约、三家占比只用浏览器记的；一笔都没有给 null', () => {
+  it('近 1 小时的现货 / 合约、五家占比只用浏览器记的；一笔都没有给 null', () => {
     const s = 'SOLUSDT', now = T0 + HOUR
     expect(liveShares(flowOf(s), now)).toBeNull()
     trade(s, now - 2 * HOUR, 999_999, true)                                // 一小时之前
     trade(s, now - 10 * 60_000, 100_000, true, { ex: 'coinbase', product: 'spot' })
     trade(s, now - 5 * 60_000, 300_000, false, { ex: 'okx' })
+    trade(s, now - 4 * 60_000, 50_000, true, { ex: 'bybit', product: 'spot' })
+    trade(s, now - 3 * 60_000, 70_000, false, { ex: 'hyperliquid' })
     const sh = liveShares(flowOf(s), now)!
-    expect(sh.total).toBe(400_000); expect(sh.spot).toBe(100_000); expect(sh.contract).toBe(300_000)
-    expect(sh.ex).toEqual([0, 300_000, 100_000])
+    expect(sh.total).toBe(520_000); expect(sh.spot).toBe(150_000); expect(sh.contract).toBe(370_000)
+    expect(sh.ex).toEqual([0, 300_000, 100_000, 50_000, 70_000])
   })
 })
 

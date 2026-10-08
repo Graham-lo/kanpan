@@ -67,15 +67,16 @@ function liqM(o: Partial<LiqModel> = {}): LiqModel {
 }
 
 describe('大单与爆仓 · 片段', () => {
-  it('爆仓卡：现货整块不出现；骨架 / 暂无数据 / 今天还没有 / 有数', () => {
+  it('爆仓卡：现货整块不出现；骨架 / 暂无数据 / 今日无爆仓 / 有数；只留数字与短标签', () => {
     expect(liqCardHTML(null, false)).toBe('')
     expect(liqCardHTML(liqM({ state: 'loading' }), false)).toContain('bt-skel')
     expect(liqCardHTML(liqM({ state: 'none' }), false)).toContain('这只品种暂无爆仓数据')
-    expect(liqCardHTML(liqM(), false)).toContain('今天还没有人被打爆')
+    expect(liqCardHTML(liqM(), false)).toContain('<b>今日无爆仓</b></div>')
     const max: LiqRow = [0, 900_000, 0, 1, 900_000, 98765.4, 0, 1]
     const m = liqM({ hour: { long: 1_000_000, short: 200_000, n: 4, max }, today: { long: 3e6, short: 1e6, n: 9, max }, day: { long: 5e6, short: 2e6, n: 20, max }, maxWhen: '12:31', maxPrice: '98765.4' })
     const half = liqCardHTML(m, false)
-    expect(half).toContain('多头被打得更狠'); expect(half).toContain('多单 900.0K'); expect(half).toContain('@ 98765.4 · 12:31')
+    for (const x of ['被打得更狠', '多空都稳着']) expect(half).not.toContain(x)
+    expect(half).toContain('空爆 200.0K'); expect(half).toContain('多爆 1.0M'); expect(half).toContain('多单 900.0K'); expect(half).toContain('@ 98765.4 · 12:31')
     expect(half).not.toContain('24h 多爆')
     expect(liqCardHTML(m, true)).toContain('24h 多爆 <b>5.0M</b>')
   })
@@ -112,6 +113,10 @@ describe('大单与爆仓 · 片段', () => {
     const d = liqDayCardHTML(liqM({ cells, today: { long: 500, short: 800, n: 2, max }, day: { long: 500, short: 800, n: 2, max }, maxWhen: '09:15', maxPrice: '12.5', selCell: 90 }))
     expect(d.match(/class="bt-[ud]"/g)!.length).toBe(2)
     expect(d).toContain('bt-sel'); expect(d).toContain('今日最大一笔 · 空单爆仓'); expect(d).toContain('OKX')
+    expect(d).toContain('<span class="rt">24 小时</span>'); expect(d).not.toContain('每格 15 分钟')
+    // 服务端 max_ex = 2 是 Bybit
+    const byb: LiqRow = [0, 0, 800, 1, 800, 12.5, 1, 2]
+    expect(liqDayCardHTML(liqM({ cells, today: { long: 0, short: 800, n: 1, max: byb }, day: { long: 0, short: 800, n: 1, max: byb }, maxWhen: '09:15', maxPrice: '12.5', selCell: -1 }))).toContain('Bybit')
     expect(liqDayCardHTML(liqM({ state: 'none' }))).toBe('')
   })
 })
@@ -215,7 +220,7 @@ describe('大单与爆仓 · 弹层各状态的模型', () => {
     expect(m.hero.hour).toMatchObject({ bb: 900_000, bs: 300_000 })
     expect(m.hero.today.bs).toBe(1_800_000)
     expect(m.bars).toEqual([]); expect(m.ladder).toBeNull(); expect(m.sel).toBeNull()
-    expect(m.sub).toBe('BTC · 币安 · OKX · Coinbase 合并')
+    expect(m.sub).toBe('BTC · 币安 · OKX · Coinbase · Bybit · Hyperliquid 合并')
     expect(m.thr).toBe('永续 100.0K · 现货 50.0K · 步长 0.5')
     expect(m.liq!.state).toBe('loading')
   })
@@ -262,7 +267,7 @@ describe('大单与爆仓 · 弹层各状态的模型', () => {
     expect(model(r2).liq!.state).toBe('none')
     const e = model(rig({ force: 'liqEmpty' })).liq!
     expect(e.state).toBe('data'); expect(e.cells.every(([a, b]) => a + b === 0)).toBe(true)
-    expect(liqCardHTML(e, false)).toContain('今天还没有人被打爆')
+    expect(liqCardHTML(e, false)).toContain('今日无爆仓')
   })
 
   it('停住：20 秒没进成交 → 数字变灰、右上写「数据停在 hh:mm」；断网同样', () => {
@@ -299,7 +304,7 @@ describe('大单与爆仓 · 十字线联动', () => {
     const r = rig()
     r.emit('crosshair', { crosshair: {}, bar: { openTime: TB } })
     let m = r.sheet.last!
-    expect(m.hero).toMatchObject({ title: `该根 ${hhmm(TB)}`, live: false, rt: '抬手回到本根' })
+    expect(m.hero).toMatchObject({ title: `该根 ${hhmm(TB)}`, live: false, rt: '15 分钟' })
     expect(m.hero.bar.bs).toBe(1_500_000); expect(m.sel).toBe(TB)
     r.emit('interaction', 'ended')
     vi.advanceTimersByTime(RETURN_MS - 10)

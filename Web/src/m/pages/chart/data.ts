@@ -10,7 +10,7 @@ import { S, on as onMarket, metaRow } from '../../../market'
 import { OrderFlowSource } from '../../chart/orderflow.source'
 import { stopWhenHiddenLong } from '../../../orderflow/idle'
 import type { OrderFlowPort } from '../../chart'
-import type { OrderFlowSnapshot } from '../../chart/orderflowGroup'
+import type { OrderFlowSnapshot } from '../../../orderflow/group'
 import type { Override } from '../../../orderflow/settings'
 import type { Thresholds } from '../../../orderflow/types'
 

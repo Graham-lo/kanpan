@@ -19,19 +19,20 @@ export function usdOf(n: Notional, price: number, quantity: number): number {
   return Number.isFinite(v) && v > 0 ? v : 0
 }
 
-export type SequenceModel = 'rangeOverlap' | 'previousFinalOverlap' | 'previousFinalExact' | 'strictIncrementing'
+/** snapshotOnly：没有序号、每帧都是整本（照手机端同名模型），只认快照、不收增量 */
+export type SequenceModel = 'rangeOverlap' | 'previousFinalOverlap' | 'previousFinalExact' | 'strictIncrementing' | 'snapshotOnly'
 
 /** 一本簿：交易所 × 产品 × 合约。 */
 export interface Venue {
-  /** binance / okx / coinbase */
+  /** 交易所的稳定键（见 src/venues 注册表） */
   exchange: string
-  /** 「币安」「OKX」「Coinbase」 */
+  /** 显示名（注册表登记的） */
   label: string
   product: Product
   instrument: string
   notional: Notional
   sequenceModel: SequenceModel
-  /** 快照在流里（OKX、Coinbase）；false 要另拉 REST 快照（币安） */
+  /** 快照在流里；false 要另拉 REST 快照 */
   snapshotInBand: boolean
 }
 export const venueId = (v: Pick<Venue, 'exchange' | 'product' | 'instrument'>): string => `${v.exchange}:${v.product}:${v.instrument}`
@@ -46,6 +47,8 @@ export interface BookSnapshot {
   eventTimeMs?: number
   connection: number
   slidingWindow: boolean
+  /** 对方服务重启后的第一帧（序号从头来）：整本覆盖，不按序号倒退判错 */
+  restart?: boolean
 }
 
 export interface BookDelta {

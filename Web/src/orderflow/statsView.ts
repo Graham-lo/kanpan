@@ -2,13 +2,14 @@
  *
  * 两块都是 48 格（30 分钟一格、上海时间）的小画布，定高 120（标题 32 + 图 88）：
  *   · 流动性：买、卖两根线（中间价 ±2.5% 以内的挂单名义），悬停给那一格的值与相对上一格的变化；
- *   · 成交：灰柱是三家合计，上面叠币安的主动买、主动卖两条波形（OKX / Coinbase 的 K 线没有主动买，只计总额）。
+ *   · 成交：灰柱是各家合计，上面叠币安的主动买、主动卖两条波形（OKX / Coinbase 的 K 线没有主动买，只计总额）。
  * 数据在 stats.ts；这里只画。
  */
 import { OF, feedIdleText, amt, hm, canvasFont, showCard, hideCard } from './state'
 import { hexA } from '../util/format'
 import { SLOT_MS, SLOTS, slotOf, type LiqPoint, type VolSlot } from './stats'
 import { signedPct } from './tradeLadder'
+import { VENUE_LIST } from '../venues'
 
 export type StatKind = 'liq' | 'vol'
 
@@ -147,9 +148,9 @@ export class StatChart {
   private drawVol(c: CanvasRenderingContext2D, W: number, H: number, now: number, p: Pal): void {
     if (!OF.feed) { this.hint(c, W, H, p, feedIdleText()); return }
     const slots = OF.vol.slots
-    if (!slots.some(s => s.total > 0)) { this.hint(c, W, H, p, OF.vol.status === 'down' ? '三家 K 线暂时取不到' : '正在取三家 30 分钟 K 线…'); return }
-    const partial = OF.vol.exchanges.some(e => e !== 'binance')
-    this.note(c, p, partial ? '灰柱三家合计 · OKX / Coinbase 只计总额' : '灰柱合计 · 线为币安主动买 / 卖', undefined, W)
+    if (!slots.some(s => s.total > 0)) { this.hint(c, W, H, p, OF.vol.status === 'down' ? '各家 K 线暂时取不到' : '正在取各家 30 分钟 K 线…'); return }
+    const { split, total } = volSplitNames(OF.vol.exchanges)
+    this.note(c, p, total.length ? `灰柱各家合计 · ${total.join(' / ')} 只计总额` : `灰柱合计 · 线为${split.join(' / ')}主动买 / 卖`, undefined, W)
     const max = Math.max(1, ...slots.map(s => s.total)) * 1.05
     const base = H - PAD_B
     const y = (v: number): number => base - v / max * (base - PAD_T)
@@ -161,7 +162,7 @@ export class StatChart {
       c.fillStyle = hexA(p.text3, i === this.hover ? 0.36 : 0.18)
       c.fillRect(Math.round(x - bw / 2 + 1), y(s.total), Math.max(1, Math.round(bw - 2)), base - y(s.total))
     }
-    const wave = (k: 'bnBuy' | 'bnSell', col: string): void => {
+    const wave = (k: 'buy' | 'sell', col: string): void => {
       const ok = slots.filter(s => s.total > 0)
       if (!ok.length) return
       c.beginPath()
@@ -174,7 +175,7 @@ export class StatChart {
       ok.forEach((s, i) => { const x = this.xOf(s.t, now, W); if (i) c.lineTo(x, y(s[k])); else c.moveTo(x, y(s[k])) })
       c.strokeStyle = col; c.lineWidth = 1.25; c.lineJoin = 'round'; c.stroke()
     }
-    wave('bnSell', p.down); wave('bnBuy', p.up)
+    wave('sell', p.down); wave('buy', p.up)
   }
 
   // ---------------------------------------------------------------- 悬停
@@ -206,18 +207,26 @@ function liqCard(pts: LiqPoint[], t: number, now: number): string {
     <div class="of-card-foot">${prev ? '百分比是相对上一个 30 分钟' : '上一个 30 分钟没有记录'} · ${q.src === 'server' ? '服务端深度快照的均值' : '本页实时取样的均值'}</div>`
 }
 
+/** 这次并进来的各家里：K 线带主动买（拆买卖）的、只有总额的，各自的显示名 */
+function volSplitNames(exchanges: readonly string[]): { split: string[]; total: string[] } {
+  const split: string[] = [], total: string[] = []
+  for (const a of VENUE_LIST) if (exchanges.includes(a.key)) (a.takerSplit ? split : total).push(a.label)
+  return { split, total }
+}
+
 function volCard(s: VolSlot | undefined, t: number, now: number): string {
   if (!s || !(s.total > 0)) return ''
-  const bn = s.bnBuy + s.bnSell
-  const rows = [`<div class="of-card-r"><span>三家合计</span><b class="num">${amt(s.total)}</b></div>`]
-  if (bn > 0) {
-    rows.push(`<div class="of-card-r"><span>币安 主动买</span><b class="num up">${amt(s.bnBuy)} <em>${(s.bnBuy / bn * 100).toFixed(0)}%</em></b></div>`)
-    rows.push(`<div class="of-card-r"><span>币安 主动卖</span><b class="num down">${amt(s.bnSell)} <em>${(s.bnSell / bn * 100).toFixed(0)}%</em></b></div>`)
+  const { split, total } = volSplitNames(OF.vol.exchanges)
+  const who = split.join(' / ')
+  const bs = s.buy + s.sell
+  const rows = [`<div class="of-card-r"><span>各家合计</span><b class="num">${amt(s.total)}</b></div>`]
+  if (bs > 0) {
+    rows.push(`<div class="of-card-r"><span>${who} 主动买</span><b class="num up">${amt(s.buy)} <em>${(s.buy / bs * 100).toFixed(0)}%</em></b></div>`)
+    rows.push(`<div class="of-card-r"><span>${who} 主动卖</span><b class="num down">${amt(s.sell)} <em>${(s.sell / bs * 100).toFixed(0)}%</em></b></div>`)
   }
-  if (s.okx > 0) rows.push(`<div class="of-card-r"><span>OKX</span><b class="num">${amt(s.okx)}</b></div>`)
-  if (s.cb > 0) rows.push(`<div class="of-card-r"><span>Coinbase</span><b class="num">${amt(s.cb)}</b></div>`)
-  return `<div class="of-card-h">${slotLabel(t)}${t === slotOf(now) ? ' · 进行中' : ''}</div>${rows.join('')}
-    <div class="of-card-foot">OKX / Coinbase 只计总额（K 线没有主动买）</div>`
+  VENUE_LIST.forEach((a, i) => { if (!a.takerSplit && s.ex[i] > 0) rows.push(`<div class="of-card-r"><span>${a.label}</span><b class="num">${amt(s.ex[i])}</b></div>`) })
+  return `<div class="of-card-h">${slotLabel(t)}${t === slotOf(now) ? ' · 进行中' : ''}</div>${rows.join('')}${total.length ? `
+    <div class="of-card-foot">${total.join(' / ')} 只计总额（K 线没有主动买）</div>` : ''}`
 }
 
 /** 标题行右边的数：流动性给现在的买 / 卖，成交给 24 小时合计 */
@@ -244,5 +253,5 @@ export function tpsLine(): { txt: string; d: string } | null {
 }
 const TPS_W = 96, TPS_H = 16
 /** 「每秒成交」一行的外壳（读数与折线由调用方每帧就地改：整块重写会把带悬停说明的那一格换掉，说明跑到左上角） */
-export const TPS_SHELL = `<div class="of-tps" data-tip="三家逐笔合流，最近 10 秒的平均；小线是最近两分钟"><span class="faint">每秒成交</span><b class="num"></b>
+export const TPS_SHELL = `<div class="of-tps" data-tip="各家逐笔合流，最近 10 秒的平均；小线是最近两分钟"><span class="faint">每秒成交</span><b class="num"></b>
     <svg class="of-tps-sp" width="${TPS_W}" height="${TPS_H}" viewBox="0 0 ${TPS_W} ${TPS_H}" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.25"/></svg></div>`

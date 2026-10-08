@@ -1,16 +1,12 @@
 /* Hkline Web · 主力订单流 · 数据层（照 KanpanData/OrderFlow/OrderFlowFeed.swift）
  *
- * 打开一只品种：向 kanpan-api 查这只币在三家交易所的全部簿（/v1/market/orderflow/instruments，
- * 查不到用保底三本；表在本机留 24 小时，开图不再等这一问），按线路分连接订上，每 500 ms 评估一轮，
+ * 打开一只品种：向 kanpan-api 查这只币在各家交易所的全部簿（/v1/market/orderflow/instruments，
+ * 查不到用注册表登记的保底簿；表在本机留 24 小时，开图不再等这一问），按线路分连接订上，每 500 ms 评估一轮，
  * 出帧按 pace.ts 的节奏（画面没变不发、金额 5 秒一换）；服务端历史先取 6 小时，
  * 之后每分钟取一次增量（往前退 5 分钟），图往左拖出去了再往前补。
  *
- * 线路（与手机端一致）：
- * - 直连：币安 U 本位深度 fstream /public、成交 fstream /market，币本位 dstream，现货 data-stream.binance.vision；
- *   OKX 直连 ws.okx.com，连不上退到网关中继；Coinbase 恒直连。
- * - 网关：币安合约走 /v1/market/ws/binance 中继（一条 ≤ 8 路流）、快照走 /v1/market/depth；现货仍直连 vision；
- *   OKX 走 /v1/market/ws/okx；Coinbase 直连。
- * 一律不用 *.binancefuture.com（那是合约测试网）。
+ * 交易所的一切（地址、订阅、解帧、序号模型、REST 快照、参考簿）都在 src/venues 注册表里，
+ * 这里只按注册表给的连接规格开连接、按动作重订或重连，不认任何一家的名字。
  */
 import type { Action, Thresholds, Trade, Venue, Product, Notional } from './types'
 import { usdOf, venueId } from './types'
@@ -20,16 +16,14 @@ import { admit, coolingFor, noteStatus } from '../market/limit'
 import { viaRoute } from '../market/rest'
 import { D, applyOverride, baseOfSymbol, calibratedThreshold, defaultThresholds, isValidBase, needsCalibration, type Override } from './settings'
 import {
-  type DepthBook, type BinanceMarket, binanceMarket, binanceSnapshot, binanceStreams, BINANCE_SNAPSHOT_LEVELS,
-  decodeBinance, decodeOKX, decodeCoinbase, okxSubscribe, okxResubscribe, coinbaseSubscribe, OKX_MAX_BOOKS, type Out,
-} from './adapters'
+  type ConnSpec, type DepthBook, type Route, connectionSpecs, fallbackBooks, isKnownExchange, isPrimary, makeVenue, PRIMARY, venueAdapter,
+} from '../venues'
 import { ago, before } from '../util/clock'
 import { FramePacer } from './pace'
 import { cachedCalibration, cachedStep, storeCalibration, storeStep } from './startCache'
 
-export type Route = 'direct' | 'gateway'
+export type { Route } from '../venues'
 export const API_ORIGIN = 'https://kanpan.43-160-232-253.sslip.io'
-const EXCHANGES: Record<string, string> = { binance: '币安', okx: 'OKX', coinbase: 'Coinbase' }
 
 export const EVALUATE_MS = 500
 const HIDDEN_EVALUATE_MS = 2_000
@@ -80,14 +74,7 @@ export async function getJSON(url: string, ms: number): Promise<{ status: number
 
 interface Row { exchange: string; product: Product; instrument: string; notional: Notional; expiryMs: number | null; priceScale: number; tick: number | null }
 
-function venueOf(exchange: string, product: Product, instrument: string, notional: Notional): Venue {
-  const okx = exchange === 'okx', cb = exchange === 'coinbase'
-  return {
-    exchange, label: EXCHANGES[exchange] ?? exchange, product, instrument, notional,
-    sequenceModel: okx ? 'previousFinalExact' : cb ? 'strictIncrementing' : product === 'spot' ? 'rangeOverlap' : 'previousFinalOverlap',
-    snapshotInBand: okx || cb,
-  }
-}
+const venueOf = (exchange: string, product: Product, instrument: string, notional: Notional): Venue => makeVenue(exchange, product, instrument, notional)
 
 export function parseCatalog(json: unknown): Row[] | null {
   const v = (json as { venues?: unknown })?.venues
@@ -95,7 +82,7 @@ export function parseCatalog(json: unknown): Row[] | null {
   const out: Row[] = []
   for (const r of v as Record<string, unknown>[]) {
     const ex = r.exchange, pr = r.product, inst = r.instrument, n = r.notional as Record<string, unknown> | undefined
-    if (typeof ex !== 'string' || !EXCHANGES[ex] || typeof inst !== 'string' || !/^[A-Za-z0-9_\-.]{1,40}$/.test(inst)) continue
+    if (typeof ex !== 'string' || !isKnownExchange(ex) || typeof inst !== 'string' || !/^[A-Za-z0-9_\-.]{1,40}$/.test(inst)) continue
     if (pr !== 'spot' && pr !== 'usdtPerp' && pr !== 'coinPerp' && pr !== 'delivery') continue
     let notional: Notional
     if (n?.kind === 'linear' && typeof n.multiplier === 'number' && n.multiplier > 0) notional = { kind: 'linear', multiplier: n.multiplier }
@@ -163,24 +150,7 @@ function booksOf(rows: Row[], chartScale: number, now: number): DepthBook[] {
   return out
 }
 
-function fallbackBooks(symbol: string, base: string, chartScale: number): DepthBook[] {
-  const mk = (ex: string, p: Product, inst: string, factor: number): DepthBook => {
-    const venue = venueOf(ex, p, inst, { kind: 'linear', multiplier: 1 })
-    return { id: venueId(venue), venue, priceFactor: factor, expiryMs: null, tick: null }
-  }
-  return [mk('binance', 'usdtPerp', symbol, 1), mk('binance', 'spot', base + 'USDT', chartScale), mk('coinbase', 'spot', base + '-USD', chartScale)]
-}
-
 // ------------------------------------------------------------------ 一条连接
-
-interface ConnSpec {
-  key: string
-  urls: string[]            // 依次尝试
-  books: DepthBook[]
-  subscribe: () => string[]
-  decode: (text: string) => Out[]
-  ping?: { text: string; everyMs: number }
-}
 
 class Conn {
   ws: WebSocket | null = null
@@ -219,8 +189,8 @@ class Conn {
     ws.onclose = () => { if (this.ws === ws) this.fail() }
     ws.onerror = () => { try { ws.close() } catch { /* 已关 */ } }
   }
-  /** 半分钟没有帧：当它死了重连。 */
-  watchdog(now: number): void { if (this.ws && ago(this.lastMsg, now) > SILENCE_MS) this.reconnect() }
+  /** 半分钟（或这家登记的时长）没有帧：当它死了重连。 */
+  watchdog(now: number): void { if (this.ws && ago(this.lastMsg, now) > (this.spec.silenceMs ?? SILENCE_MS)) this.reconnect() }
   send(m: string): void { if (this.ws?.readyState === 1) this.ws.send(m) }
   reconnect(): void { this.teardown(); this.start() }
   private fail(): void {
@@ -426,49 +396,7 @@ export class OrderFlowFeed {
 
   // ---------------------------------------------------------- 连接
   private connect(): void {
-    const route = this.opts.route
-    const gw = `wss://${gwHost()}`
-    const specs: ConnSpec[] = []
-    const byMarket: Record<BinanceMarket, DepthBook[]> = { um: [], cm: [], spot: [] }
-    const okx: DepthBook[] = [], cb: DepthBook[] = []
-    for (const b of this.books) {
-      if (b.venue.exchange === 'binance') byMarket[binanceMarket(b.venue)].push(b)
-      else if (b.venue.exchange === 'okx') okx.push(b)
-      else if (b.venue.exchange === 'coinbase') cb.push(b)
-    }
-    const chunk = <T>(a: T[], n: number): T[][] => { const o: T[][] = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o }
-    const binanceSpec = (key: string, books: DepthBook[], url: (streams: string) => string, streams: (b: DepthBook) => string[]): ConnSpec => {
-      const map = new Map(books.map(b => [b.venue.instrument.toUpperCase(), b]))
-      return { key, books, urls: [url(books.flatMap(streams).join('/'))], subscribe: () => [], decode: t => decodeBinance(t, map) }
-    }
-    for (const m of ['um', 'cm', 'spot'] as BinanceMarket[]) {
-      const list = byMarket[m]
-      if (!list.length) continue
-      if (m === 'spot') {
-        specs.push(binanceSpec('binance-spot', list, s => `wss://data-stream.binance.vision/stream?streams=${s}`, binanceStreams))
-      } else if (route === 'gateway') {
-        chunk(list, 4).forEach((c, i) => specs.push(binanceSpec(`binance-${m}-gw${i}`, c, s => `${gw}/v1/market/ws/binance?streams=${s}`, binanceStreams)))
-      } else if (m === 'um') {
-        // 直连 U 本位：拨 iOS 出厂同一台 `dstream.binance.me`（国内不开代理能直连，深度与成交都在 /stream 上；
-        // 旧的 fstream.binance.com 国内解析被污染、握手就重置）。深度、成交仍分两条连接；成交那条不负责簿
-        // （books 为空时不触发 connectionOpened）
-        const map = new Map(list.map(b => [b.venue.instrument.toUpperCase(), b]))
-        specs.push({ key: 'binance-um-depth', books: list, urls: [`wss://dstream.binance.me/stream?streams=${list.map(b => binanceStreams(b)[0]).join('/')}`], subscribe: () => [], decode: t => decodeBinance(t, map) })
-        specs.push({ key: 'binance-um-trade', books: [], urls: [`wss://dstream.binance.me/stream?streams=${list.map(b => binanceStreams(b)[1]).join('/')}`], subscribe: () => [], decode: t => decodeBinance(t, map) })
-      } else {
-        specs.push(binanceSpec('binance-cm', list, s => `wss://dstream.binance.me/stream?streams=${s}`, binanceStreams))
-      }
-    }
-    chunk(okx, OKX_MAX_BOOKS).forEach((c, i) => {
-      const map = new Map(c.map(b => [b.venue.instrument, b]))
-      const relay = `${gw}/v1/market/ws/okx`
-      specs.push({
-        key: `okx${i}`, books: c, urls: route === 'gateway' ? [relay] : ['wss://ws.okx.com:8443/ws/v5/public', relay],
-        subscribe: () => okxSubscribe(c), decode: t => decodeOKX(t, map), ping: { text: 'ping', everyMs: 20_000 },
-      })
-    })
-    for (const b of cb) specs.push({ key: `coinbase-${b.venue.instrument}`, books: [b], urls: ['wss://advanced-trade-ws.coinbase.com'], subscribe: () => coinbaseSubscribe(b), decode: t => decodeCoinbase(t, b) })
-    this.conns = specs.map(s => new Conn(s, this))
+    this.conns = connectionSpecs(this.books, { route: this.opts.route, gw: `wss://${gwHost()}` }).map(s => new Conn(s, this))
     this.conns.forEach(c => c.start())
   }
 
@@ -491,10 +419,10 @@ export class OrderFlowFeed {
     const b = this.byId.get(id)
     if (!b) return
     if (a === 'fetchSnapshot') { void this.fetchSnapshot(b); return }
-    // resubscribe：OKX 发退订 + 订阅；Coinbase 整条重连
+    // resubscribe：这家登记了单本重订就只退订重订这一本（同连接其它簿不动），否则整条重连
     const c = this.connOf(id)
     if (!c) return
-    if (b.venue.exchange === 'okx') { for (const m of okxResubscribe(b)) c.send(m); this.handle(id, this.model.connectionOpened(id)) }
+    if (c.spec.resubscribe) { for (const m of c.spec.resubscribe(b)) c.send(m); this.handle(id, this.model.connectionOpened(id)) }
     else c.reconnect()
   }
 
@@ -507,17 +435,13 @@ export class OrderFlowFeed {
       return
     }
     this.snapshotting.set(b.id, now)
-    const m = binanceMarket(b.venue)
-    const sym = encodeURIComponent(b.venue.instrument)
-    const limit = BINANCE_SNAPSHOT_LEVELS[m]
-    const url = m === 'spot' ? `https://data-api.binance.vision/api/v3/depth?symbol=${sym}&limit=${limit}`
-      : this.opts.route === 'gateway' ? api(`/v1/market/depth?symbol=${sym}&limit=1000&market=${m}`)
-      : m === 'um' ? `https://fapi.binance.com/fapi/v1/depth?symbol=${sym}&limit=${limit}`
-      : `https://dapi.binance.com/dapi/v1/depth?symbol=${sym}&limit=${limit}`
+    const req = venueAdapter(b.venue.exchange)?.snapshot?.(b, this.opts.route)
+    if (!req) return
+    const url = req.url.startsWith('/') ? api(req.url) : req.url
     try {
       const r = await getJSON(url, SNAPSHOT_TIMEOUT_MS)
       if (this.stopped) return
-      const msg = r.status === 200 ? binanceSnapshot(r.body, b) : null
+      const msg = r.status === 200 ? req.parse(r.body, b) : null
       if (!msg || msg.type !== 'snapshot') throw new Error('bad snapshot')
       this.handle(b.id, this.model.applySnapshot(b.id, msg.snapshot, Date.now()))
     } catch {
@@ -530,10 +454,10 @@ export class OrderFlowFeed {
   // ---------------------------------------------------------- 步长（前一 UTC 日收盘推）
   /** 参考日那根日线的收盘；取不到是 NaN（网络错抛出） */
   private async referenceClose(day: number): Promise<number> {
-    const bars = await getJSON(`https://fapi.binance.com/fapi/v1/klines?symbol=${encodeURIComponent(this.symbol)}&interval=1d&startTime=${day}&limit=2`, 8000)
-    const rows = Array.isArray(bars.body) ? (bars.body as unknown[][]) : []
-    const exact = rows.find(r => Number(r[0]) === day) ?? rows.filter(r => Number(r[0]) < day + 86_400_000).pop()
-    return exact ? parseFloat(String(exact[4])) : NaN
+    const p = PRIMARY.primary
+    if (!p) return NaN
+    const bars = await getJSON(p.referenceCloseUrl(this.symbol, day), 8000)
+    return p.parseReferenceClose(bars.body, day)
   }
 
   /** first：start 里和品种表同时发出去的那一问（第一轮用它，不再问一次） */
@@ -543,7 +467,7 @@ export class OrderFlowFeed {
       try {
         const close = attempt === 0 && first ? await first : await this.referenceClose(day)
         if (this.stopped) return
-        const um = this.books.find(b => b.venue.exchange === 'binance' && b.venue.product === 'usdtPerp' && b.tick != null)
+        const um = this.books.find(b => isPrimary(b.venue.exchange) && b.venue.product === 'usdtPerp' && b.tick != null)
         const step = BucketScheme.derivedStep(close, this.opts.tick ?? (um ? um.tick! * um.priceFactor : null))
         if (step != null) {
           this.derivedStep = step

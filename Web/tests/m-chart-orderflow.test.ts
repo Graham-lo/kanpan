@@ -26,8 +26,8 @@ import type { BigOrder, BookSide, Product, Status } from '../src/orderflow/types
 import { isContract, orderId } from '../src/orderflow/types'
 import {
   OrderFlowCardBudget, OrderFlowGroup, OrderFlowKey, THICKNESS_TIERS, defaultOrderFlowDisplay, thicknessQuarters, thicknessTier,
-} from '../src/m/chart/orderflowGroup'
-import type { OrderFlowDisplay, OrderFlowGroupKey, OrderFlowSegment, OrderFlowSnapshot } from '../src/m/chart/orderflowGroup'
+} from '../src/orderflow/group'
+import type { OrderFlowDisplay, OrderFlowGroupKey, OrderFlowSegment, OrderFlowSnapshot } from '../src/orderflow/group'
 import {
   OrderFlowStyle as S, OrderFlowWallCache, candleHit, drawOrderFlow, drawOrderFlowBracket, drawOrderFlowHover, drawOrderFlowLabels, hasOrderFlow,
   mixHex, orderFlowAmount, orderFlowBands, orderFlowBaseColor, orderFlowColor, orderFlowEntry, orderFlowFocus,
