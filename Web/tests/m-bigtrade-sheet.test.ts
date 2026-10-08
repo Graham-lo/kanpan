@@ -216,12 +216,9 @@ describe('大单与爆仓 · 弹层各状态的模型', () => {
     expect(m.hero.hour).toMatchObject({ bb: 900_000, bs: 300_000 })
     expect(m.hero.today.bs).toBe(1_800_000)
     expect(m.sel).toBeNull()
-    expect(m.sub).toBe('BTC · 币安 · OKX · Coinbase · Bybit · Hyperliquid 合并')
-    // 五家一行放不下时弹层依次往短里挑（和 iOS 同一套）：去「合并」→ 后几家收成「+N」
-    expect(m.subs).toEqual([
-      'BTC · 币安 · OKX · Coinbase · Bybit · Hyperliquid 合并', 'BTC · 币安 · OKX · Coinbase · Bybit · Hyperliquid',
-      'BTC · 币安 · OKX · Coinbase · Bybit +1', 'BTC · 币安 · OKX · Coinbase +2', 'BTC · 币安 · OKX +3', 'BTC · 币安 +4',
-    ])
+    // 副标题只写品种，不列交易所（用户 2026-10-08：标题没必要写交易所）
+    expect(m.sub).toBe('BTC')
+    expect(m.subs).toEqual(['BTC'])
     expect(m.thr).toBe('永续 100.0K · 现货 50.0K · 步长 0.5')
     expect(m.liq!.state).toBe('loading')
   })

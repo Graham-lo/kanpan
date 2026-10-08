@@ -18,7 +18,6 @@ import { windows, windowSum, priceLevels, nearestWalls, HOUR, DAY, type WinSum }
 import { LiqStore, sumLiq } from '../../../orderflow/liquidation'
 import { tierFloor } from '../../../orderflow/flowTap'
 import { ivName } from '../../../orderflow/bigTags'
-import { EXCHANGE_NAMES, exName } from '../../../orderflow/aggregate'
 import { baseOfSymbol } from '../../../orderflow/settings'
 import type { Thresholds } from '../../../orderflow/types'
 import { BT, fill } from '../../../terms'
@@ -299,7 +298,7 @@ export class BigTradeController {
     const ladder = ladderRows(lv, mid, pstep, nearestWalls(port?.snapshot?.orders ?? [], mid))
 
     return {
-      ...((subs: string[]) => ({ sub: subs[0], subs }))(this.subtitles(base)), loading, stale, hero, liq, bars,
+      ...((subs: string[]) => ({ sub: subs[0], subs }))(this.subtitles(base, spot)), loading, stale, hero, liq, bars,
       sel: this.pick ? t0 : null, ladder, thr: this.thrText(),
     }
   }
@@ -334,18 +333,10 @@ export class BigTradeController {
     return `${sameDay ? BT.todayDay : BT.yesterday} ${this.label(t, 60_000)}`
   }
 
-  /** 副标题的几种写法，从长到短（和 iOS BigTradeSheet.subtitles 同一套）：全名 + 「合并」→ 全名 → 后面几家收成「+N」；
-   *  五家全开一行放不下，弹层挑第一种放得下的，读屏念第一种 */
-  private subtitles(base: string): string[] {
-    const venues = this.d.port()?.snapshot?.venues
-    const set = new Set<string>()
-    for (const v of venues ?? []) set.add(exName(v.exchange))
-    const names = set.size ? EXCHANGE_NAMES.filter(x => set.has(x)) : [...EXCHANGE_NAMES]
-    const full = `${base} · ${names.join(' · ')}`
-    if (names.length < 2) return [full]
-    const out = [`${full} ${BT.merged}`, full]
-    for (let k = names.length - 1; k >= 1; k--) out.push(`${base} · ${names.slice(0, k).join(' · ')} +${names.length - k}`)
-    return out
+  /** 副标题只写品种（现货加「现货」，和 iOS BigTradeSheet.subtitle 同一套）。用户 2026-10-08：标题没必要写交易所——
+   *  他关心的是品种和数据，哪几家合在一起权重不大；分家的信息留在读数卡与爆仓「最大一笔」里 */
+  private subtitles(base: string, spot: boolean): string[] {
+    return [spot ? `${base} ${BT.spot}` : base]
   }
 
   private thrText(): string {

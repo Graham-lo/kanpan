@@ -26,7 +26,7 @@ struct TermsTests {
   @Test("不出现口语化、含糊的说法")
   func noColloquialWords() throws {
     let table = try #require(Terms.table["bigTrade"])
-    let banned = ["空爆", "多爆", "被打", "被平", "还在走", "稳着", "该根", "这根", "这只品种", "第一次打开", "一笔"]
+    let banned = ["空爆", "多爆", "被打", "被平", "还在走", "稳着", "该根", "这根", "这只品种", "第一次打开", "一笔", "挂着", "在场", "已挂", "已撤销", "后撤"]
     for (k, v) in table {
       for b in banned { #expect(!v.contains(b), "\(k)「\(v)」含「\(b)」") }
     }

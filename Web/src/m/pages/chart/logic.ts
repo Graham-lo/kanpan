@@ -12,6 +12,7 @@
  *   十字线读数    Main/CrosshairReadout.swift 的 crosshairOHLCText
  */
 import { MINUS, MISSING, fmtPrice, fmtVol, grouped, toFixed, changePercentText } from '../../model/rowText'
+import { BT, fill } from '../../../terms'
 import { MAX_QUICK, MAX_SUBS, type IntervalId, type IndicatorId, type OrderFlowOverride } from '../../app/prefs'
 import { THRESHOLD_RANGE, STEP_RANGE } from '../../../orderflow/settings'
 import { ALL_INDICATOR_IDS, hasVariablePeriods } from '../../indicator/ids'
@@ -327,10 +328,11 @@ export function fillSplit(ratio: number): { filled: string; cancelled: string } 
   return { filled: toFixed(tenths / 10, 1) + '%', cancelled: toFixed((1000 - tenths) / 10, 1) + '%' }
 }
 export function cardStatus(g: Pick<CardGroup, 'isLive' | 'hasFill' | 'fillRatio'>): { text: string; state: CardState } {
-  if (g.isLive) return { text: g.hasFill ? '在场 · 成交 ' + percent(g.fillRatio) : '在场', state: 'live' }
-  if (!g.hasFill) return { text: '已撤', state: 'cancelled' }
+  // 用词只在 terms.json 一份（三端同）：挂单中 / 成交中 X% / 已成交 / 成交 X% · 撤单 Y% / 已撤单
+  if (g.isLive) return { text: g.hasFill ? fill(BT.statusFilling, { p: percent(g.fillRatio) }) : BT.statusLive, state: 'live' }
+  if (!g.hasFill) return { text: BT.statusCancelled, state: 'cancelled' }
   const s = fillSplit(g.fillRatio)
-  return s ? { text: `成交 ${s.filled} · 撤 ${s.cancelled}`, state: 'filled' } : { text: '已成交', state: 'filled' }
+  return s ? { text: fill(BT.statusPartFilled, { f: s.filled, c: s.cancelled }), state: 'filled' } : { text: BT.statusFilled, state: 'filled' }
 }
 export function durationText(ms: number): string {
   const minutes = Math.floor(Math.max(0, ms) / 60_000)

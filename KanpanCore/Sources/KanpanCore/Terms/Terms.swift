@@ -61,7 +61,6 @@ public enum BigTradeTerm: String, CaseIterable, Sendable {
   case perp
   case delivery
   case contract
-  case merged
   case auto
   case step
   case collapse
@@ -69,6 +68,14 @@ public enum BigTradeTerm: String, CaseIterable, Sendable {
   case todayDay
   case now
   case open
+  case statusLive
+  case statusFilling
+  case statusFilled
+  case statusPartFilled
+  case statusCancelled
+  case statusLost
+  case statusEnded
+  case held
   case signA11y
   case barsA11y
   case liqDayA11y

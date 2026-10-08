@@ -384,20 +384,10 @@ struct BigTradeSheet: View {
 
   // MARK: 头
 
-  /// 副标题的几种写法，从长到短：全名 + 「合并」→ 全名 → 后面几家收成「+N」。五家全开（币安 · OKX ·
-  /// Coinbase · Bybit · Hyperliquid）时一行放不下，交给 `ViewThatFits` 挑第一种放得下的；读屏念第一种。
-  private var subtitles: [String] {
-    let head = (base ?? SymbolInfo.placeholder(symbol: market.symbol).base) + (spot ? " " + BT.spot.text : "")
-    var labels: [String] = []
-    for v in link.snapshot?.venues ?? [] where !labels.contains(v.label) { labels.append(v.label) }
-    guard !labels.isEmpty else { return [head] }
-    let names = head + " · " + labels.joined(separator: " · ")
-    guard labels.count > 1 else { return [names] }
-    var out = [names + " " + BT.merged.text, names]
-    for k in stride(from: labels.count - 1, through: 1, by: -1) {
-      out.append(head + " · " + labels.prefix(k).joined(separator: " · ") + " +\(labels.count - k)")
-    }
-    return out
+  /// 副标题只写品种（现货加「现货」）。用户 2026-10-08：标题没必要写交易所——他关心的是品种和数据，
+  /// 哪几家合在一起权重不大；分家的信息留在读数卡与爆仓「最大一笔」里。
+  private var subtitle: String {
+    (base ?? SymbolInfo.placeholder(symbol: market.symbol).base) + (spot ? " " + BT.spot.text : "")
   }
 
   private var header: some View {
@@ -414,14 +404,9 @@ struct BigTradeSheet: View {
       VStack(alignment: .leading, spacing: 5) {
         Text(BT.title.text).font(.scaled(20, .bold, relativeTo: .title3)).foregroundStyle(t.ink)
           .accessibilityAddTraits(.isHeader)
-        let subs = subtitles
-        ViewThatFits(in: .horizontal) {
-          ForEach(subs, id: \.self) { Text($0).lineLimit(1) }
-        }
-        .font(TypeScale.captionEmph).foregroundStyle(t.ink3)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(subs[0])
-        .accessibilityIdentifier("bigtrade.subtitle")
+        Text(subtitle).lineLimit(1)
+          .font(TypeScale.captionEmph).foregroundStyle(t.ink3)
+          .accessibilityIdentifier("bigtrade.subtitle")
       }
       Spacer(minLength: Space.s)
       Button { Haptics.tap(); model.editing = true } label: {

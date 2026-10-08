@@ -148,16 +148,16 @@ describe('手机网页版 · 订单流详情卡', () => {
     expect(t.pairs[0][0]).toEqual({ label: '总金额', value: '185.21M USDT' })
     expect(t.pairs[0][1].value).toBe('2.24K BTC')
     expect(t.pairs[1][0]).toEqual({ label: '开始', value: '09-26 04:18' })
-    expect(t.statusText).toBe('在场 · 成交 1.1%')
-    expect(t.statusTight).toBe('在场·成交1.1%')
+    expect(t.statusText).toBe('成交中 1.1%')
+    expect(t.statusTight).toBe('成交中1.1%')
     expect(t.state).toBe('live')
   })
-  it('状态：已撤、成交一部分、全成', () => {
-    expect(L.cardStatus({ isLive: false, hasFill: false, fillRatio: 0 })).toEqual({ text: '已撤', state: 'cancelled' })
-    expect(L.cardStatus({ isLive: false, hasFill: true, fillRatio: 0.4 })).toEqual({ text: '成交 40% · 撤 60%', state: 'filled' })
-    expect(L.cardStatus({ isLive: false, hasFill: true, fillRatio: 0.002 }).text).toBe('成交 0.2% · 撤 99.8%')
+  it('状态：已撤单、成交一部分、全成', () => {
+    expect(L.cardStatus({ isLive: false, hasFill: false, fillRatio: 0 })).toEqual({ text: '已撤单', state: 'cancelled' })
+    expect(L.cardStatus({ isLive: false, hasFill: true, fillRatio: 0.4 })).toEqual({ text: '成交 40% · 撤单 60%', state: 'filled' })
+    expect(L.cardStatus({ isLive: false, hasFill: true, fillRatio: 0.002 }).text).toBe('成交 0.2% · 撤单 99.8%')
     expect(L.cardStatus({ isLive: false, hasFill: true, fillRatio: 1 })).toEqual({ text: '已成交', state: 'filled' })
-    expect(L.cardStatus({ isLive: true, hasFill: false, fillRatio: 0 }).text).toBe('在场')
+    expect(L.cardStatus({ isLive: true, hasFill: false, fillRatio: 0 }).text).toBe('挂单中')
   })
   it('持续、数量、步长位数', () => {
     expect(L.durationText(30_000)).toBe('不到 1 分')

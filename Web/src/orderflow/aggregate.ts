@@ -5,6 +5,7 @@
  * 所有价格都已是图上的单位（1000PEPE 一格 = 1000 个币）。
  */
 import type { BigOrder, BookSide, Product } from './types'
+import { BT, fill } from '../terms'
 import { isContract, usdOf } from './types'
 import type { OrderFlowModel } from './model'
 import { bucketIndex } from './bucket'
@@ -232,12 +233,24 @@ export function peakOf(o: BigOrder, peaks: Map<string, number>, id: string): num
   return p
 }
 
+/** 成交占峰值名义的比例，两数相加恰好 100：1% 以上整数，不到 1% 留一位小数（吃过一口至少 0.1%） */
+function pct1(o: BigOrder): string {
+  const v = Math.min(100, Math.max(0, o.filledNotional / Math.max(o.initialNotional, o.notional, o.filledNotional, 1e-9) * 100))
+  if (v >= 1) return `${Math.round(v)}%`
+  return `${Math.max(1, Math.round(v * 10)) / 10}%`
+}
+function pctRest(o: BigOrder): string {
+  const f = parseFloat(pct1(o))
+  return `${Math.round((100 - f) * 10) / 10}%`
+}
+
+/** 一单的状态词：挂单中 / 成交中 X% / 已成交 / 成交 X% · 撤单 Y% / 已撤单 / 已失联（用词只在 terms.json 一份，三端同） */
 export function outcomeText(o: BigOrder): string {
   switch (o.status) {
-    case 'live': return '挂着'
-    case 'filled': return '已成交'
-    case 'cancelled': return o.filledNotional > 0 ? '部分成交后撤' : '已撤销'
-    case 'lost': return '失联'
+    case 'live': return o.filledNotional > 0 ? fill(BT.statusFilling, { p: pct1(o) }) : BT.statusLive
+    case 'filled': return BT.statusFilled
+    case 'cancelled': return o.filledNotional > 0 ? fill(BT.statusPartFilled, { f: pct1(o), c: pctRest(o) }) : BT.statusCancelled
+    case 'lost': return BT.statusLost
   }
 }
 

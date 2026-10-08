@@ -160,7 +160,7 @@ describe('大单判定（照手机端模型）', () => {
     expect(m.evaluate(1000).orders).toHaveLength(0)
   })
 
-  it('没有成交就消失 → 已撤销，结束时刻取第一次看不见的那一刻', () => {
+  it('没有成交就消失 → 已撤单，结束时刻取第一次看不见的那一刻', () => {
     const { m, id } = setup()
     snap(m, id, bids(20_000), asks, 0)
     m.evaluate(0); m.evaluate(400)
@@ -170,7 +170,7 @@ describe('大单判定（照手机端模型）', () => {
     expect(o.status).toBe('cancelled')
     expect(o.endMs).toBe(1000)
     expect(o.filledNotional).toBe(0)
-    expect(outcomeText(o)).toBe('已撤销')
+    expect(outcomeText(o)).toBe('已撤单')
   })
 
   it('消失前被主动卖吃掉 → 已成交', () => {
@@ -186,7 +186,7 @@ describe('大单判定（照手机端模型）', () => {
     expect(outcomeText(o)).toBe('已成交')
   })
 
-  it('吃掉一部分再撤 → 部分成交后撤', () => {
+  it('吃掉一部分再撤 → 成交 20% · 撤单 80%', () => {
     const { m, id } = setup()
     snap(m, id, bids(20_000), asks, 0)
     m.evaluate(0); m.evaluate(400)
@@ -196,7 +196,7 @@ describe('大单判定（照手机端模型）', () => {
     const o = m.evaluate(1400).orders[0]
     expect(o.status).toBe('cancelled')
     expect(o.filledNotional).toBeCloseTo(95 * 4_000)
-    expect(outcomeText(o)).toBe('部分成交后撤')
+    expect(outcomeText(o)).toBe('成交 20% · 撤单 80%')
   })
 
   it('降到门槛一半以上仍算挂着，金额跟着变', () => {

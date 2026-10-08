@@ -260,12 +260,16 @@ struct OrderFlowCardText {
   /// 原来吃过一口的一律写「已成交 38%」，读起来像成交了、其实六成多是撤的（订单簿压测第二轮 D5）。
   /// 比例和图上深浅同一个判据（`OrderFlowGroup.hasFill` / `fillRatio`）。
   static func status(_ group: OrderFlowGroup) -> (text: String, state: State) {
-    // 挂着的写「在场 · 成交 19%」不写「已成交」：16 Pro 上卡宽约 300 pt，「开始 09-28 20:44 状态 在场 · 已成交 19%」
+    // 挂着的写「成交中 19%」不写「已成交」：16 Pro 上卡宽约 300 pt，「开始 09-28 20:44 状态 挂单中 · 已成交 19%」
     // 一行放不下，截成「在场 · 已成交 1…」（压测 2026-09-28 十字线取证）——比例恰恰是被截掉的那一截。
-    if group.isLive { return (group.hasFill ? "在场 · 成交 " + percent(group.fillRatio) : "在场", .live) }
-    guard group.hasFill else { return ("已撤", .cancelled) }
-    guard let split = fillSplit(group.fillRatio) else { return ("已成交", .filled) }
-    return ("成交 " + split.filled + " · 撤 " + split.cancelled, .filled)
+    // 用词只在 terms.json 一份（三端同）：挂单中 / 成交中 X% / 已成交 / 成交 X% · 撤单 Y% / 已撤单。
+    // 用户 2026-10-08：「挂着」「在场」这类口语不要，按实际情况给一目了然的词。
+    if group.isLive {
+      return (group.hasFill ? BigTradeTerm.statusFilling.fill(["p": percent(group.fillRatio)]) : BigTradeTerm.statusLive.text, .live)
+    }
+    guard group.hasFill else { return (BigTradeTerm.statusCancelled.text, .cancelled) }
+    guard let split = fillSplit(group.fillRatio) else { return (BigTradeTerm.statusFilled.text, .filled) }
+    return (BigTradeTerm.statusPartFilled.fill(["f": split.filled, "c": split.cancelled]), .filled)
   }
 
   /// 部分成交的「成交 / 撤」两个百分数，两数相加恰好 100：1% 以上按整数（「40%」「60%」），
