@@ -1830,6 +1830,13 @@ export class TVChart {
     }
     if (d.alert && d.type !== 'fib') { const e = pts[pts.length - 1]; c.fillStyle = this.colors.alert; c.beginPath(); c.arc(e.x + 10, e.y - 10, 4, 0, Math.PI * 2); c.fill() }
   }
+  /** 手柄在屏上的位置（命中、拖动、验收脚本都认这一份）：算出来的工具（锚定均价线、成交量分布、持仓）手柄不一定在锚点价位上 */
+  private handlesAt(d: Drawing, p: Pane, r: PriceRange): { x: number; y: number }[] {
+    return COMPUTED.has(d.type) ? handlePixels(this, d, p, r) : GEOM.has(d.type) ? geomHandles(this, d, p, r) : d.pts.map(q => this.pt(q, p, r))
+  }
+  handlesOf(d: Drawing): { x: number; y: number }[] {
+    return this._panes ? this.handlesAt(d, this._panes[0], this._ranges.main) : []
+  }
   hitDrawing(x: number, y: number): DrawingHit | null {
     if (!this._panes || this.drawingsHidden) return null // 隐藏着的画线不能被点中、拖动
     const p = this._panes[0], r = this._ranges.main, PW = this.plotW()
@@ -1837,7 +1844,7 @@ export class TVChart {
       const d = this.drawings[k]
       if (!d.pts.length || (this.drawingShown && !this.drawingShown(d))) continue
       const geo = GEOM.has(d.type)
-      const pts = COMPUTED.has(d.type) ? handlePixels(this, d, p, r) : geo ? geomHandles(this, d, p, r) : d.pts.map(q => this.pt(q, p, r)), a = pts[0], b = pts[1] || a
+      const pts = this.handlesAt(d, p, r), a = pts[0], b = pts[1] || a
       for (let j = 0; j < pts.length; j++) if (Math.hypot(pts[j].x - x, pts[j].y - y) < 8) return { d, handle: j }
       let dist = geo ? hitGeom(this, d, x, y, p, r) : hitComputed(this, d, x, y, p, r) ?? Infinity
       if (d.type === 'trend') dist = segDist(x, y, a, b)
@@ -2321,6 +2328,13 @@ export class TVChart {
     if (!usesText(d.type) || d.text || !this.o.onEditText) return
     const at = this.textRectOf(d)
     if (at) this.o.onEditText(d, at)
+  }
+  /** 这条画线这一帧的几何（画布坐标：线段、填色、手柄、字块）；只对走手机几何的种类（GEOM）有，其余返回 null。
+   *  给验收脚本按图表自己的几何取样，免得脚本里再抄一份 41 种的形状 */
+  inkOf(d: Drawing): { segments: { a: { x: number; y: number }; b: { x: number; y: number }; tint: string; dashed: boolean }[]; handles: { x: number; y: number }[]; labels: { left: number; top: number; right: number; bottom: number; plate: string; tint: string }[] } | null {
+    if (!this._panes) return null
+    const b = geomOf(this, d, this._panes[0], this._ranges.main); if (!b) return null
+    return { segments: b.g.segments, handles: b.g.handles, labels: b.placed.map(q => ({ ...q.box, plate: q.label.plate, tint: q.label.tint })) }
   }
   /** 这条画线的字块（画布坐标）；没有字块的种类退回第一点 */
   textRectOf(d: Drawing): { x: number; y: number; w: number; h: number } | null {

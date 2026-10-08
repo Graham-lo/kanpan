@@ -73,7 +73,47 @@ const PAGE = () => {
     const a = { x: X(A.t), y: Y(A.p) }, b = { x: X(B.t), y: Y(B.p) }
     const lerp = k => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k })
     const setClick = q => { if (q && inside(q.x, q.y)) click = { x: q.x, y: q.y } }
+    /** 图表自己认的手柄位置（点在手柄 8 px 内拖的是手柄，不是线身）；没有这个方法的旧包退回锚点 */
+    const HS = ch.handlesOf ? ch.handlesOf(d) : null
+    const nearHandle = (x, y) => !!HS && HS.some(h => Math.hypot(h.x - x, h.y - y) < 11)
+    const hA = HS?.[0] ?? a, hB = HS?.[1] ?? (d.pts[1] ? b : null)
+    // 走手机几何的种类（2026-10-08 补的 31 种）：取样点直接取图表这一帧的几何（chart.inkOf）——最长的几段线的中段、
+    // 只有字块的种类取字块中心（字是画线颜色）；线段按它自己的着色（涨跌色的读数线照涨跌色取）。点中位置 = 第一个没被 DOM 盖着的取样点
+    const ink = ch.inkOf?.(d)
+    if (ink) {
+      const tintCol = t => t === 'up' ? ch.colors.up || '#089981' : t === 'down' ? ch.colors.down || '#F23645' : col
+      const inLabel = (x, y) => ink.labels.some(L => x >= L.left - 3 && x <= L.right + 3 && y >= L.top - 3 && y <= L.bottom + 3)
+      // 优先长段；椭圆、曲线是几十段短折线，格子小的时候没有 10 px 以上的段，退到 2 px 以上
+      const all = ink.segments.filter(q => !q.dashed).map(q => ({ q, L: Math.hypot(q.b.x - q.a.x, q.b.y - q.a.y) })).sort((u, v) => v.L - u.L)
+      const segs = all.some(o => o.L >= 10) ? all.filter(o => o.L >= 10) : all.filter(o => o.L >= 2)
+      const used = []
+      for (const { q } of segs) {
+        if (used.length >= 3) break
+        for (const f of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+          const x = q.a.x + (q.b.x - q.a.x) * f, y = q.a.y + (q.b.y - q.a.y) * f
+          if (!inside(x, y) || inLabel(x, y) || used.some(u => Math.hypot(u.x - x, u.y - y) < 12) || nearHandle(x, y)) continue
+          used.push({ x, y }); pt(x, y, tintCol(q.tint)); break
+        }
+      }
+      if (!P.length) for (const L of ink.labels.slice(0, 2)) {
+        const x = (L.left + L.right) / 2, y = (L.top + L.bottom) / 2
+        if (L.plate === 'chip') pt(L.left + 3, y, tintCol(L.tint), 1) // 胶囊底是画线颜色，字是白的：取左缘
+        else pt(x, y, tintCol(L.tint), 4) // 衬底 / 无底：字本身是画线颜色
+      }
+      for (const q of P) if (free(q.x, q.y)) { click = { x: q.x, y: q.y }; break }
+      const hs = ink.handles.filter(h => inside(h.x, h.y))
+      return { probes: P, click, covered: !click && P.length > 0, a: hs[0] ? { x: hs[0].x, y: hs[0].y } : null, b: hs[1] ? { x: hs[1].x, y: hs[1].y } : null }
+    }
     switch (d.type) {
+      case 'anchoredVolumeProfile': {
+        const i0 = Math.max(0, Math.round(ch.indexAt(A.t))), i1 = ch.lastIndex(); if (i1 < i0) break
+        let lo = Infinity, hi = -Infinity
+        for (let i = i0; i <= i1; i++) { const q = ch.bars[i]; if (q) { lo = Math.min(lo, q.l); hi = Math.max(hi, q.h) } }
+        const x0 = ch.indexToX(i0) - ch.spacing / 2, x1 = ch.indexToX(i1) + ch.spacing / 2, W = x1 - x0
+        const xm = x0 + 0.65 * W, yh = Y(hi), yl = Y(lo)
+        if (W >= 12 && inside(xm, (yh + yl) / 2)) P.push({ k: 'col', xs: [xm, xm + 2, xm + 4], y0: Math.max(p.y + 2, yh - 2), y1: Math.min(p.y + p.h - 2, yl + 2), color: col, fmin: 0.4 })
+        setClick({ x: xm, y: (yh + yl) / 2 }); break
+      }
       case 'trend': { const m = lerp(0.5), q = lerp(0.3); pt(m.x, m.y); pt(q.x, q.y); setClick(m); break }
       case 'ray': { const m = lerp(0.5), q = lerp(1.6); pt(m.x, m.y); pt(q.x, q.y); setClick(m); break }
       case 'hline': { let x = a.x; if (!(x >= 30 && x <= PW - 30)) x = PW * 0.5; pt(x, a.y); setClick({ x: [0.62, 0.5, 0.75, 0.4, 0.85, 0.3].map(f => PW * f).find(x => free(x, a.y)) ?? PW * 0.62, y: a.y }); break } // 水平线哪儿都能点：挑一处没被图例、格子标题盖住的
@@ -121,7 +161,7 @@ const PAGE = () => {
         pt(Math.round((a.x + b.x) / 2) + 0.5, Math.round(m.y) + 0.5 - 6, up ? '#2962FF' : '#F23645', 1); break
       }
     }
-    return { probes: P, click, covered: !!click && !free(click.x, click.y), a: inside(a.x, a.y) ? a : null, b: d.pts[1] && inside(b.x, b.y) ? b : null }
+    return { probes: P, click, covered: !!click && !free(click.x, click.y), a: inside(hA.x, hA.y) ? { x: hA.x, y: hA.y } : null, b: hB && inside(hB.x, hB.y) ? { x: hB.x, y: hB.y } : null }
   }
   const score = (img, ref, W, H, sc, pr) => {
     const tg = NS.rgb(pr.color)
@@ -144,7 +184,7 @@ const PAGE = () => {
   }
   /** 取样：每条画线每个取样点的「朝画线颜色偏了多少」（0 = 没有，1 = 正好是那个颜色）；
    *  底图 = 同一帧里把画线关掉重画（不动存档、不出帧），画完照原样再画回来 */
-  NS.sample = (i, ids) => {
+  NS.sample = (i, ids, solo = false) => {
     const ch = NS.ch(i); if (!ch || !ch._panes) return null
     const cv = ch.ctx.canvas, W = cv.width, H = cv.height, sc = W / cv.getBoundingClientRect().width
     // 先读一个像素：Chrome 会因为回读把画布在 GPU / CPU 光栅之间换（十字线轻量帧往主画布上贴底图之后尤其如此），
@@ -167,8 +207,17 @@ const PAGE = () => {
     for (const d of disk) {
       if (want && !want.has(d.id)) continue
       const q = NS.probesOf(ch, d); if (!q) { out.push({ id: d.id, type: d.type, vis: false, s: [] }); continue }
-      out.push({ id: d.id, type: d.type, vis: q.probes.length > 0, s: q.probes.map(pr => +score(img, ref, W, H, sc, pr).toFixed(2)), click: q.click, covered: q.covered, a: q.a, b: q.b })
+      let im = img
+      if (solo && !was) {
+        // 单独画：只留这一条重画一帧再取样（一格里画满几十条时，后画的字块 / 填色会盖住先画的取样点；这里验的是「这一条在这一格的坐标下画对了」）
+        const keep = ch.drawingShown
+        ch.drawingShown = x => x.id === d.id; ch.render()
+        im = ch.ctx.getImageData(0, 0, W, H).data
+        ch.drawingShown = keep
+      }
+      out.push({ id: d.id, type: d.type, vis: q.probes.length > 0, s: q.probes.map(pr => +score(im, ref, W, H, sc, pr).toFixed(2)), click: q.click, covered: q.covered, a: q.a, b: q.b })
     }
+    if (solo) ch.render()
     return { hidden: was, list: out, mismatch }
   }
   /** 画布上一处没有画线的空地（用图表自己的命中判定挑） */
@@ -332,8 +381,11 @@ export async function toolSlots(page, ci, tools) {
 }
 
 /** 把一组画线按格内点画上去；返回按存档读回的列表 */
+/** 交叉段（指标 / 布局 / 周期 / 缩放 / 主题 / 批量 / 撤销 / 刷新）在一格里画的那一套：原来的九把（各占一列一段价位，像素与点中互不干扰）。
+ *  2026-10-08 补齐的 41 种全部由 kinds（逐组逐把）与 kinds16（十六格每格 41 种）两段验，一格里塞 41 种会互相盖住、点中打架 */
+export const CROSS_TOOLS = ['hline', 'vline', 'trend', 'rect', 'fib', 'position', 'fvp', 'ray', 'avwap']
 export async function drawAllTools(page, ci, sym) {
-  const tools = await page.evaluate(() => window.__dx.drawTools())
+  const tools = (await page.evaluate(() => window.__dx.drawTools())).filter(t => CROSS_TOOLS.includes(t))
   const { slots, order } = await toolSlots(page, ci, tools)
   const res = []
   for (const t of order) {
@@ -364,9 +416,16 @@ export function sameGeom(base, now, { tolT = 60e3, tolP = null } = {}) {
 export const exactSame = (a, b) => JSON.stringify(a.map(d => [d.id, d.type, d.pts, d.locked ?? false]).sort()) === JSON.stringify(b.map(d => [d.id, d.type, d.pts, d.locked ?? false]).sort())
 
 /** 像素：每条看得见的画线，取样点都朝它的颜色偏 ≥ fmin；隐藏时都 < 0.25 */
-export async function pixelCheck(page, ci, { ids = null, expectHidden = false, fmin = 0.5 } = {}) {
+export async function pixelCheck(page, ci, opt = {}) {
+  const r = await pixelCheck1(page, ci, opt)
+  // 藏起来时取样点偶尔有一处偏色（两次重画之间最后一根 K 线的边缘抗锯齿不同，十六格行情在跳时一轮里见过一次 fib 0.6）：
+  // 真没藏的线隔一帧还在，再取一次仍不对才算
+  if (opt.expectHidden && !r.ok) { await sleep(300); return pixelCheck1(page, ci, opt) }
+  return r
+}
+async function pixelCheck1(page, ci, { ids = null, expectHidden = false, fmin = 0.5, solo = false } = {}) {
   await away(page); await frame(page)
-  const s = await page.evaluate(([i, ids]) => window.__dx.sample(i, ids), [ci, ids])
+  const s = await page.evaluate(([i, ids, solo]) => window.__dx.sample(i, ids, solo), [ci, ids, solo])
   if (!s) return { ok: false, info: '取样失败（图表没起来）', vis: 0 }
   const vis = s.list.filter(x => x.vis)
   const bad = (s.mismatch || []).slice(0, 4)
@@ -403,7 +462,7 @@ export async function selectCheck(page, ci, { ids = null, max = 12 } = {}) {
   return { ok: !bad.length && cand.length > 0, n: cand.length, bad, info: `点了 ${cand.length} 条${covered.length ? `（${covered.join(',')} 的点中位置被 DOM 盖着，跳过）` : ''}${e ? '' : '（没找到空地）'}${bad.length ? '；' + bad.slice(0, 5).join('，') : ''}` }
 }
 
-async function dragPx(page, ci, from, dx, dy) {
+export async function dragPx(page, ci, from, dx, dy) {
   const P = await abs(page, ci, from)
   await page.mouse.move(P.x, P.y, { steps: 2 }); await sleep(40)
   await page.mouse.down(); await page.mouse.move(P.x + dx, P.y + dy, { steps: 8 }); await page.mouse.up(); await sleep(200)
@@ -442,6 +501,71 @@ export async function dragCheck(page, ci, sym, { prefer = ['trend', 'rect', 'fib
   return { ok: anchorOk && bodyOk && back, info, type: pick.type }
 }
 
+/** 一条画线逐项过一遍（41 种每种都跑）：点中 → 快捷条；拖第一个手柄 → 变了；拖线身 → 每个锚点同样平移；
+ *  快捷条改颜色（多空持仓没有颜色，改锁）→ 存档跟着变；⌘Z 按撤销栈涨了几步就按几下 → 逐字段回到原样；
+ *  ⌘C ⌘V → 多一条同种类的、⌘Z 收回。返回 { ok, info, steps }，steps 里每步一个布尔 */
+export async function kindCheck(page, ci, sym, id) {
+  const base = await stored(page, sym), b0 = base.find(d => d.id === id)
+  if (!b0) return { ok: false, info: '存档里没有这条' }
+  const probe = async () => (await page.evaluate(([i, id]) => window.__dx.sample(i, [id]), [ci, id])).list[0]
+  const st = {}, why = []
+  const s0 = await probe()
+  if (!s0?.click) return { ok: false, info: `${b0.type} 点中位置不在视野里 / 被盖着` }
+  const u0 = (await dbg(page)).undo
+  // 1) 点中
+  { const P = await abs(page, ci, s0.click); await page.mouse.move(P.x, P.y, { steps: 2 }); await page.mouse.down(); await page.mouse.up(); await sleep(150) }
+  st.select = (await geo(page, ci)).sel === id && (await page.locator('.chart-cell .draw-quick').count()) > 0
+  // 2) 拖第一个手柄（有手柄在视野里才拖）
+  let s1 = b0
+  if (s0.a) {
+    await dragPx(page, ci, s0.a, 22, 16)
+    s1 = (await stored(page, sym)).find(d => d.id === id)
+    st.handle = !!s1 && JSON.stringify(s1.pts) !== JSON.stringify(b0.pts)
+    if (!st.handle) why.push(`手柄 ${Math.round(s0.a.x)},${Math.round(s0.a.y)} 拖了没变（选中 ${(await geo(page, ci)).sel}）`)
+  }
+  // 3) 拖线身（锚点刚动过，重新取点中位置）
+  const s2pre = await probe()
+  if (s2pre?.click) {
+    await dragPx(page, ci, s2pre.click, 20, -14)
+    const s2 = (await stored(page, sym)).find(d => d.id === id)
+    const dt = s2 ? s2.pts.map((q, k) => q.t - s1.pts[k].t) : [], dp = s2 ? s2.pts.map((q, k) => q.p - s1.pts[k].p) : []
+    st.body = !!s2 && dt.every(v => v === dt[0]) && dp.every(v => Math.abs(v - dp[0]) <= Math.abs(dp[0]) * 1e-6 + 1e-6) && (dt[0] !== 0 || dp[0] !== 0)
+    if (!st.body) why.push(`线身从 ${Math.round(s2pre.click.x)},${Math.round(s2pre.click.y)} 拖：Δt ${dt.map(v => v / 6e4).join('/')} 分、Δp ${dp.map(v => +v.toFixed(2)).join('/')}`)
+  } else { st.body = false; why.push('拖完手柄后线身点不中位置') }
+  // 4) 改样式：选中它（拖完通常还选着），快捷条调色板挑一个不同的颜色；没有颜色旋钮的（持仓）改锁
+  if ((await geo(page, ci)).sel !== id) { const c = (await probe())?.click; if (c) { const P = await abs(page, ci, c); await page.mouse.click(P.x, P.y); await sleep(150) } }
+  const pal = page.locator('.chart-cell .draw-quick [data-q="palette"]')
+  if (await pal.count()) {
+    await pal.click(); await sleep(200)
+    const sw = page.locator('.dq-palette [data-color][aria-pressed="false"]').first()
+    const want = await sw.getAttribute('data-color')
+    await sw.click(); await sleep(200)
+    const d4 = (await stored(page, sym)).find(d => d.id === id)
+    st.style = !!d4 && String(d4.color).toUpperCase() === String(want).toUpperCase()
+  } else {
+    const lk = page.locator('.chart-cell .draw-quick [data-q="lock"]')
+    if (await lk.count()) { await lk.click(); await sleep(150); const d4 = (await stored(page, sym)).find(d => d.id === id); st.style = d4?.locked === true; await lk.click(); await sleep(150) } else st.style = false
+  }
+  // 5) 撤销：撤销栈涨了几步就按几下
+  const u1 = (await dbg(page)).undo
+  for (let k = 0; k < u1 - u0; k++) { await page.keyboard.press('Meta+z'); await sleep(140) }
+  await sleep(200)
+  st.undo = u1 > u0 && exactSame(base, await stored(page, sym)) && JSON.stringify((await stored(page, sym)).find(d => d.id === id)?.color) === JSON.stringify(b0.color)
+  // 6) 复制粘贴
+  const c6 = (await probe())?.click
+  if (c6) { const P = await abs(page, ci, c6); await page.mouse.click(P.x, P.y); await sleep(150) }
+  await page.keyboard.press('Meta+c'); await sleep(120)
+  await page.keyboard.press('Meta+v'); await sleep(300)
+  const after = await stored(page, sym)
+  const pasted = after.filter(d => !base.some(b => b.id === d.id))
+  st.paste = pasted.length === 1 && pasted[0].type === b0.type && pasted[0].pts.length === b0.pts.length
+  await page.keyboard.press('Meta+z'); await sleep(250)
+  st.pasteUndo = exactSame(base, await stored(page, sym))
+  await page.keyboard.press('Escape'); await away(page)
+  const bad = Object.entries(st).filter(([, v]) => !v).map(([k]) => k)
+  return { ok: !bad.length, steps: st, info: `${b0.type}：${Object.entries(st).map(([k, v]) => `${k} ${v ? '✓' : '✗'}`).join(' ')}${s0.a ? '' : '（手柄不在视野，没拖手柄）'}${why.length ? '；' + why.join('；') : ''}` }
+}
+
 /** 隐藏开关（⌘⌥H）：开着时像素是底色、点不中、存档 drawHidden=true、条数不变；关掉后线回来 */
 export async function hideCheck(page, ci, sym, n, { ids = null } = {}) {
   await page.keyboard.press('Escape')
@@ -466,7 +590,9 @@ export async function switchSymbol(page, ci, to) {
   await away(page)
   await page.keyboard.press('Escape')
   await page.keyboard.press('Meta+k'); await sleep(300)
-  await page.keyboard.type(to.replace(/USDT$/, '')); await sleep(500)
+  await page.keyboard.type(to.replace(/USDT$/, ''))
+  // 品种表还在取、结果没出来时按回车什么也不做：等第一行出来再按
+  await page.waitForSelector('.search-dlg .sr', { timeout: 15000 }).catch(() => {}); await sleep(200)
   await page.keyboard.press('Enter')
   await page.waitForFunction(([i, s]) => { const c = window.__cells?.()[i]; return c && c.symbol === s && c.bars > 0 && c.metaSym === s }, [ci, to], { timeout: 30000, polling: 200 }).catch(() => {})
   await frame(page); await sleep(400)

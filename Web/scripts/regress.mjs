@@ -1815,7 +1815,8 @@ async function partDraw() {
   const groups = await page.evaluate(() => [...document.querySelectorAll('#drawbar .tool-grp')].map(g => g.dataset.grp))
   await page.click('#drawbar [data-fly="volume"]'); await wait(300)
   const volTools = await menuLabels()
-  ok('工具栏按组：线 / 形状 / 斐波那契 / 预测与测量 / 成交量；成交量组里是锚定 VWAP、固定区间成交量分布', groups.join() === 'lines,shapes,fib,forecast,volume' && volTools.some(l => l.includes('锚定 VWAP')) && volTools.some(l => l.includes('固定区间成交量分布')), `${groups.join(' ')}；${volTools.join('、')}`)
+  // 2026-10-08 补全到 41 种后照 TradingView 分九组；成交量组三把：锚定均价线、区间成交量分布、锚定成交量分布（名字三端同一份 DrawKind.title）
+  ok('工具栏按组：线 / 通道 / 叉子与江恩 / 斐波那契 / 形态 / 预测与测量 / 形状 / 注释 / 成交量；成交量组里有锚定均价线与区间成交量分布', groups.join() === 'lines,channels,pitchforks,fib,patterns,forecast,shapes,notes,volume' && volTools.length === 3 && volTools.some(l => l.includes('锚定')) && volTools.some(l => l.includes('区间成交量分布')), `${groups.join(' ')}；${volTools.join('、')}`)
   const barBox = await page.locator('#drawbar').boundingBox()
   await shotD('工具栏分组', { x: 0, y: barBox.y, width: 420, height: 560 })
   await page.keyboard.press('Escape'); await wait(200)

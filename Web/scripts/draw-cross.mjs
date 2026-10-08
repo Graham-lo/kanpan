@@ -1,19 +1,20 @@
 // Hkline Web · 画线交叉验证（一条命令跑完；画线是重点功能，性能和别的功能都要和画线交叉着验）
 //   npx vite build && node scripts/draw-cross.mjs [段…]
-//   段：tools indicators layouts intervals scroll-zoom theme bulk undo reload perf alerts（不写 = 全跑）
-//   环境变量：DRAW_ROOT（要测的 Web 目录，默认本仓库 Web；也认 F_ROOT）、DRAW_OUT（截图目录，默认 /tmp/kp-draw-cross）、DRAW_PORT（默认 5303）
+//   段：tools kinds kinds16 indicators layouts intervals scroll-zoom theme bulk undo reload perf alerts（不写 = 全跑）
+//   环境变量：DRAW_URL（直接测这个地址、不起本地预览，例如线上 https://…/web/）、DRAW_ROOT（要测的 Web 目录，默认本仓库 Web；也认 F_ROOT）、DRAW_OUT（截图目录，默认 /tmp/kp-draw-cross）、DRAW_PORT（默认 5303）
 // 每段都在干净的浏览器上下文里：WebSocket 换成不连的空壳、K 线合成（画线落点不被实时行情挪动），
 // 每段都跑一遍同一组不变量（scripts/draw-lib.mjs assertDrawings）：条数、几何、像素、点中 / 点空、拖 / ⌘Z、隐藏开关、切品种回来。
 // 页内报错（未捕获异常、console.error，去掉被拦请求的网络噪声）每段单独算一项。全部 ✓ 才以 0 退出。
+import fs from 'node:fs'
 import { preview, launch, measure, sleep, PC } from './f-lib.mjs'
 import {
   R, ok, log, OUT, COLOR, openCtx, seedAndOpen, ready, baseState, realErrors, frame, geo, stored, storeOf, dbg, away, abs,
-  pickTool, drawVia, drawAllTools, assertDrawings, pixelCheck, selectCheck, hideCheck, switchSymbol, sameGeom, exactSame, shot, measureR,
+  pickTool, drawVia, drawAllTools, assertDrawings, pixelCheck, selectCheck, hideCheck, switchSymbol, sameGeom, exactSame, shot, measureR, kindCheck, CROSS_TOOLS,
 } from './draw-lib.mjs'
 
 const ROOT = process.env.DRAW_ROOT || process.env.F_ROOT || new URL('..', import.meta.url).pathname
 const PORT = +(process.env.DRAW_PORT || 5303)
-const ALL = ['tools', 'indicators', 'layouts', 'intervals', 'scroll-zoom', 'theme', 'bulk', 'undo', 'reload', 'perf', 'alerts']
+const ALL = ['tools', 'kinds', 'kinds16', 'indicators', 'layouts', 'intervals', 'scroll-zoom', 'theme', 'bulk', 'undo', 'reload', 'perf', 'alerts']
 const want = process.argv.slice(2).filter(a => !a.startsWith('-'))
 const SEGS = want.length ? want : ALL
 for (const s of SEGS) if (!ALL.includes(s)) { console.error(`不认识的段：${s}（可选 ${ALL.join(' ')}）`); process.exit(2) }
@@ -67,8 +68,10 @@ async function segTools() {
   const { page } = env
   try {
     await seedAndOpen(env, baseState({ cells: [{ symbol: SYM, iv: '1h' }] }))
-    const tools = await page.evaluate(() => window.__dx.drawTools())
-    log('工具栏里的工具：', tools.join(' '))
+    const all = await page.evaluate(() => window.__dx.drawTools())
+    log('工具栏里的工具：', all.join(' '))
+    // 这一段只摆原来的九把 + 测量（落点精确到根与价位、点中互不干扰）；41 种逐把由 kinds 段验
+    const tools = all.filter(t => CROSS_TOOLS.includes(t) || t === 'measure')
     const { slots, order } = await import('./draw-lib.mjs').then(m => m.toolSlots(page, 0, tools))
     const g = await geo(page, 0)
     const pxTol = (g.max - g.min) / (g.pane.h - 16) * 1.5
@@ -237,7 +240,9 @@ async function segScrollZoom() {
     const ops = [
       ['滚轮放大', async () => { await page.mouse.move(C.x, C.y); for (let i = 0; i < 2; i++) { await page.mouse.wheel(0, -120); await sleep(40) } }],
       ['滚轮缩小', async () => { await page.mouse.move(C.x, C.y); for (let i = 0; i < 10; i++) { await page.mouse.wheel(0, 120); await sleep(40) } }],
-      ['横向滚轮平移', async () => { await page.mouse.move(C.x, C.y); for (let i = 0; i < 6; i++) { await page.mouse.wheel(-120, 0); await sleep(40) } }],
+      // 往新的那头横滑（deltaX > 0）：缩小后画线都挤在右半边，往老的那头滑 6 格（6×1.2×80 px）会把它们整片推出右沿、
+      // 价格轴也跟着换到更早的行情，画线全不在视野里，后面几步就没有东西可验了
+      ['横向滚轮平移', async () => { await page.mouse.move(C.x, C.y); for (let i = 0; i < 6; i++) { await page.mouse.wheel(120, 0); await sleep(40) } }],
       ['拖时间轴', async () => { const a = await abs(page, 0, { x: g.plotW * 0.5, y: g.h - 10 }); await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(a.x + 160, a.y, { steps: 10 }); await page.mouse.up() }],
       // 价格轴贴着绘图区的那 22 px 是「从轴上拖出一条提醒」，拖缩放要从再往右的地方下手
       ['拖价格轴', async () => { const a = await abs(page, 0, { x: g.plotW + Math.max(30, (g.w - g.plotW) * 0.7), y: g.pane.y + g.pane.h * 0.5 }); await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(a.x, a.y + 90, { steps: 10 }); await page.mouse.up() }],
@@ -356,6 +361,9 @@ async function segBulk() {
       const C = await abs(page, 0, e || { x: g.plotW * 0.5, y: g.pane.y + g.pane.h * 0.5 })
       await page.mouse.move(C.x, C.y)
       for (let i = 0; i < 120; i++) { await page.mouse.wheel(0, i % 40 < 20 ? 60 : -60); await sleep(6) }
+      // 滚轮一放一缩回不到分毫不差的间距，原来那块空地可能已经压上一条竖线：拖之前重新找空地，不然会把线拖走
+      const e2 = await page.evaluate(() => window.__dx.emptySpot(0))
+      if (e2) { const D = await abs(page, 0, e2); C.x = D.x; C.y = D.y; await page.mouse.move(C.x, C.y) }
       await page.mouse.down(); for (let i = 0; i < 120; i++) { await page.mouse.move(C.x + Math.sin(i / 15) * 200, C.y); await sleep(8) } await page.mouse.up()
       for (let i = 0; i < 200; i++) { await page.mouse.move(C.x - 300 + (i * 13) % 600, C.y - 150 + (i * 7) % 300); await sleep(4) }
     }
@@ -388,7 +396,7 @@ async function segBulk() {
     ok('500 条：隐藏开关', hc.ok, hc.info)
     const a = await switchSymbol(page, 0, 'ETHUSDT'), b = await switchSymbol(page, 0, SYM)
     const back = await stored(page, SYM)
-    ok('500 条：切品种回来都在、几何不变', a && b && back.length === 500 && !sameGeom(base, back).length && (await geo(page, 0)).n === 500, `${back.length} 条 图上 ${(await geo(page, 0)).n}`)
+    ok('500 条：切品种回来都在、几何不变', a && b && back.length === 500 && !sameGeom(base, back).length && (await geo(page, 0)).n === 500, `切过去 ${a} 切回来 ${b}；${back.length} 条 图上 ${(await geo(page, 0)).n}；${sameGeom(base, back).slice(0, 3).join('；')}`)
     await shot(page, '07-bulk')
     await segErrors(env)
   } finally { await env.ctx.close() }
@@ -656,11 +664,213 @@ async function segAlerts() {
   } finally { await env.ctx.close() }
 }
 
-const FN = { tools: segTools, indicators: segIndicators, layouts: segLayouts, intervals: segIntervals, 'scroll-zoom': segScrollZoom, theme: segTheme, bulk: segBulk, undo: segUndo, reload: segReload, perf: segPerf, alerts: segAlerts }
+// ───────── kinds：契约里的 41 种逐组过（2026-10-08 补全）：展开菜单（悬停 / 点开、组名、整组每把的名字图标快捷键）、
+// 每把从工具栏画一条（锚点数对上契约）、点中、拖手柄、拖线身、改颜色、⌘Z、⌘C ⌘V、隐藏开关、像素；文字类原地改字
+const GROUPS = [
+  ['lines', '线', ['trend', 'ray', 'extended', 'hline', 'hray', 'vline', 'crossLine', 'arrowLine']],
+  ['channels', '通道', ['channel', 'regression']],
+  ['pitchforks', '叉子与江恩', ['pitchfork', 'gannBox', 'gannFan']],
+  ['fib', '斐波那契', ['fib', 'fibExtension', 'fibChannel', 'fibTimeZone', 'fibFan']],
+  ['patterns', '形态', ['xabcd', 'abcd', 'headShoulders', 'elliottImpulse', 'elliottCorrection']],
+  ['forecast', '预测与测量', ['position', 'ptMeasure', 'priceRange', 'dateRange', 'datePriceRange']],
+  ['shapes', '形状', ['rect', 'ellipse', 'triangle', 'curve']],
+  ['notes', '注释', ['note', 'callout', 'priceLabel', 'flag', 'markerUp', 'markerDown']],
+  ['volume', '成交量', ['avwap', 'fvp', 'anchoredVolumeProfile']],
+]
+/** 网页种类 → 契约 kind（scripts 不读 TS：照 drawTools.ts CONTRACT_KIND 抄一份，下面拿契约文件对账） */
+const CONTRACT = { rect: 'rectangle', fib: 'fibonacci', avwap: 'anchoredVWAP', fvp: 'fixedVolumeProfile', ptMeasure: 'measure' }
+const contractAnchors = JSON.parse(fs.readFileSync(new URL('../../Backend/kanpan-api/contract/drawing-fields.json', import.meta.url), 'utf8')).anchorCounts
+const anchorsOf = t => contractAnchors[CONTRACT[t] || t]
+/** 工具栏上要点几下（持仓、回归点两下，其余 = 锚点数） */
+const clicksOf = t => (t === 'position' || t === 'regression') ? 2 : anchorsOf(t)
+const TEXT_KINDS = new Set(['note', 'callout', 'flag'])
+/** 一组 n 把：每把占一列；列里的点按锯齿排（形态一族点多也撑得开） */
+function kindSlots(g, tools) {
+  const PW = g.plotW, p = g.pane, n = tools.length
+  const xL = PW * 0.06, xR = PW * 0.9, w = (xR - xL) / n
+  const yHi = p.y + p.h * 0.32, yLo = p.y + p.h * 0.68
+  const out = {}
+  tools.forEach((t, k) => {
+    const c = clicksOf(t), x0 = xL + k * w + w * 0.15, x1 = xL + k * w + w * 0.85
+    if (c === 1) { out[t] = [{ x: (x0 + x1) / 2, y: t === 'hline' || t === 'hray' || t === 'priceLabel' ? yHi - 20 + k * 6 : (yHi + yLo) / 2 }]; return }
+    out[t] = Array.from({ length: c }, (_, i) => ({ x: x0 + (x1 - x0) * i / (c - 1), y: i % 2 ? yHi : yLo }))
+    if (t === 'pitchfork' || t === 'fibExtension' || t === 'triangle' || t === 'channel' || t === 'fibChannel' || t === 'curve') out[t] = [{ x: x0, y: yLo }, { x: (x0 + x1) / 2, y: yHi }, { x: x1, y: (yHi + yLo) / 2 }]
+  })
+  return out
+}
+async function flyoutCheck(page, gid, name, tools, how) {
+  await page.keyboard.press('Escape'); await away(page); await sleep(150)
+  const chev = page.locator(`#drawbar [data-fly="${gid}"]`)
+  if (how === 'hover') { const b = await chev.boundingBox(); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 3 }); await sleep(450) }
+  else { await chev.click(); await sleep(300) }
+  const m = await page.evaluate(() => {
+    const el = document.querySelector('.menu.tool-fly'); if (!el) return null
+    const r = el.getBoundingClientRect(), bar = document.querySelector('#drawbar').getBoundingClientRect()
+    return {
+      w: r.width, gap: r.left - bar.right, box: { x: r.x, y: r.y, width: r.width, height: r.height },
+      head: [...el.querySelectorAll('.mh')].map(e => e.textContent.trim()),
+      rows: [...el.querySelectorAll('.mi')].map(e => ({ label: e.querySelector('.label')?.textContent.trim() ?? e.textContent.trim(), sc: e.querySelector('.sc')?.textContent.trim() ?? '', ink: e.querySelector('svg')?.childElementCount ?? 0, h: e.getBoundingClientRect().height })),
+      expanded: document.querySelector(`#drawbar [data-fly]`)?.closest('.tool-grp') != null,
+    }
+  })
+  return m
+}
+async function segKinds() {
+  const env = await openCtx(browser, URL_)
+  const { page } = env
+  try {
+    await seedAndOpen(env, baseState({ cells: [{ symbol: SYM, iv: '1h' }] }))
+    // 工具栏：九组、41 种、每组都有展开条
+    const bar = await page.evaluate(() => ({
+      groups: [...document.querySelectorAll('#drawbar .tool-grp')].map(g => ({ id: g.dataset.grp, tools: (g.querySelector('[data-tools]')?.dataset.tools || '').split(' ').filter(Boolean), chev: !!g.querySelector('.fly-chev') })),
+      w: document.querySelector('#drawbar').getBoundingClientRect().width,
+      btn: (() => { const b = document.querySelector('#drawbar .tool-grp .ibtn').getBoundingClientRect(); return [b.width, b.height] })(),
+    }))
+    const all = GROUPS.flatMap(g => g[2])
+    ok('工具栏九组，顺序照 TradingView：线 / 通道 / 叉子与江恩 / 斐波那契 / 形态 / 预测与测量 / 形状 / 注释 / 成交量', bar.groups.map(g => g.id).join() === GROUPS.map(g => g[0]).join(), bar.groups.map(g => g.id).join(' '))
+    ok('每组的工具与顺序对上；多把的组都有展开条', GROUPS.every(([id, , ts]) => { const g = bar.groups.find(x => x.id === id); return g && g.tools.join() === ts.join() && (ts.length < 2 || g.chev) }), JSON.stringify(bar.groups.map(g => [g.id, g.tools.length, g.chev])))
+    const kinds = new Set(all.map(t => CONTRACT[t] || t)), ck = Object.keys(contractAnchors)
+    ok(`工具栏上的持久工具 = 契约 anchorCounts 的全部 ${ck.length} 种`, all.length === ck.length && ck.every(k => kinds.has(k)), `工具栏 ${all.length} 种；契约缺 ${ck.filter(k => !kinds.has(k)).join(',') || '无'}`)
+    ok('工具栏尺寸照 TradingView：栏宽 52、按钮 52×38', Math.round(bar.w) === 52 && Math.round(bar.btn[0]) === 52 && Math.round(bar.btn[1]) === 38, `栏宽 ${bar.w} 按钮 ${bar.btn.join('×')}`)
+    const only = (process.env.DRAW_KINDS || '').split(',').filter(Boolean)
+    for (const [gid, name, tools] of GROUPS) {
+      if (only.length && !only.includes(gid)) continue
+      log(`── ${name}（${tools.length} 把）`)
+      // 展开：悬停与点开各一次
+      for (const how of ['hover', 'click']) {
+        const m = await flyoutCheck(page, gid, name, tools, how)
+        const names = m?.rows.map(r => r.label) ?? []
+        ok(`${name}：${how === 'hover' ? '悬停' : '点'}展开条打开整组菜单（组名 + 每把名字 + 图标）`, !!m && m.head[0] === name && m.rows.length === tools.length && m.rows.every(r => r.ink > 0 && r.label) && m.w >= 270 && m.gap >= 0 && m.gap <= 8,
+          m ? `宽 ${m.w.toFixed(0)} 离栏 ${m.gap.toFixed(0)}；${names.join('、')}` : '没打开')
+        if (how === 'click' && m) await page.screenshot({ path: `${OUT}/kinds-${gid}-展开.png`, clip: { x: 0, y: Math.max(0, m.box.y - 60), width: m.box.x + m.box.width + 40, height: m.box.height + 120 } })
+      }
+      await page.keyboard.press('Escape'); await sleep(150)
+      // 每把画一条、逐项过
+      await seedAndOpen(env, baseState({ cells: [{ symbol: SYM, iv: '1h' }] }))
+      const g = await geo(page, 0), slots = kindSlots(g, tools)
+      const ids = []
+      for (const t of tools) {
+        const d = await drawVia(page, 0, t, slots[t], SYM)
+        if (!d) { ok(`${t}：从工具栏画上并存档`, false, '存档里没多出来'); await page.keyboard.press('Escape'); continue }
+        ids.push(d.id)
+        if (TEXT_KINDS.has(t)) {
+          const ed = await page.evaluate(() => { const e = document.querySelector('.draw-text-edit'); return e ? document.activeElement === e : null })
+          await page.keyboard.type('支撑'); await page.keyboard.press('Enter'); await sleep(250)
+          const dt = (await stored(page, SYM)).find(x => x.id === d.id)
+          ok(`${t}：放下就原地出输入框，回车写进去`, ed === true && dt?.text === '支撑', `输入框 ${ed}；存档文字 ${JSON.stringify(dt?.text)}`)
+        }
+        await page.keyboard.press('Escape'); await sleep(80)
+        ok(`${t}：从工具栏画上并存档，锚点数 = 契约 ${anchorsOf(t)}`, d.type === t && d.pts.length === anchorsOf(t), `${d.type} ${d.pts.length} 个锚点`)
+        const kc = await kindCheck(page, 0, SYM, d.id)
+        ok(`${t}：点中 / 拖手柄 / 拖线身 / 改颜色 / ⌘Z 复原 / ⌘C ⌘V`, kc.ok, kc.info)
+      }
+      const last = await page.getAttribute(`#drawbar .tool-grp[data-grp="${gid}"] .ibtn`, 'data-tool')
+      ok(`${name}：组按钮换成这组上次用的那把`, last === tools[tools.length - 1], last)
+      const base = await stored(page, SYM)
+      ok(`${name}：${tools.length} 把各一条都在存档里`, base.length === tools.length && tools.every(t => base.some(d => d.type === t)), base.map(d => d.type).join(','))
+      const px = await pixelCheck(page, 0)
+      ok(`${name}：像素落在图表自己的几何上（取样点是画线颜色）`, px.ok && px.vis === base.length, px.info)
+      const hc = await hideCheck(page, 0, SYM, base.length)
+      ok(`${name}：隐藏开关（藏了是底色、点不中；显了回来）`, hc.ok, hc.info)
+      await away(page)
+      await shot(page, `kinds-${gid}-画好`)
+      if (gid === 'notes') {
+        // 双击改字：Esc 不改、回车改
+        const note = base.find(d => d.type === 'note')
+        const c = (await page.evaluate(id => window.__dx.sample(0, [id]), note.id)).list[0]?.click
+        const P = await abs(page, 0, c)
+        await page.mouse.dblclick(P.x, P.y); await sleep(250)
+        const v1 = await page.evaluate(() => { const e = document.querySelector('.draw-text-edit'); return e && document.activeElement === e ? e.value : null })
+        await page.keyboard.type('XYZ'); await page.keyboard.press('Escape'); await sleep(200)
+        const t1 = (await stored(page, SYM)).find(d => d.id === note.id)?.text
+        await page.mouse.dblclick(P.x, P.y); await sleep(250)
+        await page.keyboard.press('Meta+a'); await page.keyboard.type('前高阻力'); await sleep(100)
+        await page.screenshot({ path: `${OUT}/kinds-文字编辑.png`, clip: { x: Math.max(0, P.x - 220), y: Math.max(0, P.y - 120), width: 480, height: 240 } })
+        await page.keyboard.press('Enter'); await sleep(250)
+        const t2 = (await stored(page, SYM)).find(d => d.id === note.id)?.text
+        const u = (await dbg(page)).undo
+        await page.keyboard.press('Meta+z'); await sleep(250)
+        const t3 = (await stored(page, SYM)).find(d => d.id === note.id)?.text
+        ok('文字注释：双击原地改字（带出原文）、Esc 不改、回车改、⌘Z 撤回改字', v1 === '支撑' && t1 === '支撑' && t2 === '前高阻力' && t3 === '支撑' && u > 0, `双击带出 ${JSON.stringify(v1)}；Esc 后 ${JSON.stringify(t1)}；回车后 ${JSON.stringify(t2)}；⌘Z 后 ${JSON.stringify(t3)}`)
+        await page.reload({ waitUntil: 'domcontentloaded' }); await ready(page)
+        const back = await stored(page, SYM)
+        ok('注释组：刷新后文字都还在', ['note', 'callout', 'flag'].every(t => back.find(d => d.type === t)?.text === '支撑'), back.filter(d => TEXT_KINDS.has(d.type)).map(d => `${d.type}:${d.text}`).join(' '))
+      }
+    }
+    await segErrors(env)
+  } finally { await env.ctx.close() }
+}
 
-const { url, stop } = await preview(PORT, ROOT)
+// ───────── kinds16：十六图每格 41 种各一条（共 656 条）：像素、隐藏开关、联动十字线 / 滚轮 / 拖动时每次重画的耗时
+function allKindsDraw(sym, v) {
+  const { ts, lo, hi } = v, R = hi - lo, n = ts.length
+  const T = f => ts[Math.max(0, Math.min(n - 1, Math.round(f * (n - 1))))]
+  const all = GROUPS.flatMap(g => g[2])
+  return all.map((t, i) => {
+    const c = anchorsOf(t), f = 0.04 + 0.8 * (i / all.length), span = 0.14
+    const pts = Array.from({ length: c }, (_, k) => ({ t: T(f + (c > 1 ? span * k / (c - 1) : 0)), p: lo + R * (k % 2 ? 0.7 : 0.3) + R * 0.1 * Math.sin(i) }))
+    if (t === 'position') { pts[1].p = pts[0].p + R * 0.2; pts[2] = { t: pts[1].t, p: pts[0].p - R * 0.2 } }
+    const d = { id: `k${sym}${i}`, type: t, pts, color: COLOR, width: 1 + (i % 2) }
+    if (TEXT_KINDS.has(t)) d.text = '注'
+    return d
+  })
+}
+async function segKinds16() {
+  const env = await openCtx(browser, URL_, { viewport: PC.viewport, depth: 20000, delay: 10 })
+  const { page } = env
+  const cdp = await env.ctx.newCDPSession(page); await cdp.send('Performance.enable')
+  try {
+    const st0 = baseState({ layout: '16', cells: PERF_SYMS.map(s => ({ symbol: s, iv: '1h' })), active: 0, ind: { ma: true, vol: true, subs: ['macd', 'rsi'] }, linkCross: true })
+    await seedAndOpen(env, st0); await ready(page, 16)
+    const vis = []
+    for (let i = 0; i < 16; i++) vis.push(await visibleOf(page, i))
+    const drawings = Object.fromEntries(PERF_SYMS.map((s, i) => [s, allKindsDraw(s, vis[i])]))
+    const total = Object.values(drawings).reduce((a, b) => a + b.length, 0)
+    const grid = await page.evaluate(() => { const cs = [...document.querySelectorAll('.chart-cell')].map(e => e.getBoundingClientRect()); const x = Math.min(...cs.map(r => r.x)), y = Math.min(...cs.map(r => r.y)); return { x, y, w: Math.max(...cs.map(r => r.right)) - x, h: Math.max(...cs.map(r => r.bottom)) - y } })
+    const rows = { wheel: [[], []], cross: [[], []], drag: [[], []] }
+    let seen = 0, kept = 0, badPx = [], unseen = {}
+    const run = async B => {
+      await seedAndOpen(env, B ? { ...st0, drawings } : st0); await ready(page, 16); await sleep(1500)
+      if (B && !kept) {
+        for (let i = 0; i < 16; i++) { const px = await pixelCheck(page, i, { solo: true }); seen += px.vis; for (const x of px.list) if (!x.vis) unseen[x.type] = (unseen[x.type] || 0) + 1; if (!px.ok) badPx.push(`#${i} ${px.bad.slice(0, 3).join(',')}`) }
+        for (const s of PERF_SYMS) kept += (await stored(page, s)).length
+        await away(page); await page.screenshot({ path: `${OUT}/kinds16-满屏画线.png` })
+      }
+      const g0 = await geo(page, 0)
+      const cx = g0.left + g0.plotW * 0.5, cy = g0.top + g0.pane.y + g0.pane.h * 0.4, k = B ? 1 : 0
+      await page.mouse.move(cx, cy)
+      rows.wheel[k].push(await measureR(page, cdp, async () => { for (let i = 0; i < 200; i++) { await page.mouse.wheel(0, i % 40 < 20 ? 40 : -40); await sleep(4) } }))
+      rows.drag[k].push(await measureR(page, cdp, async () => { await page.mouse.move(cx, cy); await page.mouse.down(); for (let i = 0; i < 150; i++) { await page.mouse.move(cx + Math.sin(i / 20) * 200, cy); await sleep(8) } await page.mouse.up() }))
+      rows.cross[k].push(await measureR(page, cdp, async () => { for (let i = 0; i < 500; i++) { const t = i / 500; await page.mouse.move(grid.x + 20 + (grid.w - 40) * ((t * 4) % 1), grid.y + 20 + (grid.h - 40) * t); await sleep(4) } }))
+      await away(page)
+    }
+    for (let rep = 0; rep < 2; rep++) { await run(false); await run(true) }
+    ok(`十六图每格 41 种各一条（共 ${total} 条）：读档一条不少`, kept === total, `存档 ${kept}/${total}`)
+    ok('十六图：看得见的每一条在自己那一格的坐标下都画对了（逐条单独取样，取样点是画线颜色）', seen >= total * 0.6 && !badPx.length, `看得见 ${seen}/${total}（取样点不在视野里的：${Object.entries(unseen).map(([k, v]) => k + '×' + v).join(' ') || '无'}）；${badPx.slice(0, 4).join('；')}`)
+    // 隐藏开关一按，十六格都藏
+    await page.keyboard.press('Meta+Alt+h'); await sleep(400)
+    let hiddenOk = true; const hidBad = []
+    for (const i of [0, 5, 10, 15]) { const px = await pixelCheck(page, i, { expectHidden: true }); if (!px.ok) { hiddenOk = false; hidBad.push(`#${i} ${px.info}`) } }
+    await page.keyboard.press('Meta+Alt+h'); await sleep(400)
+    const back = await pixelCheck(page, 7, { solo: true })
+    ok('十六图：⌘⌥H 一按十六格的画线都藏、再按回来', hiddenOk && back.ok && back.vis > 0, `藏：${hiddenOk ? '四格都藏' : hidBad.join('；')}｜显：${back.info}`)
+    const avg = (a, k) => +(a.reduce((s, x) => s + x[k], 0) / a.length).toFixed(1)
+    for (const [name, lab] of [['wheel', '第一格滚轮缩放 200 下'], ['drag', '第一格拖动平移'], ['cross', '联动十字线扫过十六格 500 下']]) {
+      const [A, B] = rows[name]
+      const pick = X => ({ rN: avg(X, 'rN'), r50: avg(X, 'r50'), r95: avg(X, 'r95'), rSum: avg(X, 'rSum'), lt: avg(X, 'lt'), cpu: avg(X, 'cpu') })
+      const a = pick(A), b = pick(B)
+      ok(`${lab}：每格 41 种画线（单次重画 p95 ≤ 4 ms、长任务 +≤3、CPU +≤10 点）`, b.r95 <= 4 && b.lt <= a.lt + 3 && b.cpu <= a.cpu + 10,
+        `无画线 重画 ${a.rN} 次 p50 ${a.r50} p95 ${a.r95} 长任务 ${a.lt} CPU ${a.cpu}% ｜ 41 种 重画 ${b.rN} 次 p50 ${b.r50} p95 ${b.r95} 长任务 ${b.lt} CPU ${b.cpu}%`)
+    }
+    await segErrors(env)
+  } finally { await env.ctx.close() }
+}
+
+const FN = { tools: segTools, kinds: segKinds, kinds16: segKinds16, indicators: segIndicators, layouts: segLayouts, intervals: segIntervals, 'scroll-zoom': segScrollZoom, theme: segTheme, bulk: segBulk, undo: segUndo, reload: segReload, perf: segPerf, alerts: segAlerts }
+
+const { url, stop } = process.env.DRAW_URL ? { url: process.env.DRAW_URL, stop: () => {} } : await preview(PORT, ROOT)
 URL_ = url
-console.log(`被测：${ROOT}  ${url}  截图 → ${OUT}`)
+console.log(`被测：${process.env.DRAW_URL ? '线上' : ROOT}  ${url}  截图 → ${OUT}`)
 browser = await launch()
 const t0 = Date.now()
 try {
