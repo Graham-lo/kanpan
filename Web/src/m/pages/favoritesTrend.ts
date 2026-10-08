@@ -63,14 +63,3 @@ function pump(wanted: (sym: string) => boolean, loaded: (sym: string) => void): 
 
 /** 测试用 */
 export function _resetTrends(): void { book.clear(); asked.clear(); inflight.clear(); queue.length = 0 }
-
-// ---------------------------------------------------------------- 药丸闪（iOS ChangePill.flash）
-const flashTimers = new WeakMap<Element, number>()
-/** 这一行的药丸按这一口的方向闪一下：底上垫一层 25% 的涨 / 跌色，PILL_FLASH_MS 后摘掉、CSS 淡回去 */
-export function flashPill(row: Element, dir: 'up' | 'down', ms: number): void {
-  const pill = row.querySelector('.m-pill'); if (!pill) return
-  pill.classList.remove('fl-up', 'fl-down')
-  pill.classList.add('fl-' + dir)
-  clearTimeout(flashTimers.get(pill))
-  flashTimers.set(pill, window.setTimeout(() => pill.classList.remove('fl-up', 'fl-down'), ms))
-}

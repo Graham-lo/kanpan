@@ -7,8 +7,8 @@
  * 从这一页点进图的那一只、点的时候并不露着（滚远了），回来直接把它摆到屏幕中间（iOS restoreScrollAnchor）。
  * 「调整顺序」时价格冻住、点行不开图、长按拖动排序。删自选没有二次确认，给五秒撤销。
  * 加自选只在搜索结果行的星上（一个动作一个入口）。
- * 价格与药丸之间一条 24 小时迷你走势（设置 › 通用「自选走势线」，出厂开），只取露面那几行（./favoritesTrend）；
- * 同一只的价真跳了一口，药丸按方向闪 150ms（model/favoriteTrend 的 pillFlash）。
+ * 价格与药丸之间一条 24 小时迷你走势（设置 › 通用「自选走势线」，出厂开），只取露面那几行（./favoritesTrend）。
+ * 药丸跳价闪动 2026-10-08 加上、同日用户拿掉（「还是不加闪动了」），不闪、不留开关。
  */
 import '../styles/favorites.css'
 import '../styles/favoritesTrend.css'
@@ -27,9 +27,8 @@ import { openSearch } from './search'
 import { openPreviewMenu } from './symbolPreview'
 import { ensureUniverse, takeOpenParam, wantStreams } from './_streams'
 import { cachedSym } from '../model/quoteCache'
-import { pillFlash, trendSVG, PILL_FLASH_MS } from '../model/favoriteTrend'
-import { flashPill, requestTrends, trendOf } from './favoritesTrend'
-import { reducedMotion } from '../ui/dom'
+import { trendSVG } from '../model/favoriteTrend'
+import { requestTrends, trendOf } from './favoritesTrend'
 
 /** 琉璃底（光斑 + 冲淡 + 颗粒）：自选页和板块页共用 */
 export function backdropHTML(): string {
@@ -94,11 +93,6 @@ export function initFavorites(root: HTMLElement): PageHandle {
     const trend = st.favoritesTrend ? (gone ? '' : trendSVG(trendOf(sym), s?.price ?? null)) : undefined
     return { price: s?.price ?? null, dec: s?.dec, pct: gone ? null : s?.pct ?? null, vol: gone || s?.macro ? null : s?.vol ?? null, gone, closed: s?.closed === true || cached, trend }
   }
-  /** 这一行此刻的「一口」：编辑中（报价冻住）、断线、休市 / 上次记下的价、目录说没实时价、没价都不给（不闪） */
-  const tickOf = (sym: string, d: LiuliData): number | null =>
-    editing || st.stale || d.closed || d.gone || d.price == null || !(d.price > 0) ? null : d.price
-  /** 每行上一口的价：重画整表（换分类、排序、回前台）时按当时的价重记，所以那些都不算「一口」 */
-  let ticks = new Map<string, number>()
 
   // ---------------------------------------------------------------- 头部
   function renderHead(): void {
@@ -181,12 +175,7 @@ export function initFavorites(root: HTMLElement): PageHandle {
       if (editing) setEditing(false)
     } else {
       empty.hidden = true
-      ticks = new Map()
-      list.innerHTML = shown.map((sym, i) => {
-        const d = dataOf(sym), t = tickOf(sym, d)
-        if (t != null) ticks.set(sym, t)
-        return liuliRowHTML(factsOf(sym, S.symbols.get(sym) ?? cachedSym(sym)), d, i === 0)
-      }).join('')
+      list.innerHTML = shown.map((sym, i) => liuliRowHTML(factsOf(sym, S.symbols.get(sym) ?? cachedSym(sym)), dataOf(sym), i === 0)).join('')
       list.querySelectorAll<HTMLElement>('.lr').forEach(row => {
         const sym = row.dataset.sym!
         if (!editing) {
@@ -331,17 +320,9 @@ export function initFavorites(root: HTMLElement): PageHandle {
   let pending = new Set<string>(), raf = 0
   function flush(): void {
     raf = 0
-    const still = reducedMotion()
     for (const sym of pending) {
       const row = list.querySelector(`.lr[data-sym="${CSS.escape(sym)}"]`)
-      if (!row) continue
-      const d = dataOf(sym)
-      patchLiuli(row, d)
-      const t = tickOf(sym, d), old = ticks.get(sym)
-      if (t == null) { ticks.delete(sym); continue }
-      ticks.set(sym, t)
-      const dir = pillFlash(old == null ? null : { key: sym, price: old }, { key: sym, price: t }, still)
-      if (dir) flashPill(row, dir, PILL_FLASH_MS)
+      if (row) patchLiuli(row, dataOf(sym))
     }
     pending = new Set()
   }
@@ -359,8 +340,7 @@ export function initFavorites(root: HTMLElement): PageHandle {
   hooks.onTheme.push(() => { if (active) renderList() })
   hooks.onForeground.push(() => { if (active) renderList() })
   // 推送断满 5 秒（app/linkGrace.ts 置 st.stale）整表价格变灰，接上立刻复原（iOS QuoteBook 同一条规矩）
-  // 断线期间没有「一口」：接上后第一口不跟断线前那口比（iOS tick 在 linkDown 时是 nil）
-  subscribe(() => { root.classList.toggle('stale', st.stale); if (st.stale) ticks.clear() })
+  subscribe(() => { root.classList.toggle('stale', st.stale) })
 
   // 验收截图用：?open=search 进来直接开搜索页
   if (takeOpenParam(['search'])) requestAnimationFrame(() => searchBtn.click())

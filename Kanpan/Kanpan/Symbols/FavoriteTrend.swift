@@ -1,16 +1,14 @@
 import KanpanCore
 import SwiftUI
 
-// ============================================================ 自选行的 24 小时走势线与药丸闪动
+// ============================================================ 自选行的 24 小时走势线
 //
 // 2026-10-08 视觉与交互整改：
 // - 自选行价格与涨跌药丸之间一条 44×20 的迷你走势线，取最近 24 小时的 15 分钟收盘
 //   （`QuoteBook.onTrend`，和预览卡那份逐分钟线同一趟取），尾点接最新价；按这 24 小时的涨跌
 //   用涨 / 跌色描 1.5pt，不填充、不垫底。没取到就空着那 44pt，不摆占位、不闪。
 //   设置 › 通用「自选走势线」一颗全局开关（`Prefs.favoritesTrend`，出厂开，跟账号同步）。
-// - 涨跌药丸在同一只的价真动了一口时按这一口的方向闪 150ms（底提亮一档再落回去），
-//   口径照 `KanpanChart.ChartView.flashIfTicked`：换品种、换列表 / 分类都不算「一口」，
-//   系统「减少动效」打开时不闪。只闪药丸，不动整行。
+// - 涨跌药丸跳价闪动同日加上又拿掉（用户：「还是不加闪动了」），不闪、不留开关。
 
 /// 一只品种最近 24 小时的走势：起点（24 小时前那根的开盘）和其后每根的收盘。纯值。
 struct FavoriteTrend: Equatable, Sendable {
@@ -100,24 +98,4 @@ struct FavoriteTrendShape: Shape {
     }
     return path
   }
-}
-
-/// 涨跌药丸收到的「这一口」：哪一只、什么价。药丸只在同一只的价真变了时闪。
-struct PillTick: Equatable {
-  let key: String
-  let price: Double
-
-  enum Direction: Equatable { case up, down }
-
-  /// 闪不闪、往哪边闪。规则同 `ChartView.flashIfTicked`：前后两口都得有、是同一只、
-  /// 都是成数的正价、而且真的变了；系统「减少动效」打开时一律不闪。
-  static func flash(from old: PillTick?, to new: PillTick?, reduceMotion: Bool) -> Direction? {
-    guard !reduceMotion, let old, let new, old.key == new.key,
-          old.price.isFinite, new.price.isFinite, old.price > 0, new.price > 0,
-          old.price != new.price else { return nil }
-    return new.price > old.price ? .up : .down
-  }
-
-  /// 闪多久：和图上最新价胶囊一样（`ChartView.priceFlashDuration`）。
-  static let duration: Duration = .milliseconds(150)
 }

@@ -1025,9 +1025,6 @@ private struct FavoriteQuoteRow: View {
       change: change, changeText: changePercentText(change), changePending: !stale,
       changeMuted: linkDown || closed,
       changeID: "favorites.change." + symbol,
-      // 药丸闪：只认真在跳的那口价。编辑中（报价冻住）、目录说没实时价、断线、休市都不闪。
-      changeTick: editing || stale || linkDown || closed || !price.isFinite
-        ? nil : PillTick(key: symbol, price: price),
       // 24 小时走势线：开关开着就让出那一格；数据没到时那一格空着，到了原地画上。
       trend: trendOn
         ? FavoriteTrendLine(trend: stale ? nil : cell.trend, last: price.isFinite ? price : nil,

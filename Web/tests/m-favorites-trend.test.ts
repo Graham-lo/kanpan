@@ -1,6 +1,6 @@
 // 手机网页自选行的 24 小时走势线与药丸闪（照 iOS FavoriteTrend / PillTick，2026-10-08）
 import { describe, expect, it } from 'vitest'
-import { makeTrend, pillFlash, trendChange, trendInk, trendPath, trendPoints, trendSVG, TREND_CAPACITY, TREND_WINDOW_MS, type TrendBar } from '../src/m/model/favoriteTrend'
+import { makeTrend, trendChange, trendInk, trendPath, trendPoints, trendSVG, TREND_CAPACITY, TREND_WINDOW_MS, type TrendBar } from '../src/m/model/favoriteTrend'
 
 const Q = 900_000
 const now = 1_760_000_000_000
@@ -53,19 +53,5 @@ describe('折线', () => {
     expect(trendSVG(null, 1)).toBe('')
     expect(trendSVG({ open: 1, closes: [2] }, null)).toBe('')
     expect(trendSVG({ open: 1, closes: [1, 2] }, 3)).toContain('class="up"')
-  })
-})
-
-describe('药丸闪（PillTick.flash）', () => {
-  it('同一只、价真动了才闪，方向跟这一口', () => {
-    expect(pillFlash({ key: 'A', price: 1 }, { key: 'A', price: 2 }, false)).toBe('up')
-    expect(pillFlash({ key: 'A', price: 2 }, { key: 'A', price: 1 }, false)).toBe('down')
-  })
-  it('换品种、没变、缺一口、价不成数、减少动效都不闪', () => {
-    expect(pillFlash({ key: 'A', price: 1 }, { key: 'B', price: 2 }, false)).toBeNull()
-    expect(pillFlash({ key: 'A', price: 1 }, { key: 'A', price: 1 }, false)).toBeNull()
-    expect(pillFlash(null, { key: 'A', price: 1 }, false)).toBeNull()
-    expect(pillFlash({ key: 'A', price: 0 }, { key: 'A', price: 1 }, false)).toBeNull()
-    expect(pillFlash({ key: 'A', price: 1 }, { key: 'A', price: 2 }, true)).toBeNull()
   })
 })

@@ -19,8 +19,6 @@ export const TREND_CAPACITY = 97
 export const TREND_IV = '15m'
 /** 走势线那一格：44×20、线宽 1.5（56 时 402 宽的机型上把价格挤截了，iOS 2026-10-08 收到 44） */
 export const TREND_W = 44, TREND_H = 20, TREND_LW = 1.5
-/** 药丸闪多久（和图上最新价胶囊一样），闪完淡回去那一下在 CSS 里（0.18s） */
-export const PILL_FLASH_MS = 150
 
 const ok = (x: number): boolean => Number.isFinite(x) && x > 0
 
@@ -75,13 +73,4 @@ export function trendSVG(t: FavoriteTrend | null | undefined, last: number | nul
   const d = trendPath(trendPoints(t, last))
   if (!d) return ''
   return `<svg width="${TREND_W}" height="${TREND_H}" viewBox="0 0 ${TREND_W} ${TREND_H}" aria-hidden="true"><path class="${trendInk(trendChange(t, last))}" d="${d}"/></svg>`
-}
-
-/** 药丸闪不闪、往哪边闪（iOS PillTick.flash）：前后两口都得有、是同一只、都是成数的正价、而且真的变了；
- *  系统「减少动效」打开时一律不闪。编辑中 / 断线 / 休市 / 没实时价由调用方直接不给这一口（传 null） */
-export interface PillTick { key: string; price: number }
-export function pillFlash(old: PillTick | null | undefined, next: PillTick | null | undefined, reduceMotion: boolean): 'up' | 'down' | null {
-  if (reduceMotion || !old || !next || old.key !== next.key) return null
-  if (!ok(old.price) || !ok(next.price) || old.price === next.price) return null
-  return next.price > old.price ? 'up' : 'down'
 }

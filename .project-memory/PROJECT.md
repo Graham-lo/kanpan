@@ -1912,3 +1912,15 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   （新增 `tests/orderflow-bigtags.test.ts` 翻侧 / 撞字退三角 / 相对档位 / 价位并行等）。验收图 `docs/acceptance/网页版-大单签与摘要抽屉-2026-10-08/`（浅深、1440 / 2560、抽屉 280 / 480、十字线对行）。
 - **删除前标签**：`before-remove-web-tape-dots-and-bigorder-table-2026-10-08`（`45c7afa0`）。旧打点 / 旧表格要找回从这里取 `layer.ts`、`tape.ts`、`drawer.ts`。
 - **未动**：iOS 与手机网页仍是旧点 + 旧表格；用户要的是这轮稳定后给一份完全可重设计的原型（部署到 VPS `/ui/`）+ 最终方案，再做。
+
+## 59. 10-08：自选涨跌药丸的跳价闪动拿掉（iOS + 手机网页），不留开关
+
+- **起因**：用户问「自选迷你走势开关和闪烁开关在哪」，先说加个关闭开关，随即改口「还是不加闪动了 / 去掉闪动」。
+  所以 § 54、§ 57 里的「药丸同一只价真动一口按方向闪 150 ms」整条拿掉，也不做开关。
+- **iOS**：`ChangePill` 去掉 `tick` / 闪动状态 / 垫层，`SymbolListRow.changeTick` 与 `PillTick` 删除，`FavoritesView` 不再给这一口；
+  对应测试删掉。图上最新价胶囊的闪（`ChartView.flashIfTicked`）不在此列，照旧。
+- **手机网页**：`pillFlash` / `flashPill` / `PILL_FLASH_MS` / `fl-up` `fl-down` 样式与每行上一口的价记账一起删掉；
+  e2e `scripts/m-favorites-trend.mjs` 改成「十秒里行情在改字、药丸闪 0 下、无垫层」。
+- **电脑网页**：自选侧栏价格文字的跳价闪色（`watch/logic.ts flashClass`）是早先的另一件事，用户没点名，未动。
+- **走势线开关位置**（没动，只是用户没找到）：iOS 与手机网页都是「我的 › 设置 › 通用 › 自选走势线」，不在自选页里。
+- **验证**：iOS `make symbols-test` 242 条全过；网页 `tsc` 0 错、相关 vitest 26 条全过；`m-favorites-trend.mjs` 浅 / 深色全过。

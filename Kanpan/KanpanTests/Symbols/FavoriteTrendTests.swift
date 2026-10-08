@@ -54,25 +54,6 @@ struct FavoriteTrendTests {
     #expect(trend.change(last: 99) < 0)
   }
 
-  @Test("药丸闪：同一只的价真动了才闪，方向照这一口")
-  func pillFlashRules() {
-    let a = PillTick(key: "binance/usd_m/BTCUSDT", price: 100)
-    let up = PillTick(key: a.key, price: 101)
-    let down = PillTick(key: a.key, price: 99)
-    let other = PillTick(key: "binance/usd_m/ETHUSDT", price: 101)
-    #expect(PillTick.flash(from: a, to: up, reduceMotion: false) == .up)
-    #expect(PillTick.flash(from: a, to: down, reduceMotion: false) == .down)
-    #expect(PillTick.flash(from: a, to: a, reduceMotion: false) == nil)
-    // 换品种（换列表 / 分类时行被复用）不算一口。
-    #expect(PillTick.flash(from: a, to: other, reduceMotion: false) == nil)
-    // 第一口、断线后回来的第一口不闪。
-    #expect(PillTick.flash(from: nil, to: up, reduceMotion: false) == nil)
-    #expect(PillTick.flash(from: a, to: nil, reduceMotion: false) == nil)
-    // 系统「减少动效」打开时不闪。
-    #expect(PillTick.flash(from: a, to: up, reduceMotion: true) == nil)
-    #expect(PillTick.duration == .milliseconds(150))
-  }
-
   @Test("走势落到按行那一格：同值不重复改，超出上限淘汰旧的")
   func setTrendLandsOnCell() {
     let storage = MemoryPrefsStorage()

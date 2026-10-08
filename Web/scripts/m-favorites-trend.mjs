@@ -1,4 +1,4 @@
-// Hkline 手机网页版 · 2026-10-08 批次验收：自选行 24 小时走势线、药丸闪、设置「自选走势线」、板块行「领涨 X」
+// Hkline 手机网页版 · 2026-10-08 批次验收：自选行 24 小时走势线、药丸不闪、设置「自选走势线」、板块行「领涨 X」
 //   node scripts/m-favorites-trend.mjs [地址]
 //   默认地址 http://localhost:5178/web/m/（npx vite --port 5178）；截图落在 /tmp/kanpan-mweb-1008/
 // 查的事：
@@ -6,7 +6,7 @@
 //   · 15 分钟线只取露面那几行（请求数 ≤ 可见行 + 预取半屏），重画 / 回前台不重取
 //   · 滚动：走势线开 / 关各量一次同样的 240 帧往返滚动，开着不能比关着明显差
 //   · 关掉开关：整列不摆、之后不再发 15 分钟线请求
-//   · 药丸闪：十秒内药丸挂过 fl-up / fl-down
+//   · 药丸不闪（同日用户拿掉了闪动）：十秒里价在跳、药丸从不挂 fl-* 类、也没有 ::before 垫层
 //   · 板块行「领涨 X」在涨跌幅左边
 // 有 ✗ 退出码 1。
 import { chromium } from 'playwright-core'
@@ -83,14 +83,23 @@ for (const scheme of ['light', 'dark']) {
   ok(firstReqs <= Math.ceil(geo.visible * 2) + 2, `${scheme} 15 分钟线只取露面那几行：发了 ${firstReqs} 趟（表里 ${rowsTotal} 行、露面 ${geo.visible} 行）`)
   await p.screenshot({ path: `${OUT}/favorites-${scheme}.png` })
 
-  // 药丸闪：盯十秒
-  const flashes = await p.evaluate(() => new Promise(res => {
-    let n = 0
-    const mo = new MutationObserver(ms => { for (const m of ms) if (m.target.classList?.contains('fl-up') || m.target.classList?.contains('fl-down')) n++ })
-    mo.observe(document.querySelector('.fav-list'), { subtree: true, attributes: true, attributeFilter: ['class'] })
-    setTimeout(() => { mo.disconnect(); res(n) }, 10000)
+  // 药丸不闪：盯十秒，价得真在跳（行里有字变），药丸从不挂 fl-* 类
+  const watch = await p.evaluate(() => new Promise(res => {
+    let flashes = 0, ticks = 0
+    const mo = new MutationObserver(ms => {
+      for (const m of ms) {
+        if (m.type === 'attributes' && m.target.classList?.contains('m-pill') && [...m.target.classList].some(c => c.startsWith('fl-'))) flashes++
+        if (m.type === 'characterData' || m.type === 'childList') ticks++
+      }
+    })
+    mo.observe(document.querySelector('.fav-list'), { subtree: true, attributes: true, attributeFilter: ['class'], characterData: true, childList: true })
+    setTimeout(() => {
+      mo.disconnect()
+      const layered = [...document.querySelectorAll('.lr .m-pill')].filter(e => getComputedStyle(e, '::before').content !== 'none').length
+      res({ flashes, ticks, layered })
+    }, 10000)
   }))
-  ok(flashes > 0, `${scheme} 药丸闪：十秒内闪了 ${flashes} 下`)
+  ok(watch.ticks > 0 && watch.flashes === 0 && watch.layered === 0, `${scheme} 药丸不闪：十秒里行情改字 ${watch.ticks} 次、药丸闪 ${watch.flashes} 下、带垫层的药丸 ${watch.layered} 颗`)
 
   // 滚动：无头浏览器在 3x 屏上本来就跑不满 60 帧，绝对帧时没意义——
   // 记下开着时的数，关掉开关那段再量一次同样的滚动做对照（见下）。
