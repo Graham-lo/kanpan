@@ -81,7 +81,7 @@ const venuesOf = p => p.evaluate(() => (window.__of?.()?.venues || []).map(v => 
       await p.mouse.move(x, y)
       const c = await p.evaluate(() => { const e = document.querySelector('.of-card.show .hc-band'); return e ? { rows: e.querySelectorAll('.hc-books b').length, text: e.innerText } : null })
       if (!c && !seen) seen = await p.evaluate(() => document.querySelector('.of-card.show')?.innerHTML.slice(0, 200) ?? null)
-      // 挑：带 Bybit 的优先，其次挂单中的、多家合并的（分簿那行最多点 3 本）
+      // 挑：带 Bybit 的优先，其次挂单中的、多家合并的（分簿那行最多点 3 家）
       if (c) c.score = (/Bybit/.test(c.text) ? 1000 : 0) + (/挂单中/.test(c.text) ? 100 : 0) + Math.min(c.rows, 9) + (new Set(c.text.match(/币安|OKX|Coinbase|Bybit|Hyperliquid/g)).size * 10)
       if (c && (!best || c.score > best.score)) best = { ...c, x, y }
     }
@@ -95,10 +95,11 @@ const venuesOf = p => p.evaluate(() => (window.__of?.()?.venues || []).map(v => 
     console.log('读数卡：\n' + best.text)
   }
   if (!best) console.log('扫到的别的卡：', seen)
-  ok(!!best, `悬停大单带出读数卡${best ? `（分簿一行点了 ${best.rows} 本）` : ''}`)
+  ok(!!best, `悬停大单带出读数卡${best ? `（分簿一行点了 ${best.rows} 家）` : ''}`)
   ok(!!best && /Bybit/.test(best.text), '读数卡分簿那行里有 Bybit')
   ok(!!best && /挂单中|已结束/.test(best.text) && !/挂着|在场|已挂/.test(best.text), '读数卡状态词是「挂单中 / 已结束」，没有口语')
   ok(!!best && best.text.indexOf('首见') < best.text.indexOf('Bybit'), '主数据（首见 / 持续 / 累计成交）在分簿行之前')
+  ok(!!best && !/\d+\s*本/.test(best.text), '读数卡只写数额，没有「+N 本」这类计数')
   await p.mouse.move(10, 10)
 
   // 抽屉：五家分项

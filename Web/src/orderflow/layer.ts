@@ -26,7 +26,7 @@ import { BigBarCache, TierCache, planTags, unitFor, type Tag, type TagIn, type R
 import { hoverCardHtml, ivShort } from './drawerView'
 import { drawerChartDrawn } from './drawer'
 
-/** 读数卡分簿那行小字最多点几本（再多收成「+N 本」）。用户 2026-10-08：他关心的是品种和数据，哪家交易所权重不大 */
+/** 读数卡分簿那行小字最多点几家（只写各家金额，不写「+N 本」这类计数）。用户 2026-10-08：他关心的是品种和数据，哪家交易所权重不大 */
 export const CARD_BOOKS = 3
 interface BandHit { x0: number; x1: number; y0: number; y1: number; v: Vis }
 /** 一道要画的带：一堵墙（w）+ 它的代表单（o：最大那本簿的最新一单，定颜色和记号）+ 读数卡的分簿行 */
@@ -351,13 +351,13 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     c.fillRect(0, y0, g.plotW, Math.max(1, y1 - y0))
   }
 
-  /** 右端标签：只写金额；墙里不止一本簿再带「·N 本」。不写交易所名——用户 2026-10-08：交易所分类的权重不大，主次要分清 */
+  /** 右端标签：只写金额。不写交易所名、不写「·N本」——用户 2026-10-08：K 线图上只要数额，不要额外信息 */
   function bandLabel(v: Vis): string {
-    return v.rows.length > 1 ? `${amt(v.pk)} ·${v.rows.length}本` : amt(v.pk)
+    return amt(v.pk)
   }
 
   /** 读数卡（§64 悬停卡的样子）：头一行类 · 侧 · 价位；大字合计；首见 / 已挂 / 累计成交这些主数据；
-   *  最后才是一行小字点出前几本簿（「Bybit永续 1.2M · 币安永续 0.9M · +4 本」）——交易所是次要信息，不再一本一行占满卡片 */
+   *  最后才是一行小字点出前几本簿（「Bybit永续 1.2M · 币安永续 0.9M」）——交易所是次要信息，不再一本一行占满卡片 */
   function bandCard(b: BandHit, dec: number, step: number): string {
     const { w, rows } = b.v
     const st0 = w.step ?? step
@@ -377,11 +377,8 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     ]
     if (one && !w.isLive) meta.push(['结局', outcomeText(one), ''])
     const metaKv = meta.map(([k, v, em]) => `<span>${k}</span><b class="num">${v}</b><em class="num">${em}</em>`).join('')
-    // 分簿只占一行小字：按金额从大到小点前 CARD_BOOKS 本，剩下的收成「+N 本」
-    const shown = rows.length > CARD_BOOKS + 1 ? rows.slice(0, CARD_BOOKS) : rows
-    const rest = rows.length - shown.length
-    const books = shown.map(r => `${esc(venueName(exName(r.book.exchange), r.book.product))} <b class="num">${amt(r.usd)}</b>`).join(' · ')
-      + (rest > 0 ? ` · +${rest} 本` : '')
+    // 分簿只占一行小字：按金额从大到小点前 CARD_BOOKS 家的金额；不写「+N 本」这类计数（用户 2026-10-08：一律只要数额）
+    const books = rows.slice(0, CARD_BOOKS).map(r => `${esc(venueName(exName(r.book.exchange), r.book.product))} <b class="num">${amt(r.usd)}</b>`).join(' · ')
     return `<div class="hc hc-band">${head}${net}<div class="hc-kv">${metaKv}</div><div class="hc-books">${books}</div></div>`
   }
 

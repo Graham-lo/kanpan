@@ -195,9 +195,11 @@ export function drawLadder(chart: TVChart, g: ChartGeometry): void {
   info.textContent = `每行 ${px(rs, decFor(rs, 0))}` + (delta
     ? (winStart != null ? ` · 变化自 ${hm(winStart)} 起` : '')
     : (since != null ? ` · 成交自 ${hm(since)} 起` : ''))
-  info.dataset.tip = `${fine.ready}/${fine.venues.length} 本簿` + (since != null ? ` · 中列是 ${hm(since)} 打开这只品种以来各家的主动买 − 主动卖` : '') +
-    (delta && start ? ` · 变化的起点来自${start.from === 'server' ? '服务端深度快照' : '本页实时记录（服务端没跟这只或还没取到）'}` : '') +
-    (sc.aligned ? '' : ' · 图放得很大，梯子每行定高、价格范围放宽了')
+  info.dataset.tip = [
+    since != null ? `中列是 ${hm(since)} 打开这只品种以来各家的主动买 − 主动卖` : '',
+    delta && start ? `变化的起点来自${start.from === 'server' ? '服务端深度快照' : '本页实时记录（服务端没跟这只或还没取到）'}` : '',
+    sc.aligned ? '' : '图放得很大，梯子每行定高、价格范围放宽了',
+  ].filter(Boolean).join(' · ')
   const C = g.colors
   let maxOne = 0, maxCum = 0, maxT = 0, maxD = 0
   for (const r of rows.values()) {
