@@ -10,8 +10,9 @@ use std::collections::HashSet;
 /// 一条订阅消息里最多几个 args。
 pub const MAX_ARGS:usize=10;
 /// 一条连接同时订着的 topic 最多几个：订单流 12 本簿 × （簿 + 成交），或者行情页一只品种
-/// （行情 + 一档 K 线 + 成交）加自选页一排行情。给到 48。
-pub const MAX_TOPICS:usize=48;
+/// （行情 + 一档 K 线 + 成交）加自选页一排行情（自选里几十只 Bybit 品种在网关线路上都从这一条订）。给到 128：
+/// Bybit 对公共流每条连接没有订阅数硬限，这里的上限是防一条连接把中继当成全市场转发器。
+pub const MAX_TOPICS:usize=128;
 
 /// K 线周期。
 const KLINE_INTERVALS:[&str;13]=["1","3","5","15","30","60","120","240","360","720","D","W","M"];

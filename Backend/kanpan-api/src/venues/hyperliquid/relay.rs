@@ -19,8 +19,9 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 /// 一条连接同时订着的最多几个：订单流 8 本簿 × （簿 + 成交），或者行情页一只品种
-/// （K 线 + 上下文 + 成交）加自选页一排上下文。给到 32。
-pub const MAX_TOPICS:usize=32;
+/// （K 线 + 上下文 + 成交）加自选页一排上下文（自选里几十只 Hyperliquid 品种在网关线路上都从这一条订）。给到 64：
+/// hub 全进程封顶 900（官方每 IP 1000），常驻跟踪占 600，余下 300 给中继，用户是个位数。
+pub const MAX_TOPICS:usize=64;
 /// 这条连接在 hub 里的收帧通道能攒几帧。BTC 的 `l2Book` 约每 0.5 秒一帧、成交更密，
 /// 16 个订阅一秒几十帧，攒 512 帧 ≈ 十几秒跟不上才算掉队。
 const BACKLOG:usize=512;

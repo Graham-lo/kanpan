@@ -17,8 +17,9 @@ use std::collections::HashSet;
 pub const MAX_ARGS:usize=12;
 /// 一条连接同时订着的 (channel, instId) 最多几个。订单流一只币：现货、U 本位永续、币本位永续、
 /// 两个交割，各 books + trades = 10 个；行情页一只品种 ticker + 标记价 + 费率 + trades，
-/// 自选页再一排 ticker。给到 48。
-pub const MAX_SUBSCRIPTIONS:usize=48;
+/// 自选页再一排 ticker（自选里几十只 OKX 品种在网关线路上都从这一条连接订）。给到 128：
+/// OKX 对每条连接的硬限只有「订退合计 480 次 / 小时」，这里的上限是防一条连接把中继当成全市场转发器。
+pub const MAX_SUBSCRIPTIONS:usize=128;
 
 /// 连哪个端点。
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
