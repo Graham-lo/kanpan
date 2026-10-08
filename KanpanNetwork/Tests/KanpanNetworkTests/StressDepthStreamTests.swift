@@ -641,9 +641,10 @@ struct StressFiveVenueStreamTests {
         factory.attach(try #require(adapter.streamURLs.first), tape)
         tapes.append(tape); scripts.append(script)
         // 看门狗窗口放宽到模拟 1 小时：机器一忙、快进时钟上的 30 秒只有 3 秒墙钟，别把慢当断。
-        // 时钟快进 10 倍，同样多的帧挤在十分之一的墙钟里到，事件缓冲同比放大 10 倍（缓冲满了丢帧另有专测）。
-        let stream = DepthStream(adapter: adapter, pacer: pacer, silenceMs: 3_600_000,
-                                 bufferLimit: DepthStream.bufferLimit * 10)
+        // 事件缓冲放开：时钟快进 10 倍、整包测试又和别的套件并行抢 CPU，按墙钟算的 512 条缓冲在这里量的是
+        // 机器忙不忙，不是解码与模型对不对（缓冲满了丢帧、整条重订另有专测「深度流溢出与过期重拨」）。
+        // 消费跟不上时帧堆在内存里，下面常驻内存那条照样卡着。
+        let stream = DepthStream(adapter: adapter, pacer: pacer, silenceMs: 3_600_000, bufferLimit: 1 << 20)
         streams.append(stream)
         let events = await stream.start()
         let mine = adapter.books

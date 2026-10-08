@@ -1,4 +1,5 @@
 import KanpanCore
+import KanpanNetwork
 import KanpanPresentation
 import SwiftUI
 import UIKit
@@ -393,12 +394,20 @@ struct BigTradeSheet: View {
 
   // MARK: 头
 
-  private var subtitle: String {
+  /// 副标题的几种写法，从长到短：全名 + 「合并」→ 全名 → 后面几家收成「+N」。五家全开（币安 · OKX ·
+  /// Coinbase · Bybit · Hyperliquid）时一行放不下，交给 `ViewThatFits` 挑第一种放得下的；读屏念第一种。
+  private var subtitles: [String] {
     let head = (base ?? SymbolInfo.placeholder(symbol: market.symbol).base) + (spot ? " 现货" : "")
     var labels: [String] = []
     for v in link.snapshot?.venues ?? [] where !labels.contains(v.label) { labels.append(v.label) }
-    guard !labels.isEmpty else { return head }
-    return head + " · " + labels.joined(separator: " · ") + (labels.count > 1 ? " 合并" : "")
+    guard !labels.isEmpty else { return [head] }
+    let names = head + " · " + labels.joined(separator: " · ")
+    guard labels.count > 1 else { return [names] }
+    var out = [names + " 合并", names]
+    for k in stride(from: labels.count - 1, through: 1, by: -1) {
+      out.append(head + " · " + labels.prefix(k).joined(separator: " · ") + " +\(labels.count - k)")
+    }
+    return out
   }
 
   private var header: some View {
@@ -415,8 +424,14 @@ struct BigTradeSheet: View {
       VStack(alignment: .leading, spacing: 5) {
         Text("大单与爆仓").font(.scaled(20, .bold, relativeTo: .title3)).foregroundStyle(t.ink)
           .accessibilityAddTraits(.isHeader)
-        Text(subtitle).font(TypeScale.captionEmph).foregroundStyle(t.ink3).lineLimit(1)
-          .accessibilityIdentifier("bigtrade.subtitle")
+        let subs = subtitles
+        ViewThatFits(in: .horizontal) {
+          ForEach(subs, id: \.self) { Text($0).lineLimit(1) }
+        }
+        .font(TypeScale.captionEmph).foregroundStyle(t.ink3)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(subs[0])
+        .accessibilityIdentifier("bigtrade.subtitle")
       }
       Spacer(minLength: Space.s)
       Button { Haptics.tap(); model.editing = true } label: {
@@ -766,7 +781,7 @@ struct BigTradeSheet: View {
 
   private func liqMax(_ r: LiquidationRow, muted: Bool) -> some View {
     let color = muted ? t.ink3 : (r.maxIsLong ? t.down : t.up)
-    let venue = r.maxExchange == .okx ? "OKX" : "币安"
+    let venue = OrderFlowBase.exchanges[r.maxExchange.key] ?? r.maxExchange.key
     return HStack(spacing: Space.m) {
       Text(r.maxIsLong ? "多" : "空").font(.scaled(13, .bold, relativeTo: .footnote)).foregroundStyle(.white)
         .frame(width: 34, height: 34)
