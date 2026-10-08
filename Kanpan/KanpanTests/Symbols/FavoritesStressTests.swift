@@ -24,10 +24,10 @@ struct FavoritesStressTests {
     }
   }
 
-  private static func symbol(_ i: Int) -> String { "binance/usd_m/C\(i)USDT" }
+  nonisolated private static func symbol(_ i: Int) -> String { "binance/usd_m/C\(i)USDT" }
 
   /// `count` 只自选分进 `groups` 个分类（随机分，没有落单的）。
-  private func large(count: Int, groups: Int, rng: inout Seeded) throws -> SymbolPrefs {
+  nonisolated private func large(count: Int, groups: Int, rng: inout Seeded) throws -> SymbolPrefs {
     var prefs = SymbolPrefs(favorites: (0..<count).map(Self.symbol))
     #expect(prefs.favorites.count == count)
     var ids: [String] = []
@@ -41,14 +41,14 @@ struct FavoritesStressTests {
     return prefs
   }
 
-  private func randomIndexSet(upTo n: Int, rng: inout Seeded) -> IndexSet {
+  nonisolated private func randomIndexSet(upTo n: Int, rng: inout Seeded) -> IndexSet {
     var set = IndexSet()
     for _ in 0..<Int.random(in: 1...min(8, n), using: &rng) { set.insert(Int.random(in: 0..<n, using: &rng)) }
     return set
   }
 
   /// SwiftUI `move(fromOffsets:toOffset:)` 的参照实现：`moveVisible` 只能改动可见那几只的相对顺序。
-  private func referenceMove(_ list: [String], _ source: IndexSet, _ destination: Int) -> [String] {
+  nonisolated private func referenceMove(_ list: [String], _ source: IndexSet, _ destination: Int) -> [String] {
     let moving = source.map { list[$0] }
     var rest = list
     for i in source.sorted(by: >) { rest.remove(at: i) }
@@ -58,7 +58,10 @@ struct FavoritesStressTests {
   }
 
   @Test("400 只 × 30 类随机拖 3000 下：始终是同一组品种的排列，分类归属一只不动，分类内拖只动那一类")
-  func randomMovesKeepEverything() throws {
+  // 纯值运算、Debug 里要跑十来秒：不占主 actor。挂在 MainActor 上会把同进程几百条主线程用例全排在它后面，
+  // 带墙钟时限的那几条（ShareInbox 10 秒等 busy 清）会被饿到误红（2026-10-09 app-logic 全跑 2 红的根因）。
+  // 必须 nonisolated async：同步的 nonisolated 函数仍在调用方（套件的 MainActor）上跑，只有 async 才换到全局执行器（SE-0338）。
+  nonisolated func randomMovesKeepEverything() async throws {
     var rng = Seeded(state: 0x5EED_F00D)
     var prefs = try large(count: 400, groups: 30, rng: &rng)
     let members = Set(prefs.favorites), membership = prefs.groupForSymbol
@@ -91,7 +94,7 @@ struct FavoritesStressTests {
   }
 
   @Test("批量删 1…60 只再撤销，重复 300 轮：每一轮都一字不差地回到删之前")
-  func batchRemoveThenRestoreIsExact() throws {
+  nonisolated func batchRemoveThenRestoreIsExact() async throws {
     var rng = Seeded(state: 0xFA11_BACC)
     let original = try large(count: 500, groups: 24, rng: &rng)
     for round in 0..<300 {

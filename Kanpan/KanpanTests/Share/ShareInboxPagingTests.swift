@@ -44,9 +44,11 @@ private final class PagedShareService: ShareInboxService, @unchecked Sendable {
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
   }
+  /// 等拉取任务本身跑完，不按墙钟等 10 秒：同进程里别的主线程重活把主 actor 占住时，
+  /// 墙钟到了任务还没轮到就会误红（2026-10-09 app-logic 全跑）。60 秒只是防真卡死时把整趟拖死。
   private func settle(_ inbox: ShareInbox) async throws {
-    let deadline = Date().addingTimeInterval(10)
-    while inbox.busy, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+    let deadline = ContinuousClock.now + .seconds(60)
+    while let task = inbox.task, ContinuousClock.now < deadline { await task.value }
     #expect(!inbox.busy)
   }
   private func onDisk(_ dir: URL) throws -> ShareInbox.Cache {

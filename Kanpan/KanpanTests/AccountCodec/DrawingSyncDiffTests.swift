@@ -7,20 +7,20 @@ import KanpanCore
 /// 画线按脏品种增量记账（`DrawingSyncDiff`）：记出来的账必须和整份记一模一样，只是少编很多条。
 @MainActor @Suite("画线按脏品种增量记账") struct DrawingSyncDiffTests {
   private let device = UUID()
-  private func temp() throws -> URL {
+  nonisolated private func temp() throws -> URL {
     let p = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: p, withIntermediateDirectories: true); return p
   }
-  private func drawing(_ id: String, price: Double = 100) -> Drawing {
+  nonisolated private func drawing(_ id: String, price: Double = 100) -> Drawing {
     Drawing(id: id, kind: .trend, points: [DrawPoint(t: 1, p: price), DrawPoint(t: 2, p: price + 10)])
   }
-  private func symbol(_ i: Int) -> String { "binance/usd_m/S\(i)USDT" }
-  private func archive(symbols: Int, perSymbol: Int) -> DrawArchive {
+  nonisolated private func symbol(_ i: Int) -> String { "binance/usd_m/S\(i)USDT" }
+  nonisolated private func archive(symbols: Int, perSymbol: Int) -> DrawArchive {
     var value = DrawArchive()
     for s in 0..<symbols { value[symbol(s)] = (0..<perSymbol).map { drawing("d\(s)-\($0)", price: Double(100 + $0)) } }
     return value
   }
-  private func full(_ archive: DrawArchive) throws -> SyncCaptureBatch { try DrawingSyncDiff().batch(archive) }
+  nonisolated private func full(_ archive: DrawArchive) throws -> SyncCaptureBatch { try DrawingSyncDiff().batch(archive) }
   private func record(_ batch: SyncCaptureBatch, into store: SyncStore) throws {
     try store.capture(batch.withDeletions(against: store.archive.local.values), device: device, owning: PersonalSyncCodec.ownedKeys)
   }
@@ -111,26 +111,36 @@ import KanpanCore
   }
 
   /// 20 个品种 × 50 条：整份记与只动一个品种的增量记，编出来的字节与耗时。
-  @Test func measureFullVersusIncremental() throws {
+  ///
+  /// 编码那一半是纯值运算（Debug 里 20 轮整份编码要两三秒），不占主 actor：挂在 MainActor 上会把同进程
+  /// 几百条主线程用例全排在它后面，带墙钟时限的那几条会被饿到误红（2026-10-09 app-logic 全跑 2 红，
+  /// 主线程采样头 9 秒六成在这条用例里）。必须 nonisolated async 才换到全局执行器（SE-0338）。
+  /// 连记账那一半要 `SyncStore`（MainActor），只跑 3 轮，主线程上只占几百毫秒。
+  @Test nonisolated func measureFullVersusIncremental() async throws {
     let base = archive(symbols: 20, perSymbol: 50)
-    var edited = base; edited[symbol(3)][10] = drawing("d3-10", price: 42)
-    var diff = DrawingSyncDiff(); diff.captured(base)
+    var editedArchive = base; editedArchive[symbol(3)][10] = drawing("d3-10", price: 42)
+    let edited = editedArchive
+    var captured = DrawingSyncDiff(); captured.captured(base)
+    let diff = captured   // 下面 MainActor.run 的 @Sendable 闭包里只能用 let
     let encoder = JSONEncoder()
-    func time(_ work: () throws -> Void) rethrows -> Double {
+    func time(rounds: Int = 20, _ work: () throws -> Void) rethrows -> Double {
       let start = ContinuousClock.now
-      for _ in 0..<20 { try work() }
+      for _ in 0..<rounds { try work() }
       let d = ContinuousClock.now - start
-      return (Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15) / 20
+      return (Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15) / Double(rounds)
     }
     var fullBytes = 0, deltaBytes = 0
     let fullMs = try time { fullBytes = try encoder.encode(full(edited).objects).count }
     let deltaMs = try time { deltaBytes = try encoder.encode(diff.batch(edited).objects).count }
     // 连记账一起（编码 + 推删除 + 逐条跟 `local` 比）：主线程上抬手那一下实际花的。
-    let wholeStore = try SyncStore(directory: temp()), deltaStore = try SyncStore(directory: temp())
-    try record(full(base), into: wholeStore); try record(full(base), into: deltaStore)
-    let fullCaptureMs = try time { try record(full(edited), into: wholeStore) }
-    let deltaCaptureMs = try time { try record(diff.batch(edited), into: deltaStore) }
-    #expect(ledger(wholeStore) == ledger(deltaStore))
+    let (fullCaptureMs, deltaCaptureMs) = try await MainActor.run { () throws -> (Double, Double) in
+      let wholeStore = try SyncStore(directory: temp()), deltaStore = try SyncStore(directory: temp())
+      try record(full(base), into: wholeStore); try record(full(base), into: deltaStore)
+      let fullCaptureMs = try time(rounds: 3) { try record(full(edited), into: wholeStore) }
+      let deltaCaptureMs = try time(rounds: 3) { try record(diff.batch(edited), into: deltaStore) }
+      #expect(ledger(wholeStore) == ledger(deltaStore))
+      return (fullCaptureMs, deltaCaptureMs)
+    }
     print("[DrawingSyncDiff] 20×50 画线，改一条：编码 整份 \(fullBytes) B / \(String(format: "%.2f", fullMs)) ms，增量 \(deltaBytes) B / \(String(format: "%.2f", deltaMs)) ms；连记账 整份 \(String(format: "%.2f", fullCaptureMs)) ms，增量 \(String(format: "%.2f", deltaCaptureMs)) ms")
     #expect(deltaBytes * 10 < fullBytes)
   }

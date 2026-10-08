@@ -40,7 +40,7 @@ extension ShareClient: ShareInboxService {}
   @ObservationIgnored private var owner: UUID?
   @ObservationIgnored private var client: (any ShareInboxService)?
   @ObservationIgnored private var epoch = UUID()
-  @ObservationIgnored private var task: Task<Void, Never>?
+  @ObservationIgnored private(set) var task: Task<Void, Never>?
   /// 解好、已经缩到屏上尺寸的缩略图，最多 `thumbMemoryLimit` 张，按最近用过的顺序淘汰。
   ///
   /// 以前内存里留的是 JPEG 原字节、只留 6 张，每次 body 都在主线程 `UIImage(data:)` 整张解码；
