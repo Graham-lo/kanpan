@@ -5,7 +5,7 @@ import KanpanNetwork
 import KanpanNetworkTestSupport
 import KanpanCore
 
-// 「行情线路」两档：直连 / 网关，出厂默认直连，没有「自动」。
+// 「行情线路」两档：直连 / 网关，出厂默认网关（2026-10-08 起），没有「自动」。这里每条用例都显式给 policy。
 // 用户真机自己的网络能直连币安，但原来的自动探测偶发失败就把整套切到 OKX 且卡很久；
 // 这套用例守的是「他选了哪条就走哪条，代码不许再自作主张」。
 

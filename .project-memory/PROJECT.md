@@ -25,7 +25,7 @@
 
 ## 3. 行情、账号、复盘（技术结论，沿用 09-15/16 的验证）
 
-- 线路：设置里「行情线路」两档，**出厂默认直连，没有自动切换**（2026-09-17 定）。直连 = 只走币安自己的域名（REST + WS），探不通照实说「点此重试」，绝不切 OKX；网关 = 只走自家网关供 OKX 行情；2026-10-02 起网关表里只有新加坡一台 `kanpan.43-160-232-253.sslip.io`（用户定「不再用兜底方式」，美国备机的网关已停），失败的歇 10 秒（听 `Retry-After`），表仍是数组、线路层按表遍历。选择存在 `Prefs.routePolicy`，字段归类 `deviceOnly`（2026-09-19 按第二轮 B7 改：不再随账号同步，新客户端不上传、云端旧值不覆盖本机、迁移保住当前选择；服务端为兼容老客户端仍认这个键，`wireOnlyKeys` 里有说明）；`PrefsStore` 把它镜像到 `MarketRoutePolicyStore`（`UserDefaults` 键 `market.routePolicy`，测试档案下用 `kanpan.tests.*` 套件），`RoutedMarketFeed` 听通知立刻换线（REST 与已连的 WS 一起）。旧的 `market-source.json`、`MarketRecoverySchedule`、直连冷却/对冲都已删除。**线路两档只管币安主行情**（K 线、报价、币安 WS）；主机上的 kanpan-api 是另一个具名出口 `MarketRoute.apiHosts`（= `ServerHosts.api`，只有主机，2026-09-24 第四批第 35 项）：订单流的 OKX 中继 `/v1/market/ws/okx`、币安中继 `/v1/market/ws/binance`、品种表 `/v1/market/orderflow/instruments`、深度快照 `/v1/market/depth`，以及 `BackendClient`（账号、同步、板块历史）、`/v1/market/meta`、`/v1/market/open-interest`，**任何线路下**都只打它——OKX 国内直连不通、订单流必须三家聚合，`MarketRoute.gateways` 给网关才有的：`/market/v1/*`、`/market/okx/stream`、`/oi/v1/metrics`、`/v1/market/{raw,stream,funding,ticker,open-interest/history}`。
+- 线路：设置里「行情线路」两档，**出厂默认网关（2026-10-08 起，见 § 56；09-17 到 10-08 是直连），没有自动切换**。直连 = 只走币安自己的域名（REST + WS），探不通照实说「点此重试」，绝不切 OKX；网关 = 只走自家网关供 OKX 行情；2026-10-02 起网关表里只有新加坡一台 `kanpan.43-160-232-253.sslip.io`（用户定「不再用兜底方式」，美国备机的网关已停），失败的歇 10 秒（听 `Retry-After`），表仍是数组、线路层按表遍历。选择存在 `Prefs.routePolicy`，字段归类 `deviceOnly`（2026-09-19 按第二轮 B7 改：不再随账号同步，新客户端不上传、云端旧值不覆盖本机、迁移保住当前选择；服务端为兼容老客户端仍认这个键，`wireOnlyKeys` 里有说明）；`PrefsStore` 把它镜像到 `MarketRoutePolicyStore`（`UserDefaults` 键 `market.routePolicy`，测试档案下用 `kanpan.tests.*` 套件），`RoutedMarketFeed` 听通知立刻换线（REST 与已连的 WS 一起）。旧的 `market-source.json`、`MarketRecoverySchedule`、直连冷却/对冲都已删除。**线路两档只管币安主行情**（K 线、报价、币安 WS）；主机上的 kanpan-api 是另一个具名出口 `MarketRoute.apiHosts`（= `ServerHosts.api`，只有主机，2026-09-24 第四批第 35 项）：订单流的 OKX 中继 `/v1/market/ws/okx`、币安中继 `/v1/market/ws/binance`、品种表 `/v1/market/orderflow/instruments`、深度快照 `/v1/market/depth`，以及 `BackendClient`（账号、同步、板块历史）、`/v1/market/meta`、`/v1/market/open-interest`，**任何线路下**都只打它——OKX 国内直连不通、订单流必须三家聚合，`MarketRoute.gateways` 给网关才有的：`/market/v1/*`、`/market/okx/stream`、`/oi/v1/metrics`、`/v1/market/{raw,stream,funding,ticker,open-interest/history}`。
 - 网络层单独成包 `KanpanNetwork`（2026-09-17）：HTTP / WS 接口、币安 REST / WS 客户端、限流、线路策略与网关竞速都在这里，`KanpanData` 依赖它但 2026-09-24 起不再 `@_exported` 转出（审查 18a）：用到网络层名字的文件自己 `import KanpanNetwork`，app 的 pbxproj 显式链 KanpanNetwork；线路决策只在 `RouteResolver` / `MarketRoute`，取数件不再自己判 `.gateway`。改线路逻辑只碰这一包；`make network-test`。`BinanceREST.upstream` 不传 policy 就读用户当前线路，OI / 目录 / 报价簿客户端都跟设置走。网络性能按相同模拟器、相同路径比较，不将模拟器数值当成真机结果。
 - 冷启动 / 切换靠多品种快照、后台加深、自选预热做到不等网络；登录用户的自选表要等账号恢复后再判首屏（09-16 修过「冷启动进行情页」「自选一行行慢慢加载」）。
 - 账号：用户名 + 密码，Keychain 会话，设备管理、改密、注销；服务端 `Backend/kanpan-api`（Rust，主 VPS `/opt/kanpan-api`，API 8794，PostgreSQL loopback 55434，RLS 隔离，同机每日备份 30 天）。邮箱注册停掉了。**离机备份（2026-09-19，审查 A-08）**：主 VPS `kanpan-offsite-push.timer` 每天 00:20 CST 把最新 dump + `/etc/kanpan-api/{service,database}.env` rsync 到备用 VPS `trade-vps-old:/var/backups/kanpan-offsite/<UTC 时间戳>/`（sshd 在 **33333** 端口，密钥 `/root/.ssh/kanpan-offsite`，authorized_keys 限 `from=107.174.172.10` 且无 pty/转发，留 30 份）；Mac 上 launchd `com.mdd.kanpan.offsite-pull` 每天 01:00 拉到 `~/kanpan-backups/<时间戳>/`（日志 `pull.log`，留 30 份）。安装步骤与恢复演练步骤见 `Backend/kanpan-api/ops/OFFSITE.md`；演练在 2026-09-23 之前从未实跑过，P4.7 在线上机的临时库里实跑，用时与验证 SQL 写回 OFFSITE.md。
@@ -851,7 +851,7 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
   `fapi.binance.com`，国内不开代理连不上；而改前「网关」只管 WS、REST 照样直打。kanpan-api 新增 `venues/binance.rs`
   （`/v1/market/raw/<path>?source=binance`，13 条公开路径白名单、权重预算 1000/min、短 TTL 缓存 + 合流、429/418 冷却），
   网页 `market/rest.ts` 的 `viaRoute()` 在网关线路下改写 fapi / dapi 地址（挂在 `j()` 与订单流 `getJSON()` 上）；桌面 `store.route`、
-  手机 `routePolicy` 出厂改 `gateway`，没亲手选过的老档跟着改（`routePicked`），这是有意偏离 iOS「出厂直连」；换线路后图表自动重取。
+  手机 `routePolicy` 出厂改 `gateway`，没亲手选过的老档跟着改（`routePicked`），当时是有意偏离 iOS「出厂直连」，10-08 iOS 也跟上了（§ 56）；换线路后图表自动重取。
   直连的推送域名也换成 iOS 出厂那台 `dstream.binance.me`（`market/stream.ts` / `m/chart/depth.source.ts` / `orderflow/feed.ts`，
   旧 `fstream.binance.com` 国内解析被污染）；但国内不开代理的直连仍拿不到合约 REST（币安没有国内能到的合约 REST 入口，iOS 同样，
   只是 iOS 有缓存撑着），所以网页版出厂必须是网关。新加了纯静态线路体检页 `/web/diag.html`（`Web/public/diag.html`），
@@ -1847,3 +1847,11 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   之后加了「扫到 BTC 返回键还在」那张截图的断言，单跑 `testScanSwipeFromTermMarkAndLongSymbolWithBack` 再过一遍；
   Web `npm test` 167 文件 / 2170 条全过、`npm run build` 通过；手机网页无头 Chrome 实点：三颗圆片 left 266 / 310 / 354（圆心距 44），
   菜单 compare · note · share，满三只时 compare 置灰，点「添加对比」开出对比搜索页，无页面错误。
+
+## 56. 10-08：iOS 行情线路出厂改网关（和网页版一致）
+
+- **起因**：用户的朋友拉 `main` 自己打真机包，app 没网、板块页刷不出来。仓库是最新的（HEAD 与 `origin/main` 一致，构建不依赖任何 gitignore 的配置）；根因是 iOS 出厂线路直连，所有币安合约 REST 打 `fapi.binance.com`，国内不开代理连不上（DNS 污染 + TLS 重置，见《新加坡主机迁移-2026-10-02》），板块页那条批量 `/fapi/v1/ticker/24hr` 同样失败就停在「暂无行情 / 点此重试」。用户自己的手机经 Mac 的 Surge 才一直没碰到。网页版 10-02 已把出厂改成网关，用户：「肯定也要一样啊」。
+- **改法**：`MarketRoutePolicyStore.factoryDefault = .gateway`，`Prefs.routePolicy` 默认跟它；`PrefsCodec.version` 4 → 5，迁移 `from < 5 && direct → gateway`——直连是旧出厂值，分不出没动过还是亲手选的，一律迁一次；选了网关的本来就对；5 起写下的直连是用户自己切的，留住。线路仍是本机字段不走云端，所以没有服务端迁移。两档、手动选、没有自动切换这些规则一个字没动。
+- **测试沙盒**：`KANPAN_TEST_PROFILE=1` 下起步仍是直连（`MarketRoutePolicyStore.launchDefault`，DEBUG 才有这条岔路），`KANPAN_TEST_ROUTE_POLICY` 点名换——`ChartFoundationUITests` 等契约文件验的是盘口、外部统计这些直连才有的东西，和沙盒常用行自己铺一套是同一个道理；真正的出厂值由 `PrefsDefaultsTests` / `MarketRoutePolicyTests` 守，`SettingsBugfixTests.线路迁移` 守第 5 版迁移。`MarketRouteUITests` 的措辞从「出厂直连」改成「沙盒起步直连」。
+- **术语解释**（设置页「线路」那颗问号）改成「网关：经我们的服务器转一道，出厂就是它，不开代理也能用。直连：手机自己直接连交易所，网络本来就连得上交易所时更快。」
+- 网关各条接口从 Mac 实测都通（`/chart-gateway/health`、`/market/v1/{tickers,klines,instruments}?source=okx`、`/v1/market/funding?source=okx`、`/v1/market/raw/fapi/v1/ticker/24hr?source=binance`）。老用户升级后手机会翻到网关一次，想回直连在「图表设置 › 线路」或「我的 › 设置」点一下就一直走直连。

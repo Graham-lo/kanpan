@@ -5,7 +5,7 @@ extension GlossaryTerm {
   static let route = GlossaryTerm(
     id: "route",
     title: "线路 · 行情从哪来",
-    body: "直连：手机自己直接连交易所，出厂就是它。\n网关：经我们的服务器转一道，手机连不上交易所时用。\n选了哪条就一直走哪条，不会自己切换。")
+    body: "网关：经我们的服务器转一道，出厂就是它，不开代理也能用。\n直连：手机自己直接连交易所，网络本来就连得上交易所时更快。\n选了哪条就一直走哪条，不会自己切换。")
 
   static let watchMove = GlossaryTerm(
     id: "watchMove",

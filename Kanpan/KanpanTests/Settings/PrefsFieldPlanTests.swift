@@ -257,7 +257,7 @@ struct PrefsFieldPlanTests {
   /// 网关，取决于这台手机这张网连得通哪一头，不是他摆出来的样子。（原来并排的
   /// `apiHost` / `streamHost` 两个自定义域名字段 2026-09-24 删了，审查 18a。）
   ///
-  /// **产品规则本身一个字没变**：出厂默认直连、只有两档、手动选、没有任何自动切换。
+  /// **产品规则本身一个字没变**：只有两档、手动选、没有任何自动切换（出厂 2026-10-08 起是网关）。
   /// 变的只有一件事——这个选择不再跨设备覆盖。
   ///
   /// 服务端那一侧仍然认 `routePolicy`（进了 `PrefsFieldPlan.wireOnlyKeys`）：库里存着的
@@ -328,7 +328,7 @@ struct PrefsFieldPlanTests {
     let box = InMemoryPrefsStorage([PrefsCodec.key: PrefsCodec.encode(archived)])
 
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
-    #expect(store.prefs.routePolicy == .gateway, "存档里是网关，起来还得是网关，不许重置成出厂直连")
+    #expect(store.prefs.routePolicy == .gateway, "存档里是网关，起来还得是网关，不许重置成别的")
 
     // 改别的设置照旧落盘，线路那一档跟着留在档案里。
     store.update { $0.skin = .terra }

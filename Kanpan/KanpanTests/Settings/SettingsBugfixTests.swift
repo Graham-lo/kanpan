@@ -34,14 +34,29 @@ struct SettingsBugfixTests {
     #expect(decode(#"{"redUp":true}"#).redUp == true)
   }
 
-  @Test("编出去写当前版本（4）；字段级往返（keeping）不再把用户的选择改回默认")
+  @Test("第 5 版：老档里的直连迁成网关一次；5 起写下的直连、无版本的同步体都不动")
+  func 线路迁移() {
+    // 4 以前的档：直连是旧出厂值，分不出是没动过还是亲手选的，一律迁成网关（国内不开代理直连没行情）。
+    #expect(decode(#"{"v":4,"routePolicy":"direct"}"#).routePolicy == .gateway)
+    #expect(decode(#"{"v":3,"routePolicy":"direct"}"#).routePolicy == .gateway)
+    // 老档里没有这个键：按出厂（网关）。
+    #expect(decode(#"{"v":4}"#).routePolicy == .gateway)
+    // 老档里已经是网关：本来就对。
+    #expect(decode(#"{"v":4,"routePolicy":"gateway"}"#).routePolicy == .gateway)
+    // 5 起写下的直连是用户自己切回去的，留住。
+    #expect(decode(#"{"v":5,"routePolicy":"direct"}"#).routePolicy == .direct)
+    // 没版本号的（手写档）不迁移。
+    #expect(decode(#"{"routePolicy":"direct"}"#).routePolicy == .direct)
+  }
+
+  @Test("编出去写当前版本（5）；字段级往返（keeping）不再把用户的选择改回默认")
   func 往返不迁移() throws {
     var mine = Prefs.defaults
     mine.quickIntervals = [.m5, .m30, .h1, .h4, .d1]
     let data = try #require(PrefsCodec.encoded(mine))
     let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
     #expect(obj["v"] as? Int == PrefsCodec.version)
-    #expect(PrefsCodec.version == 4)
+    #expect(PrefsCodec.version == 5)
     #expect(PrefsCodec.decode(data).quickIntervals == mine.quickIntervals)
     let merged = Prefs.keeping(["quickIntervals"], of: mine, over: .defaults)
     #expect(merged.quickIntervals == mine.quickIntervals)

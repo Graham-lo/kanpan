@@ -18,7 +18,7 @@ struct PrefsDefaultsTests {
     #expect(p.timeZone == .exchange)                 // 2026-09-28 起不是设置项：全 app 一律上海 UTC+8
     #expect(p.redUp == false)                        // 2026-10-03 起一律绿涨红跌
     #expect(p.theme == .system)                      // app.js: 'auto'
-    #expect(p.routePolicy == .direct)                // 行情线路出厂直连，没有「自动」
+    #expect(p.routePolicy == .gateway)               // 行情线路出厂网关（2026-10-08 起，和网页版一致），没有「自动」
   }
 
   @Test("「图表设置」只剩画法：别的都是定值（收设置项 B 组）")

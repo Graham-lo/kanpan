@@ -162,11 +162,10 @@ final class PrefsStore {
       if let raw = ProcessInfo.processInfo.environment["KANPAN_TEST_COMPARE_SYMBOLS"] {
         self.prefs.compareSymbols = Prefs.cleanCompareSymbols(raw.split(separator: ",").map(String.init))
       }
-      // UI 用例要验网关那条线路（OKX 历史）时从这儿起步，不用在用例里去点设置。
-      if let raw = ProcessInfo.processInfo.environment["KANPAN_TEST_ROUTE_POLICY"],
-         let policy = MarketRoutePolicy(rawValue: raw) {
-        self.prefs.routePolicy = policy
-      }
+      // 沙盒里的线路：没点名就是直连（出厂 2026-10-08 起是网关，但契约用例验的是盘口、外部统计这些
+      // 直连才有的东西，和上面常用行的道理一样）；要验网关那条线路（OKX 历史）的用例用
+      // `KANPAN_TEST_ROUTE_POLICY=gateway` 点名，不用在用例里去点设置。选法收在 `MarketRoutePolicyStore.launchDefault`。
+      self.prefs.routePolicy = MarketRoutePolicyStore.launchDefault
       // 不经 XCUITest、直接 `simctl launch` 起的长时取证（M5 的 30 分钟 1 分钟图）从这一档开张：
       // 深链要过系统那句「在 Hkline 中打开？」，没有测试进程就没人去点。
       if let raw = ProcessInfo.processInfo.environment["KANPAN_TEST_INTERVAL"], let interval = Interval(rawValue: raw) {

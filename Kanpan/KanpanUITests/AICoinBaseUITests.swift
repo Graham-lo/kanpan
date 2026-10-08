@@ -47,7 +47,7 @@ final class AICoinBaseUITests: XCTestCase {
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launchEnvironment["KANPAN_LOG"] = "1"
-    // 每次给一个全新的档案：行情线路记在 Prefs 里（出厂直连=币安），全新档案保证
+    // 每次给一个全新的档案：行情线路记在 Prefs 里（测试沙盒起步直连=币安），全新档案保证
     // 这条用例从币安起步，不会被别的用例留下的「网关」设置带到 OKX——那条线路
     // 压根没有持仓量（`OISource` 只连币安），后面的 `oiReady` 就永远等不到。
     app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString

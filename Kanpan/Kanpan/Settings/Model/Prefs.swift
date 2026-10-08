@@ -154,10 +154,11 @@ struct Prefs: Sendable, Equatable {
   var indicatorLayouts = IndicatorLayoutMemory()
 
   // ---------------------------------------------------------------- 网络
-  /// 行情线路：直连（默认）/ 网关。选了哪条就走哪条，代码不做自动切换。
-  /// 存在这里而不是单独一个键，是为了跟着设置一起走：登录了随账号同步，
-  /// 没登录就落在本机的访客档案里；`PrefsStore` 再把它镜像给 `MarketRoutePolicyStore`。
-  var routePolicy: MarketRoutePolicy = .direct
+  /// 行情线路：网关（默认，2026-10-08 起）/ 直连。选了哪条就走哪条，代码不做自动切换。
+  /// 出厂从直连改成网关的理由见 `MarketRoutePolicyStore.factoryDefault`；老档的迁移在 `PrefsCodec.migrate`（版本 5）。
+  /// 存在这里而不是单独一个键，是为了跟着设置一起走（2026-09-19 起是本机字段，不随账号同步）；
+  /// `PrefsStore` 再把它镜像给 `MarketRoutePolicyStore`。
+  var routePolicy: MarketRoutePolicy = MarketRoutePolicyStore.factoryDefault
 
   // ------------------------------------------------ 他在各页上摆出来的样子
   //

@@ -35,7 +35,7 @@ struct MarketRoutePolicyTests {
 
   // ---------------------------------------------------------------- 存取
 
-  @Test("默认是直连，写进去能读回来，认不出的值退回直连")
+  @Test("出厂是网关（2026-10-08），写进去能读回来，认不出的值退回出厂")
   func storeRoundTrips() {
     let defaults = MarketRoutePolicyStore.defaults
     let saved = defaults.string(forKey: MarketRoutePolicyStore.key)
@@ -44,13 +44,17 @@ struct MarketRoutePolicyTests {
       else { defaults.removeObject(forKey: MarketRoutePolicyStore.key) }
     }
 
+    // 出厂网关：国内不开代理直连拿不到币安合约 REST，新装第一次打开不能是整页空白（和网页版一致）。
+    #expect(MarketRoutePolicyStore.factoryDefault == .gateway)
+    // 包测试进程没有 UI 沙盒的环境变量，起步档就是出厂档。
+    #expect(MarketRoutePolicyStore.launchDefault == .gateway)
     defaults.removeObject(forKey: MarketRoutePolicyStore.key)
-    #expect(MarketRoutePolicyStore.current == .direct)
-    // 旧版本存过「自动」、或者写进去的是垃圾：都退回直连，不能把行情卡死在一个不存在的档上。
+    #expect(MarketRoutePolicyStore.current == .gateway)
+    // 旧版本存过「自动」、或者写进去的是垃圾：都退回出厂，不能把行情卡死在一个不存在的档上。
     defaults.set("auto", forKey: MarketRoutePolicyStore.key)
-    #expect(MarketRoutePolicyStore.current == .direct)
+    #expect(MarketRoutePolicyStore.current == .gateway)
     defaults.set("nonsense", forKey: MarketRoutePolicyStore.key)
-    #expect(MarketRoutePolicyStore.current == .direct)
+    #expect(MarketRoutePolicyStore.current == .gateway)
 
     for policy in MarketRoutePolicy.allCases {
       MarketRoutePolicyStore.set(policy)
@@ -92,10 +96,10 @@ struct MarketRoutePolicyTests {
       forName: .marketRoutePolicyDidChange, object: nil, queue: nil) { _ in heard.bump() }
     defer { NotificationCenter.default.removeObserver(token) }
 
-    // `PrefsStore` 每落一次盘都会 set 一次，值没变不能把行情重开。
-    MarketRoutePolicyStore.set(.direct)
+    // `PrefsStore` 每落一次盘都会 set 一次，值没变不能把行情重开（没存过就是出厂的网关）。
+    MarketRoutePolicyStore.set(MarketRoutePolicyStore.factoryDefault)
     #expect(await staysFalse(for: 0.3) { heard.value >= 1 })
-    MarketRoutePolicyStore.set(.gateway)
+    MarketRoutePolicyStore.set(.direct)
     #expect(await waitUntil(2) { heard.value == 1 })
   }
 

@@ -10,9 +10,11 @@ import Foundation
 /// 某家交易所在网关上实际由谁供数（比如币安在网关上被封、由替身顶上），是那一家
 /// 提供者自己的事，见 `RouteResolver`，这里不管。
 public enum MarketRoutePolicy: String, Codable, Sendable, CaseIterable {
-  /// 出厂默认。只走自己的网络直连交易所：不算网关、不记冷却、也不会被换上游。
+  /// 只走自己的网络直连交易所：不算网关、不记冷却、也不会被换上游。
+  /// 2026-10-08 前是出厂默认；国内不开代理拿不到币安合约 REST（`fapi.binance.com` 没有国内能到的入口），
+  /// 新装的手机第一次打开整页是空的，所以出厂改成网关（`MarketRoutePolicyStore.factoryDefault`），和网页版一致。
   case direct
-  /// 只走 VPS 网关。
+  /// 出厂默认（2026-10-08 起）。只走 VPS 网关（新加坡 `ServerHosts.gateways`）。
   case gateway
 
   public var title: String {
@@ -49,10 +51,31 @@ public enum MarketRoutePolicyStore {
     return .standard
   }
 
-  /// 没存过、或者存的是旧版本的「自动」这种认不出的值，一律按直连。
+  /// 出厂线路。2026-10-08 从直连改成网关（用户：「肯定也要一样」，和网页版 10-02 的改法一致）：
+  /// 国内不开代理直连拿不到币安合约 REST，朋友拉代码打真机包第一次打开就是整页空白、板块页刷不出来。
+  /// 选了哪条仍一直走哪条，没有自动切换；老档的迁移在 app 的 `PrefsCodec.migrate`（版本 5）。
+  public static let factoryDefault: MarketRoutePolicy = .gateway
+
+  /// 还没存过任何选择时从哪一档起步。
+  ///
+  /// 正式包就是 `factoryDefault`。**UI 测试沙盒**（`KANPAN_TEST_PROFILE=1`）仍按直连起步，
+  /// 由 `KANPAN_TEST_ROUTE_POLICY` 点名换：契约用例（`ChartFoundationUITests` 等）验的是盘口、
+  /// 外部统计这些直连才有的东西，和沙盒里常用行自己铺一套是同一个道理（`PrefsStore.uiTestQuick`）；
+  /// 真正的出厂默认由 `PrefsDefaultsTests` / `MarketRoutePolicyTests` 在单元层面守。只在 DEBUG 构建里有这条岔路。
+  public static var launchDefault: MarketRoutePolicy {
+    #if DEBUG
+    let env = ProcessInfo.processInfo.environment
+    if env["KANPAN_TEST_PROFILE"] == "1" {
+      return env["KANPAN_TEST_ROUTE_POLICY"].flatMap(MarketRoutePolicy.init(rawValue:)) ?? .direct
+    }
+    #endif
+    return factoryDefault
+  }
+
+  /// 没存过、或者存的是旧版本的「自动」这种认不出的值，一律按 `launchDefault`。
   public static var current: MarketRoutePolicy {
     guard let raw = defaults.string(forKey: key),
-          let policy = MarketRoutePolicy(rawValue: raw) else { return .direct }
+          let policy = MarketRoutePolicy(rawValue: raw) else { return launchDefault }
     return policy
   }
 

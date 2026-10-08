@@ -29,7 +29,11 @@ enum PrefsCodec {
   ///
   /// 4（2026-10-03）：用户「现在一律默认绿涨红跌」。出厂从红涨改成绿涨，而且是「一律」——
   /// 老档不论存的是什么都迁成绿涨一次；4 起写下的档里若是红涨，那就是用户自己切回去的，不再动。
-  static let version = 4
+  ///
+  /// 5（2026-10-08）：行情线路出厂从直连改成网关（国内不开代理直连拿不到币安合约 REST，新装第一次打开整页空白；
+  /// 用户：「肯定也要一样」，和网页版一致）。老档里是直连的迁成网关一次——直连本来就是旧出厂值，分不出是没动过
+  /// 还是亲手选的；选了网关的本来就对。5 起写下的档里若是直连，那是用户自己切的，不再动。
+  static let version = 5
   /// 认得的最老存档。比它还老的是原型期那份键名完全不同的档（`styleID` / `recordButtonX`
   /// 那一代），读进来只会是一堆认不出的字段，不如直接退出厂值。
   static let oldestSupported = 2
@@ -101,6 +105,8 @@ enum PrefsCodec {
     if from < 3, let quicks = archivedQuicks, Prefs.factoryQuicks.contains(quicks) { prefs.quickIntervals = Interval.quick }
     // 4：一律绿涨红跌（云端那份由服务端迁移 0041 同时翻，免得同步再盖回红涨）。
     if from < 4 { prefs.redUp = false }
+    // 5：出厂线路改网关。老档里的直连迁成网关一次（本机字段，不走云端，没有服务端迁移）。
+    if from < 5, prefs.routePolicy == .direct { prefs.routePolicy = .gateway }
     // 样板（真要用时照这个写）：版本 3 把出厂皮肤从青苔改成陶土，没手动挑过皮肤的
     // 老用户该跟着换，挑过的一个字不动——
     // if from < 3, prefs.skin == .moss { prefs.skin = .clay }

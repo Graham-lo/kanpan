@@ -1066,7 +1066,7 @@ final class StressRegression0928UITests: KanpanUICase {
       note("切到\(choice) → 首个新报价 \(String(format: "%.1f", Date().timeIntervalSince(t)))s")
     }
     reportHangs("直连 / 网关来回切 6 次", since: h0)
-    // 收尾回直连（出厂）。
+    // 收尾回直连（沙盒起步档；出厂 2026-10-08 起是网关，单元测试守）。
     XCTAssertTrue(app.openSettingsFromMe())
     let direct = app.buttons["settings.routePolicy.直连"]
     for _ in 0..<6 where !(direct.exists && direct.isHittable) { app.swipeUp(velocity: .slow) }
