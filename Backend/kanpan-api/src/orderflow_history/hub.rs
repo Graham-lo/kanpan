@@ -50,10 +50,10 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::{self,Message as Up};
 
-const PING:Duration=Duration::from_secs(20);
-const IDLE:Duration=Duration::from_secs(60);
+pub(super) const PING:Duration=Duration::from_secs(20);
+pub(super) const IDLE:Duration=Duration::from_secs(60);
 const CONNECT:Duration=Duration::from_secs(15);
-const SEND:Duration=Duration::from_secs(10);
+pub(super) const SEND:Duration=Duration::from_secs(10);
 /// 新连接连上之后最多等多久第一帧，再告诉池子「我接手了」。
 const UP_AFTER:Duration=Duration::from_secs(5);
 /// 交接重叠期：新连接接手之后旧连接再推多久。
@@ -110,7 +110,7 @@ async fn permit(kind:Kind) {
 }
 
 /// 退避带 ±50% 抖动。
-fn jittered(d:Duration)->Duration {d.mul_f64(rand::random_range(0.5..1.5))}
+pub(super) fn jittered(d:Duration)->Duration {d.mul_f64(rand::random_range(0.5..1.5))}
 
 // ------------------------------------------------------------------ 对外
 
@@ -396,9 +396,9 @@ async fn manage(mut rx:mpsc::UnboundedReceiver<HubCmd>,hub_tx:mpsc::UnboundedSen
 
 // ------------------------------------------------------------------ 一条连接
 
-type Ws=tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+pub(super) type Ws=tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
-async fn open(kind:Kind,url:&str)->anyhow::Result<Ws> {
+pub(super) async fn open(kind:Kind,url:&str)->anyhow::Result<Ws> {
  permit(kind).await;
  match tokio::time::timeout(CONNECT,tokio_tungstenite::connect_async(url)).await {
   Ok(Ok((ws,_)))=>Ok(ws),
