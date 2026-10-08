@@ -9,12 +9,12 @@
  * 数据规则（门槛、分桶、出现 / 消失 / 结局）都在 model / feed 里照手机端的 Swift 模型，这里只管展示。
  */
 import './orderflow.css'
-import { st, save, type WidgetId } from '../app/store'
+import { st, save } from '../app/store'
 import { I, esc } from '../ui/dom'
-import { patchShell, patchText } from '../ui/patch'
+import { patchShell } from '../ui/patch'
 import { term } from '../ui/overlay'
 import { OrderFlowFeed, getJSON, type TradeEvent } from './feed'
-import { buildFine, exName, venueName } from './aggregate'
+import { buildFine, exName } from './aggregate'
 import { HeatStore, parseHeat, heatHint, heatRing, heatUrl, type HeatRing } from './heat'
 import { Tape } from './tape'
 import { TradeLadder } from './tradeLadder'
@@ -26,10 +26,10 @@ import { heatFetchSent } from './heatFetch'
 import { createLayer } from './layer'
 import { mountLadder, ladderVisible, drawLadder, resetLadder, ladderDebug } from './ladder'
 import { mountDrawer, updateDrawer } from './drawer'
-import { widgetHTML, mountWidgets, isOfWidget, updateWidgets, resetTape, scheduleTape, markWall, OF_WIDGETS, tapeDebug } from './widgets'
+import { widgetHTML, mountWidgets, isOfWidget, updateWidgets, resetTape, scheduleTape, markWall, tapeDebug } from './widgets'
 import { openOrderFlowSettings, settingsLayerOpen } from './settingsDialog'
-import { D, baseOfSymbol, productsOf, type Display } from './settings'
-import { OF, savePrefs, amt, PRODUCT_FULL, durShort, type Api } from './state'
+import { D, baseOfSymbol, productsOf } from './settings'
+import { OF, savePrefs, amt, PRODUCT_FULL, type Api } from './state'
 import { orderId, type BigOrder } from './types'
 import type { Snapshot } from './model'
 import type { TVChart } from '../chart/chart'
@@ -382,11 +382,6 @@ export function indicatorRowClick(t: HTMLElement): boolean {
 
 // ------------------------------------------------------------------ 侧栏「主力订单流」面板
 
-const CHIPS: [keyof Display, string][] = [
-  ['spot', '现货'], ['contract', '合约'], ['filledBid', '买单成交'], ['filledAsk', '卖单成交'], ['cancelledBid', '买单撤销'], ['cancelledAsk', '卖单撤销'],
-]
-const W_TITLE: Record<string, string> = { book: '盘口', tape: '成交', walls: '大单', alerts: '提醒', liq: '流动性', vol: '成交额' }
-
 const sw = (id: string, label: string, on: boolean, tip: string): string =>
   `<div class="of-p-row" data-tip="${tip}"><span>${label}</span><button class="switch" role="switch" data-ofp="${id}" aria-checked="${on}" aria-label="${label}"></button></div>`
 
@@ -402,15 +397,8 @@ export function flowPanel(el: HTMLElement): void {
       ${sw('ladder', '深度梯子', st.slots.ladder, '价格轴右边的一列三家合并盘口，和图同一根价格轴')}
       ${sw('drawer', '大单列表', st.slots.drawer, '图下面的抽屉，列出这只品种所有大单')}
       ${sw('heat', '深度热力', OF.prefs.heat, '每秒记一列挂单浓淡，之前的时段从服务端补')}
-      <div class="sec-title">大单筛选</div>
-      <div class="of-p-chips">${CHIPS.map(([k, l]) => `<button class="chip" data-ofp-chip="${k}" aria-pressed="${OF.prefs.display[k]}">${l}</button>`).join('')}</div>
-      <div class="sec-title">侧栏小部件<span class="faint">放在「自选」视图里</span></div>
-      <div class="of-p-chips">${OF_WIDGETS.map(w => `<button class="chip" data-ofp-w="${w}" aria-pressed="${st.slots.widgets.includes(w)}">${W_TITLE[w]}</button>`).join('')}
-        <button class="btn ghost sm" data-ofp="watch">去看 ${I('chevronDown', 'icon-16 of-rot')}</button></div>
       <div class="sec-title">门槛<span class="faint">${a ? esc(baseOfSymbol(a.symbol.toUpperCase()).base) : ''}</span></div>
       <div id="ofpThr"></div>
-      <div class="sec-title">数据</div>
-      <div id="ofpStatus"></div>
     </div>`
   if (!el.dataset.ofpBound) {
     el.dataset.ofpBound = '1'
@@ -425,23 +413,6 @@ function renderFlowPanel(): void { if (panelOpen()) flowPanel(panelEl!) }
 function onPanelClick(e: MouseEvent): void {
   if (st.panel !== 'flow') return
   const t = e.target as HTMLElement
-  const chip = t.closest<HTMLElement>('[data-ofp-chip]')
-  if (chip) {
-    const k = chip.dataset.ofpChip as keyof Display
-    OF.prefs.display[k] = !OF.prefs.display[k]; savePrefs()
-    chip.setAttribute('aria-pressed', String(OF.prefs.display[k]))
-    OF.version++
-    api?.charts().forEach(c => { c.chart.dirty = true })
-    return
-  }
-  const wb = t.closest<HTMLElement>('[data-ofp-w]')
-  if (wb) {
-    const w = wb.dataset.ofpW as WidgetId
-    st.slots.widgets = st.slots.widgets.includes(w) ? st.slots.widgets.filter(x => x !== w) : [...st.slots.widgets, w]
-    save()
-    wb.setAttribute('aria-pressed', String(st.slots.widgets.includes(w)))
-    return
-  }
   const b = t.closest<HTMLElement>('[data-ofp]')
   if (!b) return
   switch (b.dataset.ofp) {
@@ -450,18 +421,17 @@ function onPanelClick(e: MouseEvent): void {
     case 'ladder': st.slots.ladder = !st.slots.ladder; save(); sync(); api?.layoutSlots(); b.setAttribute('aria-checked', String(st.slots.ladder)); return
     case 'drawer': st.slots.drawer = !st.slots.drawer; save(); sync(); api?.layoutSlots(); updateDrawer(true); b.setAttribute('aria-checked', String(st.slots.drawer)); return
     case 'heat': toggleHeat(); return
-    case 'watch': st.panel = 'watch'; save(); api?.renderPanel(); return
   }
 }
 
 let panelSig = ''
-/** 每帧只改门槛与状态这两块（开关与胶囊是点了才变）。 */
+/** 每帧只改门槛这一块（开关是点了才变）。 */
 function updateFlowPanel(force = false): void {
   if (!panelOpen()) return
   const el = panelEl!
   const f = OF.feed, s = OF.snap
-  const thr = el.querySelector<HTMLElement>('#ofpThr'), stat = el.querySelector<HTMLElement>('#ofpStatus')
-  if (!thr || !stat) return
+  const thr = el.querySelector<HTMLElement>('#ofpThr')
+  if (!thr) return
   let thrHTML: string
   if (!f) thrHTML = `<div class="of-wait faint">${OF.pending ? '正在接三家盘口…' : '打开上面任意一项后开始接三家盘口'}</div>`
   else {
@@ -473,29 +443,10 @@ function updateFlowPanel(force = false): void {
       ${f.isCalibrating ? '<div class="faint of-p-note">正在按这只品种的盘口深度定门槛…</div>' : ''}
       <button class="btn secondary sm of-p-btn" data-ofp="settings">${I('gear', 'icon-16')}改门槛与步长</button>`
   }
-  let statHTML: string, venuesHTML = '', kv: string[] = []
-  if (!f) statHTML = ''
-  else {
-    const venues = s?.venues ?? []
-    const back = heatBack
-    const heatText = !OF.prefs.heat ? '关着' : back.status === 'ok' ? `实时每秒一列 · 之前从服务端补（${durShort(back.bucketMs)}一列）`
-      : back.status === 'empty' ? '实时每秒一列 · 服务端这段没有记录' : back.status === 'down' ? '实时每秒一列 · 服务端暂时取不到' : '实时每秒一列'
-    const hist = f.historyState === 'ok' ? '已并入' : f.historyState === 'down' ? '暂时取不到' : f.historyState === 'incompatible' ? '步长不同，没并' : '正在取'
-    venuesHTML = venues.length ? venues.map(v => `<span class="of-p-v ${v.ready ? 'ok' : ''}" data-tip="${esc(v.instrument)}${v.ready ? '' : ' · 正在连'}"><i></i>${venueName(v.label || exName(v.exchange), v.product)}</span>`).join('') : '<span class="faint">正在查这只品种在三家的合约…</span>'
-    kv = [st.route === 'gateway' ? '网关' : '直连', hist, heatText, `${s ? s.orders.filter(o => o.status === 'live').length : 0} 单`]
-    statHTML = venuesHTML + '|' + kv.join('|')
-  }
-  const sig = thrHTML + '|' + statHTML
-  if (!force && sig === panelSig) return
-  panelSig = sig
-  // 拿拼好的字符串当外壳键比，不拿 innerHTML 比（齿轮 SVG 的自闭合标签读回来写法不同，那样每次都判成变了、把「改门槛与步长」钮换掉）；
-  // 「现在挂着 N 单」这类每帧会变的只改字，不重建带悬停说明的各家标签
+  if (!force && thrHTML === panelSig) return
+  panelSig = thrHTML
+  // 拿拼好的字符串当键比，不拿 innerHTML 比（齿轮 SVG 的自闭合标签读回来写法不同，那样每次都判成变了、把「改门槛与步长」钮换掉）
   patchShell(thr, thrHTML, thrHTML)
-  if (!f) { patchShell(stat, '', ''); return }
-  patchShell(stat, '#stat', `<div class="of-p-venues"></div>
-      <div class="of-p-kv"><span>线路</span><b></b><span>服务端历史</span><b></b><span>深度热力</span><b></b><span>现在挂着</span><b class="num"></b></div>`)
-  patchShell(stat.firstElementChild!, venuesHTML, venuesHTML)
-  stat.querySelectorAll('.of-p-kv b').forEach((b, k) => patchText(b, kv[k] ?? ''))
 }
 
 // ------------------------------------------------------------------ 诊断（验收脚本用）

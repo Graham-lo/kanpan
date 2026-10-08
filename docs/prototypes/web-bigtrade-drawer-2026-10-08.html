@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>大单列表原型</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;
+  --up:#089981; --down:#F23645;
+  --bn:#E8A800; --okx:#7C8596; --cb:#2EA3F2;
+  --spot:#8F7CF0; --perp:#55637D;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+:root,[data-theme="light"]{
+  color-scheme:light;
+  --app:#E9ECF1; --surface:#FFFFFF; --surface-2:#F6F7F9; --surface-3:#EEF0F3; --overlay:#FFFFFF;
+  --text-1:#131722; --text-2:#545B6A; --text-3:#666B77; --line:#E1E4EA; --line-strong:#CDD2DB; --control-line:#8C93A1;
+  --accent:#2B63F0; --accent-soft:#E7EEFF; --accent-text:#1F52D6;
+  --chart-grid:#F0F3FA; --chart-cross:#9598A1;
+  --card:linear-gradient(180deg,#FBFCFD 0%,#F5F7FA 100%); --card-line:#E8EBF0; --card-hi:rgba(255,255,255,.9);
+  --up-a:rgba(8,153,129,.12); --down-a:rgba(242,54,69,.10);
+  --up-b:rgba(8,153,129,.30); --down-b:rgba(242,54,69,.28);
+  --wall:#7B6CF0; --wall-a:rgba(123,108,240,.13);
+  --row-x:#EEF1F5; --row-sel:#E7EEFF;
+  --shadow-menu:0 0 0 1px rgba(19,23,34,.06),0 4px 12px rgba(19,23,34,.08),0 12px 32px rgba(19,23,34,.10);
+  --page:#E4E8EE;
+  --track:#E9ECF1;
+}
+[data-theme="dark"]{
+  color-scheme:dark;
+  --app:#07090D; --surface:#11141B; --surface-2:#181C25; --surface-3:#202532; --overlay:#1B1F29;
+  --text-1:#E3E6EC; --text-2:#A1A7B3; --text-3:#8A909B; --line:#232834; --line-strong:#353B49; --control-line:#62687A;
+  --accent:#4C7DFF; --accent-soft:#1B2747; --accent-text:#7FA2FF;
+  --chart-grid:#1A1E28; --chart-cross:#6B7080;
+  --card:linear-gradient(180deg,#171B24 0%,#141821 100%); --card-line:#222836; --card-hi:rgba(255,255,255,.035);
+  --up-a:rgba(8,153,129,.18); --down-a:rgba(242,54,69,.16);
+  --up-b:rgba(8,153,129,.42); --down-b:rgba(242,54,69,.40);
+  --wall:#9C90FF; --wall-a:rgba(156,144,255,.14);
+  --row-x:#1D222D; --row-sel:#1B2747;
+  --shadow-menu:0 0 0 1px rgba(255,255,255,.06),0 8px 24px rgba(0,0,0,.45),0 18px 48px rgba(0,0,0,.35);
+  --page:#05070A;
+  --track:#212632;
+  --okx:#9AA3B5; --perp:#7D8AA6;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--page);color:var(--text-1);font:13px/1.35 var(--font);-webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.up{color:var(--up)} .dn{color:var(--down)} .t2{color:var(--text-2)} .t3{color:var(--text-3)}
+
+/* ---------- 原型外壳 ---------- */
+.pbar{position:sticky;top:0;z-index:50;height:52px;display:flex;align-items:center;gap:20px;padding:0 24px;
+  background:color-mix(in srgb,var(--page) 82%,transparent);backdrop-filter:saturate(1.6) blur(14px);border-bottom:1px solid var(--line)}
+.pbar h1{font-size:14px;font-weight:650;letter-spacing:.01em}
+.pbar h1 span{color:var(--text-3);font-weight:500;margin-left:8px;font-size:12px}
+.pbar nav{display:flex;gap:4px;margin-left:8px}
+.pbar nav a{font-size:12px;color:var(--text-2);text-decoration:none;padding:5px 10px;border-radius:7px}
+.pbar nav a:hover{background:var(--surface-3);color:var(--text-1)}
+.seg{margin-left:auto;display:flex;background:var(--surface-3);border-radius:9px;padding:2px}
+.seg button{font-size:12px;padding:5px 14px;border-radius:7px;color:var(--text-2)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--text-1);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.sec{padding:36px 24px 8px}
+.sec h2{font-size:15px;font-weight:650;display:flex;align-items:baseline;gap:10px}
+.sec h2 small{font-size:12px;font-weight:500;color:var(--text-3)}
+.sec p.cap{font-size:12px;color:var(--text-2);margin-top:6px;max-width:980px}
+.stage{margin:14px 24px 0;position:relative}
+.stage.full{margin:0}
+.frame{transform-origin:0 0;position:absolute;left:0;top:0;border-radius:10px;overflow:hidden;box-shadow:0 0 0 1px var(--line),0 20px 60px rgba(10,14,24,.14)}
+.stage.full .frame{border-radius:0;box-shadow:none}
+body.shot .pbar,body.shot .after-hero{display:none}
+
+/* ---------- 应用骨架（只为给抽屉一个语境） ---------- */
+.app{width:1440px;height:900px;background:var(--app);display:grid;grid-template-columns:48px 1fr 320px 48px;grid-template-rows:48px 1fr;gap:4px;padding:0 0 4px}
+.ahead{grid-column:1/-1;background:var(--surface);display:flex;align-items:center;padding:0 16px;gap:22px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px}
+.logo i{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#2B63F0,#6C8CFF);display:block;position:relative}
+.logo i:before{content:"";position:absolute;inset:6px 5px;border-left:2.5px solid #fff;border-right:2.5px solid #fff}
+.atabs{display:flex;gap:4px}
+.atabs span{padding:5px 10px;border-radius:7px;color:var(--text-2);font-size:13px}
+.atabs span.on{background:var(--surface-3);color:var(--text-1);font-weight:600}
+.asearch{margin-left:auto;width:260px;height:30px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;padding:0 10px;color:var(--text-3);font-size:12px;gap:8px}
+.adot{width:28px;height:28px;border-radius:50%;background:var(--surface-2);display:grid;place-items:center;color:var(--text-2)}
+.dbar,.rail{background:var(--surface);display:flex;flex-direction:column;align-items:center;padding-top:10px;gap:14px;color:var(--text-2)}
+.rail .on{color:var(--accent)}
+.ccol{display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0}
+.tbar{height:40px;flex:none;background:var(--surface);display:flex;align-items:center;gap:4px;padding:0 10px;font-size:12px;color:var(--text-2)}
+.tbar b{color:var(--text-1);font-weight:650;font-size:13px;margin-right:10px;display:flex;align-items:center;gap:6px}
+.tbar b em{font-style:normal;font-weight:500;color:var(--text-3);font-size:11px}
+.tbar .p{padding:4px 7px;border-radius:6px}
+.tbar .p.on{background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+.tbar .sep{width:1px;height:16px;background:var(--line);margin:0 8px}
+.chart{flex:1;min-height:0;background:var(--surface);position:relative;overflow:hidden}
+.chart .cv{position:absolute;inset:0}
+.chart svg{position:absolute;inset:0}
+.legend{position:absolute;left:12px;top:8px;font-size:12px;color:var(--text-2);z-index:2;display:flex;gap:8px;align-items:center}
+.legend b{color:var(--text-1);font-weight:650}
+
+/* 图上悬停卡 */
+.hcard{position:absolute;z-index:5;width:256px;background:var(--overlay);border-radius:12px;box-shadow:var(--shadow-menu);padding:12px 14px 12px;font-size:12px}
+.hc-h{display:flex;align-items:center;gap:6px;color:var(--text-2);font-size:11px}
+.hc-h b{color:var(--text-1);font-size:12px;font-weight:650}
+.hc-net{display:flex;align-items:baseline;justify-content:space-between;margin:8px 0 8px}
+.hc-net .v{font-size:20px;font-weight:700;letter-spacing:-.02em}
+.hc-net .l{font-size:11px;color:var(--text-3)}
+.hc-fly{height:8px;display:flex;border-radius:4px;overflow:hidden;gap:2px;margin-bottom:6px}
+.hc-fly i{display:block;height:100%}
+.hc-kv{display:grid;grid-template-columns:1fr auto auto;gap:4px 10px;align-items:baseline}
+.hc-kv span{color:var(--text-3);font-size:11px}
+.hc-kv b{font-weight:600;text-align:right}
+.hc-kv em{font-style:normal;color:var(--text-3);font-size:11px;text-align:right;min-width:30px}
+.hc-src{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);display:grid;gap:7px}
+
+/* ---------- 右侧面板（精简） ---------- */
+.pnl{background:var(--surface);display:flex;flex-direction:column;min-height:0}
+.pnl-h{height:44px;display:flex;align-items:center;padding:0 12px 0 16px;justify-content:space-between}
+.pnl-h h3{font-size:14px;font-weight:650}
+.ib{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--text-2)}
+.ib:hover{background:var(--surface-3)}
+.pnl-b{padding:4px 12px 16px;display:flex;flex-direction:column;gap:6px}
+.psec{font-size:11px;color:var(--text-3);font-weight:600;padding:10px 4px 4px;display:flex;align-items:center;justify-content:space-between;letter-spacing:.02em}
+.tgls{background:var(--card);border:1px solid var(--card-line);border-radius:12px;padding:4px;box-shadow:inset 0 1px 0 var(--card-hi)}
+.tgl{display:flex;align-items:center;gap:10px;height:44px;padding:0 8px;border-radius:9px}
+.tgl+.tgl{border-top:1px solid var(--line);border-radius:0}
+.tgi{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none}
+.tgl .l{flex:1;font-size:13px}
+.sw{width:34px;height:20px;border-radius:10px;background:var(--line-strong);position:relative;flex:none}
+.sw:after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;left:2px;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.sw.on{background:var(--accent)} .sw.on:after{left:16px}
+.symchip{display:flex;align-items:center;gap:5px;color:var(--text-1);font-weight:600;font-size:12px;letter-spacing:0}
+.symchip i{width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,#9945FF,#14F195);display:block}
+.thr{background:var(--card);border:1px solid var(--card-line);border-radius:12px;padding:6px 14px 12px;box-shadow:inset 0 1px 0 var(--card-hi)}
+.thr-g{font-size:11px;color:var(--text-3);padding:8px 0 2px}
+.thr-r{display:flex;align-items:center;height:30px;gap:10px}
+.thr-r .k{font-size:13px;color:var(--text-2);flex:1}
+.thr-r .v{font-size:13px;font-weight:650}
+.thr-r .own{width:5px;height:5px;border-radius:50%;background:var(--accent);margin-left:-4px}
+.thr-r .tier{display:flex;gap:3px;align-items:center}
+.thr hr{border:0;border-top:1px solid var(--line);margin:6px 0}
+.pbtn{height:34px;border-radius:9px;border:1px solid var(--control-line);display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:500;margin-top:10px;width:100%;color:var(--text-1)}
+.pbtn:hover{background:var(--surface-3)}
+
+/* ---------- 抽屉 ---------- */
+.dr{background:var(--surface);display:flex;flex-direction:column;flex:none;position:relative;container-type:inline-size;container-name:dr;overflow:hidden}
+.dr:before{content:"";position:absolute;left:0;right:0;top:0;height:60px;pointer-events:none;
+  background:radial-gradient(60% 100% at 18% 0%,var(--up-a),transparent 70%),radial-gradient(50% 100% at 70% 0%,var(--down-a),transparent 70%);opacity:.55}
+.grip{position:absolute;top:3px;left:50%;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:var(--line-strong);opacity:.7}
+.dr-h{height:32px;flex:none;display:flex;align-items:center;gap:10px;padding:0 8px 0 14px;position:relative}
+.dr-h h4{font-size:13px;font-weight:650}
+.dr-h .ctx{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--text-3)}
+.dr-h .ctx .pill{padding:2px 7px;border-radius:6px;background:var(--surface-2);color:var(--text-2)}
+.dr-h .ctx .pill b{color:var(--text-1);font-weight:600}
+.dr-h .r{margin-left:auto;display:flex;gap:2px}
+.dr-b{flex:1;min-height:0;display:grid;grid-template-columns:248px minmax(0,1fr) 178px 170px;gap:8px;padding:0 8px 8px;position:relative}
+@container dr (min-width:1500px){ .dr-b{grid-template-columns:400px minmax(0,1fr) 330px 330px;gap:10px} }
+.card{background:var(--card);border:1px solid var(--card-line);border-radius:10px;padding:9px 12px 10px;display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;box-shadow:inset 0 1px 0 var(--card-hi);position:relative;container-type:inline-size}
+.ct{height:18px;flex:none;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;color:var(--text-1)}
+.ct .gl{width:6px;height:6px;border-radius:2px}
+.ct .r{margin-left:auto;font-size:11px;font-weight:500;color:var(--text-3);display:flex;gap:8px;align-items:center}
+.lg{display:inline-flex;align-items:center;gap:4px}
+.lg:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.lg.up:before{background:var(--up)} .lg.dn:before{background:var(--down)}
+.lg.up,.lg.dn{color:var(--text-3)}
+
+/* 汇总 */
+.sum-hero{display:flex;align-items:flex-end;gap:12px;margin-top:6px;flex:none;height:38px}
+.sum-hero .v{font-size:22px;font-weight:700;letter-spacing:-.025em;line-height:1}
+.sum-hero .l{font-size:11px;color:var(--text-3);margin-top:4px;white-space:nowrap}
+.sum-hero .sp{flex:1;height:38px;position:relative;min-width:0}
+.sum-tall{display:none;flex:1;min-height:0;margin-top:8px;position:relative}
+.tall .sum-tall{display:block}
+.tall .sum-hero .sp{display:none}
+.tall .sum-hero{height:36px}
+.wins{margin-top:6px;display:flex;flex-direction:column;flex:none}
+.wr{display:grid;grid-template-columns:28px minmax(0,1fr) 54px;gap:5px;align-items:center;height:21px;font-size:12px}
+.wr .k{color:var(--text-2);font-size:11px}
+.wr .a{font-size:11px;text-align:right}
+.wr .a.b{text-align:left}
+.wr .n{text-align:right;font-weight:650}
+.fly{height:8px;position:relative;display:flex}
+.fly .h{flex:1;position:relative;height:100%}
+.fly .h i{position:absolute;top:0;height:100%;border-radius:4px}
+.fly .h.s i{right:1px;background:linear-gradient(270deg,var(--down),color-mix(in srgb,var(--down) 55%,transparent))}
+.fly .h.b i{left:1px;background:linear-gradient(90deg,var(--up),color-mix(in srgb,var(--up) 55%,transparent))}
+.fly .h.s{background:linear-gradient(270deg,var(--track),transparent);border-radius:4px 0 0 4px}
+.fly .h.b{background:linear-gradient(90deg,var(--track),transparent);border-radius:0 4px 4px 0}
+.fly:after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--line-strong)}
+.bf{display:flex;height:15px;gap:2px;min-width:0}
+.bf .h{flex:1;position:relative;display:flex;align-items:center;min-width:0}
+.bf .h.s{justify-content:flex-end}
+.bf .h i{position:absolute;top:0;bottom:0;border-radius:4px}
+.bf .h.s i{right:0;background:linear-gradient(270deg,var(--down-a),var(--down-b) 70%,color-mix(in srgb,var(--down) 55%,transparent))}
+.bf .h.b i{left:0;background:linear-gradient(90deg,var(--up-a),var(--up-b) 70%,color-mix(in srgb,var(--up) 55%,transparent))}
+.bf .h span{position:relative;font-size:11px;font-weight:600;padding:0 5px;color:var(--text-1);white-space:nowrap}
+.bf .h span.z{color:var(--text-3);font-weight:500}
+.bf-h{display:flex;gap:2px}
+.bf-h span{flex:1;font-size:11px;color:var(--text-3);padding:0 5px}
+.bf-h span:first-child{text-align:right}
+.src{margin-top:auto;padding-top:6px;display:grid;gap:5px;flex:none}
+.sr .tx{display:flex;justify-content:space-between;font-size:11px;line-height:13px;color:var(--text-3);margin-bottom:3px;white-space:nowrap;gap:6px}
+.sr .tx b{color:var(--text-2);font-weight:600;margin-left:3px}
+.sr .tx span{display:inline-flex;align-items:center;gap:4px;flex:none}
+.sr .tx span i{width:6px;height:6px;border-radius:50%;display:block}
+.seg3{height:3px;display:flex;gap:2px}
+.seg3 i{display:block;height:100%;border-radius:2px}
+.dash{color:var(--text-3)}
+
+/* 每根 */
+.bars{padding:9px 6px 6px}
+.bars .bh{padding-top:0}
+.bh,.br{display:grid;grid-template-columns:38px minmax(0,1fr) 50px 36px 46px 26px;gap:0 6px;align-items:center;padding:0 6px}
+@container (min-width:640px){ .bh,.br{grid-template-columns:92px minmax(200px,1fr) 80px 64px 80px 60px 120px;gap:0 10px} .br .x,.bh .x{display:block!important} }
+.bh{height:18px;font-size:11px;color:var(--text-3);flex:none}
+.bh .t{font-size:12px;font-weight:650;color:var(--text-1);white-space:nowrap;overflow:visible;position:relative;z-index:1}
+.bh .t em{font-style:normal;font-weight:500;color:var(--text-3);margin-left:4px;font-size:11px}
+.bh .c{text-align:center}
+.bh .rt{text-align:right}
+.bl{flex:1;min-height:0;overflow:hidden;margin-top:3px;display:flex;flex-direction:column;gap:1px;position:relative}
+.bl.scroll{overflow-y:auto;scrollbar-width:thin}
+.br{height:22px;flex:none;font-size:12px;border-radius:6px;position:relative}
+.br .tm{color:var(--text-2);font-size:11px;display:flex;align-items:center;gap:4px;white-space:nowrap}
+.br .a{font-size:11px;text-align:right;color:var(--text-2)}
+.br .a.b{text-align:left}
+.br .n{text-align:right;font-weight:650}
+.br .c,.br .m{text-align:right;font-size:11px;color:var(--text-2)}
+.br .m{display:flex;justify-content:flex-end;align-items:center;gap:4px}
+.br .m i{width:5px;height:5px;border-radius:50%;display:block}
+.br .x,.bh .x{display:none}
+.br .v3{height:5px;display:flex;gap:1.5px;border-radius:3px;overflow:hidden}
+.br .v3 i{display:block;height:100%}
+.br .fly{height:10px}
+.br .fly .h i{border-radius:3px}
+.br.cur .tm{color:var(--text-1);font-weight:600}
+.live{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.br.xh{background:var(--row-x)}
+.br.xh:before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:2px;border-radius:1px;background:var(--chart-cross)}
+.br.sel{background:var(--row-sel);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)}
+.br.sel:before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:2px;border-radius:1px;background:var(--accent)}
+.br.hov{background:var(--surface-3)}
+.xtag{font-size:11px;line-height:15px;padding:0 3px;margin-left:-3px;border-radius:3px;background:var(--text-1);color:var(--surface);font-weight:600}
+.bl .fade{position:sticky;bottom:0;height:14px;margin-top:-14px;background:linear-gradient(transparent,color-mix(in srgb,var(--surface-2) 90%,transparent));pointer-events:none;flex:none}
+
+/* 价位 */
+.lv{flex:1;min-height:0;position:relative;margin-top:6px}
+/* 爆仓 */
+.lq-c{flex:1;min-height:0;position:relative;margin-top:6px}
+.lq-w{display:flex;flex-direction:column;flex:none;margin-top:6px}
+.lr{display:grid;grid-template-columns:28px 38px minmax(0,1fr) 38px;gap:4px;align-items:center;height:19px;font-size:11px}
+.lr .k{color:var(--text-2)}
+.lr .a{text-align:right}
+.lr .a.b{text-align:left}
+.rb{height:4px;display:flex;gap:2px}
+.rb i{display:block;height:100%;border-radius:2px}
+.lmax{flex:none;margin-top:6px;display:flex;flex-direction:column;gap:1px;font-size:11px;line-height:14px;color:var(--text-3);padding:4px 8px;border-radius:8px;background:color-mix(in srgb,var(--up) 9%,transparent);white-space:nowrap;overflow:hidden}
+.lmax div{display:flex;gap:5px;align-items:baseline}
+.lmax b{font-size:12px;color:var(--text-1);font-weight:650}
+.tall .lmax{padding:8px 10px}
+
+/* 空状态 */
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--text-3);font-size:12px;text-align:center}
+.empty b{color:var(--text-2);font-weight:600;font-size:12px}
+.empty svg{opacity:.9}
+
+/* 说明块 */
+.notes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 24px 0}
+.note{background:var(--surface);border-radius:12px;padding:14px 16px;border:1px solid var(--line)}
+.note h5{font-size:12px;font-weight:650;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.note p{font-size:12px;color:var(--text-2);line-height:1.6}
+.cmp{display:flex;gap:28px;margin:14px 24px 0;align-items:flex-start}
+.gone{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;width:360px}
+.gone h5{font-size:12px;font-weight:650;margin-bottom:10px}
+.gone li{list-style:none;font-size:12px;color:var(--text-3);text-decoration:line-through;padding:4px 0;display:flex;gap:8px}
+.gone li:before{content:"−";color:var(--down);text-decoration:none;display:inline-block}
+.gone .keep li{color:var(--text-1);text-decoration:none}
+.gone .keep li:before{content:"+";color:var(--up)}
+.foot{height:60px}
+</style>
+</head>
+<body>
+<div class="pbar">
+  <h1>大单列表 · 原型<span>网页版 · 2026-10-08 · 假数据</span></h1>
+  <nav>
+    <a href="#s1">全页</a><a href="#s2">拉高 480</a><a href="#s3">只有历史段</a><a href="#s4">空状态</a><a href="#s5">2560 宽</a><a href="#s6">右侧面板</a>
+  </nav>
+  <div class="seg" id="theme"><button data-t="light" aria-pressed="true">浅色</button><button data-t="dark" aria-pressed="false">深色</button></div>
+</div>
+
+<div class="stage full" id="s1" data-w="1440" data-h="900"><div class="frame" id="hero"></div></div>
+
+<div class="after-hero">
+  <div class="notes">
+    <div class="note"><h5><span class="ct"><span class="gl" style="background:var(--accent)"></span></span>汇总</h5><p>今日净额做主角，右边一条今天的累计净额面积（零线上绿下红）；下面三窗口各一行买卖对撞，两端是金额、行尾净额；最底两条细带：现货 / 合约、三家占比。</p></div>
+    <div class="note"><h5>每根</h5><p>一行一根：时间 · 大卖 · 对撞柱 · 大买 · 净额 · 笔数（买 / 卖） · 最大一笔（带方向点） · 三家占比细带。本根带蓝点，十字线停的那根灰底灰条，点过的那根蓝底蓝条、图上同时铺一道竖带。</p></div>
+    <div class="note"><h5>价位</h5><p>竖向就是一段价格轴，价位按真实价差摆：卖在上、买在下，条长按金额、颜色越深越集中；现价一条线穿过；最近的卖墙 / 买墙画成带子，右侧一个小圆环表示挂了多久（满 1 小时一圈）。</p></div>
+    <div class="note"><h5>爆仓</h5><p>今天每 15 分钟一根镜像柱：上绿是空头被平、下红是多头被平；下面三窗口各一行多空对撞，最底一条今日最大一笔。</p></div>
+  </div>
+
+  <div class="sec" id="s2"><h2>抽屉拉高到 480<small>同一套四块，图形跟着长高：汇总多出一张逐根净额图，每根多露出十几行，价位、爆仓的刻度拉开</small></h2></div>
+  <div class="stage" data-w="1008" data-h="480"><div class="frame" id="tall"></div></div>
+
+  <div class="sec" id="s3"><h2>刚打开页面 · 只有历史段<small>服务端历史只有金额：笔数、最大一笔、来源都写 —；悬停卡同理</small></h2></div>
+  <div class="stage" data-w="1008" data-h="240"><div class="frame" id="hist"></div></div>
+
+  <div class="sec" id="s4"><h2>空状态<small>这只品种还没有大单（QNT 永续）；挂单墙来自盘口，照常显示</small></h2></div>
+  <div class="stage" data-w="1008" data-h="240"><div class="frame" id="empty"></div></div>
+
+  <div class="sec" id="s5"><h2>2560 × 1440 · 27 寸 2K<small>抽屉 2128 宽：四块加宽，每根多出「现货占比」一列、时间带日期；这里按页面宽度缩小显示</small></h2></div>
+  <div class="stage" data-w="2128" data-h="240"><div class="frame" id="wide"></div></div>
+
+  <div class="sec" id="s6"><h2>右侧面板 · 主力订单流（精简）<small>只留「显示」和「门槛」两段</small></h2></div>
+  <div class="cmp">
+    <div class="stage" data-w="320" data-h="560" style="margin:0;flex:none"><div class="frame" id="panelOnly"></div></div>
+    <div class="gone">
+      <h5>去掉</h5>
+      <ul><li>大单筛选（现货 / 合约 / 买单成交 / 卖单成交 / 买单撤销 / 卖单撤销）</li><li>侧栏小部件（盘口 / 成交 / 大单 / 提醒 / 流动性 / 成交额）与「去看」</li><li>数据（各家合约连接、线路、服务端历史、深度热力状态、现在挂着 N 单）</li><li>每个开关的说明悬停</li></ul>
+      <h5 style="margin-top:14px">留下</h5>
+      <ul class="keep"><li>显示：图上订单流 · 深度梯子 · 大单列表 · 深度热力</li><li>门槛：品种、现货 / 合约 / 交割的大单线、挂单墙、价位步长</li><li>改门槛与步长（齿轮与按钮同一处）</li></ul>
+    </div>
+  </div>
+  <div class="foot"></div>
+</div>
+
+<script>
+/* ================= 工具 ================= */
+const $ = (s, r = document) => r.querySelector(s)
+const MINUS = '−'
+function fm(v){ const a = Math.abs(v); if (a >= 1e9) return (a/1e9).toFixed(2)+'B'; if (a >= 1e6) return (a/1e6).toFixed(1)+'M'; if (a >= 1e3) return (a >= 1e5 ? Math.round(a/1e3) : (a/1e3).toFixed(1))+'K'; return String(Math.round(a)) }
+function fs(v){ if (Math.abs(v) < 1) return '0'; return (v > 0 ? '+' : MINUS) + fm(v) }
+function cls(v){ return v > 0 ? 'up' : v < 0 ? 'dn' : 't3' }
+function hm(m){ const h = Math.floor(m/60) % 24, mm = m % 60; return String(h).padStart(2,'0') + ':' + String(mm).padStart(2,'0') }
+function rng(seed){ let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296 } }
+const NS = 'http://www.w3.org/2000/svg'
+function svg(w, h, inner){ return `<svg xmlns="${NS}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;overflow:visible">${inner}</svg>` }
+
+/* ================= 假数据（形状照真实口径） =================
+   每根：大买 / 大卖（美元）；浏览器实时段另有笔数、最大一笔、现货合约占比、三家占比；历史段这些是 null
+   汇总：本根 / 近 1 小时 / 今日（北京时间 8 点起）；价位：近 1 小时最集中的 3 买 3 卖 + 最近的卖墙 / 买墙；爆仓：逐分钟合计 */
+const STEP = 5, T_END = 14*60 + 15, N = 121, T0 = T_END - (N-1)*STEP, LIVE_FROM = 12*60 + 30, DAY0 = 8*60
+const R = rng(20261008)
+const bars = []
+{
+  let c = 118.6; const raw = [c]
+  for (let i = 1; i < N; i++){ c += (R() - .5) * .42; raw.push(c) }
+  const d0 = raw[0] - 118.6, d1 = raw[N-1] - 115.26
+  let prev = 118.6
+  for (let i = 0; i < N; i++){
+    const k = i/(N-1), cl = raw[i] - d0*(1-k) - d1*k
+    const o = i ? prev : cl + .05
+    const hi = Math.max(o, cl) + R()*.16, lo = Math.min(o, cl) - R()*.16
+    bars.push({ t: T0 + i*STEP, o, h: hi, l: lo, c: cl, v: .6 + R()*1.6, bb: 0, bs: 0 })
+    prev = cl
+  }
+}
+const BIG = [ // [时间, 大买 M, 大卖 M]
+  ['14:15',2.5,4.2],['14:05',.9,3.1],['13:50',6.4,1.2],['13:40',19.7,34.1],['13:25',1.8,0],['13:10',4.9,23.2],['12:55',0,2.6],
+  ['12:40',7.3,3.0],['12:30',2.2,5.1],['12:10',3.6,11.8],['11:50',3.4,13.2],['11:35',14.3,7.0],['11:05',16.8,2.1],['10:40',5.2,12.3],
+  ['10:15',4.7,14.0],['09:50',0,3.3],['09:20',4.0,43.7],['08:45',2.8,6.1],['08:20',11.0,1.9],['07:55',3.0,50.5],['07:10',8.2,2.4],
+  ['06:30',1.1,4.4],['05:40',3.6,11.8],['05:05',6.0,.8],['04:40',2.2,7.4]
+]
+const toMin = s => { const [h,m] = s.split(':').map(Number); return h*60+m }
+for (const [s, b, a] of BIG){
+  const i = (toMin(s) - T0)/STEP, br = bars[i]; if (!br) continue
+  br.bb = b*1e6; br.bs = a*1e6
+  if (b > a*1.5) { br.c = Math.max(br.c, br.o + .12); br.h = Math.max(br.h, br.c + .08) }
+  if (a > b*1.5) { br.c = Math.min(br.c, br.o - .12); br.l = Math.min(br.l, br.c - .1 - a/400) }
+  br.v += (a+b)/9
+  if (bars[i+1]) bars[i+1].o = br.c
+  if (br.t >= LIVE_FROM){
+    const r2 = rng(br.t)
+    br.bn = b ? Math.max(1, Math.round(b/1.7)) : 0
+    br.sn = a ? Math.max(1, Math.round(a/1.7)) : 0
+    const big = a >= b ? a : b
+    br.mx = { usd: big*(.32 + r2()*.22)*1e6, side: a >= b ? 's' : 'b' }
+    const bn = .45 + r2()*.3, okx = (1-bn)*(.55 + r2()*.3)
+    br.ex = [bn, okx, 1 - bn - okx]
+    br.spot = .14 + r2()*.22
+  }
+}
+bars[N-1].c = 115.26
+const LAST = bars[N-1].c
+const rowsAll = bars.filter(b => b.bb + b.bs > 0).slice().reverse()
+function win(a){ let bb = 0, bs = 0; for (const b of bars) if (b.t >= a) { bb += b.bb; bs += b.bs } return { bb, bs, n: bb - bs } }
+const W = { bar: win(T_END), hour: win(T_END - 55), today: win(DAY0) }
+const SHARE = { spot: .24, ex: [.64, .26, .10] }
+const LEVELS = { sell: [[115.65, 3.5e6],[115.50, 5.5e6],[115.36, 2.9e6]], buy: [[115.15, 3.7e6],[115.00, 5.2e6],[114.85, 2.1e6]] }
+const WALLS = { ask: { p: 115.82, usd: 6.2e6, min: 12 }, bid: { p: 114.68, usd: 8.4e6, min: 37 } }
+// 爆仓：今天每 15 分钟一桶（服务端逐分钟合计并上来）
+const LIQ = []
+{ const r = rng(77); for (let t = DAY0; t <= T_END; t += 15){
+    let L = r() < .35 ? 0 : r()*4.5e3, S = r() < .4 ? 0 : r()*4e3
+    if (t === 9*60+15) L += 14e3
+    if (t === 13*60+30) S += 22e3
+    if (t === 13*60+45) { L += 9e3; S += 6e3 }
+    if (t === 11*60) S += 8e3
+    LIQ.push({ t, L, S, n: Math.round((L+S)/2.2e3) })
+} }
+function liqWin(a){ let L = 0, S = 0, n = 0; for (const q of LIQ) if (q.t >= a) { L += q.L; S += q.S; n += q.n } return { L, S, n } }
+const LQ = { bar: { L: 5.2e3, S: 0, n: 4 }, hour: liqWin(T_END - 45), today: liqWin(DAY0) }
+const LQMAX = { usd: 47.9e3, side: 'short', ex: '币安', p: 115.61 }
+
+/* ================= 小图元 ================= */
+function fly(s, b, max){ const m = max || Math.max(s, b, 1)
+  return `<div class="fly"><div class="h s"><i style="width:${(s/m*100).toFixed(1)}%"></i></div><div class="h b"><i style="width:${(b/m*100).toFixed(1)}%"></i></div></div>` }
+function bf(s, b, max){ const m = max || Math.max(s, b, 1)
+  return `<div class="bf"><div class="h s"><i style="width:${(s/m*100).toFixed(1)}%"></i><span class="num ${s ? '' : 'z'}">${s ? fm(s) : '0'}</span></div><div class="h b"><i style="width:${(b/m*100).toFixed(1)}%"></i><span class="num ${b ? '' : 'z'}">${b ? fm(b) : '0'}</span></div></div>` }
+function v3(ex){ return ex ? `<div class="v3"><i style="flex:${ex[0]};background:var(--bn)"></i><i style="flex:${ex[1]};background:var(--okx)"></i><i style="flex:${ex[2]};background:var(--cb)"></i></div>` : '<span class="dash">—</span>' }
+const ICON = {
+  close: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  grow: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l3-3 3 3M5 12l3-3 3 3"/></svg>',
+  shrink: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l3 3 3-3M5 9l3 3 3-3"/></svg>',
+  gear: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7L3.6 3.6"/></svg>',
+}
+
+/* ================= 抽屉四块 ================= */
+function cardSum(o){
+  const e = o.state === 'empty', hist = o.state === 'hist'
+  const Wn = e ? { bar:{bb:0,bs:0,n:0}, hour:{bb:0,bs:0,n:0}, today:{bb:0,bs:0,n:0} } : W
+  const row = (k, w) => `<div class="wr"><span class="k">${k}</span>${bf(w.bs, w.bb)}<span class="n num ${cls(w.n)}">${fs(w.n)}</span></div>`
+  const src = (e || hist) ? `
+      <div class="sr"><div class="tx"><span>现货<b class="dash">—</b></span><span>合约<b class="dash">—</b></span></div><div class="seg3"><i style="flex:1;background:var(--track)"></i></div></div>
+      <div class="sr"><div class="tx"><span><i style="background:var(--bn)"></i>币安<b class="dash">—</b></span><span><i style="background:var(--okx)"></i>OKX<b class="dash">—</b></span><span><i style="background:var(--cb)"></i>Coinbase<b class="dash">—</b></span></div><div class="seg3"><i style="flex:1;background:var(--track)"></i></div></div>`
+    : `
+      <div class="sr"><div class="tx"><span>现货<b class="num">${Math.round(SHARE.spot*100)}%</b></span><span>合约<b class="num">${Math.round((1-SHARE.spot)*100)}%</b></span></div>
+        <div class="seg3"><i style="flex:${SHARE.spot};background:var(--spot)"></i><i style="flex:${1-SHARE.spot};background:var(--perp)"></i></div></div>
+      <div class="sr"><div class="tx"><span><i style="background:var(--bn)"></i>币安<b class="num">${Math.round(SHARE.ex[0]*100)}%</b></span><span><i style="background:var(--okx)"></i>OKX<b class="num">${Math.round(SHARE.ex[1]*100)}%</b></span><span><i style="background:var(--cb)"></i>Coinbase<b class="num">${Math.round(SHARE.ex[2]*100)}%</b></span></div>
+        <div class="seg3"><i style="flex:${SHARE.ex[0]};background:var(--bn)"></i><i style="flex:${SHARE.ex[1]};background:var(--okx)"></i><i style="flex:${SHARE.ex[2]};background:var(--cb)"></i></div></div>`
+  return `<section class="card sum">
+    <div class="ct"><span class="gl" style="background:var(--accent)"></span>汇总<span class="r"><span class="lg dn">卖</span><span class="lg up">买</span></span></div>
+    <div class="sum-hero"><div><div class="v num ${e ? 't3' : cls(Wn.today.n)}">${fs(Wn.today.n)}</div><div class="l">今日净额</div></div><div class="sp" data-ch="cum"></div></div>
+    <div class="sum-tall" data-ch="cumTall"></div>
+    <div class="wins">${row('本根', Wn.bar)}${row('近1时', Wn.hour)}${row('今日', Wn.today)}</div>
+    <div class="src">${src}</div>
+  </section>`
+}
+
+function cardBars(o){
+  const wide = o.wide
+  if (o.state === 'empty') return `<section class="card bars"><div class="bh"><span class="t">每根<em>5分</em></span></div>
+    <div class="empty">${svg(64, 28, `<rect x="2" y="10" width="26" height="8" rx="4" fill="var(--down-a)"/><rect x="36" y="10" width="26" height="8" rx="4" fill="var(--up-a)"/><rect x="31.5" y="4" width="1" height="20" fill="var(--line-strong)"/>`)}
+    <b>这只品种还没有大单</b><span>单笔 ≥ 5万</span></div></section>`
+  const hist = o.state === 'hist'
+  const rows = rowsAll.slice(0, o.rows || 40)
+  // 宽屏横向够长，柱按整列同一把尺子比；窄屏按每行买卖自己对撞
+  const max = wide ? Math.max(...rows.map(r => Math.max(r.bb, r.bs))) : 0
+  const body = rows.map(r => {
+    const live = !hist && r.bn != null
+    const isCur = r.t === T_END
+    const k = [isCur && !hist ? 'cur' : '', r.t === o.xh ? 'xh' : '', r.t === o.sel ? 'sel' : '', r.t === o.hov ? 'hov' : ''].join(' ')
+    const tm = wide ? `10-08 ${hm(r.t)}` : hm(r.t)
+    const mark = r.t === o.xh ? '' : isCur && !hist ? '<span class="live"></span>' : ''
+    return `<div class="br ${k}">
+      <span class="tm num">${r.t === o.xh ? `<span class="xtag">${tm}</span>` : tm}${mark}</span>
+      ${bf(r.bs, r.bb, max)}
+      <span class="n num ${cls(r.bb - r.bs)}">${fs(r.bb - r.bs)}</span>
+      <span class="c num">${live ? `<span class="up">${r.bn}</span><span class="t3">/</span><span class="dn">${r.sn}</span>` : '<span class="dash">—</span>'}</span>
+      <span class="m num">${live ? `<i style="background:var(--${r.mx.side === 's' ? 'down' : 'up'})"></i>${fm(r.mx.usd)}` : '<span class="dash">—</span>'}</span>
+      <span class="x c num">${live ? Math.round(r.spot*100) + '%' : '<span class="dash">—</span>'}</span>
+      <span class="v">${live ? v3(r.ex) : '<span class="dash" style="display:block;text-align:right">—</span>'}</span>
+    </div>`
+  }).join('')
+  return `<section class="card bars">
+    <div class="bh"><span class="t">每根<em>5分</em></span><div class="bf-h"><span>大卖</span><span>大买</span></div><span class="rt">净额</span><span class="rt">笔数</span><span class="rt">最大</span><span class="x rt">现货</span><span class="rt">来源</span></div>
+    <div class="bl">${body}<div class="fade"></div></div>
+  </section>`
+}
+
+function cardLevels(o){
+  return `<section class="card lvc"><div class="ct"><span class="gl" style="background:var(--wall)"></span>价位<span class="r">近1时</span></div><div class="lv" data-ch="lv" data-state="${o.state}"></div></section>`
+}
+
+function cardLiq(o){
+  if (o.state === 'empty') return `<section class="card"><div class="ct"><span class="gl" style="background:var(--down)"></span>爆仓</div>
+    <div class="empty">${svg(46, 30, `<g fill="var(--line-strong)">${[0,1,2,3,4,5,6,7].map(i => `<rect x="${i*6}" y="${14 - (i%3)*2}" width="4" height="${2 + (i%3)*2}" rx="1"/><rect x="${i*6}" y="16" width="4" height="${2 + ((i+1)%3)*2}" rx="1" opacity=".6"/>`).join('')}</g>`)}
+    <b>暂无爆仓数据</b></div></section>`
+  const row = (k, q) => { const t = q.L + q.S || 1
+    return `<div class="lr"><span class="k">${k}</span><span class="a num ${q.L ? 'dn' : 't3'}">${q.L ? fm(q.L) : '0'}</span><div class="rb"><i style="flex:${q.L/t || 0.0001};background:var(--down)"></i><i style="flex:${q.S/t || 0.0001};background:var(--up)"></i></div><span class="a b num ${q.S ? 'up' : 't3'}">${q.S ? fm(q.S) : '0'}</span></div>` }
+  return `<section class="card lqc">
+    <div class="ct"><span class="gl" style="background:var(--down)"></span>爆仓<span class="r"><span class="lg dn">多</span><span class="lg up">空</span></span></div>
+    <div class="lq-c" data-ch="liq"></div>
+    <div class="lq-w">${row('本根', LQ.bar)}${row('近1时', LQ.hour)}${row('今日', LQ.today)}</div>
+    <div class="lmax"><div><span>今日最大</span><b class="num">${fm(LQMAX.usd)}</b></div><div><span class="up">空头被平</span><span class="num">· ${LQMAX.ex} ${LQMAX.p}</span></div></div>
+  </section>`
+}
+
+function drawer(o){
+  const tall = o.h > 300
+  return `<div class="dr ${tall ? 'tall' : ''}" style="height:${o.h}px;${o.w ? `width:${o.w}px` : ''}">
+    <div class="grip"></div>
+    <div class="dr-h"><h4>大单列表</h4>
+      <div class="ctx"><span class="pill"><b>${o.state === 'empty' ? 'QNT' : 'SOL'}</b> 永续</span><span class="pill">单笔 ≥ <b class="num">${o.state === 'empty' ? '5万' : '75万'}</b></span></div>
+      <div class="r"><button class="ib" aria-label="${tall ? '放矮' : '拉高'}">${tall ? ICON.shrink : ICON.grow}</button><button class="ib" aria-label="收起">${ICON.close}</button></div>
+    </div>
+    <div class="dr-b ${tall ? 'tall' : ''}">${cardSum(o)}${cardBars(o)}${cardLevels(o)}${cardLiq(o)}</div>
+  </div>`
+}
+
+/* ================= 图形（按真实尺寸量好再画） ================= */
+function drawCum(el, tall, state){
+  const w = el.clientWidth, h = el.clientHeight
+  if (!w || !h) return
+  const today = bars.filter(b => b.t >= DAY0)
+  let acc = 0; const pts = today.map(b => (acc += (state === 'empty' ? 0 : b.bb - b.bs)))
+  const id = 'g' + Math.random().toString(36).slice(2, 8)
+  if (state === 'empty'){ el.innerHTML = svg(w, h, `<line x1="0" x2="${w}" y1="${h/2}" y2="${h/2}" stroke="var(--line-strong)" stroke-dasharray="2 3"/>`); return }
+  const padT = tall ? 18 : 4, colH = tall ? Math.min(84, h*.34) : 0
+  const ah = tall ? h - padT - 10 - 16 - colH - 16 : h - padT - 2
+  const mn = Math.min(0, ...pts), mx = Math.max(0, ...pts)
+  const y = v => padT + (mx - v)/(mx - mn || 1)*ah, x = i => i/(pts.length - 1)*(w - 4)
+  const line = pts.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('')
+  const area = line + `L${x(pts.length-1)},${y(0)}L0,${y(0)}Z`
+  const z = y(0)
+  let g = `<defs>
+    <linearGradient id="${id}u" x1="0" y1="${padT}" x2="0" y2="${z}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="var(--up)" stop-opacity=".38"/><stop offset="1" stop-color="var(--up)" stop-opacity=".02"/></linearGradient>
+    <linearGradient id="${id}d" x1="0" y1="${z}" x2="0" y2="${padT+ah}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="var(--down)" stop-opacity=".02"/><stop offset="1" stop-color="var(--down)" stop-opacity=".34"/></linearGradient>
+    <clipPath id="${id}a"><rect x="-2" y="-10" width="${w+4}" height="${z+10}"/></clipPath>
+    <clipPath id="${id}b"><rect x="-2" y="${z}" width="${w+4}" height="${h}"/></clipPath></defs>`
+  g += `<line x1="0" x2="${w}" y1="${z}" y2="${z}" stroke="var(--line-strong)" stroke-dasharray="2 3"/>`
+  g += `<path d="${area}" fill="url(#${id}u)" clip-path="url(#${id}a)"/><path d="${area}" fill="url(#${id}d)" clip-path="url(#${id}b)"/>`
+  g += `<path d="${line}" fill="none" stroke="var(--up)" stroke-width="1.6" stroke-linejoin="round" clip-path="url(#${id}a)"/><path d="${line}" fill="none" stroke="var(--down)" stroke-width="1.6" stroke-linejoin="round" clip-path="url(#${id}b)"/>`
+  const ex = x(pts.length-1), ey = y(pts[pts.length-1]), ec = pts[pts.length-1] >= 0 ? 'var(--up)' : 'var(--down)'
+  g += `<circle cx="${ex}" cy="${ey}" r="5" fill="${ec}" opacity=".18"/><circle cx="${ex}" cy="${ey}" r="2.6" fill="${ec}" stroke="var(--surface)" stroke-width="1"/>`
+  if (tall){
+    g += `<text x="0" y="10" font-size="11" fill="var(--text-3)">累计净额 · 8:00 起</text>`
+    g += `<text x="${w}" y="${y(mn)+12}" font-size="11" fill="var(--text-3)" text-anchor="end" class="num">${fs(mn)}</text>`
+    // 逐根净额柱
+    const by = padT + ah + 10 + 16, bh = colH, mid = by + bh/2
+    const nets = today.map(b => b.bb - b.bs), m = Math.max(...nets.map(Math.abs)) || 1
+    const bw = (w - 4)/nets.length
+    g += `<text x="0" y="${by - 4}" font-size="11" fill="var(--text-3)">逐根净额</text>`
+    g += `<line x1="0" x2="${w}" y1="${mid}" y2="${mid}" stroke="var(--line)"/>`
+    nets.forEach((v, i) => { if (!v) return; const hh = Math.max(1.5, Math.abs(v)/m*(bh/2 - 2))
+      g += `<rect x="${(i*bw + .5).toFixed(1)}" y="${(v > 0 ? mid - hh : mid).toFixed(1)}" width="${Math.max(1.5, bw - 1.2).toFixed(1)}" height="${hh.toFixed(1)}" rx="1" fill="var(--${v > 0 ? 'up' : 'down'})" opacity="${.45 + .55*Math.abs(v)/m}"/>` })
+    const tx = [8, 10, 12, 14].map(hh => { const i = today.findIndex(b => b.t === hh*60); return i < 0 ? '' : `<text x="${(i*bw).toFixed(1)}" y="${by + bh + 13}" font-size="11" fill="var(--text-3)" text-anchor="${hh === 8 ? 'start' : 'middle'}" class="num">${hh}:00</text>` }).join('')
+    g += tx
+  }
+  el.innerHTML = svg(w, h, g)
+}
+
+function ring(cx, cy, r, frac, color){
+  const a = Math.min(.999, frac)*Math.PI*2, x2 = cx + r*Math.sin(a), y2 = cy - r*Math.cos(a)
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--track)" stroke-width="2"/>` +
+    `<path d="M${cx},${cy - r}A${r},${r} 0 ${a > Math.PI ? 1 : 0} 1 ${x2.toFixed(2)},${y2.toFixed(2)}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"/>`
+}
+
+function drawLevels(el, state){
+  const w = el.clientWidth, h = el.clientHeight
+  if (!w || !h) return
+  const empty = state === 'empty'
+  const lo = 114.62, hi = 115.88
+  const yRaw = p => 9 + (hi - p)/(hi - lo)*(h - 18)
+  const px = 46, bw = w - px - 36
+  // 条目按价格排好，太挤就互相让开（价签写的是真价，位置只做最小让位）
+  const it = []
+  if (!empty) it.push({ k: 'wall', s: 'a', p: WALLS.ask.p, hh: 16, d: WALLS.ask })
+  if (!empty) for (const [p, usd] of LEVELS.sell) it.push({ k: 'lv', s: 's', p, usd, hh: 12 })
+  it.push({ k: 'cur', p: LAST, hh: 16 })
+  if (!empty) for (const [p, usd] of LEVELS.buy) it.push({ k: 'lv', s: 'b', p, usd, hh: 12 })
+  it.push({ k: 'wall', s: 'b', p: WALLS.bid.p, hh: 16, d: WALLS.bid })
+  it.sort((a, b) => b.p - a.p)
+  it.forEach(o => o.y = yRaw(o.p))
+  for (let i = 1; i < it.length; i++){ const g = (it[i-1].hh + it[i].hh)/2 + 2; it[i].y = Math.max(it[i].y, it[i-1].y + g) }
+  if (it.length && it[it.length-1].y > h - 9){ it[it.length-1].y = h - 9; for (let i = it.length - 2; i >= 0; i--){ const g = (it[i+1].hh + it[i].hh)/2 + 2; it[i].y = Math.min(it[i].y, it[i+1].y - g) } }
+  let g = `<line x1="${px - 1}" x2="${px - 1}" y1="2" y2="${h - 2}" stroke="var(--line)"/>`
+  const m = Math.max(...it.filter(o => o.k === 'lv').map(o => o.usd), 1)
+  for (const o of it){
+    const yy = o.y
+    if (o.k === 'wall'){
+      const wl = o.d
+      g += `<rect x="${px}" y="${yy - 8}" width="${w - px}" height="16" rx="5" fill="var(--wall-a)"/>
+        <rect x="${px}" y="${yy - 8}" width="2.5" height="16" rx="1" fill="var(--wall)"/>
+        <text x="${px - 6}" y="${yy + 4}" font-size="11" text-anchor="end" fill="var(--text-1)" font-weight="600" class="num">${wl.p.toFixed(2)}</text>
+        <text x="${px + 9}" y="${yy + 4}" font-size="11" fill="var(--text-1)" font-weight="600" class="num">${o.s === 'a' ? '卖墙' : '买墙'} ${fm(wl.usd)}</text>
+        <text x="${w - 18}" y="${yy + 4}" font-size="11" text-anchor="end" fill="var(--text-3)" class="num">${wl.min}分</text>
+        ${ring(w - 7.5, yy, 5, wl.min/60, 'var(--wall)')}`
+    } else if (o.k === 'lv'){
+      const len = Math.max(8, o.usd/m*bw), c = o.s === 's' ? 'var(--down)' : 'var(--up)', id = 'lv' + o.s + Math.round(o.p*100) + Math.round(w)
+      g += `<defs><linearGradient id="${id}" x1="0" x2="1"><stop offset="0" stop-color="${c}" stop-opacity="${.22 + .3*o.usd/m}"/><stop offset="1" stop-color="${c}" stop-opacity="${.55 + .45*o.usd/m}"/></linearGradient></defs>`
+      g += `<rect x="${px}" y="${yy - 5}" width="${bw}" height="10" rx="3" fill="var(--track)" opacity=".6"/>`
+      g += `<rect x="${px}" y="${yy - 5}" width="${len.toFixed(1)}" height="10" rx="3" fill="url(#${id})"/>`
+      g += `<text x="${px - 6}" y="${yy + 4}" font-size="11" text-anchor="end" fill="var(--text-2)" class="num">${o.p.toFixed(2)}</text>`
+      g += `<text x="${w}" y="${yy + 4}" font-size="11" text-anchor="end" fill="${c}" font-weight="600" class="num">${fm(o.usd)}</text>`
+    } else {
+      g += `<line x1="${px}" x2="${w}" y1="${yy}" y2="${yy}" stroke="var(--text-1)" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/>`
+      g += `<rect x="0" y="${yy - 8}" width="${px - 3}" height="16" rx="4" fill="var(--text-1)"/><text x="${(px - 3)/2}" y="${yy + 4}" font-size="11" text-anchor="middle" fill="var(--surface)" font-weight="650" class="num">${LAST.toFixed(2)}</text>`
+      if (empty) g += `<text x="${px + (w - px)/2}" y="${yy - 16}" font-size="11" text-anchor="middle" fill="var(--text-3)">近1时无成交大单</text>`
+    }
+  }
+  el.innerHTML = svg(w, h, g)
+}
+
+function drawLiq(el, tall){
+  const w = el.clientWidth, h = el.clientHeight
+  if (!w || !h) return
+  const lab = 13, mid = (h - lab)/2, m = Math.sqrt(Math.max(...LIQ.map(q => Math.max(q.L, q.S)))), sq = v => Math.sqrt(v)
+  const bw = w/LIQ.length
+  let g = `<line x1="0" x2="${w}" y1="${mid}" y2="${mid}" stroke="var(--line-strong)"/>`
+  LIQ.forEach((q, i) => {
+    const x = i*bw + .6, ww = Math.max(1.5, bw - 1.6)
+    if (q.S){ const hh = Math.max(1.5, sq(q.S)/m*(mid - 2)); g += `<rect x="${x.toFixed(1)}" y="${(mid - 1 - hh).toFixed(1)}" width="${ww.toFixed(1)}" height="${hh.toFixed(1)}" rx="1.2" fill="var(--up)" opacity="${.45 + .55*sq(q.S)/m}"/>` }
+    if (q.L){ const hh = Math.max(1.5, sq(q.L)/m*(mid - 2)); g += `<rect x="${x.toFixed(1)}" y="${(mid + 1).toFixed(1)}" width="${ww.toFixed(1)}" height="${hh.toFixed(1)}" rx="1.2" fill="var(--down)" opacity="${.45 + .55*sq(q.L)/m}"/>` }
+  })
+  // 近 1 小时那段打底
+  const i0 = LIQ.findIndex(q => q.t >= T_END - 45)
+  g = `<rect x="${i0*bw}" y="0" width="${w - i0*bw}" height="${h - lab}" rx="4" fill="var(--surface-3)" opacity=".7"/>` + g
+  g += `<text x="0" y="${h - 1}" font-size="11" fill="var(--text-3)" class="num">8:00</text><text x="${w}" y="${h - 1}" font-size="11" text-anchor="end" fill="var(--text-3)" class="num">现在</text>`
+  if (tall) g += `<text x="${i0*bw - 4}" y="${h - 1}" font-size="11" text-anchor="end" fill="var(--text-3)">近1时 ▸</text>`
+  el.innerHTML = svg(w, h, g)
+}
+
+function paint(root, o){
+  // 对撞柱：柱比金额字短时，字挪到柱外端，不压在柱头上
+  root.querySelectorAll('.bf .h').forEach(hh => { const i = hh.querySelector('i'), sp = hh.querySelector('span')
+    const bw = i.offsetWidth, sw = sp.offsetWidth
+    if (!(bw > 0 && bw < sw)) return
+    if (bw + sw + 2 <= hh.offsetWidth) sp.style[hh.classList.contains('s') ? 'marginRight' : 'marginLeft'] = bw + 'px'
+    else i.style.width = (sw + 4) + 'px' })
+  root.querySelectorAll('[data-ch="cum"]').forEach(el => drawCum(el, false, o.state))
+  root.querySelectorAll('[data-ch="cumTall"]').forEach(el => drawCum(el, true, o.state))
+  root.querySelectorAll('[data-ch="lv"]').forEach(el => drawLevels(el, o.state))
+  root.querySelectorAll('[data-ch="liq"]').forEach(el => drawLiq(el, o.h > 300))
+}
+
+/* ================= 右侧面板（精简） ================= */
+function panel(){
+  const tile = (bg, ic) => `<span class="tgi" style="background:${bg}">${ic}</span>`
+  const T = [
+    ['图上订单流', true, tile('linear-gradient(135deg,var(--wall-a),color-mix(in srgb,var(--wall) 26%,transparent))',
+      svg(18, 18, `<rect x="1" y="4" width="16" height="3" rx="1.5" fill="var(--wall)" opacity=".55"/><rect x="1" y="11" width="16" height="3" rx="1.5" fill="var(--wall)" opacity=".85"/><rect x="5" y="2" width="2" height="14" rx="1" fill="var(--up)"/><rect x="11" y="5" width="2" height="10" rx="1" fill="var(--down)"/>`))],
+    ['深度梯子', true, tile('linear-gradient(135deg,var(--up-a),var(--down-a))',
+      svg(18, 18, `<rect x="3" y="2" width="12" height="2.4" rx="1.2" fill="var(--down)" opacity=".55"/><rect x="6" y="5.6" width="9" height="2.4" rx="1.2" fill="var(--down)"/><rect x="7" y="10" width="8" height="2.4" rx="1.2" fill="var(--up)"/><rect x="2" y="13.6" width="13" height="2.4" rx="1.2" fill="var(--up)" opacity=".55"/>`))],
+    ['大单列表', true, tile('linear-gradient(135deg,var(--accent-soft),color-mix(in srgb,var(--accent) 22%,transparent))',
+      svg(18, 18, `<rect x="2" y="10" width="14" height="6" rx="2" fill="var(--accent)"/><rect x="2" y="2" width="14" height="6" rx="2" fill="var(--accent)" opacity=".28"/><rect x="5" y="12.2" width="4" height="1.6" rx=".8" fill="#fff"/><rect x="10" y="12.2" width="3" height="1.6" rx=".8" fill="#fff" opacity=".7"/>`))],
+    ['深度热力', false, tile('linear-gradient(135deg,rgba(242,140,40,.16),rgba(123,108,240,.16))',
+      svg(18, 18, [0,1,2,3].map(c => [0,1,2,3].map(r => `<rect x="${1 + c*4.2}" y="${1 + r*4.2}" width="3.4" height="3.4" rx=".8" fill="${(c + r) % 3 ? 'var(--wall)' : '#F28C28'}" opacity="${.25 + ((c*3 + r*5) % 7)/9}"/>`).join('')).join('')))],
+  ]
+  const tier = n => `<span class="tier">${n >= 1 ? `<svg width="8" height="7" viewBox="0 0 8 7"><path d="M4 0L8 7H0z" fill="var(--text-3)"/></svg>` : ''}</span>`
+  return `<aside class="pnl">
+    <div class="pnl-h"><h3>主力订单流</h3><button class="ib" aria-label="改门槛与步长">${ICON.gear}</button></div>
+    <div class="pnl-b">
+      <div class="psec">显示</div>
+      <div class="tgls">${T.map(([l, on, ic]) => `<div class="tgl">${ic}<span class="l">${l}</span><span class="sw ${on ? 'on' : ''}" role="switch" aria-checked="${on}"></span></div>`).join('')}</div>
+      <div class="psec">门槛<span class="symchip"><i></i>SOL</span></div>
+      <div class="thr">
+        <div class="thr-g">大单线 · 单笔</div>
+        <div class="thr-r"><span class="k">现货</span><span class="v num">30万</span></div>
+        <div class="thr-r"><span class="k">合约</span><span class="v num">75万</span><span class="own" title="你改过的"></span></div>
+        <div class="thr-r"><span class="k">交割</span><span class="v num">50万</span></div>
+        <hr>
+        <div class="thr-r"><span class="k">挂单墙</span><span class="v num">200万</span></div>
+        <div class="thr-r"><span class="k">价位步长</span><span class="v num">0.05</span></div>
+        <button class="pbtn">${ICON.gear}改门槛与步长</button>
+      </div>
+    </div>
+  </aside>`
+}
+
+/* ================= 主图（只为对上抽屉的状态） ================= */
+const XH = toMin('13:40'), SEL = toMin('13:10')
+function drawChart(el){
+  const w = el.clientWidth, h = el.clientHeight
+  const axW = 64, tH = 24, volH = 64, padT = 40
+  const cw = w - axW, ph = h - tH - volH - padT - 8
+  const vis = bars
+  const lo = Math.min(...vis.map(b => b.l), WALLS.bid.p) - .25, hi = Math.max(...vis.map(b => b.h), WALLS.ask.p) + .25
+  const y = p => padT + (hi - p)/(hi - lo)*ph
+  const bw = (cw - 20)/vis.length, x = i => 8 + i*bw + bw/2
+  let g = ''
+  // 网格
+  const tagYs = [y(LAST), y(115.9)], XHX = x(vis.findIndex(b => b.t === XH))
+  for (let p = Math.ceil(lo*2)/2; p <= hi; p += .5){ const near = tagYs.some(t => Math.abs(t - y(p)) < 16); g += `<line x1="0" x2="${cw}" y1="${y(p)}" y2="${y(p)}" stroke="var(--chart-grid)"/>` + (near ? '' : `<text x="${cw + 8}" y="${y(p) + 4}" font-size="11" fill="var(--text-2)" class="num">${p.toFixed(2)}</text>`) }
+  vis.forEach((b, i) => { if (b.t % 60 === 0){ g += `<line x1="${x(i)}" x2="${x(i)}" y1="0" y2="${h - tH}" stroke="var(--chart-grid)"/>` + (Math.abs(x(i) - XHX) < 48 ? '' : `<text x="${x(i)}" y="${h - 8}" font-size="11" text-anchor="middle" fill="var(--text-2)" class="num">${hm(b.t)}</text>`) } })
+  // 选中那根：竖带
+  const si = vis.findIndex(b => b.t === SEL)
+  g += `<rect x="${x(si) - bw*.9}" y="0" width="${bw*1.8}" height="${h - tH}" fill="var(--accent)" opacity=".09"/><rect x="${x(si) - bw*.9}" y="${h - tH - 3}" width="${bw*1.8}" height="3" fill="var(--accent)"/>`
+  // 挂单墙
+  for (const [wl, s] of [[WALLS.ask, 'a'], [WALLS.bid, 'b']]){ const yy = y(wl.p)
+    g += `<rect x="${cw*.55}" y="${yy - 4}" width="${cw*.45}" height="8" fill="var(--wall)" opacity=".16"/>`
+    g += `<text x="${cw*.55 + 6}" y="${yy - 7}" font-size="11" fill="var(--wall)" font-weight="600" class="num">${s === 'a' ? '卖墙' : '买墙'} ${fm(wl.usd)}</text>` }
+  // 均线
+  const ma = (n) => vis.map((b, i) => { const a = vis.slice(Math.max(0, i - n + 1), i + 1); return a.reduce((s, q) => s + q.c, 0)/a.length })
+  for (const [n, c] of [[10, '#F5A524'], [30, '#3D6BF2']]){ const m = ma(n); g += `<path d="${m.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('')}" fill="none" stroke="${c}" stroke-width="1.3" opacity=".9"/>` }
+  // K 线 + 成交量
+  const vmax = Math.max(...vis.map(b => b.v))
+  vis.forEach((b, i) => { const up = b.c >= b.o, c = up ? 'var(--up)' : 'var(--down)', X = x(i)
+    g += `<line x1="${X}" x2="${X}" y1="${y(b.h)}" y2="${y(b.l)}" stroke="${c}"/>`
+    const top = y(Math.max(b.o, b.c)), bh = Math.max(1, Math.abs(y(b.o) - y(b.c)))
+    g += `<rect x="${(X - bw*.36).toFixed(1)}" y="${top.toFixed(1)}" width="${(bw*.72).toFixed(1)}" height="${bh.toFixed(1)}" fill="${c}"/>`
+    const vh = b.v/vmax*(volH - 6)
+    g += `<rect x="${(X - bw*.36).toFixed(1)}" y="${(h - tH - vh).toFixed(1)}" width="${(bw*.72).toFixed(1)}" height="${vh.toFixed(1)}" fill="${c}" opacity=".35"/>` })
+  // 大单签：每根一枚，买挂高点上、卖挂低点下；三档
+  vis.forEach((b, i) => { if (!(b.bb + b.bs)) return
+    const buy = b.bb >= b.bs, amt = buy ? b.bb : b.bs, c = buy ? 'var(--up)' : 'var(--down)', X = x(i)
+    const yy = buy ? y(b.h) - 6 : y(b.l) + 6
+    if (amt < 5e6){ g += buy ? `<path d="M${X - 4},${yy}L${X + 4},${yy}L${X},${yy - 6}Z" fill="${c}"/>` : `<path d="M${X - 4},${yy}L${X + 4},${yy}L${X},${yy + 6}Z" fill="${c}"/>`; return }
+    const t = fm(amt), big = amt >= 20e6, tw = t.length*(big ? 7.2 : 6.4) + 10, th = big ? 18 : 16
+    const ty = buy ? yy - th : yy
+    g += `<line x1="${X}" x2="${X}" y1="${buy ? yy : yy}" y2="${buy ? yy - 3 : yy + 3}" stroke="${c}"/>`
+    if (big) g += `<rect x="${X - tw/2}" y="${buy ? ty - 3 : ty + 3}" width="${tw}" height="${th}" rx="4" fill="${c}"/><text x="${X}" y="${(buy ? ty - 3 : ty + 3) + 13}" font-size="11.5" font-weight="700" text-anchor="middle" fill="#fff" class="num">${t}</text>`
+    else g += `<rect x="${X - tw/2}" y="${buy ? ty - 3 : ty + 3}" width="${tw}" height="${th}" rx="4" fill="var(--surface)" stroke="${c}"/><text x="${X}" y="${(buy ? ty - 3 : ty + 3) + 12}" font-size="11" font-weight="600" text-anchor="middle" fill="${c}" class="num">${t}</text>`
+  })
+  // 现价线
+  g += `<line x1="0" x2="${cw}" y1="${y(LAST)}" y2="${y(LAST)}" stroke="var(--up)" stroke-dasharray="1 3"/><rect x="${cw}" y="${y(LAST) - 9}" width="${axW}" height="18" fill="var(--up)"/><text x="${cw + 8}" y="${y(LAST) + 4}" font-size="11" fill="#fff" font-weight="650" class="num">${LAST.toFixed(2)}</text>`
+  // 十字线
+  const xi = vis.findIndex(b => b.t === XH), XX = x(xi), cy = y(115.9)
+  g += `<line x1="${XX}" x2="${XX}" y1="0" y2="${h - tH}" stroke="var(--chart-cross)" stroke-dasharray="4 3"/><line x1="0" x2="${cw}" y1="${cy}" y2="${cy}" stroke="var(--chart-cross)" stroke-dasharray="4 3"/>`
+  g += `<rect x="${cw}" y="${cy - 9}" width="${axW}" height="18" fill="var(--text-1)"/><text x="${cw + 8}" y="${cy + 4}" font-size="11" fill="var(--surface)" class="num">115.90</text>`
+  g += `<rect x="${XX - 26}" y="${h - tH + 2}" width="52" height="18" rx="3" fill="var(--text-1)"/><text x="${XX}" y="${h - tH + 15}" font-size="11" text-anchor="middle" fill="var(--surface)" class="num">${hm(XH)}</text>`
+  g += `<line x1="${cw}" x2="${cw}" y1="0" y2="${h}" stroke="var(--line)"/><line x1="0" x2="${w}" y1="${h - tH}" y2="${h - tH}" stroke="var(--line)"/>`
+  el.innerHTML = svg(w, h, g)
+  // 悬停卡
+  const b = vis[xi], card = el.parentElement.querySelector('.hcard')
+  card.style.left = (XX - 256 - 22) + 'px'; card.style.top = '64px'
+}
+function hoverCard(b){
+  const n = b.bb - b.bs, t = b.bb + b.bs
+  return `<div class="hcard">
+    <div class="hc-h"><b class="num">10-08 ${hm(b.t)}</b>· 5分</div>
+    <div class="hc-net"><span class="v num ${cls(n)}">${fs(n)}</span><span class="l">净额</span></div>
+    <div class="hc-fly"><i style="flex:${b.bs/t};background:linear-gradient(90deg,color-mix(in srgb,var(--down) 60%,transparent),var(--down))"></i><i style="flex:${b.bb/t};background:linear-gradient(90deg,var(--up),color-mix(in srgb,var(--up) 60%,transparent))"></i></div>
+    <div class="hc-kv">
+      <span>大卖</span><b class="num dn">${fm(b.bs)}</b><em class="num">${b.sn != null ? b.sn + ' 笔' : '—'}</em>
+      <span>大买</span><b class="num up">${fm(b.bb)}</b><em class="num">${b.bn != null ? b.bn + ' 笔' : '—'}</em>
+      <span>最大一笔</span><b class="num">${b.mx ? fm(b.mx.usd) : '—'}</b><em class="${b.mx ? (b.mx.side === 's' ? 'dn' : 'up') : ''}">${b.mx ? (b.mx.side === 's' ? '卖' : '买') : ''}</em>
+    </div>
+    <div class="hc-src">
+      <div class="sr"><div class="tx"><span>现货<b class="num">${b.spot != null ? Math.round(b.spot*100) + '%' : '—'}</b></span><span>合约<b class="num">${b.spot != null ? Math.round((1 - b.spot)*100) + '%' : '—'}</b></span></div><div class="seg3"><i style="flex:${b.spot ?? 0};background:var(--spot)"></i><i style="flex:${b.spot != null ? 1 - b.spot : 1};background:${b.spot != null ? 'var(--perp)' : 'var(--track)'}"></i></div></div>
+      <div class="sr"><div class="tx">${['币安','OKX','Coinbase'].map((k, j) => `<span><i style="background:var(--${['bn','okx','cb'][j]})"></i>${k}<b class="num">${b.ex ? Math.round(b.ex[j]*100) + '%' : '—'}</b></span>`).join('')}</div>${b.ex ? `<div class="seg3">${v3(b.ex).replace('class="v3"', 'style="display:contents"')}</div>` : '<div class="seg3"><i style="flex:1;background:var(--track)"></i></div>'}</div>
+    </div>
+  </div>`
+}
+
+function appFrame(){
+  const ic = (d) => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`
+  const xb = bars.find(b => b.t === XH)
+  return `<div class="app">
+    <div class="ahead"><span class="logo"><i></i>Hkline</span><div class="atabs"><span class="on">图表</span><span>板块</span><span>复盘</span></div>
+      <div class="asearch">${ic('<circle cx="8" cy="8" r="5"/><path d="M12 12l3 3"/>')}搜索品种、代号、中文名</div>
+      <span class="adot">${ic('<path d="M5 13V8a4 4 0 018 0v5M4 13h10M7.5 15.5h3"/>')}</span><span class="adot">${ic('<path d="M13 10.5A5 5 0 017.5 5a5 5 0 105.5 5.5z"/>')}</span></div>
+    <div class="dbar">${['<path d="M9 3v12M3 9h12"/>', '<path d="M3 15L15 3"/>', '<rect x="3" y="5" width="12" height="8" rx="1"/>', '<path d="M3 13l4-4 3 3 5-6"/>', '<path d="M3 6h12M3 10h12M3 14h12"/>', '<path d="M5 9a4 4 0 108 0"/>'].map(ic).join('')}</div>
+    <div class="ccol">
+      <div class="tbar"><b><span class="symchip"><i></i></span>SOLUSDT<em>永续</em></b>
+        <span class="p">1分</span><span class="p on">5分</span><span class="p">15分</span><span class="p">1时</span><span class="p">4时</span><span class="p">日</span><span class="p">更多</span>
+        <span class="sep"></span><span class="p">指标</span><span class="p">对比</span><span class="p">提醒</span><span class="p" style="color:var(--accent-text);font-weight:600">订单流</span></div>
+      <div class="chart"><div class="legend"><b>SOLUSDT</b>· 5分 · 币安永续<span class="num">收 ${LAST.toFixed(2)}</span><span class="num up">+0.08 (+0.07%)</span></div><div class="cv"></div>${hoverCard(xb)}</div>
+      ${drawer({ h: 240, state: 'live', xh: XH, sel: SEL, rows: 30 })}
+    </div>
+    ${panel()}
+    <div class="rail">${['<path d="M9 2.5l2 4.2 4.5.5-3.3 3 .9 4.5L9 12.5l-4.1 2.2.9-4.5-3.3-3 4.5-.5z"/>', '<path d="M5 13V8a4 4 0 018 0v5M4 13h10"/>', '<path d="M3 6l6-3 6 3-6 3zM3 10l6 3 6-3"/>', '<path d="M4 4h4v10H4zM10 7h4v7h-4z"/>'].map((d, i) => `<span class="${i === 3 ? 'on' : ''}">${ic(d)}</span>`).join('')}</div>
+  </div>`
+}
+
+/* ================= 装配 ================= */
+const FR = {
+  hero: () => appFrame(),
+  tall: () => drawer({ w: 1008, h: 480, state: 'live', sel: SEL, hov: toMin('12:40'), rows: 40 }),
+  hist: () => drawer({ w: 1008, h: 240, state: 'hist', rows: 30 }),
+  empty: () => drawer({ w: 1008, h: 240, state: 'empty' }),
+  wide: () => drawer({ w: 2128, h: 240, state: 'live', xh: XH, rows: 30, wide: true }),
+  panelOnly: () => `<div style="width:320px;height:560px;display:flex;background:var(--app)">${panel().replace('class="pnl"', 'class="pnl" style="width:320px"')}</div>`,
+}
+function build(){
+  for (const [id, f] of Object.entries(FR)){
+    const el = document.getElementById(id); el.innerHTML = f()
+  }
+  const hero = $('#hero')
+  drawChart($('.chart .cv', hero))
+  paint(hero, { state: 'live', h: 240 })
+  paint($('#tall'), { state: 'live', h: 480 })
+  paint($('#hist'), { state: 'hist', h: 240 })
+  paint($('#empty'), { state: 'empty', h: 240 })
+  paint($('#wide'), { state: 'live', h: 240 })
+  // 历史段里汇总的「今日」也只有金额 —— 其余照常
+}
+function fit(){
+  document.querySelectorAll('.stage').forEach(st => {
+    const W0 = +st.dataset.w, H0 = +st.dataset.h, fr = st.firstElementChild
+    const full = st.classList.contains('full')
+    const avail = full ? document.documentElement.clientWidth : (st.parentElement.clientWidth - (st.style.margin === '0px' ? 0 : 48))
+    const s = Math.min(1, avail / W0)
+    fr.style.width = W0 + 'px'; fr.style.height = H0 + 'px'; fr.style.transform = `scale(${s})`
+    st.style.width = (W0*s) + 'px'; st.style.height = (H0*s) + 'px'
+  })
+}
+const q = new URLSearchParams(location.search)
+function setTheme(t){ document.documentElement.dataset.theme = t; document.querySelectorAll('#theme button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.t === t))) }
+setTheme(q.get('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))
+if (q.get('shot')) document.body.classList.add('shot')
+document.getElementById('theme').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTheme(b.dataset.t) })
+document.querySelectorAll('.chart .cv').forEach(() => {})
+build(); fit()
+addEventListener('resize', fit)
+</script>
+</body>
+</html>
