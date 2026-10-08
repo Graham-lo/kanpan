@@ -1,5 +1,6 @@
 import KanpanCore
 import KanpanData
+import KanpanNetwork
 import ReviewUI
 import SwiftUI
 
@@ -51,7 +52,7 @@ import SwiftUI
 /// 字号、间距、图标一律取 `DesignTokens` 的令牌（UI 审查 2026-09-24 §4.3 #4–#12），别自己发挥——
 /// 这一条和价格行是整个 app 里唯一常驻的文字，差一点点立刻显得不像同一个应用。
 /// 层级：品种名 16 semibold（`TypeScale.heading`，不用 bold——它不该比 22 的价格更「黑」）
-/// > 计价币 12 regular 次墨色 > 「永续」角标 11。
+/// > 角标 11（交易所小标 + 「USDT 永续」，2026-10-08 起计价币不再单列 12pt 那一截）。
 struct TopBar: View {
   @State private var iconTapCount = 0
   var theme: PanelTheme
@@ -75,8 +76,8 @@ struct TopBar: View {
   var alertCount = 0
   var onSearch: () -> Void
 
-  /// 「BTCUSDT」拆成「BTC」+「/USDT」：基础币用正文色、计价币降一级，
-  /// 一眼扫过去认的是前半截。
+  /// 「BTCUSDT」拆成「BTC」+「USDT」：品种名只写基础币（正文色），计价币进角标小字
+  /// （2026-10-08 用户定：「不再显示 DOGE/USDT，直接显示 DOGE，然后 USDT 永续小字」）。
   private var base: String {
     SymbolInfo.placeholder(symbol: symbol).base
   }
@@ -96,11 +97,12 @@ struct TopBar: View {
       // 原来先收角标，一出返回键角标就没了，看着像换了一种品种。
       // 现在放不下时先收币种徽章（左边已经有返回键顶着，少一颗圆不显空），再收计价币，
       // 最后才截基础币——角标一直在。`layoutPriority` 让它比右边的 Spacer 先拿宽度。
+      // 2026-10-08 用户定：品种名只写基础币（`DOGE`），不再写 `/USDT`；计价币并进角标写成
+      // 「USDT 永续」小字，角标前面是交易所的小标。放不下时先收徽章，再截基础币，角标一直在。
       ViewThatFits(in: .horizontal) {
-        symbolBlock(badge: true, quote: true)
-        symbolBlock(badge: false, quote: true)
-        symbolBlock(badge: false, quote: false)
-        symbolBlock(badge: false, quote: false).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        symbolBlock(badge: true)
+        symbolBlock(badge: false)
+        symbolBlock(badge: false).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
       }
       .layoutPriority(1)
       .accessibilityElement(children: .combine)
@@ -177,8 +179,8 @@ struct TopBar: View {
   /// 右上角那簇圆片的步距（见文件头 2026-10-08 那段的算术）：12，32 + 12 = 44，命中区首尾相接。
   static let clusterSpacing = Space.m
 
-  /// （放得下时）徽章 + 品种名 +（放得下时）计价币 +「永续 / 现货」角标（总在）。
-  private func symbolBlock(badge: Bool, quote showQuote: Bool) -> some View {
+  /// （放得下时）徽章 + 基础币名 + 角标「交易所小标 · 计价币 永续 / 现货」（总在）。
+  private func symbolBlock(badge: Bool) -> some View {
     HStack(spacing: Space.s) {
       if badge { CoinBadge(base: base, size: ControlMetrics.badge) }
       HStack(alignment: .firstTextBaseline, spacing: Space.xxs) {
@@ -187,14 +189,13 @@ struct TopBar: View {
           .foregroundStyle(theme.ink)
           // 最后那一档放不下时只截基础币，角标不让。
           .layoutPriority(-1)
-        if showQuote, !quote.isEmpty {
-          Text("/" + quote)
-            .font(TypeScale.caption)
-            .foregroundStyle(theme.ink3)
-        }
         // 这儿原来还有一个 ▾。弹层没了，箭头就不能留——一个点不动的控件画着
         // 「点我展开」的记号，比没有记号更糟。
-        let tag = InstrumentID(symbol).productLabel
+        // 角标文字 = 交易所缩写 + 计价币 + 产品（「币安 USDT 永续」「CB USD 现货」「HL USDC 永续」）；
+        // 没有缩写、没有计价币的（美元指数）只剩「指数」。用户 2026-10-08：品种按交易所分了，
+        // 行情页要带上交易所，用文字缩写（币安 / OKX / Bybit / HL / CB），不用图标。
+        let tag = [VenueRegistry.descriptor(forSymbol: symbol).shortName, quote, InstrumentID(symbol).productLabel]
+          .filter { !$0.isEmpty }.joined(separator: " ")
         if !tag.isEmpty {
           Text(tag)
             // 11pt 是 HIG 的文字下限（原来 10）；纯符号不在此列。

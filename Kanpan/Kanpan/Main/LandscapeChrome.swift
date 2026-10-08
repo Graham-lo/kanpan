@@ -1,4 +1,5 @@
 import KanpanCore
+import KanpanNetwork
 import SwiftUI
 
 /// 横屏的三件外壳（§10.7）：左边竖排周期、右边竖排工具、图区左上角那一行小字。
@@ -26,16 +27,19 @@ struct LandscapeHeadline: View {
 
   var body: some View {
     HStack(spacing: Space.s) {
-      // 和竖屏顶栏同一个写法「BTC/USDT」：基础币正文色、计价币降一级（审查 U11——
-      // 原来写的是裸代号「BTCUSDT」，转个屏品种名就换了个样子）。
-      HStack(alignment: .firstTextBaseline, spacing: 1) {
+      // 和竖屏顶栏同一个写法（审查 U11——原来写的是裸代号「BTCUSDT」，转个屏品种名就换了个样子）：
+      // 基础币正文色，后面是「币安 USDT 永续」小字（2026-10-08 用户定：不再写 `/USDT`，交易所用文字缩写）。
+      HStack(alignment: .firstTextBaseline, spacing: Space.xs) {
         Text(pair.base)
           .font(TypeScale.controlOn)
           .foregroundStyle(theme.ink)
-        if !pair.quote.isEmpty {
-          Text("/" + pair.quote)
+        let tag = [VenueRegistry.descriptor(forSymbol: symbol).shortName, pair.quote, InstrumentID(symbol).productLabel]
+          .filter { !$0.isEmpty }.joined(separator: " ")
+        if !tag.isEmpty {
+          Text(tag)
             .font(TypeScale.caption2Emph)
             .foregroundStyle(theme.ink3)
+            .fixedSize()
         }
       }
       if onTapSymbol != nil {

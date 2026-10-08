@@ -226,6 +226,13 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
       LiuliBadge(base: base, asset: asset)
       VStack(alignment: .leading, spacing: Space.xs) {
         HStack(alignment: .firstTextBaseline, spacing: Space.xs) {
+          // 品种前面先写它是哪家的（「币安 DOGE USDT」「HL BTC USDC」）：同一个币在几家交易所
+          // 各是一只，列表里靠这一截分（用户 2026-10-08，文字缩写、不用图标）。没有缩写的（美元指数）不写。
+          let venueTag = VenueRegistry.descriptor(forSymbol: symbol).shortName
+          if !venueTag.isEmpty {
+            Text(venueTag).font(SymbolRowFont.small).foregroundStyle(SymbolRowInk.faint(theme))
+              .accessibilityIdentifier("symbols.venue.\(symbol)")
+          }
           Text(base).font(SymbolRowFont.liuliName).foregroundStyle(theme.ink)
           Text(quote).font(SymbolRowFont.small).foregroundStyle(SymbolRowInk.faint(theme))
           if isNew {
@@ -335,17 +342,18 @@ struct SymbolRowView: View {
                   size: ControlMetrics.listBadge)
         VStack(alignment: .leading, spacing: Space.xxs) {
           HStack(alignment: .firstTextBaseline, spacing: Space.xs) {
-            name
-            if NewListingMark.shows(row.info) {
-              NewListingMark(symbol: row.id, accent: theme.amber)
-            }
-            // 别家交易所的品种在名字右边标一个灰色小字（默认那一家不标）——
-            // 两家所都有 BTC，搜出来并排时靠它分。
-            if let tag = VenueRegistry.descriptor(forSymbol: row.id).searchTag {
-              Text(tag)
+            // 名字前面先写它是哪家的（「币安 BTC / USDT」「OKX BTC / USDT」）：几家所都有 BTC，
+            // 搜出来并排时靠它分（用户 2026-10-08：文字缩写，不用图标；币安也写）。没有缩写的（美元指数）不写。
+            let venueTag = VenueRegistry.descriptor(forSymbol: row.id).shortName
+            if !venueTag.isEmpty {
+              Text(venueTag)
                 .font(TypeScale.caption)
                 .foregroundStyle(theme.ink3)
                 .accessibilityIdentifier("symbols.venue.\(row.id)")
+            }
+            name
+            if NewListingMark.shows(row.info) {
+              NewListingMark(symbol: row.id, accent: theme.amber)
             }
           }.lineLimit(1)
           Text(row.meta)

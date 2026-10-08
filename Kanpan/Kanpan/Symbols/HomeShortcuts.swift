@@ -70,12 +70,12 @@ enum HomeShortcuts {
     return out
   }
 
-  /// 一格上写的字：平时就是币名；同一屏上撞了币名，补上计价，别家交易所再补它的名字。
+  /// 一格上写的字：平时就是币名；同一屏上撞了币名，前面补交易所缩写、后面补计价（「币安 BTC/USDT」）。
   private static func title(_ info: SymbolInfo, collides: Bool) -> String {
     guard collides else { return info.base }
     let pair = info.base + "/" + info.quote
-    guard let tag = VenueRegistry.descriptor(forSymbol: info.symbol).searchTag else { return pair }
-    return pair + " " + tag
+    let tag = VenueRegistry.descriptor(forSymbol: info.symbol).shortName
+    return tag.isEmpty ? pair : tag + " " + pair
   }
 
   // ---------------------------------------------------------------- 装到系统上
