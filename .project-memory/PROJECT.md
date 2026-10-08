@@ -1998,3 +1998,14 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **右面板**（`index.ts flowPanel`）只剩「显示」四开关 + 「门槛」块（各档门槛、价位步长、改门槛与步长）；大单筛选胶囊、侧栏小部件胶囊与「去看」、「数据」状态块都去掉了。
 - **同日修的两个 bug**：大单签换粗周期出不来（档位缓存按 bb+bs 算、画签按 max(bb,bs) 筛，口径对齐）；持仓量副图 30 天前没历史（接归档 `/oi/v1/metrics/{symbol}/range`，contracts × 收盘价折美元）。
 - **测试**：`tests/orderflow-drawer.test.ts`（23）；`orderflow-bigtags.test.ts` 删了旧抽屉已废弃函数的测试。验收截图 `docs/acceptance/网页版大单列表-2026-10-08/`（1440 / 2560 × 浅深 × 240 / 480、空状态、悬停卡与选中行、十字线行、换皮肤）。
+
+## 65. 10-08：iOS 图上大单签 + 「大单与爆仓」弹层（照原型 `docs/原型-手机大单与爆仓-2026-10-08.html` §05–12）
+
+- **图上签**（c443e1cb）：`KanpanChart/ChartRenderer+BigTrades` 摆放与绘制、`ChartView+BigTrades` 点中 / 放大 / 光环 / 读屏；一根只出一枚签（净额方向）；点签十字线落到那根。
+- **弹层**（ed62ec16）：`Kanpan/Kanpan/OrderFlow/BigTradeSheet.swift` 一个文件收齐（`BigTradeSheetModel` 挂在 `OrderFlowLink.sheet`，`BigTradeSummary.make` 纯函数算卡片数，`View.bigTradeSheet(...)` 挂在 MainScreen `presentation`）。半屏 440 / 全屏 780 系统 detent；点签第一次开半屏、开着只换根；分析面板「主力订单流 › 大单与爆仓」一行带实时副文字也能开（复盘 / 画线 / 横屏不出）。
+  - 卡：本根（十字线落哪根读哪根，「该根 hh:mm」，十字线收掉后停 3 秒淡回本根）、爆仓薄卡（现货不出，服务端没跟这只或 `/liq` 拉不到就藏）、每根（近 40 根对撞柱，点一根十字线跳过去）、价位（现价上下五档 · 近 2 小时 + 最近挂单墙）、24 小时爆仓 96 格 + 今日最大一笔、门槛行（点开 OrderFlowEditor）。
+  - 状态：第一次打开 ≤1 秒骨架；数据停了标题「数据停在 hh:mm」整卡灰；断线同灰；没跟踪给提示。
+  - 弹层开着时两颗订单流开关都关也照订逐笔；爆仓每 30 秒问一次 kanpan-api `/v1/market/orderflow/liq`（`RoutedMarketFeed.liquidations`）。
+  - Debug 钩子 `KANPAN_TEST_BIGTRADE_STATE`（loading / stale / liqEmpty / untracked，只在 `#if DEBUG`）供截图强制状态。
+- **测试**：`Kanpan/KanpanUITests/BigTradeSheetUITests.swift`（8 条：半屏 / 全屏 / 点一根 / 门槛 / 返回、十字线联动、点签开半屏、三皮肤 × 浅深、骨架 / 现货 / 无爆仓 / 数据停了）。截图 `docs/acceptance/大单与爆仓-手机-2026-10-08/iOS-*.png`。
+- **踩坑**：同一工作树另一窗口有**已暂存**的改动时，`git commit -- <路径>` 以外的提交会把它们一并带上（9bee2030 带走了订单流适配器重命名并删了 DepthFeedFactory，9a5a9b25 补回）；有人在并行写时 `pull --rebase --autostash` 可能 stash 后 rebase 失败、stash 回不来——先 `git fetch` 看是否需要 rebase，不需要就直接 push。
