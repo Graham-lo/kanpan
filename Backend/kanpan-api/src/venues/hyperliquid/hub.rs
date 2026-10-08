@@ -14,6 +14,7 @@
 //! * 上游断了（或 `silence` 没有任何帧）就按退避重连，连上后把手上全部订阅重新发一遍；使用方只看到
 //!   一个 `Down` 再一个 `Up`，通道不断。
 //! * 上行消息（订、退、心跳）排队按 `gap` 一条一条发，`gap` 34 ms ≈ 每分钟 1760 条，低于 2000 的硬限；
+//!   队列按订阅合并（一个订阅只排一次，发的时候看它此刻该订还是该退），谁订了退、退了订多少次都只占一个位置；
 //!   新连接之间至少隔 `connect_gap`（2 秒，每分钟最多 30 条）。
 //! * 订阅总数封顶 `max_topics`（900，硬限 1000），其中常驻跟踪最多占 `max_tracking`（600），
 //!   给中继留出余量。超了的订阅答一帧 `{"channel":"error",…}`，不向上游发。
@@ -226,7 +227,16 @@ struct State {
  counters:Arc<Counters>,
  clients:HashMap<u64,Client>,
  topics:HashMap<Topic,TopicState>,
- queue:VecDeque<String>,
+ /// 要对上游改口的订阅（按先后，一个订阅只排一次）：发的时候再看它此刻该订还是该退，和上游现状一样就不发。
+ /// 以前排的是一条条现成的消息，一个中继订了退、退了订几千次就往队列里塞几千条，别人的订阅全排在后面。
+ dirty:VecDeque<Topic>,
+ dirty_set:HashSet<Topic>,
+ /// 这一次连接上，已经向上游发过「订」（且之后没发过「退」）的订阅。
+ told:HashSet<Topic>,
+ /// 其中上游回过回执的。
+ acked:HashSet<Topic>,
+ /// 心跳该发了。
+ ping:bool,
  connected:bool,
 }
 
@@ -249,7 +259,8 @@ struct Ack {method:String,subscription:Value}
 
 impl State {
  fn new(url:String,limits:Limits,counters:Arc<Counters>)->Self {
-  Self{url,limits,counters,clients:HashMap::new(),topics:HashMap::new(),queue:VecDeque::new(),connected:false}
+  Self{url,limits,counters,clients:HashMap::new(),topics:HashMap::new(),dirty:VecDeque::new(),dirty_set:HashSet::new(),
+   told:HashSet::new(),acked:HashSet::new(),ping:false,connected:false}
  }
 
  fn tracking_topics(&self)->usize {
@@ -328,7 +339,9 @@ impl State {
   }
   if let Some(client)=self.clients.get_mut(&id) {client.topics.insert(topic.clone());}
   let fresh=!self.topics.contains_key(&topic);
-  let state=self.topics.entry(topic.clone()).or_default();
+  // 刚退掉、退订还没发出去的（上游那边一直订着、回过执）：当它从没退过，不必再等一次回执。
+  let acked=self.acked.contains(&topic);
+  let state=self.topics.entry(topic.clone()).or_insert_with(||TopicState{confirmed:acked,..TopicState::default()});
   state.subs.insert(id);
   if state.confirmed {
    let last=state.last.clone();
@@ -337,8 +350,25 @@ impl State {
    if let Some(last)=last {self.deliver(vec![id],&last);}
   } else {
    state.pending.push(id);
-   if fresh&&self.connected {self.queue.push_back(topic.message(true));}
   }
+  if fresh {self.mark(topic);}
+ }
+
+ /// 这个订阅要对上游改口（订或退），排进队里；已经排着的不再排。
+ fn mark(&mut self,topic:Topic) {
+  if self.connected&&self.dirty_set.insert(topic.clone()) {self.dirty.push_back(topic);}
+ }
+ fn has_pending(&self)->bool {self.ping||!self.dirty.is_empty()}
+ /// 下一条要发给上游的消息：心跳优先；然后按先后看排着的订阅此刻该订还是该退，和上游现状一样的跳过。
+ fn next_message(&mut self)->Option<String> {
+  if std::mem::take(&mut self.ping) {return Some(r#"{"method":"ping"}"#.to_owned())}
+  while let Some(topic)=self.dirty.pop_front() {
+   self.dirty_set.remove(&topic);
+   let (want,have)=(self.topics.contains_key(&topic),self.told.contains(&topic));
+   if want&&!have {let text=topic.message(true);self.told.insert(topic);return Some(text)}
+   if !want&&have {let text=topic.message(false);self.told.remove(&topic);self.acked.remove(&topic);return Some(text)}
+  }
+  None
  }
 
  fn release(&mut self,id:u64,topic:&Topic) {
@@ -347,7 +377,7 @@ impl State {
   state.pending.retain(|p|*p!=id);
   if state.subs.is_empty() {
    self.topics.remove(topic);
-   if self.connected {self.queue.push_back(topic.message(false));}
+   self.mark(topic.clone());
   }
  }
 
@@ -360,19 +390,24 @@ impl State {
  fn on_up(&mut self) {
   self.connected=true;
   self.counters.up.store(true,Ordering::Relaxed);
-  self.queue.clear();
+  self.forget_upstream();
   let mut topics:Vec<Topic>=self.topics.keys().cloned().collect();
   topics.sort();
-  for topic in topics {self.queue.push_back(topic.message(true));}
+  for topic in topics {self.mark(topic);}
   self.broadcast(Feed::Up);
  }
 
  fn on_down(&mut self) {
   self.connected=false;
   self.counters.up.store(false,Ordering::Relaxed);
-  self.queue.clear();
+  self.forget_upstream();
   for state in self.topics.values_mut() {state.confirmed=false;state.last=None;}
   self.broadcast(Feed::Down);
+ }
+
+ /// 新连接上（或刚断开）：上游那边什么都没订，排着的改口也作废（连上时按此刻的订阅整个重排）。
+ fn forget_upstream(&mut self) {
+  self.dirty.clear();self.dirty_set.clear();self.told.clear();self.acked.clear();self.ping=false;
  }
 
  /// 一帧发给订了 `topic` 的全部使用方；该留最近一帧的留着。
@@ -413,6 +448,7 @@ impl State {
     let Some(ack)=head.data.and_then(|d|serde_json::from_str::<Ack>(d.get()).ok()) else {return};
     if ack.method!="subscribe" {return}
     let Some(topic)=Topic::of(&ack.subscription) else {return};
+    if self.told.contains(&topic) {self.acked.insert(topic.clone());}
     let Some(state)=self.topics.get_mut(&topic) else {return};
     state.confirmed=true;
     let ids=std::mem::take(&mut state.pending);
@@ -471,7 +507,7 @@ async fn run(mut rx:mpsc::UnboundedReceiver<Cmd>,mut s:State) {
   let far=now+Duration::from_secs(3600);
   let wake=if reader.is_some() {
    let mut at=(heard+limits.silence).min(next_ping);
-   if !s.queue.is_empty() {at=at.min(next_send);}
+   if s.has_pending() {at=at.min(next_send);}
    if let Some(since)=empty_since {at=at.min(since+limits.linger);}
    at
   } else if want&&connecting.is_none() {next_attempt} else {far};
@@ -517,8 +553,8 @@ async fn run(mut rx:mpsc::UnboundedReceiver<Cmd>,mut s:State) {
      } else if empty_since.is_some_and(|since|now>=since+limits.linger) {
       drop_reason=Some("nobody subscribed".to_owned());
      } else {
-      if now>=next_ping {s.queue.push_back(r#"{"method":"ping"}"#.to_owned());next_ping=now+limits.ping;}
-      if now>=next_send && let Some(text)=s.queue.pop_front() && let Some(w)=writer.as_mut() {
+      if now>=next_ping {s.ping=true;next_ping=now+limits.ping;}
+      if now>=next_send && let Some(text)=s.next_message() && let Some(w)=writer.as_mut() {
        next_send=now+limits.gap;
        s.counters.sent.fetch_add(1,Ordering::Relaxed);
        if !matches!(tokio::time::timeout(limits.send,w.send(Message::Text(text.into()))).await,Ok(Ok(()))) {
@@ -561,7 +597,7 @@ mod tests {
  struct Fake {port:u16,heard:mpsc::UnboundedReceiver<(usize,String)>,push:broadcast::Sender<String>}
  async fn fake()->Fake {
   let (heard_tx,heard)=mpsc::unbounded_channel::<(usize,String)>();
-  let (push,_)=broadcast::channel::<String>(64);
+  let (push,_)=broadcast::channel::<String>(4096);
   let conns=Arc::new(AtomicUsize::new(0));
   let push_for=push.clone();
   let app=Router::new().fallback(move|ws:WebSocketUpgrade|{
@@ -763,6 +799,113 @@ mod tests {
   b.handle.subscribe(one);
   assert_eq!(text(&mut b).await["channel"],"subscriptionResponse");
   assert_eq!(text(&mut b).await["data"]["c"],"2");
+ }
+
+ /// 一个使用方（中继是公开、不登录的）把同一个订阅订了退、退了订几千次：以前每一下都往上行队列里塞一条，
+ /// 队列按 `gap` 一条条发（每分钟 1760 条），别人后来的订阅要排在几千条后面——几分钟、几十分钟收不到。
+ /// 现在队列按订阅合并：同一个订阅在发出去之前改主意只算最后的状态，排队的条数封顶在「订阅个数」。
+ #[tokio::test]
+ async fn a_client_toggling_one_topic_cannot_starve_everyone_else() {
+  let mut f=fake().await;
+  let hub=Hub::start(format!("ws://127.0.0.1:{}",f.port),Limits{gap:Duration::from_millis(5),..QUICK});
+  let noisy=hub.join(Class::Relay,4096);
+  let quiet_one=hub.join(Class::Relay,64);
+  noisy.handle.subscribe(Topic::trades("BTC"));
+  assert_eq!(heard(&mut f).await.1["method"],"subscribe");
+  for _ in 0..2000 {noisy.handle.unsubscribe(Topic::trades("BTC"));noisy.handle.subscribe(Topic::trades("BTC"));}
+  quiet_one.handle.subscribe(Topic::book("ETH"));
+  let started=Instant::now();
+  let mut upstream=Vec::new();
+  loop {
+   let (_,v)=heard(&mut f).await;
+   let is_eth=v["subscription"]["coin"]=="ETH";
+   upstream.push(v);
+   if is_eth {break}
+  }
+  assert!(started.elapsed()<Duration::from_millis(500),"ETH 的订阅等了 {:?}，排在 {} 条前面的后面",started.elapsed(),upstream.len()-1);
+  // 发的时候看此刻的状态：hub 一边收命令一边按 `gap` 发，BTC 在那几十毫秒里来回改口，会漏上去几条，
+  // 但封顶是「每个 gap 一条」，而且和别人的订阅按先后轮着走，不再整段排在别人前面。
+  assert!(upstream.len()<100,"BTC 订退了四千次，上游收到 {} 条",upstream.len());
+  quiet(&mut f,Duration::from_millis(100)).await;
+  assert_eq!(hub.counters.topics.load(Ordering::Relaxed),2);
+ }
+
+ /// 退了马上又订：退订还没发出去，上游那边一直订着——不再向上游订，也不让订的人干等回执。
+ #[tokio::test]
+ async fn resubscribing_before_the_unsubscribe_goes_out_is_answered_at_once() {
+  let mut f=fake().await;
+  let hub=Hub::start(format!("ws://127.0.0.1:{}",f.port),Limits{gap:Duration::from_millis(200),..QUICK});
+  let mut a=hub.join(Class::Relay,64);
+  let btc=Topic::book("BTC");
+  a.handle.subscribe(btc.clone());
+  heard(&mut f).await;
+  f.push.send(ack(&btc)).unwrap();
+  assert_eq!(text(&mut a).await["channel"],"subscriptionResponse");
+  a.handle.unsubscribe(btc.clone());
+  assert_eq!(text(&mut a).await["data"]["method"],"unsubscribe");
+  a.handle.subscribe(btc.clone());
+  let reply=text(&mut a).await;
+  assert_eq!((reply["channel"].as_str(),reply["data"]["method"].as_str()),(Some("subscriptionResponse"),Some("subscribe")),"上游一直订着，当场答回执");
+  quiet(&mut f,Duration::from_millis(500)).await;
+  f.push.send(book_frame("BTC",7)).unwrap();
+  assert_eq!(text(&mut a).await["data"]["time"],7);
+ }
+
+ /// 二十个使用方按币订 `candle` / `activeAssetCtx` / `l2Book`，上游一轮推几十只币：谁都只拿到自己订的那几只
+ /// （一帧不串、一帧不少、顺序不乱）；其中一个慢中继被踢掉，别人照收不误。
+ #[tokio::test]
+ async fn twenty_clients_get_only_their_own_coins_and_a_slow_one_is_dropped_alone() {
+  let mut f=fake().await;
+  let hub=Hub::start(format!("ws://127.0.0.1:{}",f.port),Limits{max_topics:200,max_tracking:100,..QUICK});
+  let coins:Vec<String>=(0..20).map(|i|format!("C{i}")).collect();
+  let mut links:Vec<Link>=(0..20).map(|i|hub.join(if i%4==0 {Class::Tracking} else {Class::Relay},256)).collect();
+  // 第 i 个订 C{i} 与 C{i+1} 的 1 分钟 K 线、C{i} 的上下文与簿。
+  for (i,link) in links.iter().enumerate() {
+   link.handle.subscribe(Topic::candle(coins[i].clone(),"1m"));
+   link.handle.subscribe(Topic::candle(coins[(i+1)%20].clone(),"1m"));
+   link.handle.subscribe(Topic::asset_ctx(coins[i].clone()));
+   link.handle.subscribe(Topic::book(coins[i].clone()));
+  }
+  let mut slow=hub.join(Class::Relay,2);
+  slow.handle.subscribe(Topic::candle("C0","1m"));
+  for _ in 0..60 {heard(&mut f).await;}
+  quiet(&mut f,Duration::from_millis(100)).await;
+  // 订阅都还没回执也照样分发：按币分、按周期分。另推几只没人订的、5 分钟的，不该到谁手上。
+  for round in 0..5 {
+   for c in &coins {
+    f.push.send(json!({"channel":"candle","data":{"t":round,"T":1,"s":c,"i":"1m","o":"1","c":"1","h":"1","l":"1","v":"1","n":1}}).to_string()).unwrap();
+    f.push.send(json!({"channel":"candle","data":{"t":round,"T":1,"s":c,"i":"5m","o":"1","c":"1","h":"1","l":"1","v":"1","n":1}}).to_string()).unwrap();
+    f.push.send(json!({"channel":"activeAssetCtx","data":{"coin":c,"ctx":{"markPx":round.to_string()}}}).to_string()).unwrap();
+    f.push.send(book_frame(c,round)).unwrap();
+   }
+   f.push.send(json!({"channel":"activeAssetCtx","data":{"coin":"NOBODY","ctx":{}}}).to_string()).unwrap();
+   tokio::time::sleep(Duration::from_millis(20)).await;
+  }
+  for (i,link) in links.iter_mut().enumerate() {
+   let mut got:Vec<(String,String,i64)>=Vec::new();
+   while let Ok(Some(feed))=tokio::time::timeout(Duration::from_millis(100),link.rx.recv()).await {
+    let Feed::Text(t)=feed else {continue};
+    let v:Value=serde_json::from_str(&t).unwrap();
+    match v["channel"].as_str().unwrap() {
+     "candle"=>got.push(("candle".into(),v["data"]["s"].as_str().unwrap().into(),v["data"]["t"].as_i64().unwrap())),
+     "activeAssetCtx"=>got.push(("ctx".into(),v["data"]["coin"].as_str().unwrap().into(),v["data"]["ctx"]["markPx"].as_str().unwrap().parse().unwrap())),
+     "l2Book"=>got.push(("book".into(),v["data"]["coin"].as_str().unwrap().into(),v["data"]["time"].as_i64().unwrap())),
+     other=>panic!("第 {i} 个收到 {other}"),
+    }
+   }
+   let mut want=Vec::new();
+   for round in 0..5 {
+    for (j,c) in coins.iter().enumerate() {
+     if j==i||j==(i+1)%20 {want.push(("candle".to_string(),c.clone(),round))}
+     if j==i {want.push(("ctx".to_string(),c.clone(),round));want.push(("book".to_string(),c.clone(),round));}
+    }
+   }
+   assert_eq!(got,want,"第 {i} 个");
+  }
+  let mut ended=false;
+  for _ in 0..10 {if tokio::time::timeout(Duration::from_secs(1),slow.rx.recv()).await.unwrap().is_none() {ended=true;break}}
+  assert!(ended,"慢中继被踢掉");
+  assert_eq!(hub.counters.drops.load(Ordering::Relaxed),0,"跟踪那几个都跟得上，一帧没丢");
  }
 
  #[test]

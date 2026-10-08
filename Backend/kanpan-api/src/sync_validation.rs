@@ -1060,4 +1060,71 @@ mod tests {
   for bad in [json!([]),json!("x"),json!(1),json!(true),Value::Null] {assert!(!field("settings","webChart",&bad),"{bad}")}
   assert!(!field("settings","webChart/marginTop",&json!(10)));
  }
+
+ /// 同一只币四家同时在：自选 id、画线 id、提醒的 `market` 各带各的交易所，四个对象互不冒充；
+ /// 拿别家的 id 配这一家的 body（或者反过来）整条拒——同步表里它们就不会落在同一行上互相覆盖。
+ #[test] fn one_coin_on_four_venues_stays_four_objects() {
+  let four=[("binance","BTCUSDT"),("okx","BTCUSDT"),("bybit","BTCUSDT"),("hyperliquid","BTC")];
+  let mut ids=std::collections::BTreeSet::new();
+  for (venue,symbol) in four {
+   let fav=Object{collection:"favorites".into(),id:format!("{venue}/usd_m/{symbol}"),
+    body:BTreeMap::from([("venue".into(),json!(venue)),("market".into(),json!("usd_m")),("symbol".into(),json!(symbol))]),fields:BTreeMap::new(),revision:0,deleted:false,generation:0};
+   assert!(object(&fav).is_ok(),"{venue}");
+   assert!(ids.insert(fav.id.clone()),"自选 id 撞了：{}",fav.id);
+   let mut a=alert(&[("market",json!(format!("{venue}/usd_m"))),("symbol",json!(symbol)),("drawingID",json!(format!("{venue}/usd_m/{symbol}/trend-1")))]);
+   a.id=format!("{venue}/usd_m/{symbol}/A1");
+   assert!(object(&a).is_ok(),"{venue} 的提醒");
+   assert!(ids.insert(a.id.clone()));
+   let mut d=drawing("hline",1);
+   d.id=format!("{venue}/usd_m/{symbol}/line-1");
+   d.body.insert("venue".into(),json!(venue));d.body.insert("symbol".into(),json!(symbol));
+   assert!(object(&d).is_ok(),"{venue} 的画线");
+   for (other,other_symbol) in four.iter().filter(|(o,_)|*o!=venue) {
+    let mut f=fav.clone();f.id=format!("{other}/usd_m/{other_symbol}");
+    assert!(object(&f).is_err(),"{other} 的 id 配 {venue} 的 body");
+    let mut x=a.clone();x.id=format!("{other}/usd_m/{symbol}/A1");
+    assert!(object(&x).is_err(),"{other} 的提醒 id 配 {venue}/usd_m 的 market");
+    let mut y=d.clone();y.id=format!("{other}/usd_m/{symbol}/line-1");
+    assert!(object(&y).is_err(),"{other} 的画线 id 配 {venue} 的 body");
+   }
+  }
+  assert_eq!(ids.len(),8);
+ }
+
+ /// 三端交叉契约 `contract/venue-identity-cases.json`：同一组完整键，`accept` 每条服务端都收、`reject` 每条都拒。
+ /// 三个入口一起过：对比 K 线的 `compare_key`、按三段拆开的 `identity`、自选对象（id 与 body 三段要一致）。
+ /// iOS（`InstrumentSyncIdentityTests`）与网页（`venue-identity-contract.test.ts`）读的是同一个文件。
+ #[test] fn venue_identity_contract_cases() {
+  let cases:Value=serde_json::from_str(include_str!("../contract/venue-identity-cases.json")).expect("venue-identity-cases.json");
+  let list=|k:&str|cases[k].as_array().unwrap_or_else(||panic!("缺 {k}")).iter().map(|v|v.as_str().expect("字符串").to_owned()).collect::<Vec<_>>();
+  let (accept,reject)=(list("accept"),list("reject"));
+  assert!(accept.len()>=10&&reject.len()>=10,"夹具被删空了");
+  let favorite=|key:&str|{
+   let mut p=key.splitn(3,'/');
+   let (venue,market,symbol)=(p.next().unwrap_or(""),p.next().unwrap_or(""),p.next().unwrap_or(""));
+   let f=Object{collection:"favorites".into(),id:key.into(),body:BTreeMap::from([("venue".into(),json!(venue)),("market".into(),json!(market)),("symbol".into(),json!(symbol))]),fields:BTreeMap::new(),revision:0,deleted:false,generation:0};
+   object(&f).is_ok()
+  };
+  let split=|key:&str|{let mut p=key.splitn(3,'/');(p.next().unwrap_or("").to_owned(),p.next().unwrap_or("").to_owned(),p.next().unwrap_or("").to_owned())};
+  for key in &accept {
+   let (v,m,s)=split(key);
+   assert!(compare_key(&json!(key)),"compare_key 该收 {key}");
+   assert!(identity(&v,&m,&s),"identity 该收 {key}");
+   assert!(favorite(key),"自选该收 {key}");
+  }
+  for key in &reject {
+   let (v,m,s)=split(key);
+   assert!(!compare_key(&json!(key)),"compare_key 该拒 {key}");
+   assert!(!identity(&v,&m,&s),"identity 该拒 {key}");
+   assert!(!favorite(key),"自选该拒 {key}");
+  }
+  // 每一家（注册表里的每个 `(venue, market)`）都至少有一条 `accept`：新接一家不能只改注册表、不给三端对账的用例。
+  for v in crate::venues::venues() {
+   let prefix=format!("{}/{}/",v.source(),v.market());
+   assert!(accept.iter().any(|k|k.starts_with(&prefix)),"{prefix} 在夹具里一条可收的用例都没有");
+  }
+  // `accept` 里出现的每一家都在注册表里（和 `contract/instruments.json` 的 `venues` 清单是同一张，见 instruments 的
+  // `the_contract_file_is_what_both_sides_use`）。
+  for key in &accept {let (v,m,_)=split(key);assert!(crate::venues::listed(&v,&m).is_some(),"{key} 的交易所不在注册表里")}
+ }
 }

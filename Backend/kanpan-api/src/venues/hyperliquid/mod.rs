@@ -41,13 +41,36 @@ pub const HOSTS:&[&str]=&["api.hyperliquid.xyz"];
 pub static PACER:Pacer=Pacer::new(Duration::from_millis(120),Duration::from_secs(12),&[]);
 
 /// 一条 `info` 请求占几格节拍（见 [`PACER`]）。
-pub fn cost_of(body:Option<&Value>)->u32 {
- match body.and_then(|b|b["type"].as_str()) {
-  Some("allMids"|"l2Book")=>1,
-  // 一次最多 300 根（20 + 300 / 60 = 25 权重），按 13 格算。
-  Some("candleSnapshot")=>13,
-  _=>10,
- }
+pub fn cost_of(body:Option<&Value>)->u32 {cost_at(body,chrono::Utc::now().timestamp_millis())}
+
+/// 官方文档（Rate limits）：`candleSnapshot` 每**返回** 60 根另加权重 1（一次最多 5000 根），
+/// `fundingHistory` 每返回 20 行另加 1（一页最多 500 行）。返回多少要看问的时间段：按 `startTime`–`endTime`
+/// （缺省到 `now`）÷ 周期推出最多几根 / 几行，宁多不少。以前一律按「最多 300 根」记 13 格，
+/// 而透传与补缺都可以一口气要 5000 根（权重 104、52 格），节拍少记了四倍。
+pub fn cost_at(body:Option<&Value>,now:i64)->u32 {
+ let span=|o:&Value|{
+  let start=o["startTime"].as_u64().unwrap_or(0);
+  o["endTime"].as_u64().unwrap_or(now.max(0) as u64).saturating_sub(start)
+ };
+ let weight:u64=match body.and_then(|b|b["type"].as_str()) {
+  Some("allMids"|"l2Book")=>2,
+  Some("candleSnapshot")=>{
+   let req=&body.expect("matched")["req"];
+   let step=req["interval"].as_str().and_then(interval_ms).unwrap_or(60_000);
+   20+(span(req)/step+1).min(SNAPSHOT_MAX as u64).div_ceil(60)
+  },
+  Some("fundingHistory")=>20+(span(body.expect("matched"))/3_600_000+1).min(FUNDING_PAGE).div_ceil(20),
+  _=>20,
+ };
+ weight.div_ceil(2) as u32
+}
+/// `fundingHistory` 一页最多几行。
+const FUNDING_PAGE:u64=500;
+/// 周期的毫秒数（月线按 28 天算：推出来的根数只会多不会少）。
+fn interval_ms(interval:&str)->Option<u64> {
+ const M:u64=60_000;
+ Some(match interval {"1m"=>M,"3m"=>3*M,"5m"=>5*M,"15m"=>15*M,"30m"=>30*M,"1h"=>60*M,"2h"=>120*M,"4h"=>240*M,"8h"=>480*M,"12h"=>720*M,
+  "1d"=>1440*M,"3d"=>3*1440*M,"1w"=>7*1440*M,"1M"=>28*1440*M,_=>return None})
 }
 
 pub(crate) async fn info_bytes(body:&Value)->anyhow::Result<Bytes> {
@@ -289,8 +312,81 @@ mod tests {
   assert_eq!(cost_of(Some(&json!({"type":"allMids"}))),1);assert_eq!(cost_of(Some(&json!({"type":"meta"}))),10);
  }
 
+ /// 权重按「会返回多少」记：5000 根的 K 线快照是 20 + 84 = 104 权重（52 格），不是 13 格。
+ /// 每一条透传放行的正文、补缺发出的每一页，记的格数都不少于官方权重的一半（一格 = 权重 2）。
+ #[test] fn weights_follow_what_comes_back() {
+  let c=|v:Value|cost_at(Some(&v),NOW);
+  assert_eq!(c(json!({"type":"l2Book","coin":"BTC"})),1);
+  assert_eq!(c(json!({"type":"metaAndAssetCtxs"})),10);
+  assert_eq!(c(json!({"type":"candleSnapshot","req":{"coin":"BTC","interval":"1m","startTime":NOW-300*60_000,"endTime":NOW}})),13,"300 根：20 + 6 → 13 格");
+  assert_eq!(c(json!({"type":"candleSnapshot","req":{"coin":"BTC","interval":"1m","startTime":0}})),52,"从 0 开始、不给 endTime：封顶 5000 根，20 + 84");
+  assert_eq!(c(json!({"type":"candleSnapshot","req":{"coin":"BTC","interval":"1m","startTime":NOW-60_000,"endTime":NOW-1}})),11);
+  assert_eq!(c(json!({"type":"candleSnapshot","req":{"coin":"BTC","interval":"1M","startTime":0}})),17,"月线按 28 天一根算，从 1970 年起约 740 根：20 + 13");
+  assert_eq!(c(json!({"type":"candleSnapshot","req":{"coin":"BTC","interval":"1m","startTime":NOW,"endTime":0}})),11,"倒着的时间段按一根记");
+  assert_eq!(c(json!({"type":"fundingHistory","coin":"ETH","startTime":0})),23,"一页 500 行：20 + 25");
+  assert_eq!(c(json!({"type":"fundingHistory","coin":"ETH","startTime":NOW-3_600_000})),11);
+  // 补缺一页（`candles` 发的那种）与透传模糊出来的每一种合法正文：格数 × 2 ≥ 官方权重。
+  let mut rng=0x1234_5678_u64;
+  for _ in 0..2000 {
+   rng^=rng<<13;rng^=rng>>7;rng^=rng<<17;
+   let interval=INTERVALS[(rng%14) as usize];
+   let step=interval_ms(interval).unwrap() as i64;
+   let start=(NOW-((rng>>8)%(6000*step as u64)) as i64).max(0);
+   let body=format!(r#"{{"type":"candleSnapshot","req":{{"coin":"BTC","interval":"{interval}","startTime":{start}}}}}"#);
+   let (request,_)=info_request(body.as_bytes(),NOW).unwrap();
+   let returned=(((NOW-start)/step)+1).min(5000) as u64;
+   assert!(u64::from(c(request))*2>=20+returned.div_ceil(60),"{body}");
+  }
+ }
+
  #[tokio::test] async fn only_info_is_posted() {
   assert_eq!(raw_post("exchange",Bytes::from_static(br#"{"type":"meta"}"#)).await.status(),StatusCode::NOT_FOUND);
   assert_eq!(raw_post("info",Bytes::from_static(br#"{"type":"userFills","user":"0x0"}"#)).await.status(),StatusCode::BAD_REQUEST);
+ }
+
+ // ---------------------------------------------------------------- 补缺 K 线的极端（假上游）
+
+ use crate::venues::outbound::fake;
+ use std::sync::Mutex;
+ fn snapshot(t:i64)->Value {json!({"t":t,"T":t+59_999,"s":"kPEPE","i":"1m","o":"1","c":"1.5","h":"2","l":"0.5","v":"3","n":1})}
+ /// 假 Hyperliquid：`meta` 给品种表；`candleSnapshot` 按 `[startTime, endTime]` 升序给、一次最多 5000 根。
+ fn hl_like(first:i64,last:i64,calls:Arc<Mutex<Vec<Value>>>)->fake::Answer {
+  Arc::new(move|_:&str,_:&[(String,String)],body:Option<&Value>|{
+   let body=body.cloned().unwrap_or_default();
+   calls.lock().unwrap().push(body.clone());
+   if body["type"]=="meta" {return fake::ok(&json!({"universe":[{"name":"BTC"},{"name":"kPEPE"}]}))}
+   let (s,e)=(body["req"]["startTime"].as_i64().unwrap(),body["req"]["endTime"].as_i64().unwrap_or(i64::MAX));
+   let rows:Vec<Value>=(0..).map(|i|first+i*60_000).take_while(|t|*t<=last).filter(|t|*t>=s&&*t<=e).take(5000).map(snapshot).collect();
+   fake::ok(&Value::Array(rows))
+  })
+ }
+ /// 一万两千根翻三页、一根不缺，订阅名按品种表译回原名；上游无视 `startTime` 同一页反复回、回空、回 `null`、
+ /// 坏行，都停得下、收拾干净。
+ #[tokio::test] async fn snapshot_paging_survives_hostile_upstreams() {
+  let minute=NOW.div_euclid(60_000)*60_000;
+  let calls:Arc<Mutex<Vec<Value>>>=Default::default();
+  let (start,end)=((minute-12_000*60_000)/1000,minute/1000);
+  let bars=fake::UPSTREAM.scope(hl_like(minute-20_000*60_000,minute,calls.clone()),candles("KPEPE",60,start,end)).await.unwrap();
+  assert_eq!(bars.len(),12_000);
+  assert!(bars.windows(2).all(|w|w[1].open_time-w[0].open_time==60_000));
+  let pages:Vec<Value>=calls.lock().unwrap().iter().filter(|b|b["type"]=="candleSnapshot").cloned().collect();
+  assert_eq!(pages.len(),3);
+  assert!(pages.iter().all(|p|p["req"]["coin"]=="kPEPE"),"按原名问");
+  let stuck:fake::Answer=Arc::new(move|_:&str,_:&[(String,String)],body:Option<&Value>|{
+   if body.is_some_and(|b|b["type"]=="meta") {return fake::ok(&json!({"universe":[{"name":"kPEPE"}]}))}
+   let mut rows:Vec<Value>=(0..5000).map(|i|snapshot(minute-12_000*60_000+i*60_000)).collect();
+   rows.push(json!({"t":"bad"}));rows.push(snapshot(minute-12_000*60_000));rows.swap(1,4000);
+   fake::ok(&Value::Array(rows))
+  });
+  let bars=fake::UPSTREAM.scope(stuck,candles("KPEPE",60,start,end)).await.unwrap();
+  assert_eq!(bars.len(),5000,"无视 startTime：第二页不前进就停，重复、乱序、坏行收拾干净");
+  for body in [json!([]),Value::Null] {
+   let answer:fake::Answer=Arc::new(move|_:&str,_:&[(String,String)],b:Option<&Value>|{
+    if b.is_some_and(|b|b["type"]=="meta") {fake::ok(&json!({"universe":[{"name":"kPEPE"}]}))} else {fake::ok(&body)}
+   });
+   assert_eq!(fake::UPSTREAM.scope(answer,candles("KPEPE",60,start,end)).await,Ok(vec![]));
+  }
+  // 品种表里没有的：不问 K 线，答「没有」。
+  assert!(matches!(fake::UPSTREAM.scope(hl_like(0,0,Default::default()),candles("NOPE",60,start,end)).await,Err(Upstream::Rejected(404))));
  }
 }

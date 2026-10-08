@@ -447,4 +447,24 @@ mod tests {
   m.forget_prices();
   assert!(m.observe("BTCUSDT",minute(5),102.0,false).is_empty());
  }
+ /// 同一只币四家都在自选里：每一支评估器只拿自己那家的（`hyperliquid` 是 `BTC`，其余 `BTCUSDT`），
+ /// 学出来的倍数也按完整键分家，不串。
+ #[test] fn four_venues_of_one_coin_split_by_venue() {
+  let fav=|venue:&str,symbol:&str|crate::sync::Object{collection:crate::sync::FAVORITES.into(),id:format!("{venue}/usd_m/{symbol}"),
+   body:[("venue".to_string(),json!(venue)),("market".to_string(),json!("usd_m")),("symbol".to_string(),json!(symbol))].into_iter().collect(),
+   fields:Default::default(),revision:0,deleted:false,generation:0};
+  let favorites=vec![fav("binance","BTCUSDT"),fav("okx","BTCUSDT"),fav("bybit","BTCUSDT"),fav("hyperliquid","BTC"),fav("okx","ETHUSDT")];
+  let of=|v:&str|favorite_symbols(&favorites,v).into_iter().collect::<Vec<_>>();
+  assert_eq!(of("binance"),vec!["BTCUSDT"]);
+  assert_eq!(of("okx"),vec!["BTCUSDT","ETHUSDT"]);
+  assert_eq!(of("bybit"),vec!["BTCUSDT"]);
+  assert_eq!(of("hyperliquid"),vec!["BTC"]);
+  let settings=json!({"learnedDefaults":{"watchMove":{"okx/usd_m/BTCUSDT":{"v":2.0},"bybit/usd_m/BTCUSDT":{"v":0.5},"hyperliquid/usd_m/BTC":{"v":1.5},"BTCUSDT":{"v":1.2}}}});
+  let f=|v:&str|learned_factors(Some(&settings),v);
+  assert_eq!(f("okx").get("BTCUSDT"),Some(&2.0));
+  assert_eq!(f("bybit").get("BTCUSDT"),Some(&0.5));
+  assert_eq!(f("hyperliquid").get("BTC"),Some(&1.5));
+  assert_eq!(f("binance").get("BTCUSDT"),Some(&1.2),"裸键按币安算");
+  assert_eq!(f("okx").len(),1);
+ }
 }

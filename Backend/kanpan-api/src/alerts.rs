@@ -1227,7 +1227,7 @@ async fn session(s:&AppState,effects:&Effects,streams:&[String],watches:&mut Vec
     silence.heard(i);
     let message=frame?;
     let Some(text)=message.into_text().ok() else {continue};
-    if let Some(candle)=parse(&text) {
+    if let Some(candle)=parse(&text).filter(|c|plausible(c,chrono::Utc::now().timestamp_millis())) {
      // 最新价就是这一根还没收的收盘价。涨跌幅不动：它只从 ticker 帧来，这里覆盖成
      // None 等于每来一根 K 线就把锁屏上的涨跌幅抹掉一次。
      quotes.entry(candle.symbol.clone()).or_default().price=candle.close.is_finite().then_some(candle.close);
@@ -1364,7 +1364,13 @@ where F:Fn(String,i64,i64)->Fut,Fut:std::future::Future<Output=Option<Vec<Candle
  let jobs:Vec<(String,i64,i64)>=closes.iter().filter_map(|(symbol,(last,_))|gap(*last,now).map(|(first,end)|(symbol.clone(),first,end))).collect();
  if jobs.is_empty() {return vec![]}
  let asked=jobs.len();
- let fetch=stream::iter(jobs).map(|(symbol,first,end)|fetch(symbol,first,end)).buffered(BACKFILL_PARALLEL);
+ // 各家的补缺答回来什么都先按这一只、这一段 `[first, end)` 筛一遍：缺口外的（正在走的那一根、
+ // 未来的、别的品种的）当成「已收盘」交给判定，会提前判一次收盘穿越，再把 `closes` 推到它那一刻，
+ // 之后流里真正收的那一根反被当成「判过了」。
+ let fetch=stream::iter(jobs).map(|(symbol,first,end)|{
+  let asked=fetch(symbol.clone(),first,end);
+  async move {asked.await.map(|candles|candles.into_iter().filter(|c|c.symbol==symbol&&c.open_time>=first&&c.open_time<end).collect::<Vec<_>>())}
+ }).buffered(BACKFILL_PARALLEL);
  let mut fetch=std::pin::pin!(fetch);
  let deadline=tokio::time::sleep(BACKFILL_WAIT);
  let mut deadline=std::pin::pin!(deadline);
@@ -1380,8 +1386,9 @@ where F:Fn(String,i64,i64)->Fut,Fut:std::future::Future<Output=Option<Vec<Candle
   }
  }
  if failed>0 {tracing::warn!("{failed} of {asked} {market} symbol(s) could not be backfilled after a reconnect; their gap is judged by the closes on either side")}
- // 稳定排序：同一个品种的先后不变，不同品种交错着来无所谓。
- out.sort_by_key(|c|c.open_time);
+ // 按开盘时刻排；同一只同一根答了两遍的只留一根。
+ out.sort_by(|a,b|(a.open_time,&a.symbol).cmp(&(b.open_time,&b.symbol)));
+ out.dedup_by(|a,b|a.open_time==b.open_time&&a.symbol==b.symbol);
  if !out.is_empty() {tracing::info!("Backfilled {} {market} candle(s) missed while reconnecting",out.len())}
  out
 }
@@ -1510,11 +1517,14 @@ async fn feed_session(s:&AppState,effects:&Effects,feed:&'static dyn KlineFeed,s
      match tick {
       Tick::Trade{symbol,time,price}=>{
        if !wanted_set.contains(symbol.as_str()) {continue}
+       // 时间在未来的一笔会让 `MinuteBars` 开出一根未来的 K 线，之后真的成交都「比它早」被丢掉。
+       if time>chrono::Utc::now().timestamp_millis()+FUTURE_SLACK_MS {continue}
        quotes.entry(symbol.clone()).or_default().price=Some(price);
        candles.extend(bars.trade(&symbol,time,price));
       }
       Tick::Bar(candle)=>{
        if !wanted_set.contains(candle.symbol.as_str()) {continue}
+       if !plausible(&candle,chrono::Utc::now().timestamp_millis()) {continue}
        quotes.entry(candle.symbol.clone()).or_default().price=candle.close.is_finite().then_some(candle.close);
        candles.extend(closer.bar(candle));
       }
@@ -1551,6 +1561,20 @@ async fn feed_session(s:&AppState,effects:&Effects,feed:&'static dyn KlineFeed,s
    }
   }
  }
+}
+
+/// 推送里的时间最多比本机钟快这么多（两边的钟差、正好跨分钟）。
+const FUTURE_SLACK_MS:i64=120_000;
+/// 推送来的一根 1 分钟 K 线能不能进判定：开盘时刻是整分钟、不在未来（容 [`FUTURE_SLACK_MS`]），
+/// 价是有限正数、低不高于高。
+///
+/// 为什么要挡未来的：一帧坏的时间戳（秒当毫秒、多一位）收进来，`Closer` 记下「这一根收过了」、
+/// `closes` 记下「最近一根已收盘的开盘时刻」都是那个未来的时刻——之后每一根真的 K 线都「比它早」：
+/// `Closer` 当迟到帧丢掉，收盘穿越当「判过了」跳过。`closes` 活在重连之外，这个品种的收盘提醒
+/// 就一直哑到进程重启。
+fn plausible(c:&Candle,now:i64)->bool {
+ c.open_time.rem_euclid(60_000)==0&&c.open_time<=now+FUTURE_SLACK_MS
+  &&[c.low,c.high,c.close].iter().all(|p|p.is_finite()&&*p>0.0)&&c.low<=c.high
 }
 
 /// 交易所推的 K 线不报「收了」时，过了这一分钟再等这么久就替它收。
@@ -2552,5 +2576,271 @@ mod tests {
   assert_eq!(fired.len(),SYMBOLS,"每只品种恰好响它那一条，不多不少");
   assert_eq!(watches.len(),2000-SYMBOLS,"响过的摘掉，没碰到的都还在");
   assert!(elapsed<Duration::from_secs(6),"一分钟的流量判了 {elapsed:?}");
+ }
+
+ // ——— 别家 feed：补缺与会话的极端（假上游 + 假 KlineFeed，库连不上也照跑）———
+
+ /// 补缺的上游一直失败、一直不答、部分失败、答回缺口外的根：都在期限内收尾，只把缺口里的、
+ /// 每根一次交出去。
+ #[tokio::test(start_paused=true)] async fn backfill_survives_failing_hanging_and_sloppy_upstreams() {
+  let now=1_800_000_000_000+30_000;
+  let minute=now/60_000*60_000;
+  let closes:Closes=(0..6).map(|i|(format!("S{i}USDT"),(minute-5*60_000,100.0))).collect();
+  // 一直失败：马上收尾、一根没有。
+  assert!(backfill("okx/usd_m",&closes,now,|_,_,_|async {None}).await.is_empty());
+  // 一直不答：到期限（15 秒）就收尾，不卡住新连接。
+  let started=tokio::time::Instant::now();
+  assert!(backfill("okx/usd_m",&closes,now,|_,_,_|std::future::pending::<Option<Vec<Candle>>>()).await.is_empty());
+  assert_eq!(started.elapsed(),BACKFILL_WAIT);
+  // 部分失败、部分答回乱七八糟的：缺口外的（正在走的这一根、未来的、更早的）、别的品种的、重复的都筛掉。
+  let got=backfill("okx/usd_m",&closes,now,|symbol:String,first,end|async move {
+   if symbol=="S0USDT" {return None}
+   let c=|sym:&str,t:i64|Candle{symbol:sym.into(),open_time:t,low:1.0,high:2.0,close:1.5,closed:true};
+   let mut out:Vec<Candle>=(first..end).step_by(60_000).map(|t|c(&symbol,t)).collect();
+   out.extend([c(&symbol,end),c(&symbol,end+3_600_000),c(&symbol,first-60_000),c("OTHERUSDT",first),c(&symbol,first)]);
+   out.reverse();
+   Some(out)
+  }).await;
+  assert_eq!(got.len(),5*4,"五只答了，各补 4 根（第 -4 到第 -1 分钟）");
+  assert!(got.iter().all(|c|c.open_time>=minute-4*60_000&&c.open_time<minute&&c.symbol!="S0USDT"&&c.symbol!="OTHERUSDT"));
+  assert!(got.windows(2).all(|w|(w[0].open_time,&w[0].symbol)<(w[1].open_time,&w[1].symbol)),"按时刻排好、不重");
+ }
+
+ /// 假上游：连接上来先报一声；测试往 `push` 里塞的文本原样推下去（`<close>` 关掉、`<ping>` 发一个 WS ping）；
+ /// 收到的文本报给 `heard`；`pong` 开着时对文本 `ping` 回 `pong`。
+ struct FakeVenue {url:String,push:tokio::sync::broadcast::Sender<String>,heard:tokio::sync::mpsc::UnboundedReceiver<String>}
+ async fn fake_venue(pong:bool)->FakeVenue {
+  use axum::extract::ws::{Message as M,WebSocketUpgrade};
+  let (push,_)=tokio::sync::broadcast::channel::<String>(1024);
+  let (heard_tx,heard)=tokio::sync::mpsc::unbounded_channel::<String>();
+  let push_for=push.clone();
+  let app=axum::Router::new().fallback(move|ws:WebSocketUpgrade|{
+   let mut pushes=push_for.subscribe();
+   let heard_tx=heard_tx.clone();
+   async move {ws.on_upgrade(move|mut socket| async move {
+    loop {tokio::select! {
+     m=socket.recv()=>match m {
+      Some(Ok(M::Text(t)))=>{let t=t.as_str().to_owned();if pong&&t=="ping" {let _=socket.send(M::Text("pong".into())).await;} let _=heard_tx.send(t);},
+      Some(Ok(_))=>{},
+      _=>break,
+     },
+     p=pushes.recv()=>match p {
+      Ok(t) if t=="<close>"=>{let _=socket.send(M::Close(None)).await;break},
+      Ok(t) if t=="<ping>"=>{let _=socket.send(M::Ping(Default::default())).await;},
+      Ok(t) if t=="<binary>"=>{let _=socket.send(M::Binary(vec![0,159,146,150].into())).await;},
+      Ok(t)=>{if socket.send(M::Text(t.into())).await.is_err() {break}},
+      Err(_)=>break,
+     },
+    }}
+   })}
+  });
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let url=format!("ws://127.0.0.1:{}",listener.local_addr().unwrap().port());
+  tokio::spawn(async move {axum::serve(listener,app).await.unwrap()});
+  FakeVenue{url,push,heard}
+ }
+ /// 一家假的交易所：帧按 OKX `candle1m` 的样子解，补缺答 `bars` 里的（不筛，看循环自己筛不筛）。
+ struct FakeFeed {url:String,silence:Duration,keepalive:Option<(Duration,&'static str)>,bars:Vec<Candle>}
+ impl KlineFeed for FakeFeed {
+  fn venue(&self)->&'static dyn crate::venues::Venue {&crate::venues::okx::OKX}
+  fn task(&self)->&'static str {"alerts-fake"}
+  fn silence(&self)->Duration {self.silence}
+  fn keepalive(&self)->Option<(Duration,&'static str)> {self.keepalive}
+  fn connect<'a>(&'a self,symbols:&'a [String])->crate::venues::Fut<'a,anyhow::Result<Socket>> {
+   Box::pin(dial(&self.url,crate::venues::okx::alerts::subscribe_frames(symbols)))
+  }
+  fn decode(&self,text:&str,out:&mut Vec<Tick>) {crate::venues::okx::alerts::decode(text,out)}
+  fn backfill<'a>(&'a self,_symbol:String,_first:i64,_end:i64)->crate::venues::Fut<'a,Option<Vec<Candle>>> {
+   Box::pin(async move {Some(self.bars.clone())})
+  }
+ }
+ fn feed(url:&str,silence:Duration,keepalive:Option<(Duration,&'static str)>,bars:Vec<Candle>)->&'static FakeFeed {
+  Box::leak(Box::new(FakeFeed{url:url.into(),silence,keepalive,bars}))
+ }
+ /// 连不上库的 `AppState`：会话里十秒一次的刷新读库失败只打一行 warn、照旧用手上那批。
+ fn offline()->AppState {
+  let pool=sqlx::postgres::PgPoolOptions::new().acquire_timeout(Duration::from_millis(200)).connect_lazy("postgres://nobody@127.0.0.1:1/none").unwrap();
+  AppState{pool,secrets:std::sync::Arc::new(crate::crypto::Secrets{pepper:vec![1;32],encryption:[2;32]}),dummy_hash:std::sync::Arc::new(String::new())}
+ }
+ fn okx_bar(t:i64,low:f64,high:f64,close:f64,confirm:bool)->String {
+  json!({"arg":{"channel":"candle1m","instId":"BTC-USDT-SWAP"},"data":[[t.to_string(),"100",high.to_string(),low.to_string(),close.to_string(),"1","1","1",if confirm {"1"} else {"0"}]]}).to_string()
+ }
+ fn okx_watch(id:&str,condition:Condition,price:f64)->Watch {
+  Watch{market:"okx/usd_m".into(),..watch(id,condition,vec![line(&[(0.0,price)],true,true)])}
+ }
+ async fn subscribed(v:&mut FakeVenue) {
+  let first=tokio::time::timeout(Duration::from_secs(3),v.heard.recv()).await.expect("feed 该订阅").unwrap();
+  assert!(first.contains("candle1m"),"{first}");
+ }
+
+ /// 一次会话里：补缺答回缺口外的根、流里夹着坏帧 / 二进制 / 别的品种 / WS ping、同一根反复推、
+ /// 迟到的旧根、一帧时间戳在未来的坏帧——每条提醒恰好响一次，未来那帧不把后面的收盘判定闷掉；
+ /// 上游关掉，会话当场结束（外层重连）。
+ #[tokio::test] async fn a_feed_session_fires_each_alert_once_through_garbage_and_repeats() {
+  let mut v=fake_venue(true).await;
+  let now=chrono::Utc::now().timestamp_millis();
+  let m=now.div_euclid(60_000)*60_000;
+  let c=|t:i64,close:f64|Candle{symbol:"BTCUSDT".into(),open_time:t,low:close-0.2,high:close+0.2,close,closed:true};
+  // 补缺：缺口只有 m-1 分钟那一根（收在 101，没穿 102）；另外答回正在走的 m（收 103）、一根未来的、一根重复的。
+  let f=feed(&v.url,Duration::from_secs(30),None,vec![c(m-60_000,101.0),c(m,103.0),c(m+300_000,99.0),c(m-60_000,101.0)]);
+  let (effects,mut rx)=Effects::channel(64);
+  let watches=vec![okx_watch("t1",Condition::Touch,100.0),okx_watch("c1",Condition::Close,102.0),okx_watch("c2",Condition::Close,102.5)];
+  let mut closes:Closes=[("BTCUSDT".to_string(),(m-120_000,100.0))].into_iter().collect();
+  let mut movers=crate::watch_move::Movers::default();
+  let s=offline();
+  let symbols=vec!["BTCUSDT".to_string()];
+  let push=v.push.clone();
+  let (ended,_)=tokio::join!(
+   feed_session(&s,&effects,f,&symbols,watches,&mut movers,&mut closes),
+   async {
+    subscribed(&mut v).await;
+    let after_backfill=fired(&mut rx);
+    assert!(after_backfill.is_empty(),"补缺答回的正在走的那一根（收 103）不许当收盘判：{after_backfill:?}");
+    for frame in ["garbage","{\"arg\":{}}","<binary>","<ping>","pong",
+     r#"{"event":"subscribe","arg":{"channel":"candle1m","instId":"BTC-USDT-SWAP"}}"#,
+     r#"{"arg":{"channel":"candle1m","instId":"ETH-USDT-SWAP"},"data":[["0","1","1","1","1","1","1","1","1"]]}"#] {push.send(frame.into()).unwrap();}
+    // 这一根碰到 100：触线响一次；同一根再推五遍不再响。
+    for _ in 0..6 {push.send(okx_bar(m,99.5,101.0,100.5,false)).unwrap();}
+    // 收在 103：上一根收盘 101 → 103 穿过 102 与 102.5，两条收盘提醒各响一次；收了的这根再推两遍不再判。
+    for _ in 0..3 {push.send(okx_bar(m,99.5,103.5,103.0,true)).unwrap();}
+    // 迟到的上一根（未收、又收）：丢掉。
+    push.send(okx_bar(m-60_000,90.0,110.0,95.0,true)).unwrap();
+    // 时间戳在未来（多了一天）的一帧坏数据：不进判定。
+    push.send(okx_bar(m+86_400_000,1.0,2.0,1.5,true)).unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    push.send("<close>".into()).unwrap();
+   },
+  );
+  assert!(ended.is_err(),"上游关了，会话结束交给外层重连");
+  let mut got=fired(&mut rx);
+  got.sort_by(|a,b|a.0.cmp(&b.0));
+  assert_eq!(got,vec![("c1".to_string(),103.0),("c2".to_string(),103.0),("t1".to_string(),100.5)]);
+  assert_eq!(closes["BTCUSDT"],(m,103.0),"「最近一根已收盘」停在真的那一根，没被未来那帧推走");
+ }
+
+ /// 未来那帧收进来以后，下一分钟真的收盘照样判（以前 `Closer` 把它当迟到帧丢掉、`closes` 当「判过了」跳过）。
+ #[tokio::test] async fn a_future_timestamp_does_not_mute_the_next_close() {
+  let mut v=fake_venue(true).await;
+  let m=chrono::Utc::now().timestamp_millis().div_euclid(60_000)*60_000;
+  let f=feed(&v.url,Duration::from_secs(30),None,vec![]);
+  let (effects,mut rx)=Effects::channel(64);
+  let mut closes:Closes=[("BTCUSDT".to_string(),(m-60_000,100.0))].into_iter().collect();
+  let s=offline();
+  let symbols=vec!["BTCUSDT".to_string()];
+  let push=v.push.clone();
+  let mut movers=crate::watch_move::Movers::default();
+  let (ended,_)=tokio::join!(
+   feed_session(&s,&effects,f,&symbols,vec![okx_watch("c1",Condition::Close,102.0)],&mut movers,&mut closes),
+   async {
+    subscribed(&mut v).await;
+    push.send(okx_bar(m*1000,1.0,2.0,1.5,true)).unwrap();
+    push.send(okx_bar(m+60_000*3,90.0,90.0,90.0,true)).unwrap();
+    push.send(okx_bar(m,99.0,104.0,103.0,true)).unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    push.send("<close>".into()).unwrap();
+   },
+  );
+  assert!(ended.is_err());
+  assert_eq!(fired(&mut rx),vec![("c1".to_string(),103.0)]);
+ }
+
+ /// 交易所不报「收了」（Hyperliquid 那种）：过了这一分钟 + 宽限还没有下一根，循环替它收、按收盘判一次。
+ #[tokio::test] async fn an_unconfirmed_bar_is_closed_by_the_loop_once() {
+  let mut v=fake_venue(true).await;
+  let m=chrono::Utc::now().timestamp_millis().div_euclid(60_000)*60_000;
+  let f=feed(&v.url,Duration::from_secs(30),None,vec![]);
+  let (effects,mut rx)=Effects::channel(64);
+  let mut closes:Closes=[("BTCUSDT".to_string(),(m-180_000,100.0))].into_iter().collect();
+  let s=offline();
+  let symbols=vec!["BTCUSDT".to_string()];
+  let push=v.push.clone();
+  let mut movers=crate::watch_move::Movers::default();
+  let (ended,_)=tokio::join!(
+   feed_session(&s,&effects,f,&symbols,vec![okx_watch("c1",Condition::Close,102.0)],&mut movers,&mut closes),
+   async {
+    subscribed(&mut v).await;
+    for _ in 0..3 {push.send(okx_bar(m-120_000,99.0,104.0,103.0,false)).unwrap();}
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    push.send(okx_bar(m-120_000,99.0,104.0,103.0,false)).unwrap();
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    push.send("<close>".into()).unwrap();
+   },
+  );
+  assert!(ended.is_err());
+  assert_eq!(fired(&mut rx),vec![("c1".to_string(),103.0)],"替它收了一次；收过之后同一根再来不再判");
+  assert_eq!(closes["BTCUSDT"],(m-120_000,103.0));
+ }
+
+ /// 静默：一帧都不来就按 `silence` 断；保活：按时发 `ping`，回的 `pong` 也算一帧，就不断。
+ #[tokio::test] async fn silence_ends_a_session_and_keepalive_pongs_keep_it() {
+  let s=offline();
+  let symbols=vec!["BTCUSDT".to_string()];
+  // 上游不回 pong、也不推：300 ms 就断。
+  let quiet=fake_venue(false).await;
+  let f=feed(&quiet.url,Duration::from_millis(300),None,vec![]);
+  let (effects,_rx)=Effects::channel(8);
+  let started=std::time::Instant::now();
+  let ended=tokio::time::timeout(Duration::from_secs(5),feed_session(&s,&effects,f,&symbols,vec![],&mut crate::watch_move::Movers::default(),&mut Closes::new())).await.expect("该自己断");
+  assert!(ended.unwrap_err().to_string().contains("sent nothing"));
+  assert!(started.elapsed()<Duration::from_secs(3));
+  // 回 pong：保活在每秒一拍的收盘钟上发（到点了才发），沉默限度 1.5 秒，三秒多还连着，上游收到好几个 ping。
+  let mut alive=fake_venue(true).await;
+  let f=feed(&alive.url,Duration::from_millis(1500),Some((Duration::from_millis(100),"ping")),vec![]);
+  let kept=tokio::time::timeout(Duration::from_millis(3300),feed_session(&s,&effects,f,&symbols,vec![],&mut crate::watch_move::Movers::default(),&mut Closes::new())).await;
+  assert!(kept.is_err(),"保活回帧算一帧，会话一直在");
+  let mut pings=0;
+  while let Ok(t)=alive.heard.try_recv() {if t=="ping" {pings+=1}}
+  assert!(pings>=2,"发过保活：{pings}");
+ }
+
+ /// 断线重连：外层接着用同一份 `closes` 与同一个 `Effects`（它记着交出去还没做完的）。新会话里
+ /// 同一根收盘又推一遍、补缺又答一遍：已经响过的不再响，新读回来的同一条线也不拿这根再判一次。
+ #[tokio::test] async fn a_reconnect_does_not_fire_the_same_close_twice() {
+  let m=chrono::Utc::now().timestamp_millis().div_euclid(60_000)*60_000;
+  let (effects,mut rx)=Effects::channel(64);
+  let mut closes:Closes=[("BTCUSDT".to_string(),(m-60_000,100.0))].into_iter().collect();
+  let s=offline();
+  let symbols=vec!["BTCUSDT".to_string()];
+  let all=vec![okx_watch("c1",Condition::Close,102.0)];
+  for round in 0..2 {
+   let mut v=fake_venue(true).await;
+   let back=Candle{symbol:"BTCUSDT".into(),open_time:m,low:99.0,high:104.0,close:103.0,closed:true};
+   let f=feed(&v.url,Duration::from_secs(30),None,vec![back]);
+   let mut watches=effects.idle(all.clone());
+   if round==1 {
+    assert!(watches.is_empty(),"c1 交出去还没做完：刷新读回来也不放进来");
+    watches.push(okx_watch("c9",Condition::Close,102.0));
+   }
+   let push=v.push.clone();
+   let mut movers=crate::watch_move::Movers::default();
+   let (ended,_)=tokio::join!(
+    feed_session(&s,&effects,f,&symbols,watches,&mut movers,&mut closes),
+    async {
+     subscribed(&mut v).await;
+     push.send(okx_bar(m,99.0,104.0,103.0,true)).unwrap();
+     tokio::time::sleep(Duration::from_millis(200)).await;
+     push.send("<close>".into()).unwrap();
+    },
+   );
+   assert!(ended.is_err());
+  }
+  assert_eq!(fired(&mut rx),vec![("c1".to_string(),103.0)],"两次会话合起来只响一次");
+ }
+
+ /// 同一只币四家：通知标题带各自的缩写、Webhook 的 `{品种}` 不带缩写、深链除币安外都带完整三段。
+ #[test] fn one_coin_on_four_venues_reads_right_everywhere() {
+  for (market,symbol,title,webhook,link) in [
+   ("binance/usd_m","BTCUSDT","币安 BTCUSDT","BTC","BTCUSDT"),
+   ("okx/usd_m","BTCUSDT","OKX BTCUSDT","BTC","okx/usd_m/BTCUSDT"),
+   ("bybit/usd_m","BTCUSDT","Bybit BTCUSDT","BTC","bybit/usd_m/BTCUSDT"),
+   ("hyperliquid/usd_m","BTC","HL BTC","BTC","hyperliquid/usd_m/BTC"),
+   ("coinbase/spot","BTC-USD","CB BTC/USD","BTC/USD","coinbase/spot/BTC-USD"),
+  ] {
+   assert_eq!(display_symbol(market,symbol),title,"{market}");
+   assert_eq!(webhook_name(market,symbol),webhook,"{market}");
+   assert_eq!(symbol_path(market,symbol),link,"{market}");
+   let w=Watch{market:market.into(),symbol:symbol.into(),drawing_id:Some(format!("{market}/{symbol}/d1")),..watch("a",Condition::Touch,vec![])};
+   assert_eq!(title_of(&w),format!("{title} 触到你画的线"));
+  }
  }
 }

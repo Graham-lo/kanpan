@@ -92,7 +92,10 @@ pub fn upward(endpoint:Endpoint,text:&str)->Option<Upward> {
  let request:Request=serde_json::from_str(text).ok()?;
  if request.args.is_empty()||request.args.len()>MAX_ARGS {return None}
  if !request.args.iter().all(|a|channel_ok(endpoint,&a.channel)&&valid_inst(&a.inst_id)) {return None}
- Some(Upward::Request{op:request.op,args:request.args.into_iter().map(|a|(a.channel,a.inst_id)).collect()})
+ // 同一帧里重复的 (channel, instId) 只上去一次：OKX 每条连接「订退合计 480 次 / 小时」，重复的也算次数。
+ let mut args:Vec<(String,String)>=Vec::with_capacity(request.args.len());
+ for a in request.args {let arg=(a.channel,a.inst_id);if !args.contains(&arg) {args.push(arg)}}
+ Some(Upward::Request{op:request.op,args})
 }
 
 /// 一条连接上正订着的东西，用来卡「同时订着最多几个」。
@@ -154,6 +157,9 @@ mod tests {
   assert!(upward(Business,r#"{"op":"subscribe","args":[{"channel":"candle1m","instId":"BTC-USDT-SWAP"}]}"#).is_some());
   assert_eq!(upward(Public,r#"{"op":"subscribe","args":[{"channel":"candle1m","instId":"BTC-USDT-SWAP"}]}"#),None,"K 线只在 business 上");
   assert!(matches!(upward(Public,r#"{"op":"unsubscribe","args":[{"channel":"trades","instId":"BTC-USD-260925"}]}"#),Some(Upward::Request{op:Op::Unsubscribe,..})));
+  assert_eq!(upward(Public,r#"{"op":"subscribe","args":[{"channel":"books","instId":"BTC-USDT"},{"channel":"books","instId":"BTC-USDT"}]}"#),
+   Some(Upward::Request{op:Op::Subscribe,args:vec![("books".into(),"BTC-USDT".into())]}),"同一帧里重复的去掉");
+  assert_eq!(upward(Public,r#"{"op":"subscribe","op":"unsubscribe","args":[{"channel":"books","instId":"BTC-USDT"}]}"#),None,"重复的键整帧拒");
   let twelve=(0..12).map(|i|format!(r#"{{"channel":"books","instId":"C{i}-USDT"}}"#)).collect::<Vec<_>>().join(",");
   assert!(upward(Public,&format!(r#"{{"op":"subscribe","args":[{twelve}]}}"#)).is_some());
   for bad in [

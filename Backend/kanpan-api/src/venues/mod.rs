@@ -172,7 +172,8 @@ async fn oi_history(Query(query):Query<Vec<(String,String)>>)->Response {
 }
 
 async fn stream(ws:WebSocketUpgrade,Query(query):Query<Vec<(String,String)>>)->Response {
- match source_of(&query) {Some(v)=>v.stream(ws,&query).unwrap_or_else(unsupported),None=>unsupported()}
+ // 上行帧的大小上限同中继（手机往 hub 发的只有几百字节的订阅）。
+ match source_of(&query) {Some(v)=>v.stream(crate::market_relay::small_frames(ws),&query).unwrap_or_else(unsupported),None=>unsupported()}
 }
 
 /// 代号只收字母、数字和连字符：它会被拼进上游地址。
@@ -243,5 +244,246 @@ mod tests {
   let post=|uri:&str,body:&'static str|axum::http::Request::builder().method("POST").uri(uri).body(axum::body::Body::from(body)).unwrap();
   assert_eq!(app.clone().oneshot(post("/v1/market/raw/info?source=okx","{}")).await.unwrap().status().as_u16(),405);
   assert_eq!(app.clone().oneshot(post("/v1/market/raw/info?source=hyperliquid",r#"{"type":"userState","user":"0x0"}"#)).await.unwrap().status().as_u16(),400);
+ }
+
+ // ---------------------------------------------------------------- 透传白名单模糊测试
+
+ struct Rng(u64);
+ impl Rng {
+  fn next(&mut self)->u64 {self.0^=self.0<<13;self.0^=self.0>>7;self.0^=self.0<<17;self.0}
+  fn pick<'a,T>(&mut self,from:&'a [T])->&'a T {&from[(self.next()%from.len() as u64) as usize]}
+  fn chance(&mut self,percent:u64)->bool {self.next()%100<percent}
+ }
+ /// 一次出站：地址、查询、正文。
+ type Seen=std::sync::Arc<std::sync::Mutex<Vec<(String,Vec<(String,String)>,Option<Value>)>>>;
+ /// 假出站口：全部记下来，按那一家的「成功」信封答 200。
+ fn recorder(seen:Seen)->outbound::fake::Answer {
+  std::sync::Arc::new(move|url:&str,query:&[(String,String)],body:Option<&Value>|{
+   seen.lock().unwrap().push((url.to_owned(),query.to_vec(),body.cloned()));
+   outbound::fake::ok(&json!({"code":"0","retCode":0,"data":[],"result":{"list":[]}}))
+  })
+ }
+ /// 测试自己写的一份白名单（不抄实现）：出站的每一笔都得落在这里面。
+ fn egress_ok(url:&str,query:&[(String,String)])->Result<(),String> {
+  let (host,path)=url.strip_prefix("https://").and_then(|r|r.split_once('/')).ok_or("不是 https 地址")?;
+  let safe=|v:&str,extra:&[u8]|v.len()<=200&&v.bytes().all(|b|b.is_ascii_alphanumeric()||extra.contains(&b));
+  let (paths,keys,extra):(&[&str],&[&str],&[u8])=match host {
+   "www.okx.com"=>(&["api/v5/public/instruments","api/v5/market/tickers","api/v5/market/ticker","api/v5/market/candles","api/v5/market/history-candles",
+     "api/v5/public/funding-rate","api/v5/public/open-interest","api/v5/public/mark-price"],&["instType","instId","instFamily","uly","bar","after","before","limit"],b"-"),
+   "api.bybit.com"|"api.bytick.com"=>(&["v5/market/instruments-info","v5/market/tickers","v5/market/kline","v5/market/funding/history","v5/market/open-interest"],
+     &["category","symbol","interval","intervalTime","start","end","startTime","endTime","limit","status","cursor"],b"-_=&%.:,"),
+   "api.coinbase.com"=>{
+    let rest=path.strip_prefix("api/v3/brokerage/market/").ok_or("Coinbase 前缀不对")?;
+    let parts:Vec<&str>=rest.split('/').collect();
+    let id_ok=|id:&str|!id.is_empty()&&id.len()<=40&&id.bytes().all(|b|b.is_ascii_uppercase()||b.is_ascii_digit()||b==b'-');
+    let ok=match parts.as_slice() {["products"]=>true,["products",id]|["products",id,"candles"|"ticker"]=>id_ok(id),_=>false};
+    if !ok {return Err(format!("Coinbase 路径 {rest}"))}
+    (&[],&["product_type","product_ids","limit","offset","granularity","start","end","get_all_products"],b"-_=&%.:,")
+   },
+   other=>return Err(format!("主机 {other}")),
+  };
+  if !paths.is_empty()&&!paths.contains(&path) {return Err(format!("路径 {path}"))}
+  for (k,v) in query {
+   if !keys.contains(&k.as_str()) {return Err(format!("查询键 {k}"))}
+   if !safe(v,extra) {return Err(format!("{k} 的值 {v:?}"))}
+  }
+  Ok(())
+ }
+ const PATH_PARTS:[&str;40]=["api","v5","market","public","tickers","ticker","candles","history-candles","instruments","mark-price","funding-rate","open-interest",
+  "account","balance","trade","order","..",".","%2e%2e","%2F","%2f..%2f","TICKERS","Market","v5/market","products","BTC-USD","btc-usd","BTC-USD%2F..","candles%3Fx=1",
+  "kline","instruments-info","funding","history","%E5%B8%81","%00","","BTC USD","%20","rubik","stat"];
+ const KEYS:[&str;30]=["instType","instId","instFamily","uly","bar","after","before","limit","category","symbol","interval","intervalTime","start","end","startTime","endTime","status","cursor",
+  "product_type","product_ids","granularity","offset","get_all_products","source","apiKey","sign","INSTTYPE","instType ","","x"];
+ fn values()->Vec<String> {
+  let mut v:Vec<String>=["SWAP","SPOT","BTC-USDT-SWAP","BTC-USD-SWAP","ETH-USDT-SWAP","BTC-USDT","1m","1H","1Dutc","2m","100","300","1790000000000","-1","1e9","",
+   "linear","inverse","BTCUSDT","btcusdt","1","D","5min","Trading","first=1&last=2","../../x","%00","币安","1;DROP","ONE_MINUTE","BTC-USD","true","a b","\u{0}x","line\nfeed"]
+   .iter().map(|s|s.to_string()).collect();
+  v.push("9".repeat(21));v.push("1".repeat(20));v.push("A".repeat(201));v.push("A".repeat(200));
+  v
+ }
+ /// 成百上千个随机组合的 GET 透传：路径（穿越、`%2F`、大小写、unicode、空段）× 查询（重复键、空值、超长、
+ /// 控制字符）× 三家。断言：出站的每一笔都落在测试自己那份白名单里；没出站的一律 400 / 404；放出去的都是 200。
+ #[tokio::test] async fn raw_passthrough_only_lets_the_whitelist_out() {
+  use tower::ServiceExt;
+  let seen:Seen=Default::default();
+  let app=routes::<()>();
+  let values=values();
+  let (mut out,mut refused,mut unparsable)=(0usize,0usize,0usize);
+  outbound::fake::UPSTREAM.scope(recorder(seen.clone()),async {
+   let mut rng=Rng(0x5eed_1234_abcd_ef01);
+   for round in 0..6000 {
+    let source=*rng.pick(&["okx","bybit","coinbase"]);
+    // 一半从真路径出发再随机改，一半纯随机拼。
+    let path=if rng.chance(50) {
+     let base=*rng.pick(&["api/v5/market/tickers","api/v5/market/candles","api/v5/public/instruments","v5/market/kline","v5/market/tickers","products","products/BTC-USD/candles","products/BTC-USD"]);
+     match rng.next()%6 {0=>base.to_owned(),1=>format!("{base}/"),2=>format!("{base}/../account"),3=>base.replace('/',"%2F"),4=>base.to_uppercase(),_=>format!("/{base}")}
+    } else {(0..1+rng.next()%5).map(|_|*rng.pick(&PATH_PARTS)).collect::<Vec<_>>().join("/")};
+    let mut query=vec![format!("source={source}")];
+    for _ in 0..rng.next()%6 {
+     let (k,v)=(*rng.pick(&KEYS),rng.pick(&values).clone());
+     let enc=|s:&str|if rng_bool(round) {crate::instruments::url_component(s)} else {s.to_owned()};
+     query.push(format!("{}={}",enc(k),enc(&v)));
+    }
+    if rng.chance(5) {query.push(format!("source={}",rng.pick(&["okx","bybit","OKX","ftx"])))}
+    if rng.chance(30) {let i=(rng.next()%query.len() as u64) as usize;query.swap(0,i)}
+    // 四成从一条合法的请求出发（只有一处被随机改掉，或者原样），好让放行的那一侧也有足够多的样本。
+    let (path,query)=if rng.chance(40) {
+     let (p,q):(&str,&[&str])=*rng.pick(&[
+      ("api/v5/market/candles",&["source=okx","instId=BTC-USDT-SWAP","bar=1m","limit=300","after=1790000000000"][..]),
+      ("api/v5/market/tickers",&["source=okx","instType=SWAP"][..]),
+      ("api/v5/public/instruments",&["source=okx","instType=SWAP","instFamily=BTC-USDT"][..]),
+      ("v5/market/kline",&["source=bybit","category=linear","symbol=BTCUSDT","interval=1","start=1","end=2","limit=1000"][..]),
+      ("v5/market/tickers",&["source=bybit","category=linear","cursor=first%3D1%26last%3D2"][..]),
+      ("products/BTC-USD/candles",&["source=coinbase","granularity=ONE_MINUTE","start=1","end=2","limit=350"][..]),
+      ("products",&["source=coinbase","product_type=SPOT","get_all_products=true"][..]),
+     ]);
+     let mut q:Vec<String>=q.iter().map(|s|s.to_string()).collect();
+     if rng.chance(50) {let i=1+(rng.next()%(q.len() as u64-1)) as usize;let v=rng.pick(&values).clone();let k=q[i].split('=').next().unwrap().to_owned();q[i]=format!("{k}={}",crate::instruments::url_component(&v));}
+     (p.to_owned(),q)
+    } else {(path,query)};
+    let uri=format!("/v1/market/raw/{path}?{}",query.join("&"));
+    let Ok(request)=axum::http::Request::builder().uri(&uri).body(axum::body::Body::empty()) else {unparsable+=1;continue};
+    let before=seen.lock().unwrap().len();
+    let status=app.clone().oneshot(request).await.unwrap().status().as_u16();
+    let after=seen.lock().unwrap().len();
+    match status {
+     200=>{out+=1;}
+     400|404=>{refused+=1;assert_eq!(before,after,"拒了还出站：{uri}");}
+     other=>panic!("{uri} 答了 {other}"),
+    }
+   }
+  }).await;
+  let seen=seen.lock().unwrap();
+  for (url,query,_) in seen.iter() {
+   if let Err(why)=egress_ok(url,query) {panic!("白名单外的出站（{why}）：{url} {query:?}")}
+  }
+  assert!(out>=100&&refused>=3000,"组合太偏：放行 {out}、拒 {refused}、拼不成请求 {unparsable}");
+  eprintln!("透传模糊：放行 {out}（出站 {} 次，其余同键合流命中缓存）、拒 {refused}、拼不成请求 {unparsable}",seen.len());
+ }
+ fn rng_bool(round:usize)->bool {!round.is_multiple_of(3)}
+
+ /// 具体的几条：穿越、编码过的斜杠、大小写、私有接口、空值、重复键，都不出站。
+ #[tokio::test] async fn raw_traversal_and_lookalikes_never_go_out() {
+  use tower::ServiceExt;
+  let seen:Seen=Default::default();
+  let app=routes::<()>();
+  outbound::fake::UPSTREAM.scope(recorder(seen.clone()),async {
+   for (uri,status) in [
+    ("/v1/market/raw/api/v5/market/../account/balance?source=okx",404),
+    ("/v1/market/raw/api/v5/market/tickers/../../account/balance?source=okx",404),
+    ("/v1/market/raw/api%2Fv5%2Faccount%2Fbalance?source=okx",404),
+    ("/v1/market/raw/API/V5/MARKET/TICKERS?source=okx",404),
+    ("/v1/market/raw/api/v5/market/tickers%3FinstType=SWAP?source=okx",404),
+    ("/v1/market/raw/api/v5/market/tickers?source=okx&instType=SWAP&instType=SPOT",400),
+    ("/v1/market/raw/api/v5/market/tickers?source=okx&instType=",400),
+    ("/v1/market/raw/api/v5/market/tickers?source=okx&instType=SWAP%00",400),
+    ("/v1/market/raw/api/v5/market/candles?source=okx&instId=BTC-USDT-SWAP&limit=999999999999999999999",400),
+    ("/v1/market/raw/api/v5/market/candles?source=okx&instId=%E5%B8%81-USDT-SWAP",400),
+    ("/v1/market/raw/v5/market/kline?source=bybit&category=spot",400),
+    ("/v1/market/raw/v5/market/kline?source=bybit&category=linear&cursor=a%20b",400),
+    ("/v1/market/raw/v5/market/kline?source=bybit&category=linear&cursor=%E5%B8%81",400),
+    ("/v1/market/raw/v5/user/query-api?source=bybit",404),
+    ("/v1/market/raw/v5/market/..%2Fuser%2Fquery-api?source=bybit",404),
+    ("/v1/market/raw/products/BTC-USD%2F..%2F..%2Forders?source=coinbase",404),
+    ("/v1/market/raw/products/btc-usd/candles?source=coinbase",404),
+    ("/v1/market/raw/products/BTC-USD/candles?source=coinbase&granularity=ONE%0AMINUTE",400),
+    ("/v1/market/raw/products/BTC-USD/candles?source=coinbase&api_key=x",400),
+    ("/v1/market/raw/products?source=Coinbase",400),
+    ("/v1/market/raw/products",400),
+   ] {
+    let got=app.clone().oneshot(axum::http::Request::builder().uri(uri).body(axum::body::Body::empty()).unwrap()).await.unwrap().status().as_u16();
+    assert_eq!(got,status,"{uri}");
+   }
+   // 重复的合法键照样出站（上游只认第一个），值都在白名单里。
+   let ok=app.clone().oneshot(axum::http::Request::builder().uri("/v1/market/raw/v5/market/kline?source=bybit&category=linear&symbol=BTCUSDT&interval=1&cursor=first%3D1%26last%3D2").body(axum::body::Body::empty()).unwrap()).await.unwrap();
+   assert_eq!(ok.status().as_u16(),200);
+  }).await;
+  let seen=seen.lock().unwrap();
+  assert_eq!(seen.len(),1,"只有最后那一条出站：{seen:?}");
+  assert_eq!(seen[0].1.iter().find(|(k,_)|k=="cursor").map(|(_,v)|v.as_str()),Some("first=1&last=2"));
+ }
+
+ /// Hyperliquid 的 POST 正文模糊：`type` 不在表里、`req` 多字段、负数 / 超大时间、超大正文、重复键、嵌套类型错，
+ /// 都 400 / 413 不出站；放出去的都按认出来的字段重拼过（只有表里那几种 `type`、键一个不多）。
+ #[tokio::test] async fn hyperliquid_bodies_only_let_the_whitelist_out() {
+  use tower::ServiceExt;
+  let seen:Seen=Default::default();
+  let app=routes::<()>();
+  let (mut out,mut refused)=(0usize,0usize);
+  outbound::fake::UPSTREAM.scope(recorder(seen.clone()),async {
+   let mut rng=Rng(0xfeed_face_cafe_beef);
+   let types=["meta","metaAndAssetCtxs","allMids","candleSnapshot","fundingHistory","l2Book","userState","clearinghouseState","userFills","Meta","meta ","",
+    "spotMeta","exchange","candleSnapshot\u{0}"];
+   let coins=[json!("BTC"),json!("kPEPE"),json!("BTC-USD"),json!("@107"),json!(""),json!("A".repeat(17)),json!(1),json!(null),json!(["BTC"]),json!("币")];
+   let times=[json!(0),json!(1),json!(-1),json!(1790000000000_i64),json!(9_999_999_999_999_i64),json!(10_000_000_000_000_i64),json!(u64::MAX),json!(1.5),json!("1"),json!(null)];
+   let intervals=[json!("1m"),json!("1h"),json!("1M"),json!("7m"),json!("1H"),json!(""),json!(60)];
+   for _ in 0..4000 {
+    let mut body=serde_json::Map::new();
+    let kind=*rng.pick(&types);
+    if !rng.chance(3) {body.insert("type".into(),json!(kind));}
+    let mut req=serde_json::Map::new();
+    if rng.chance(70) {req.insert("coin".into(),rng.pick(&coins).clone());}
+    if rng.chance(70) {req.insert("interval".into(),rng.pick(&intervals).clone());}
+    if rng.chance(80) {req.insert("startTime".into(),rng.pick(&times).clone());}
+    if rng.chance(40) {req.insert("endTime".into(),rng.pick(&times).clone());}
+    if rng.chance(10) {req.insert(rng.pick(&["user","limit","nSigFigs","dex","x"]).to_string(),json!(5000));}
+    if rng.chance(50) {body.insert("req".into(),Value::Object(req.clone()));} else {for (k,v) in req {body.insert(k,v);}}
+    if rng.chance(8) {body.insert(rng.pick(&["user","dex","limit","extra"]).to_string(),json!("0x0"));}
+    if rng.chance(40) {
+     body=rng.pick(&[
+      json!({"type":"candleSnapshot","req":{"coin":"BTC","interval":"1m","startTime":1790000000000_i64}}),
+      json!({"type":"candleSnapshot","req":{"coin":"kPEPE","interval":"1h","startTime":0,"endTime":1790000000000_i64}}),
+      json!({"type":"fundingHistory","coin":"ETH","startTime":1683849600076_i64}),
+      json!({"type":"meta"}),json!({"type":"allMids"}),json!({"type":"metaAndAssetCtxs"}),
+     ]).as_object().unwrap().clone();
+     if rng.chance(50) {
+      let k=rng.pick(&["coin","startTime","endTime","type","limit"]).to_string();
+      let v=match k.as_str() {"coin"=>rng.pick(&coins).clone(),"type"=>json!(*rng.pick(&types)),_=>rng.pick(&times).clone()};
+      match body.get_mut("req").and_then(Value::as_object_mut) {Some(req) if k!="type"=>{req.insert(k,v);},_=>{body.insert(k,v);}}
+     }
+    }
+    let mut text=Value::Object(body).to_string();
+    match rng.next()%20 {
+     0=>text=format!("{text}{text}"),
+     1=>text=text.replacen('{',r#"{"type":"meta","#,1),
+     2=>text=format!("{text}{}"," ".repeat(3000)),
+     3=>text=text.chars().take(text.len()/2).collect(),
+     _=>{},
+    }
+    let path=*rng.pick(&["info","info","info","exchange","Info","info/","../info"]);
+    let request=axum::http::Request::builder().method("POST").uri(format!("/v1/market/raw/{path}?source=hyperliquid")).body(axum::body::Body::from(text.clone())).unwrap();
+    let before=seen.lock().unwrap().len();
+    let status=app.clone().oneshot(request).await.unwrap().status().as_u16();
+    let after=seen.lock().unwrap().len();
+    match status {
+     200=>out+=1,
+     400|404|413=>{refused+=1;assert_eq!(before,after,"拒了还出站：{path} {text}")}
+     other=>panic!("{path} {text} 答了 {other}"),
+    }
+   }
+  }).await;
+  let seen=seen.lock().unwrap();
+  for (url,query,body) in seen.iter() {
+   assert_eq!(url,"https://api.hyperliquid.xyz/info");
+   assert!(query.is_empty());
+   let body=body.as_ref().expect("POST 带正文");
+   let o=body.as_object().unwrap();
+   let kind=o["type"].as_str().unwrap();
+   let keys:Vec<&str>=o.keys().map(String::as_str).collect();
+   match kind {
+    "meta"|"metaAndAssetCtxs"|"allMids"=>assert_eq!(keys,vec!["type"]),
+    "candleSnapshot"=>{
+     let req=o["req"].as_object().unwrap();
+     assert!(keys.len()==2&&req.keys().all(|k|["coin","interval","startTime","endTime"].contains(&k.as_str())),"{body}");
+     assert!(req["startTime"].as_u64().is_some_and(|t|t<=9_999_999_999_999),"{body}");
+     assert!(req.get("endTime").is_none_or(|t|t.as_u64().is_some_and(|t|t<=9_999_999_999_999)),"{body}");
+     assert!(req["coin"].as_str().is_some_and(|c|!c.is_empty()&&c.len()<=16&&c.bytes().all(|b|b.is_ascii_alphanumeric())),"{body}");
+    },
+    "fundingHistory"=>assert!(keys.iter().all(|k|["type","coin","startTime","endTime"].contains(k)),"{body}"),
+    other=>panic!("type {other} 出站了：{body}"),
+   }
+  }
+  assert!(out>=50&&refused>=2000,"组合太偏：放行 {out}、拒 {refused}");
+  eprintln!("Hyperliquid 正文模糊：放行 {out}（出站 {} 次）、拒 {refused}",seen.len());
  }
 }

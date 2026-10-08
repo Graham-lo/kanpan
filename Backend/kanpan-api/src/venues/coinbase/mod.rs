@@ -67,9 +67,18 @@ fn path_ok(path:&str)->bool {
   _=>false,
  }
 }
-/// 查询参数也只放已知的几个，`source` 是给我们自己分发用的，不往上游带。
-fn query_ok(key:&str)->bool {
- matches!(key,"product_type"|"product_ids"|"limit"|"offset"|"granularity"|"start"|"end"|"get_all_products")
+/// 查询参数也只放已知的几个，`source` 是给我们自己分发用的，不往上游带；值按键各认各的形状
+/// （以前值不看，`limit=1;DROP`、`granularity=` 加什么都原样往上游带，和 OKX / Bybit 两家的口径不一）。
+fn query_ok(key:&str,value:&str)->bool {
+ let digits=|v:&str|(1..=20).contains(&v.len())&&v.bytes().all(|b|b.is_ascii_digit());
+ match key {
+  "product_type"=>matches!(value,"SPOT"|"FUTURE"),
+  "product_ids"=>product_ok(value),
+  "limit"|"offset"|"start"|"end"=>digits(value),
+  "granularity"=>matches!(value,"ONE_MINUTE"|"FIVE_MINUTE"|"FIFTEEN_MINUTE"|"THIRTY_MINUTE"|"ONE_HOUR"|"TWO_HOUR"|"FOUR_HOUR"|"SIX_HOUR"|"ONE_DAY"),
+  "get_all_products"=>matches!(value,"true"|"false"),
+  _=>false,
+ }
 }
 /// 品种表缓存多久。一条就一兆多，三台手机同时启动不必各拉一遍（同键合流，只出站一次）。
 const PRODUCTS_TTL:Duration=Duration::from_secs(15);
@@ -77,7 +86,7 @@ static ANSWERS:Answers=Answers::new();
 
 pub async fn raw(path:&str,query:&[(String,String)])->Response {
  if !path_ok(path) {return refuse(StatusCode::NOT_FOUND,"unsupported_path")}
- let Some(forward)=outbound::forward(query,|k,_|query_ok(k)) else {return refuse(StatusCode::BAD_REQUEST,"unsupported_query")};
+ let Some(forward)=outbound::forward(query,query_ok) else {return refuse(StatusCode::BAD_REQUEST,"unsupported_query")};
  // 只有品种表缓存；K 线、行情要新鲜，照旧每次都出站（仍然排节拍）。
  let ttl=if path=="products" {PRODUCTS_TTL} else {Duration::ZERO};
  outbound::pass(ANSWERS.get(format!("{path}?{forward:?}"),ttl,outbound::any_ok,||fetch(path,&forward)).await)
@@ -518,7 +527,7 @@ mod tests {
  #[test] fn only_public_market_paths_pass_through() {
   for ok in ["products","products/BTC-USD","products/BTC-USD/candles","products/ETH-USD/ticker"] {assert!(path_ok(ok),"{ok}")}
   for bad in ["","products/btc-usd","products/BTC-USD/book","accounts","products/BTC-USD/candles/x","products/../accounts","products/BTC%2FUSD"] {assert!(!path_ok(bad),"{bad}")}
-  assert!(query_ok("granularity")&&!query_ok("source")&&!query_ok("api_key"));
+  assert!(query_ok("granularity","ONE_MINUTE")&&!query_ok("granularity","ONE_MINUTE;x")&&!query_ok("limit","1;DROP")&&query_ok("product_type","SPOT")&&!query_ok("source","coinbase")&&!query_ok("api_key","x"));
  }
 
  #[test] fn candle_pages_come_back_ascending_and_valid() {

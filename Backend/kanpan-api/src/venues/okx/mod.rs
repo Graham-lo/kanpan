@@ -165,14 +165,24 @@ pub async fn candles(key:&str,step:i64,start:i64,end:i64)->std::result::Result<V
   let (path,page_size)=page_source(cursor,step,now);
   let (after,before,limit)=(cursor.to_string(),(from-1).to_string(),page_size.to_string());
   let page=parse_candles(&get_json(path,&[("instId",&inst),("bar",bar),("after",&after),("before",&before),("limit",&limit)]).await?);
+  // 「最新 1440 根」那条线：`market/candles` 给不出比它更早的。
+  let recent=path=="api/v5/market/candles";
+  let floor=now.div_euclid(step*1000)*step*1000-(RECENT_BARS-1)*step*1000;
   let Some(oldest)=page.iter().map(|b|b.open_time).min() else {
    // 最新那段问空了不等于更早也没有：翻进历史接口再问一次。
-   if path=="api/v5/market/candles" {let floor=now.div_euclid(step*1000)*step*1000-(RECENT_BARS-1)*step*1000;if floor<cursor&&floor>from {cursor=floor;continue}}
+   if recent&&floor<cursor&&floor>from {cursor=floor;continue}
    break
   };
   let full=page.len()>=page_size;
   out.extend(page.into_iter().filter(|b|b.open_time>=from&&b.open_time<until));
-  if !full||oldest>=cursor {break}
+  // 游标不前进（上游无视 `after`）：再问也是这一页。
+  if oldest>=cursor {break}
+  if !full {
+   // 不满的一页通常是窗口问完了；但窗口跨过那条线时，`market/candles` 这一页不满只是因为线以内的问完了，
+   // 线以外的要接着翻 `history-candles`（以前在这里就停了，窗口里比线早的那一大段一根都没有）。
+   if recent&&floor>from {cursor=oldest.min(floor);continue}
+   break
+  }
   cursor=oldest;
  }
  out.sort_by_key(|b|b.open_time);out.dedup_by_key(|b|b.open_time);
@@ -483,6 +493,82 @@ mod tests {
   assert_eq!(okx_period("1m"),None);
   assert_eq!(okx_period("1w"),None);
  }
+ // ---------------------------------------------------------------- 补缺 K 线的极端（假上游）
+
+ use crate::venues::outbound::fake;
+ type Calls=Arc<Mutex<Vec<(String,Vec<(String,String)>)>>>;
+ fn row(t:i64)->Value {json!([t.to_string(),"1","2","0.5","1.5","10","10","10","1"])}
+ /// 照官方口径的假 OKX：`market/candles` 只有最新 1440 根、一页最多 300；`history-candles` 全都有、一页最多 100；
+ /// `after` / `before` 都是开区间，新的在前。数据是 `[first, 此刻这一分钟]` 的每一分钟。
+ fn okx_like(first:i64,calls:Calls)->fake::Answer {
+  Arc::new(move|url:&str,query:&[(String,String)],_|{
+   calls.lock().unwrap().push((url.to_owned(),query.to_vec()));
+   let q=|k:&str|query.iter().find(|(key,_)|key==k).and_then(|(_,v)|v.parse::<i64>().ok());
+   let now=chrono::Utc::now().timestamp_millis();
+   let current=now.div_euclid(60_000)*60_000;
+   let (lowest,page)=if url.ends_with("api/v5/market/candles") {(current-1439*60_000,300)} else {(first,100)};
+   let (after,before)=(q("after").unwrap_or(i64::MAX),q("before").unwrap_or(i64::MIN));
+   let limit=q("limit").unwrap_or(100).min(page) as usize;
+   let rows:Vec<Value>=(0..).map(|i|current-i*60_000).take_while(|t|*t>=lowest.max(first)).filter(|t|*t<after&&*t>before).take(limit).map(row).collect();
+   fake::ok(&json!({"code":"0","data":rows}))
+  })
+ }
+ async fn with<T>(answer:fake::Answer,f:impl std::future::Future<Output=T>)->T {fake::UPSTREAM.scope(answer,f).await}
+
+ /// 窗口跨过「最新 1440 根」那条线：以前 `market/candles` 那一页不满（线以内只剩几十根）就当到头了，
+ /// 线以外的那一大段一根都不翻；现在翻进 `history-candles` 接着要，整段一根不缺。
+ #[tokio::test] async fn a_window_across_the_1440_bar_line_comes_back_whole() {
+  let calls:Calls=Default::default();
+  let now=chrono::Utc::now().timestamp();
+  let minute=now.div_euclid(60)*60;
+  let (start,end)=(minute-2600*60,minute-100*60);
+  let bars=with(okx_like((minute-5000*60)*1000,calls.clone()),candles("BTCUSDT",60,start,end)).await.unwrap();
+  // 跑测试时恰好跨过分钟线，最新那 1440 根往后挪一根，不影响 `[start, end)` 的根数。
+  assert_eq!(bars.len(),2500,"[start, end) 每一分钟一根");
+  assert!(bars.windows(2).all(|w|w[1].open_time-w[0].open_time==60_000),"升序、不重、不缺");
+  assert_eq!((bars[0].open_time,bars[bars.len()-1].open_time),(start*1000,(end-60)*1000));
+  let calls=calls.lock().unwrap();
+  assert!(calls.iter().any(|(u,_)|u.ends_with("history-candles")),"翻进了历史接口");
+  assert!(calls.len()<=30,"一共问了 {} 页",calls.len());
+ }
+
+ /// 上游回空页、回一页重复 / 乱序 / 坏行、`after` 游标被上游无视（同一页反复回）：都在几页之内停下，
+ /// 结果升序去重、只留窗口里的、坏行不进。
+ #[tokio::test] async fn hostile_pages_terminate_and_are_cleaned() {
+  let now=chrono::Utc::now().timestamp();
+  let minute=now.div_euclid(60)*60;
+  let (start,end)=(minute-50*60,minute-10*60);
+  // 一直回空页。
+  let calls:Calls=Default::default();
+  let c2=calls.clone();
+  let empty:fake::Answer=Arc::new(move|u:&str,q:&[(String,String)],_|{c2.lock().unwrap().push((u.to_owned(),q.to_vec()));fake::ok(&json!({"code":"0","data":[]}))});
+  assert_eq!(with(empty,candles("BTCUSDT",60,start,end)).await.unwrap(),vec![]);
+  assert!(calls.lock().unwrap().len()<=2,"空页：{} 次",calls.lock().unwrap().len());
+  // 一页满的、但无视 `after`，每次都回同一页（新的在前，夹着重复、乱序、坏行、窗口外的）。
+  let calls:Calls=Default::default();
+  let c2=calls.clone();
+  let base=(minute-10*60)*1000;
+  let stuck:fake::Answer=Arc::new(move|u:&str,q:&[(String,String)],_|{
+   c2.lock().unwrap().push((u.to_owned(),q.to_vec()));
+   let mut rows:Vec<Value>=(0..300).map(|i|row(base+60_000-i*60_000)).collect();
+   rows.insert(5,row(base-60_000));rows.insert(9,row(base-3*60_000));
+   rows.push(json!(["bad","1","1","1","1","1","1","1","1"]));rows.push(json!([(base-7*60_000).to_string(),"0","1","1","1","1","1","1","1"]));
+   rows.push(json!([(base-8*60_000).to_string(),"1","0.5","2","1","1","1","1","1"]));
+   fake::ok(&json!({"code":"0","data":rows}))
+  });
+  let bars=with(stuck,candles("BTCUSDT",60,start,end)).await.unwrap();
+  assert!(calls.lock().unwrap().len()<=3,"游标不前进：问了 {} 次",calls.lock().unwrap().len());
+  assert!(bars.windows(2).all(|w|w[0].open_time<w[1].open_time),"升序去重");
+  assert!(bars.iter().all(|b|b.open_time>=start*1000&&b.open_time<end*1000&&b.sane()),"只留窗口里的好行");
+  // 中途一页出错：整个就是错，不拿半截当全的。
+  let n=Arc::new(Mutex::new(0));
+  let flaky:fake::Answer=Arc::new(move|u:&str,q:&[(String,String)],b|{
+   let mut k=n.lock().unwrap();*k+=1;
+   if *k==2 {Err(Upstream::RateLimited(Some(1)))} else {okx_like(0,Default::default())(u,q,b)}
+  });
+  assert_eq!(with(flaky,candles("BTCUSDT",60,minute-1000*60,minute)).await,Err(Upstream::RateLimited(Some(1))));
+ }
+
  #[tokio::test] async fn private_paths_and_keys_are_refused_before_going_upstream() {
   assert_eq!(raw("api/v5/account/balance",&q(&[("source","okx")])).await.status(),StatusCode::NOT_FOUND);
   assert_eq!(raw("api/v5/market/tickers",&q(&[("source","okx"),("instType","SWAP"),("apiKey","x")])).await.status(),StatusCode::BAD_REQUEST);

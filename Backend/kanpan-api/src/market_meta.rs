@@ -2468,4 +2468,20 @@ mod tests {
     "真值表里没有 {} 这一档",kind.wire());
   }
  }
+ /// 同一只币四家：`binance` / `okx` / `bybit` 的 `BTCUSDT`、`hyperliquid` 的 `BTC` 都折到同一行 BTC 供应量；
+ /// 各家只认自己形状的代号（Hyperliquid 问 `BTCUSDT` 不答）；美元指数一律不答。
+ #[test] fn one_coin_on_four_venues_folds_to_one_supply() {
+  let m=market(table(&[("BTC",supply(21e6))]),&["BTCUSDT"]);
+  let want=meta_payload(&m,Some("BTCUSDT"))["BTCUSDT"].clone();
+  assert!(want.is_object(),"币安口径先答得出来");
+  for (source,symbol) in [("binance","BTCUSDT"),("okx","BTCUSDT"),("bybit","BTCUSDT"),("hyperliquid","BTC")] {
+   let v=crate::venues::venue(source).unwrap();
+   let got=venue_meta_payload(&m,&format!("{symbol},{},{symbol}",symbol.to_lowercase()),v);
+   assert_eq!(got.as_object().map(|o|o.len()),Some(1),"{source}：问两遍（大小写）只答一行 {got}");
+   assert_eq!(got[symbol],want,"{source}");
+  }
+  assert_eq!(venue_meta_payload(&m,"BTCUSDT",crate::venues::venue("hyperliquid").unwrap()),json!({}),"Hyperliquid 不认币安形状的键");
+  assert_eq!(venue_meta_payload(&m,"BTC",crate::venues::venue("okx").unwrap()),json!({}));
+  assert_eq!(venue_meta_payload(&m,"DXY",crate::venues::venue("macro").unwrap()),json!({}));
+ }
 }

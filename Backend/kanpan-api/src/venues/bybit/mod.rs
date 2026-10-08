@@ -92,7 +92,9 @@ fn query_ok(key:&str,value:&str)->bool {
   "intervalTime"=>OI_INTERVALS.contains(&value),
   "start"|"end"|"startTime"|"endTime"|"limit"=>digits(value),
   "status"=>value=="Trading",
-  "cursor"=>!value.is_empty(),
+  // 翻页游标是 Bybit 自己给的不透明串（`first=1&last=2`、未解码的 `first%3D1%26last%3D2`、`0%2C1` 这几种），
+  // 只认字母数字和这几个符号；以前什么都收（空格、`;`、汉字都原样往上游带）。
+  "cursor"=>!value.is_empty()&&value.bytes().all(|b|b.is_ascii_alphanumeric()||b"=&%,:._-".contains(&b)),
   _=>false,
  }
 }
@@ -262,5 +264,47 @@ mod tests {
  #[tokio::test] async fn private_paths_and_keys_are_refused_before_going_upstream() {
   assert_eq!(raw("v5/order/create",&q(&[("source","bybit")])).await.status(),StatusCode::NOT_FOUND);
   assert_eq!(raw("v5/market/kline",&q(&[("category","linear"),("api_key","x")])).await.status(),StatusCode::BAD_REQUEST);
+ }
+
+ // ---------------------------------------------------------------- 补缺 K 线的极端（假上游）
+
+ use crate::venues::outbound::fake;
+ use std::sync::{Arc,Mutex};
+ fn kline_row(t:i64)->Value {json!([t.to_string(),"1","2","0.5","1.5","10","15"])}
+ /// 照官方口径的假 Bybit：`start` / `end` 两端都含，一页最多 1000 根，新的在前；数据是 `[first, last]` 的每一分钟。
+ fn bybit_like(first:i64,last:i64,calls:Arc<Mutex<usize>>)->fake::Answer {
+  Arc::new(move|_:&str,query:&[(String,String)],_|{
+   *calls.lock().unwrap()+=1;
+   let q=|k:&str|query.iter().find(|(key,_)|key==k).and_then(|(_,v)|v.parse::<i64>().ok());
+   let (start,end,limit)=(q("start").unwrap_or(first),q("end").unwrap_or(last),q("limit").unwrap_or(200).min(1000));
+   let rows:Vec<Value>=(0..).map(|i|last-i*60_000).take_while(|t|*t>=first).filter(|t|*t>=start&&*t<=end).take(limit as usize).map(kline_row).collect();
+   fake::ok(&json!({"retCode":0,"result":{"list":rows}}))
+  })
+ }
+ /// 一大段（三千多根，翻四页）一根不缺；一直空页、无视 `end` 回同一页、限流（200 + `retCode` 10006）都几页内停下。
+ #[tokio::test] async fn kline_paging_survives_hostile_upstreams() {
+  let minute=chrono::Utc::now().timestamp().div_euclid(60)*60;
+  let calls=Arc::new(Mutex::new(0));
+  let (start,end)=(minute-3500*60,minute-30*60);
+  let bars=fake::UPSTREAM.scope(bybit_like((minute-9000*60)*1000,minute*1000,calls.clone()),candles("BTCUSDT",60,start,end)).await.unwrap();
+  assert_eq!(bars.len(),3470);
+  assert!(bars.windows(2).all(|w|w[1].open_time-w[0].open_time==60_000));
+  assert_eq!(*calls.lock().unwrap(),4);
+  let calls=Arc::new(Mutex::new(0));
+  let c=calls.clone();
+  let stuck:fake::Answer=Arc::new(move|_:&str,_:&[(String,String)],_|{
+   *c.lock().unwrap()+=1;
+   let mut rows:Vec<Value>=(0..1000).map(|i|kline_row((minute-31*60)*1000-i*60_000)).collect();
+   rows.swap(3,700);rows.push(json!(["x"]));rows.push(kline_row((minute-31*60)*1000));
+   fake::ok(&json!({"retCode":0,"result":{"list":rows}}))
+  });
+  let bars=fake::UPSTREAM.scope(stuck,candles("BTCUSDT",60,start,end)).await.unwrap();
+  assert!(*calls.lock().unwrap()<=2,"无视 end：问了 {} 次",*calls.lock().unwrap());
+  assert_eq!(bars.len(),1000,"乱序、重复、坏行收拾干净");
+  assert!(bars.windows(2).all(|w|w[0].open_time<w[1].open_time));
+  let empty:fake::Answer=Arc::new(|_:&str,_:&[(String,String)],_|fake::ok(&json!({"retCode":0,"result":{"list":[]}})));
+  assert_eq!(fake::UPSTREAM.scope(empty,candles("BTCUSDT",60,start,end)).await,Ok(vec![]));
+  let limited:fake::Answer=Arc::new(|_:&str,_:&[(String,String)],_|fake::ok(&json!({"retCode":10006,"retMsg":"Too many visits!"})));
+  assert_eq!(fake::UPSTREAM.scope(limited,candles("BTCUSDT",60,start,end)).await,Err(Upstream::RateLimited(Some(1))));
  }
 }

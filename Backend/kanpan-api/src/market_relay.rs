@@ -394,13 +394,20 @@ async fn pump(client:WebSocket,upstreams:Vec<Upstream>,kind:Kind,timing:Timing,_
  futures_util::future::join_all(up_txs.iter_mut().map(|tx|tokio::time::timeout(Duration::from_secs(1),tx.close()))).await;
 }
 
+/// 手机发上来的一帧最多多大。合规的上行帧不过几百字节（OKX 12 个 args 约 700 字节），给到 64 KB：
+/// 几十 KB 的超长 args 仍走白名单「丢掉、不断」；再大就不往 JSON 解析器里喂，读的时候当场断掉这一条
+/// （以前沿用默认的 64 MB 一条消息 / 16 MB 一帧：一个不登录的连接每帧都能让服务端解析十几兆）。
+pub const MAX_UPWARD:usize=64*1024;
+/// 给升级请求套上上行帧的大小上限（四条中继、`/v1/market/stream` 的几个 hub 都用）。
+pub fn small_frames(ws:WebSocketUpgrade)->WebSocketUpgrade {ws.max_message_size(MAX_UPWARD).max_frame_size(MAX_UPWARD)}
+
 /// 币安 / OKX 两条共用的开门流程：要升级、占这个来源的名额、占全局名额、连上游、再答 101。
 async fn open(relay:&Relay,kind:Kind,Source(ip):Source,urls:Vec<String>,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>)->Response {
  let Ok(ws)=ws else {return ApiError::bad("websocket_required").into_response()};
  let held=match relay.hold(ip) {Ok(held)=>held,Err(reply)=>return reply};
  let upstreams=match connect_all(&urls,kind,relay.timing).await {Ok(streams)=>streams,Err(reply)=>return reply};
  let timing=relay.timing;
- ws.on_upgrade(move|client|pump(client,upstreams,kind,timing,held))
+ small_frames(ws).on_upgrade(move|client|pump(client,upstreams,kind,timing,held))
 }
 
 #[derive(Deserialize)]
@@ -436,7 +443,7 @@ async fn bybit_relay(relay:Arc<Relay>,Source(ip):Source,query:CategoryQuery,ws:R
  let urls:Vec<String>=relay.bybit.iter().map(|base|format!("{base}/{}",query.category)).collect();
  let upstream=match connect_any(&urls,Kind::Bybit,relay.timing).await {Ok(stream)=>stream,Err(reply)=>return reply};
  let timing=relay.timing;
- ws.on_upgrade(move|client|pump(client,vec![upstream],Kind::Bybit,timing,held))
+ small_frames(ws).on_upgrade(move|client|pump(client,vec![upstream],Kind::Bybit,timing,held))
 }
 
 /// Hyperliquid：同一套名额，不连上游（共用 hub），直接答 101。
@@ -445,7 +452,7 @@ async fn hyperliquid_relay(relay:Arc<Relay>,Source(ip):Source,ws:Result<WebSocke
  let held=match relay.hold(ip) {Ok(held)=>held,Err(reply)=>return reply};
  let hub=(relay.hyperliquid)();
  let timing=hyperliquid::relay::Timing{ping:relay.timing.ping,client_idle:relay.timing.client_idle,send:relay.timing.send};
- ws.on_upgrade(move|client|hyperliquid::relay::serve(client,hub,timing,Box::new(held)))
+ small_frames(ws).on_upgrade(move|client|hyperliquid::relay::serve(client,hub,timing,Box::new(held)))
 }
 
 fn routes_with<S:Clone+Send+Sync+'static>(relay:Arc<Relay>)->Router<S> {
@@ -917,6 +924,239 @@ mod tests {
   assert_eq!(unsubscribed.len(),cap-1);
   assert!(unsubscribed.iter().all(|t|t=="trades"));
   assert_eq!(hub.counters.topics.load(std::sync::atomic::Ordering::Relaxed),1);
+ }
+
+ // ---------------------------------------------------------------- 压测与极端
+
+ fn okx_batch(from:usize,n:usize)->String {
+  format!(r#"{{"op":"subscribe","args":[{}]}}"#,(from..from+n).map(|i|format!(r#"{{"channel":"books","instId":"C{i}-USDT"}}"#)).collect::<Vec<_>>().join(","))
+ }
+ /// 读到没有文本为止，数一共几帧（`within` 内没有新帧就停）。
+ async fn drain(client:&mut Client,within:Duration)->Vec<String> {
+  let mut out=Vec::new();
+  while let Some(text)=next_text(client,within).await {out.push(text)}
+  out
+ }
+
+ /// 几十条 OKX 中继同时开、各订到每连接上限：再多一个订阅整帧丢掉、连接不断；全局名额满了新来源 503，
+ /// 同一来源满了 429（都带 `Retry-After: 2`）；关掉一批，名额原数还回来。
+ #[tokio::test]
+ async fn dozens_of_okx_relays_each_filled_to_the_cap() {
+  const N:usize=40;
+  let base=format!("{}/echo",fake().await);
+  let port=relay_with(lanes(&base),base,N,3,QUICK).await;
+  let ip=|i:usize|format!("198.51.100.{}",i/3+1);
+  let mut clients=Vec::new();
+  for i in 0..N {
+   let mut c=dial_as(&ip(i),port,OKX_PATH).await.unwrap_or_else(|e|panic!("第 {i} 条：{e}"));
+   assert!(next_text(&mut c,Duration::from_secs(2)).await.unwrap().starts_with("hello"));
+   clients.push(c);
+  }
+  // 全局满了：新来源 503；已经占满三条的来源先撞上自己的 429。
+  assert_eq!(refused(dial_as("203.0.113.1",port,OKX_PATH).await),(503,"2".to_owned()));
+  assert_eq!(refused(dial_as(&ip(0),port,OKX_PATH).await),(429,"2".to_owned()));
+  assert_eq!(refused(dial_as(&ip(0),port,&format!("{OKX_PATH}?endpoint=business")).await),(429,"2".to_owned()));
+  // 每条都订满 128（12 个一帧，11 帧），再多一个的那帧丢掉；并发地订。
+  let frames=okx::relay::MAX_SUBSCRIPTIONS.div_ceil(okx::relay::MAX_ARGS);
+  let tasks:Vec<_>=clients.into_iter().map(|mut c|tokio::spawn(async move {
+   let mut from=0;
+   while from<okx::relay::MAX_SUBSCRIPTIONS {let n=okx::relay::MAX_ARGS.min(okx::relay::MAX_SUBSCRIPTIONS-from);c.send(Up::Text(okx_batch(from,n).into())).await.unwrap();from+=n;}
+   c.send(Up::Text(okx_batch(from,1).into())).await.unwrap();
+   c.send(Up::Text(okx_batch(0,12).into())).await.unwrap();  // 已经订着的再订：不占新名额，照转
+   c.send(Up::Text("ping".into())).await.unwrap();
+   let got=drain(&mut c,Duration::from_millis(500)).await;
+   (c,got)
+  })).collect();
+  let mut clients=Vec::new();
+  for t in tasks {
+   let (c,got)=t.await.unwrap();
+   assert_eq!(got.len(),frames+2,"每条 {frames} 帧订满 + 一帧重订 + ping；超上限那帧丢掉：{got:?}");
+   assert_eq!(got.last().map(String::as_str),Some("echo ping"),"连接还在");
+   clients.push(c);
+  }
+  // 关掉十条：十个名额还回来（同一来源的也还回来）。
+  for mut c in clients.drain(..10) {c.close(None).await.unwrap();}
+  let deadline=Instant::now()+Duration::from_secs(3);
+  let mut reopened=Vec::new();
+  while reopened.len()<10 {
+   match dial_as(&format!("203.0.113.{}",reopened.len()+1),port,OKX_PATH).await {
+    Ok(c)=>reopened.push(c),
+    Err(_)=>{assert!(Instant::now()<deadline,"名额没还回来（只开回 {} 条）",reopened.len());tokio::time::sleep(Duration::from_millis(50)).await}
+   }
+  }
+  assert_eq!(refused(dial_as("203.0.113.99",port,OKX_PATH).await).0,503,"还回来的正好十个");
+ }
+
+ /// 满载浸泡（约 12 秒，`cargo test --lib -- --ignored full_house`）：线上的名额 96 条 × 每条订满 128，
+ /// 四个来源各占 24 条；每条每 100 ms 一个 ping 跑十秒，量回声的 p50 / p99 / 最大，全部回来、一条不断；
+ /// 第 97 条 503。
+ #[tokio::test(flavor="multi_thread",worker_threads=4)]
+ #[ignore]
+ async fn full_house_soak() {
+  let base=format!("{}/echo",fake().await);
+  let port=relay_with(lanes(&base),base,MAX_RELAYS,MAX_RELAYS_PER_CLIENT,QUICK).await;
+  let mut tasks=Vec::new();
+  for i in 0..MAX_RELAYS {
+   let mut c=dial_as(&format!("198.51.100.{}",i/MAX_RELAYS_PER_CLIENT+1),port,OKX_PATH).await.unwrap();
+   next_text(&mut c,Duration::from_secs(2)).await.unwrap();
+   tasks.push(tokio::spawn(async move {
+    let mut from=0;
+    while from<okx::relay::MAX_SUBSCRIPTIONS {let n=okx::relay::MAX_ARGS.min(okx::relay::MAX_SUBSCRIPTIONS-from);c.send(Up::Text(okx_batch(from,n).into())).await.unwrap();from+=n;}
+    let subs=drain(&mut c,Duration::from_millis(500)).await.len();
+    let mut rtts=Vec::new();
+    for _ in 0..100 {
+     let t=Instant::now();
+     c.send(Up::Text("ping".into())).await.unwrap();
+     let echo=next_text(&mut c,Duration::from_secs(5)).await;
+     assert_eq!(echo.as_deref(),Some("echo ping"));
+     rtts.push(t.elapsed());
+     tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    (subs,rtts,c)
+   }));
+  }
+  let mut all=Vec::new();
+  let mut keep=Vec::new();
+  for t in tasks {let (subs,rtts,c)=t.await.unwrap();assert_eq!(subs,okx::relay::MAX_SUBSCRIPTIONS.div_ceil(okx::relay::MAX_ARGS));all.extend(rtts);keep.push(c);}
+  assert_eq!(refused(dial_as("203.0.113.1",port,OKX_PATH).await).0,503);
+  all.sort();
+  let pick=|q:f64|all[((all.len() as f64*q) as usize).min(all.len()-1)];
+  eprintln!("中继满载：{} 条 × 128 订阅，{} 次 ping 回声 p50 {:?} p99 {:?} 最大 {:?}",keep.len(),all.len(),pick(0.5),pick(0.99),all[all.len()-1]);
+  assert!(pick(0.99)<Duration::from_millis(200));
+ }
+
+ /// 上行模糊：畸形 JSON、超长 args、重复、大小写变种、二进制帧、空帧，几百帧一起砸：只丢不断，
+ /// 上去的每一帧都是重新拼过的合规订阅；最后一个 `ping` 照样有回。三家各来一遍。
+ #[tokio::test]
+ async fn upward_garbage_is_dropped_without_dropping_the_connection() {
+  let base=format!("{}/echo",fake().await);
+  let relay=Relay::new(lanes(&base),base.clone(),8,8,QUICK).with_bybit(vec![base.clone()]);
+  let port=serve::<()>(routes_with(Arc::new(relay))).await;
+  let mut seed=0x0dd_ba11_u64;
+  let mut rnd=move||{seed^=seed<<13;seed^=seed>>7;seed^=seed<<17;seed};
+  let okx_good=r#"{"op":"subscribe","args":[{"channel":"books","instId":"BTC-USDT"}]}"#;
+  let bybit_good=r#"{"op":"subscribe","args":["publicTrade.BTCUSDT"]}"#;
+  for (path,good,ping,pong) in [(OKX_PATH.to_owned(),okx_good,"ping","echo ping"),(format!("{BYBIT_PATH}?category=linear"),bybit_good,r#"{"op":"ping"}"#,r#"echo {"op":"ping"}"#)] {
+   let mut c=dial(port,&path).await.unwrap();
+   next_text(&mut c,Duration::from_secs(2)).await.unwrap();
+   let mut sent=0;
+   for _ in 0..600 {
+    let r=rnd();
+    let mut frame=match r%9 {
+     0=>good.to_uppercase(),
+     1=>good.replace("subscribe","Subscribe"),
+     2=>{let n=(r>>8) as usize%good.len();good[..n].to_owned()},
+     3=>good.replace("BTC","btc"),
+     4=>good.replace(']',&format!(",{}]",(0..20).map(|i|if path==OKX_PATH {format!(r#"{{"channel":"books","instId":"X{i}-USDT"}}"#)} else {format!(r#""publicTrade.X{i}USDT""#)}).collect::<Vec<_>>().join(","))),
+     5=>good.replace('{',r#"{"extra":1,"#),
+     6=>format!("{good}{good}"),
+     7=>"\u{0}".repeat((r>>8) as usize%64),
+     _=>String::from_utf8_lossy(&(0..(r>>8)%200).map(|_|(rnd()%256) as u8).collect::<Vec<_>>()).into_owned(),
+    };
+    if frame==good {frame.push(' ');}
+    if r%17==0 {c.send(Up::Binary(frame.into_bytes().into())).await.unwrap()} else {c.send(Up::Text(frame.into())).await.unwrap()}
+    sent+=1;
+   }
+   c.send(Up::Text(ping.into())).await.unwrap();
+   let got=drain(&mut c,Duration::from_millis(500)).await;
+   assert_eq!(got,vec![pong.to_owned()],"{path}：{sent} 帧垃圾一帧都没上去，连接还在");
+  }
+  // Hyperliquid：同样砸一遍，`{"method":"ping"}` 就地回 pong，别的什么都不回。
+  let (url,_up)=fake_hyperliquid().await;
+  let relay=Relay::new(lanes("ws://127.0.0.1:1"),"ws://127.0.0.1:1/",4,4,QUICK).with_hyperliquid(quick_hub(url));
+  let port=serve::<()>(routes_with(Arc::new(relay))).await;
+  let mut c=dial(port,HYPERLIQUID_PATH).await.unwrap();
+  let good=r#"{"method":"subscribe","subscription":{"type":"candle","coin":"BTC","interval":"1m"}}"#;
+  for i in 0..400 {
+   let frame=match i%6 {
+    0=>good.replace("candle","Candle"),1=>good.replace("1m","1min"),2=>good.replace("BTC","BTC-USD"),
+    3=>good.replace('}',r#","user":"0x0"}"#),4=>good[..i%good.len()].to_owned(),_=>good.replace("subscribe","SUBSCRIBE"),
+   };
+   c.send(Up::Text(frame.into())).await.unwrap();
+  }
+  c.send(Up::Text(r#"{"method":"ping"}"#.into())).await.unwrap();
+  assert_eq!(drain(&mut c,Duration::from_millis(500)).await,vec![r#"{"channel":"pong"}"#.to_owned()]);
+ }
+
+ /// 一帧大到离谱（几兆）：不往 JSON 解析器里喂，直接断掉这条（合规的上行帧不过几百字节）；
+ /// 几十 KB 的超长 args 仍是「丢掉、不断」。
+ #[tokio::test]
+ async fn a_huge_upward_frame_closes_only_that_relay() {
+  let base=format!("{}/echo",fake().await);
+  let port=relay_with(lanes(&base),base.clone(),8,8,QUICK).await;
+  let mut long=dial(port,OKX_PATH).await.unwrap();
+  next_text(&mut long,Duration::from_secs(2)).await.unwrap();
+  long.send(Up::Text(okx_batch(0,1000).into())).await.unwrap();
+  long.send(Up::Text("ping".into())).await.unwrap();
+  assert_eq!(drain(&mut long,Duration::from_millis(400)).await,vec!["echo ping".to_owned()],"一千个 args 的那帧丢掉，连接还在");
+  let mut other=dial(port,OKX_PATH).await.unwrap();
+  next_text(&mut other,Duration::from_secs(2)).await.unwrap();
+  let mut huge=dial(port,OKX_PATH).await.unwrap();
+  next_text(&mut huge,Duration::from_secs(2)).await.unwrap();
+  let _=huge.send(Up::Text("x".repeat(4<<20).into())).await;
+  assert!(closed_within(&mut huge,Duration::from_secs(3)).await,"几兆的一帧：这条断掉");
+  other.send(Up::Text("ping".into())).await.unwrap();
+  assert_eq!(next_text(&mut other,Duration::from_secs(2)).await.as_deref(),Some("echo ping"),"别的中继不受影响");
+  let (url,_up)=fake_hyperliquid().await;
+  let relay=Relay::new(lanes("ws://127.0.0.1:1"),"ws://127.0.0.1:1/",4,4,QUICK).with_hyperliquid(quick_hub(url));
+  let port=serve::<()>(routes_with(Arc::new(relay))).await;
+  let mut huge=dial(port,HYPERLIQUID_PATH).await.unwrap();
+  let _=huge.send(Up::Text(format!(r#"{{"method":"ping","pad":"{}"}}"#,"x".repeat(4<<20)).into())).await;
+  assert!(closed_within(&mut huge,Duration::from_secs(3)).await,"Hyperliquid 那条也一样");
+ }
+
+ /// 上游断了：手机那头以 1013（再试）关掉，原因写 `upstream`；手机自己走的不发关闭码。
+ #[tokio::test]
+ async fn upstream_loss_closes_the_phone_with_1013() {
+  let port=relay_to("/bye",4,QUICK).await;
+  let mut client=dial(port,OKX_PATH).await.unwrap();
+  let code=tokio::time::timeout(Duration::from_secs(3),async {
+   loop {match client.next().await {Some(Ok(Up::Close(frame)))=>return frame.map(|f|(u16::from(f.code),f.reason.to_string())),None|Some(Err(_))=>return None,_=>continue}}
+  }).await.unwrap();
+  assert_eq!(code,Some((1013,"upstream".to_owned())));
+ }
+
+ /// Hyperliquid 中继按币分发：两部手机各订一只币的 K 线与上下文，上游同时在推别的币，谁都只拿到自己那只。
+ #[tokio::test]
+ async fn hyperliquid_relays_get_only_their_own_coin() {
+  let (tx,_)=tokio::sync::broadcast::channel::<String>(256);
+  let push=tx.clone();
+  let app=Router::new().fallback(move|ws:WebSocketUpgrade|{
+   let mut pushes=tx.subscribe();
+   async move {ws.on_upgrade(move|mut socket| async move {
+    loop {tokio::select! {
+     m=socket.recv()=>match m {Some(Ok(_))=>{},_=>break},
+     p=pushes.recv()=>match p {Ok(t)=>{if socket.send(Down::Text(t.into())).await.is_err() {break}},Err(_)=>break},
+    }}
+   })}
+  });
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let upstream=format!("ws://127.0.0.1:{}",listener.local_addr().unwrap().port());
+  tokio::spawn(async move {axum::serve(listener,app).await.unwrap()});
+  let relay=Relay::new(lanes("ws://127.0.0.1:1"),"ws://127.0.0.1:1/",8,8,QUICK).with_hyperliquid(quick_hub(upstream));
+  let port=serve::<()>(routes_with(Arc::new(relay))).await;
+  let mut phones=Vec::new();
+  for coin in ["BTC","ETH"] {
+   let mut c=dial(port,HYPERLIQUID_PATH).await.unwrap();
+   for sub in [format!(r#"{{"method":"subscribe","subscription":{{"type":"candle","coin":"{coin}","interval":"1m"}}}}"#),format!(r#"{{"method":"subscribe","subscription":{{"type":"activeAssetCtx","coin":"{coin}"}}}}"#)] {
+    c.send(Up::Text(sub.into())).await.unwrap();
+   }
+   phones.push((coin,c));
+  }
+  tokio::time::sleep(Duration::from_millis(300)).await;
+  for round in 0..10 {
+   for coin in ["BTC","ETH","SOL"] {
+    let _=push.send(serde_json::json!({"channel":"candle","data":{"t":round,"T":1,"s":coin,"i":"1m","o":"1","c":"1","h":"1","l":"1","v":"1","n":1}}).to_string());
+    let _=push.send(serde_json::json!({"channel":"activeAssetCtx","data":{"coin":coin,"ctx":{"markPx":"1"}}}).to_string());
+   }
+  }
+  for (coin,c) in phones.iter_mut() {
+   let got=drain(c,Duration::from_millis(400)).await;
+   let frames:Vec<serde_json::Value>=got.iter().map(|t|serde_json::from_str(t).unwrap()).collect();
+   let candles=frames.iter().filter(|v|v["channel"]=="candle").inspect(|v|assert_eq!(v["data"]["s"],*coin)).count();
+   let ctxs=frames.iter().filter(|v|v["channel"]=="activeAssetCtx").inspect(|v|assert_eq!(v["data"]["coin"],*coin)).count();
+   assert_eq!((candles,ctxs),(10,10),"{coin}：{got:?}");
+  }
  }
 
  #[tokio::test]
