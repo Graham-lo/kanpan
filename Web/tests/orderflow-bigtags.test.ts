@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flowOf, recordTrade, beat, resetFlows } from '../src/chart/tradeFlow'
 import type { TradeEvent } from '../src/orderflow/feed'
 import { barBig, BigBarCache, TierCache, planTags, tierOf, tiersFrom, quantile, unitFor, ivName, TIER_BARS, type PlanEnv, type TagIn, type BarBig, type Tiers } from '../src/orderflow/bigTags'
-import { dayStart8, windows, liveShares, priceLevels, nearestWalls, HOUR, PX_MINUTES } from '../src/orderflow/summary'
+import { dayStart8, dayStartUtc, windows, liveShares, priceLevels, nearestWalls, HOUR, PX_MINUTES } from '../src/orderflow/summary'
 import { parseLiq, sumLiq, LiqStore, LIQ_POLL_MS, LIQ_MAX_SYMBOLS, LIQ_KEEP_MS, type LiqRow } from '../src/orderflow/liquidation'
 import type { BigOrder } from '../src/orderflow/types'
 
@@ -224,9 +224,15 @@ describe('抽屉 · 汇总', () => {
     expect(dayStart8(d + 23 * HOUR)).toBe(d)
     expect(new Date(dayStart8(T0) + 8 * HOUR).getUTCHours()).toBe(0)
   })
+  it('「今日」从北京时间 8 点（UTC 0 点）起：7:59 还算昨天', () => {
+    const d = Date.UTC(2026, 9, 8, 0, 0, 0)
+    expect(dayStartUtc(d)).toBe(d)
+    expect(dayStartUtc(d - 1)).toBe(d - 86_400_000)
+    expect(dayStartUtc(d + 23 * HOUR)).toBe(d)
+  })
   it('本根 / 近 1 小时 / 今日：窗口边界各自算', () => {
-    const s = 'SOLUSDT', midnight = Date.UTC(2026, 9, 7, 16, 0, 0)
-    const now = midnight + 90 * 60_000   // 北京时间 01:30
+    const s = 'SOLUSDT', midnight = Date.UTC(2026, 9, 8, 0, 0, 0)
+    const now = midnight + 90 * 60_000   // 北京时间 09:30
     cover(s, midnight - 10 * 60_000, now)
     trade(s, midnight - 60_000, 900_000, true)          // 昨天：都不算
     trade(s, midnight + 5 * 60_000, 100_000, true)      // 今日，不在近 1 小时
@@ -298,47 +304,7 @@ describe('抽屉 · 价位', () => {
   })
 })
 
-describe('抽屉 · 画法', () => {
-  it('开方比例尺：今日是本根的 100 倍时本根还有十分之一长；超出比例按满算', async () => {
-    const { sqrtLen } = await import('../src/orderflow/drawer')
-    expect(sqrtLen(100, 10_000, 80)).toBeCloseTo(8)
-    expect(sqrtLen(10_000, 10_000, 80)).toBe(80)
-    expect(sqrtLen(20_000, 10_000, 80)).toBe(80)
-    expect(sqrtLen(0, 10_000, 80)).toBe(0)
-  })
-  it('对撞条填充：短于条宽是圆角 3 的矮矩形（最矮 4），长过条宽才是圆头；没数不画', async () => {
-    const { fillLen, fillRadius } = await import('../src/orderflow/drawer')
-    expect(fillLen(1, 10_000, 80)).toBe(4)                // 0.8 px 托到 4
-    expect(fillLen(100, 10_000, 80)).toBeCloseTo(8)
-    expect(fillLen(0, 10_000, 80)).toBe(0)
-    expect(fillRadius(8, 26)).toBe(3)
-    expect(fillRadius(26, 26)).toBe(3)
-    expect(fillRadius(60, 26)).toBe(13)
-  })
-  it('占比条至少两段才画（100% 一段什么也没说）', async () => {
-    const { splitWorth } = await import('../src/orderflow/drawer')
-    expect(splitWorth([{ v: 5 }, { v: 0 }])).toBe(false)
-    expect(splitWorth([{ v: 5 }, { v: 1 }, { v: 0 }])).toBe(true)
-    expect(splitWorth([])).toBe(false)
-  })
-  it('价位块：同一档既是买前三又是卖前三并成一行，价位不重复，按价从高到低', async () => {
-    const { pxRows } = await import('../src/orderflow/drawer')
-    const rows = pxRows([{ price: 115.6, usd: 4.8e6, n: 0 }, { price: 115.2, usd: 7.2e6, n: 0 }, { price: 114.8, usd: 4.8e6, n: 0 }],
-      [{ price: 115.6, usd: 7e6, n: 0 }, { price: 115.4, usd: 3.3e6, n: 0 }, { price: 115.2, usd: 3.7e6, n: 0 }])
-    expect(rows.map(r => r.price)).toEqual([115.6, 115.4, 115.2, 114.8])
-    expect(rows[0]).toEqual({ price: 115.6, buy: 4.8e6, sell: 7e6 })
-    expect(rows[1]).toEqual({ price: 115.4, buy: 0, sell: 3.3e6 })
-    expect(rows[3]).toEqual({ price: 114.8, buy: 4.8e6, sell: 0 })
-    // 分档价有浮点误差（0.1 + 0.2）也算同一档
-    expect(pxRows([{ price: 0.1 + 0.2, usd: 1, n: 0 }], [{ price: 0.3, usd: 2, n: 0 }])).toHaveLength(1)
-  })
-  it('深色判断按主文字亮度：#rgb / #rrggbb / rgb()', async () => {
-    const { lum } = await import('../src/orderflow/drawer')
-    expect(lum('#131722')).toBeLessThan(0.2)
-    expect(lum('#fff')).toBeCloseTo(1)
-    expect(lum('rgb(209, 212, 220)')).toBeGreaterThan(0.5)
-    expect(lum('rgba(19, 23, 34, 1)')).toBeLessThan(0.2)
-  })
+describe('抽屉 · 十字线', () => {
   it('十字线所在根：自己的十字线按横坐标取根，别的格子同步来的按时间取根；出了数据两头为 null', async () => {
     const { crossTime } = await import('../src/orderflow/drawer')
     const bars = [{ t: 0 }, { t: 300 }, { t: 600 }]

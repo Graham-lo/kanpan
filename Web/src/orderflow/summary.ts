@@ -4,7 +4,7 @@
  * 落在哪几个价、离最近的墙多远」。这里只放纯算法（不碰 DOM），抽屉 drawer.ts 拿结果画图，测试直接测这里。
  *
  * 规则：
- *   · 三个窗口：本根（当前周期正在走的那根）、近 1 小时（滚动）、今日（北京时间 0 点起）。金额来自 tradeFlow 的分钟桶
+ *   · 三个窗口：本根（当前周期正在走的那根）、近 1 小时（滚动）、今日（北京时间 8 点 = UTC 0 点起，和日线同一个换根点）。金额来自 tradeFlow 的分钟桶
  *     （浏览器记的 + 服务端历史，取法同 bigTags.sumBig）；笔数只有整段都来自浏览器时才有。
  *   · 现货 / 合约、三家的占比只拿浏览器近 1 小时记到的大单算（服务端历史没有这几项），一笔都没有就不画。
  *   · 价位：近 1 小时（最近 60 个整分钟）的大单按订单流的细步长分桶，买、卖各取金额最大的三档。每分钟取哪份同上：
@@ -25,6 +25,8 @@ const TZ8 = 8 * HOUR
 
 /** 北京时间当天 0 点（毫秒） */
 export function dayStart8(now: number): number { return Math.floor((now + TZ8) / DAY) * DAY - TZ8 }
+/** 「今日」的起点：北京时间 8 点（= UTC 0 点，交易所日线换根的那一刻）。汇总的今日、累计净额、今日爆仓都从这里起 */
+export function dayStartUtc(now: number): number { return Math.floor(now / DAY) * DAY }
 
 export interface WinSum { bb: number; bs: number; bn: number | null; sn: number | null; has: boolean }
 
@@ -40,7 +42,7 @@ export function windows(f: SymbolFlow, barT0: number, barT1: number, now: number
   return {
     bar: windowSum(f, barT0, barT1, now, barT1 - barT0 < 60_000),
     hour: windowSum(f, now - HOUR, now + 1, now),
-    today: windowSum(f, dayStart8(now), now + 1, now),
+    today: windowSum(f, dayStartUtc(now), now + 1, now),
   }
 }
 

@@ -126,6 +126,8 @@ export const OF = {
   revealBar: null as null | ((symbol: string, t: number) => void),
   /** 活动格子十字线所在那根的开盘时间（抽屉按根表同步高亮，drawer.ts 跟着指针移动读出来）；不在图上为 null */
   crossT: null as number | null,
+  /** 抽屉「每根」里点选的那一根（再点一次取消；换品种 / 周期清掉）：活动格子在那根上铺一道强调色竖带 */
+  selBar: null as null | { symbol: string; iv: number; t: number },
 }
 
 /** 数据层还没起来时各处空态的那句话：在等品种停稳就是「正在接」，否则是没打开 */

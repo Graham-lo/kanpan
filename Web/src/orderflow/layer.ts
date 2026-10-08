@@ -20,8 +20,9 @@ import { OF, rowsPerLine, bandColor, bandInk, isDarkBg, rgbOf, showCard, hideCar
 import { esc } from '../ui/dom'
 import { hexA } from '../util/format'
 import { flowOf, ensureHistory } from '../chart/tradeFlow'
-import { BigBarCache, TierCache, planTags, unitFor, ivName, type Tag, type TagIn, type Rect as TagRect, type BarBig } from './bigTags'
-import { EXCHANGE_NAMES as EXN } from './aggregate'
+import { BigBarCache, TierCache, planTags, unitFor, type Tag, type TagIn, type Rect as TagRect, type BarBig } from './bigTags'
+import { hoverCardHtml, ivShort } from './drawerView'
+import { drawerChartDrawn } from './drawer'
 
 interface BandHit { x0: number; x1: number; y0: number; y1: number; o: BigOrder; id: string }
 interface HeatDraw { cols: HeatCol[]; xs: number[]; ws: number[]; rowLo: number; rowHi: number; k: number; step: number; top: number; bottom: number }
@@ -379,21 +380,24 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       <div class="of-card-r"><span>挂单名义</span><b class="num">${amt(col.vals[i])}</b></div>${split}`
   }
 
-  function tagCard(t: Tag, g: ChartGeometry): string {
+  // 悬停卡与抽屉「每根」同一套样子（drawerView.hoverCardHtml）
+  function tagCard(t: Tag): string {
     const d = tagData.get(t.t)
-    if (!d) return ''
-    const net = d.bb - d.bs
-    const n = (k: number | null): string => k == null ? '' : `（${k} 笔）`
-    const mx = d.bmax && d.smax ? (d.bmax.usd >= d.smax.usd ? d.bmax : d.smax) : d.bmax ?? d.smax
-    const r = (k: string, v: string): string => `<div class="of-card-r"><span>${k}</span><b class="num">${v}</b></div>`
-    let h = `<div class="of-card-h"><i style="background:${net >= 0 ? 'var(--up)' : 'var(--down)'}"></i>大单 · ${mdhm(d.t)} · ${ivName(d.t1 - d.t)}</div>` +
-      r('大买', `<span class="up">${amt(d.bb)}</span>${n(d.bn)}`) + r('大卖', `<span class="down">${amt(d.bs)}</span>${n(d.sn)}`) +
-      r('净额', `<span class="${net >= 0 ? 'up' : 'down'}">${net > 0 ? '+' : net < 0 ? '−' : ''}${amt(Math.abs(net))}</span>`)
-    if (mx) h += r('最大一笔', `${amt(mx.usd)} · ${esc(exName(mx.exchange))}${PRODUCT_FULL[mx.product]} · ${px(mx.price, g.dec)}`)
-    const tot = d.bb + d.bs
-    if (d.spot != null && tot > 0) h += r('现货 / 合约', `${Math.round(d.spot / tot * 100)}% / ${Math.round((tot - d.spot) / tot * 100)}%`)
-    if (d.ex && tot > 0) h += r('三家', d.ex.map((v, k) => `${EXN[k]} ${Math.round(v / tot * 100)}%`).join(' · '))
-    return h
+    return d ? hoverCardHtml(d, mdhm(d.t), ivShort(d.t1 - d.t)) : ''
+  }
+
+  /** 抽屉里选中的那根：一道强调色竖带（画在蜡烛下面） */
+  function drawSel(c: CanvasRenderingContext2D, g: ChartGeometry): void {
+    const s = OF.selBar
+    if (!s || s.symbol !== cellOf().symbol.toUpperCase() || s.iv !== g.iv || OF.api?.activeChart()?.chart !== chart) return
+    const x = xOf(g, s.t)
+    if (x + g.spacing < 0 || x > g.plotW) return
+    const [r, gg, b] = rgbOf(g.colors.accent)
+    const w = Math.max(2, g.spacing)
+    c.fillStyle = `rgba(${r},${gg},${b},.09)`
+    c.fillRect(x, g.pane.y, w, g.pane.h)
+    c.fillStyle = `rgba(${r},${gg},${b},.85)`
+    c.fillRect(x, g.pane.y + g.pane.h - 3, w, 3)
   }
 
   const tagAt = (x: number, y: number): Tag | null => {
@@ -416,6 +420,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     },
     under(c, g) {
       geo = g
+      drawSel(c, g)
       const sk = stepK(g)
       if (!sk) { bands = []; plan = null; return }
       drawBands(c, g, sk[1], sk[0])
@@ -426,11 +431,14 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       drawTags(c, g)
       if (mine()) drawHoverRow(c, g)
     },
-    after(g) { if (mine()) OF.onChartDrawn?.(chart, g) },
+    after(g) {
+      if (mine()) OF.onChartDrawn?.(chart, g)
+      drawerChartDrawn(chart)
+    },
     hover(x, y, cx, cy) {
       if (!geo) return false
       const tg = tagAt(x, y)
-      if (tg) { showCard(tagCard(tg, geo), cx, cy); return true }
+      if (tg) { showCard(tagCard(tg), cx, cy); return true }
       if (!mine()) { hideCard(); return false }
       const dec = geo.dec
       const step = OF.feed?.model.scheme?.step ?? 0
@@ -449,6 +457,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       if (tg) {
         const sym = cellOf().symbol.toUpperCase()
         OF.barHi = { symbol: sym, t: tg.t, until: Date.now() + 1500 }
+        OF.selBar = { symbol: sym, iv: chart.iv, t: tg.t }
         chart.dirty = true
         OF.revealBar?.(sym, tg.t)
         return true
