@@ -449,7 +449,7 @@ function updateAlerts(): void {
   const box = el.querySelector<HTMLElement>('#ofAlerts')!
   if (!a || !OF.api) { box.innerHTML = ''; return }
   const list = OF.api.alertsFor(a.symbol)
-  const html = list.length ? list.map(x => `<div class="of-al"><span class="num">${esc(OF.api!.alertDesc(x))}</span><button class="ibtn xs" data-of-del="${esc(x.id)}" aria-label="删除提醒" data-tip="删除">${I('trash', 'icon-16')}</button></div>`).join('')
+  const html = list.length ? list.map(x => `<div class="of-al"><span class="num">${OF.api!.alertDesc(x)}</span><button class="ibtn xs" data-of-del="${esc(x.id)}" aria-label="删除提醒" data-tip="删除">${I('trash', 'icon-16')}</button></div>`).join('')
     : `<div class="of-wait faint">这只品种没有还在等的提醒 · 点梯子上的一行就能建</div>`
   if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html }
 }
