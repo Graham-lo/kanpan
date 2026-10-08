@@ -92,6 +92,15 @@ describe('大单与爆仓 · 片段', () => {
     expect(barsCardHTML([], null, null)).toBe('')
   })
 
+  it('价位梯：有量但很短的条画成最窄 4px、圆角 3 的矮矩形，不缩成细线；没量的不画', () => {
+    const rows = ladderRows({ buy: [{ price: 100, usd: 1e6 }, { price: 100.5, usd: 1e3 }], sell: [] } as never, 100, 0.5, { ask: null, bid: null })
+    const lad = ladderCardHTML(rows)
+    const tiny = rows.find(r => r.buy > 0 && r.buy < 1e4)!
+    expect(tiny.bw * 0.62).toBeLessThan(3)
+    expect(lad).toContain('<i class="tiny" style="width:max(4px,')
+    expect(lad.match(/class="tiny"/g)!.length).toBe(1)
+    expect(lad).toContain('<i style="width:0%"></i>')
+  })
   it('价位梯与 24 小时爆仓：墙写成「墙 2.0M」，96 格、最大一笔一行', () => {
     const rows = ladderRows({ buy: [{ price: 100, usd: 1e6 }], sell: [] } as never, 100, 0.5, { ask: null, bid: { price: 99, usd: 2e6 } as never })
     const lad = ladderCardHTML(rows)

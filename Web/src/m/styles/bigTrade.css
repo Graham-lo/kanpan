@@ -80,6 +80,7 @@
 .bt-ladder .bl, .bt-ladder .br { position: relative; height: 12px }
 .bt-ladder .bl i { position: absolute; right: 0; top: 0; bottom: 0; border-radius: 6px 2px 2px 6px; background: color-mix(in srgb, var(--up) 78%, transparent) }
 .bt-ladder .br i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px 6px 6px 2px; background: color-mix(in srgb, var(--down) 78%, transparent) }
+.bt-ladder .bl i.tiny, .bt-ladder .br i.tiny { top: 2px; bottom: 2px; border-radius: 3px }
 .bt-ladder s { position: absolute; top: 50%; transform: translateY(-50%); text-decoration: none; font-size: 11px; color: var(--ink3); white-space: nowrap }
 .bt-ladder .bl s { right: calc(var(--w) + 5px) } .bt-ladder .br s { left: calc(var(--w) + 5px) }
 .bt-ladder .wall { position: absolute; top: 50%; transform: translateY(-50%); font: 600 11px/1 var(--font-ui); padding: 3px 6px; border-radius: 999px; color: #fff; white-space: nowrap }
@@ -101,7 +102,8 @@
 
 /* 数据停住 / 断线：数字转灰，签照旧 */
 .bt-sheet.stale .bt-amts b, .bt-sheet.stale .bt-ends b, .bt-sheet.stale .bt-mini b, .bt-sheet.stale .bt-vs .net, .bt-sheet.stale .bt-liqmax .v { color: var(--ink3) }
-.bt-sheet.stale .bt-ends b, .bt-sheet.stale .bt-amts b, .bt-sheet.stale .bt-mini b { color: var(--ink3) !important }
+.bt-sheet.stale .bt-card { color: var(--ink3) }
+.bt-sheet.stale .bt-ends b, .bt-sheet.stale .bt-amts b, .bt-sheet.stale .bt-amts b span, .bt-sheet.stale .bt-mini b, .bt-sheet.stale .bt-vs .net, .bt-sheet.stale .bt-liqmax .v { color: var(--ink3) !important }
 .bt-sheet.stale .bt-vs .b, .bt-sheet.stale .bt-vs .a, .bt-sheet.stale .bt-ladder i, .bt-sheet.stale .bt-u, .bt-sheet.stale .bt-d { filter: saturate(.15) opacity(.6) }
 .bt-sheet.stale .bt-live { background: var(--ink3); animation: none }
 

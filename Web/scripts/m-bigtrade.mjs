@@ -29,7 +29,9 @@ async function page({ skin = 'sage', scheme = 'light', query = '', symbol = 'BTC
   await p.goto(URL_ + query + '#chart')
   return { ctx, p, errs }
 }
-const shot = (p, name) => p.screenshot({ path: OUT + `m-${name}.png` })
+// BT_ONLY=state-stale,sage-light-full-bottom 只重截点名的几张（其余照跑核对、不覆盖）
+const ONLY = process.env.BT_ONLY ? process.env.BT_ONLY.split(',') : null
+const shot = (p, name) => (ONLY && !ONLY.includes(name) ? Promise.resolve() : p.screenshot({ path: OUT + `m-${name}.png` }))
 const hero = p => p.evaluate(() => ({
   title: document.querySelector('.bt-ht')?.textContent, rt: document.querySelector('[data-card="hero"] h5 .rt')?.textContent,
   full: document.querySelector('.bt-sheet')?.classList.contains('full'), parked: document.querySelector('.bt-wrap')?.classList.contains('parked'),
