@@ -474,6 +474,8 @@ final class ChartProxy {
   }
   /// 收掉十字线（图上那颗「创建提醒」点下去、弹新建提醒页时）。图还没建出来就当没这回事。
   func clearCrosshair() { box?.chart.clearCrosshair() }
+  /// 十字线跳到开盘时间为 `t` 的那一根（大单与爆仓弹层的「每根」条）。
+  func placeCrosshair(atTime t: Int64) { box?.chart.placeCrosshair(atTime: t) }
 
   var isAtLatest: Bool { box?.chart.isAtLatest ?? true }
   /// 此刻图上真正在看的那段时间。视野归图自己管，外面要读就从这儿读
@@ -520,6 +522,8 @@ struct ChartHost: UIViewRepresentable {
   var onCrosshair: (Crosshair?) -> Void = { _ in }
   /// 主力订单流选中的那一桶变了（轻点选中 / 十字线停在一条带上）；`nil` = 收卡。见 `ChartView.onOrderFlowFocusChanged`。
   var onOrderFlowFocus: (ChartOrderFlowFocus?) -> Void = { _ in }
+  /// 点中一枚大单签（十字线已落到那一根）。`nil` = 不接（横屏画线台）：签照画，点了照常出十字线。
+  var onBigTradeTap: ((BigTradeSign) -> Void)?
   var onNeedsHistory: () -> Void = {}
   var onTapped: () -> Void = {}
   /// 图里那些「做了个大动作」的提示，接到外面的 toast 上。
@@ -789,6 +793,7 @@ struct ChartHost: UIViewRepresentable {
     box.onSubReorder = onSubReorder
     box.chart.onCrosshairChanged = onCrosshair
     box.chart.onOrderFlowFocusChanged = onOrderFlowFocus
+    box.chart.onBigTradeTap = onBigTradeTap
     box.chart.onNeedsHistory = onNeedsHistory
     box.chart.onTapped = onTapped
     box.chart.onNotice = onNotice

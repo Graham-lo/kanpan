@@ -27,7 +27,7 @@ public struct ChartRenderer {
   /// 临时客线不属于存档与个人布局。
   public var guestDrawings: [Drawing] = [] {
     // 金额签也躲对方分享来的线上的字，签存在订单流那只盒子里，线一换就得重排。
-    didSet { if guestDrawings != oldValue { orderFlowCache = OrderFlowCache() } }
+    didSet { if guestDrawings != oldValue { orderFlowCache = OrderFlowCache(); bigTradeSignCache = BigTradeSignCache() } }
   }
   public var ownDimmed = false
   /// 选中的那条画线（底图里它画满 1，其余按 `DrawPen.restAlpha` 退后一步）。
@@ -51,6 +51,10 @@ public struct ChartRenderer {
   private var viewportCache = ViewportCache()
   /// 主力订单流色块的几何：再加上快照与显示开关变了才失效，十字线动不失效。见 `OrderFlowCache`。
   var orderFlowCache = OrderFlowCache()
+  /// 大单签每根买 / 卖与档位：盒子内按「序列身份 + 分钟账」自认，长驻不换。见 `ChartRenderer+BigTrades`。
+  let bigTradeBarsCache = BigTradeBarsCache()
+  /// 这一屏摆好的大单签：和订单流色带同一套失效，另外分钟账一变也换。
+  var bigTradeSignCache = BigTradeSignCache()
   /// 主力订单流的并墙（与视野无关的那一半）放到后台算：快照换了、还没算好时先拿同一只的上一份顶着画，
   /// 不在主线程上等（见 `OrderFlowWallCache.lookup`）。挂在窗口上的图表视图打开；离屏渲染、分享图、测试不开，照旧同步算。
   var orderFlowPrepareInBackground = false
@@ -75,6 +79,7 @@ public struct ChartRenderer {
     // 一只盒子只会被「那一层输入与它里面的结果一致」的 state 写入。
     guard let previous else {
       inputCache = InputCache(); viewportCache = ViewportCache(); orderFlowCache = OrderFlowCache()
+      bigTradeSignCache = BigTradeSignCache()
       ChartWorkCounter.bump(.geometryCache); ChartWorkCounter.bump(.viewportCache)
       rebuildIndicators(previous: nil)
       return
@@ -97,6 +102,10 @@ public struct ChartRenderer {
       || previous.orderFlowDisplay != state.orderFlowDisplay
       || previous.drawings != state.drawings || previous.drawingPreviewID != state.drawingPreviewID {
       orderFlowCache = OrderFlowCache()
+    }
+    if inputChanged || viewportChanged || previous.bigTrades != state.bigTrades
+      || previous.drawings != state.drawings || previous.drawingPreviewID != state.drawingPreviewID {
+      bigTradeSignCache = BigTradeSignCache()
     }
     if inputChanged || previous.view != state.view {
       rebuildIndicators(previous: previous)
@@ -406,6 +415,7 @@ public struct ChartRenderer {
     else {
       drawOverlays(ctx, pane: main, r: r, L: L, scale: s)
       drawDrawings(ctx, pane: main, r: r, L: L, scale: s)
+      drawBigTrades(ctx, pane: main, range: r, L: L)
       if live { drawDepth(ctx, pane: main, range: r, L: L) }
     }
     if live { drawLastPrice(ctx, pane: main, r: r, L: L, scale: s) }

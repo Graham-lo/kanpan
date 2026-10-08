@@ -45,6 +45,8 @@ public final class ChartView: UIView {
   #endif
   private let crossLayer = CanvasLayer(part: .cross)
   private var canvases: [CanvasLayer] { [plotLayer, liveLayer, crossLayer] }
+  /// 大单签的动效（正在走那根的光环、点中那一下放大）挂在底图之上、最新价之下（`ChartView+BigTrades`）。
+  let bigTradeFXLayer = CALayer()
 
   /// 客线是临时覆盖，不属于 ChartState / 存档，也不参与画线命中。
   public var guestDrawings: [Drawing] = [] {
@@ -315,6 +317,13 @@ public final class ChartView: UIView {
              "candleBottom": $0.candle.map { $0.bottom as Any } ?? NSNull()] as [String: Any]
           } ?? [:],
           "orderFlowAdoptions": orderFlowAdoptions,
+          // 这一屏的大单签（视图坐标）：UI 用例按它点签、核对与画线文字零相交。
+          "bigTradeSigns": bigTradeSigns.map {
+            ["index": $0.index, "t": $0.t, "buy": $0.buy, "tier": $0.tier, "x": $0.markCenter.x, "y": $0.markCenter.y,
+             "minX": $0.bounds.minX, "minY": $0.bounds.minY, "maxX": $0.bounds.maxX, "maxY": $0.bounds.maxY,
+             "capsule": $0.capsule != nil, "text": $0.text] as [String: Any]
+          },
+          "bigTradePulses": bigTradePulseCount,
           "orderFlowPlotDirties": orderFlowPlotDirties,
           "orderFlowDirtyReasons": orderFlowDirtyReasons,
           "renderCounts": renderCounts,
@@ -373,6 +382,8 @@ public final class ChartView: UIView {
   public var onNeedsHistory: (() -> Void)?
   /// 图上轻点了一下（没有十字线、不是双击）。画线选中交给 M7 接。
   public var onTapped: (() -> Void)?
+  /// 点中了一枚大单签（十字线已经落到那一根上）。`nil` = 宿主不接（横屏画线台）：签照画、点了不当签处理。
+  public var onBigTradeTap: ((BigTradeSign) -> Void)?
   /// 图自己做了件用户可能没预料到的事，需要外面报一行短提示（比如价格轴双击翻转）。
   /// 只给这种「不说一声就找不回来」的动作用，别拿它做常规反馈。
   public var onNotice: ((String) -> Void)?
@@ -432,6 +443,8 @@ public final class ChartView: UIView {
       c.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
       layer.addSublayer(c)
     }
+    bigTradeFXLayer.actions = ["bounds": NSNull(), "position": NSNull()]
+    layer.insertSublayer(bigTradeFXLayer, above: plotLayer)
     // 主力订单流的墙在后台算好了：上一帧是拿旧的那份顶着画的就重画（见 `orderFlowWallsReady`）。
     // 选择子式的观察者随视图释放自动摘掉，不用在 deinit 里撤。
     NotificationCenter.default.addObserver(self, selector: #selector(orderFlowWallsReady(_:)),
@@ -494,6 +507,7 @@ public final class ChartView: UIView {
       c.frame = bounds
       c.contentsScale = scale
     }
+    bigTradeFXLayer.frame = bounds
     CATransaction.commit()
     setNeedsRedraw(.all)
   }
@@ -590,6 +604,7 @@ public final class ChartView: UIView {
     }
     #endif
     flashIfTicked(from: old, to: s)
+    pulseBigTradeIfNew(from: old, to: s)
     if !layers.isEmpty { onStateChanged?(s, layers) }
     if old?.crosshair != s.crosshair { fireCrosshairChanged(s.crosshair) }
     // 选中的那一条：只在有十字线、有选中，或者上一次报过的时候才去算（没选中时一次都不算）。
@@ -680,6 +695,8 @@ public final class ChartView: UIView {
     if o.orderFlowDisplay != new.orderFlowDisplay || !samePixels(o.orderFlow, new.orderFlow) { p.insert([.plot, .cross]) }
     else if o.orderFlow != new.orderFlow { p.insert(.cross) }
     if o.crosshair != new.crosshair || o.orderFlowSelected != new.orderFlowSelected { p.insert(.cross) }
+    // 大单签画在底图上：分钟账换了（每秒最多一份）只脏底图。
+    if o.bigTrades != new.bigTrades { p.insert(.plot) }
     // 倒计时每秒走一格，但它只画在 `liveLayer` 上——只脏 live，别把整张图拖下水
     // （A3.12 要求静止时 CPU < 1%，重画 plot 层就破功了）。倒计时没开就当没变过。
     if o.nowMs != new.nowMs, new.options.countdown, new.options.lastLine { p.insert(.live) }
@@ -860,6 +877,8 @@ public final class ChartView: UIView {
   private(set) var renderCounts: [String: Int] = [:]
   /// 主力订单流快照换了几次（新快照和上一份不相等才算），诊断 JSON 的 `orderFlowAdoptions`。
   private(set) var orderFlowAdoptions = 0
+  /// 正在走那根的光环响了几次（诊断 JSON 的 `bigTradePulses`）。
+  var bigTradePulseCount = 0
   /// 其中画出来真的变了、把底图弄脏的有几次（其余只脏 cross 层），诊断 JSON 的 `orderFlowPlotDirties`。
   private(set) var orderFlowPlotDirties = 0
   /// 底图被弄脏的那几次各是因为什么（单数变、某单粗细档变、深浅变、状态变……），取证用。

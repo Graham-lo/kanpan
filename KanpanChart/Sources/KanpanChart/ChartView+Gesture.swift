@@ -775,6 +775,8 @@ extension ChartView {
       return
     }
     gesture.lastPlotTap = (ms: now, x: Double(p.x), y: Double(p.y))
+    // 大单签：点中一枚就落十字线、交宿主出弹层（蜡烛上只认签本身那一小块，见 `handleBigTradeTap`）。
+    if handleBigTradeTap(at: p) { return }
     // 主力订单流：点在一条色带（一桶一段合并的那条）上就选中它（出详情卡、描边），再点同一条收起，点别的换过去；
     // 选中时点空白处只收卡，不顺手开十字线。「同一条」按 `orderFlowIsSelected` 认（段起点前移过也算同一条）。
     // 点在蜡烛上（高低范围内）永远是 K 线的：出十字线，不被垫在底下的大单带子截走。

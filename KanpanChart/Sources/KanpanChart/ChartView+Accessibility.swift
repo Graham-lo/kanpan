@@ -27,8 +27,14 @@ extension ChartView {
       "开 " + fmtNum(b.open[i], d), "高 " + fmtNum(b.high[i], d),
       "低 " + fmtNum(b.low[i], d), "收 " + fmtNum(b.close[i], d), change,
     ].joined(separator: "，")
-    guard s.crosshair == nil else { return bar }
-    return "\(InstrumentID(s.symbol.symbol).display)，\(b.interval.display)，最新一根 " + bar
+    let sign = bigTradeVoiceOver.map { "，" + $0 } ?? ""
+    guard s.crosshair == nil else { return bar + sign }
+    return "\(InstrumentID(s.symbol.symbol).display)，\(b.interval.display)，最新一根 " + bar + sign
+  }
+
+  public override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
+    get { (super.accessibilityCustomActions ?? []) + bigTradeAccessibilityActions() }
+    set { super.accessibilityCustomActions = newValue }
   }
 
   public override func accessibilityIncrement() { stepCrosshairForVoiceOver(1) }
