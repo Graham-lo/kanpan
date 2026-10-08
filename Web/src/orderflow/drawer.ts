@@ -6,7 +6,7 @@
  *
  * 四块（横着排，1440 宽时后两块折到第二行）：
  *   1. 汇总：三根「买卖对撞条」（本根 / 近 1 小时 / 今日）——买从中线往上长、卖往下长，三根共用一个开方比例尺
- *      （今日是本根的几十倍，线性比例下本根那根看不见），条宽 26 px、两头全圆，金额贴在条的外端，净额写在中线上；
+ *      （今日是本根的几十倍，线性比例下本根那根看不见），条宽 26 px、底轨两头全圆（填充短于条宽时是圆角 3 的矮矩形，长过条宽才是圆头），金额贴在条的外端，净额写在中线上；
  *      下面的占比条（现货 / 合约、币安 / OKX / Coinbase，只用浏览器近 1 小时记到的）只有至少两段时才画——
  *      100% 一段的条什么也没说，不画，那一截高度也收回去。
  *   2. 每根：跟着当前周期，最新在上，只列有大单签的那几根（和图上同一套相对档位，见 bigTags.ts）。行里是从中轴往两边长的
@@ -321,7 +321,13 @@ interface Col { name: string; sub: string; up: number; down: number }
 /** 开方比例尺：v / scale 开方后乘长度。今日常是本根的几十倍，线性下本根只剩一个点 */
 export const sqrtLen = (v: number, scale: number, len: number): number => v > 0 && scale > 0 ? Math.sqrt(Math.min(1, v / scale)) * len : 0
 
-/** 三根对撞条：up 从中线往上（涨色）、down 往下（跌色），共用一个开方比例尺；条 26 px 宽、两头全圆，
+/** 对撞条填充长：有数的最短 4 px（不至于缩成看不见的缝），没数为 0 */
+export const fillLen = (v: number, scale: number, half: number): number => v > 0 ? Math.max(4, sqrtLen(v, scale, half)) : 0
+/** 填充的圆角：长过条宽才是圆头（= 半条宽），短的是圆角 3 的矮矩形 */
+export const fillRadius = (len: number, cw: number): number => len > cw ? cw / 2 : 3
+
+/** 三根对撞条：up 从中线往上（涨色）、down 往下（跌色），共用一个开方比例尺；条 26 px 宽、底轨两头全圆，
+ *  填充短于条宽时是圆角 3 的矮矩形、长过条宽才是圆头，
  *  底轨同色 12%（深色 24%）、填充 85%，金额贴在填充的外端；中线上写净额（up − down） */
 function drawCollide(c: CanvasRenderingContext2D, x0: number, w: number, H: number, cols: Col[], p: Pal): void {
   const LAB = 30, TIP = 14, GAP = 10
@@ -340,10 +346,12 @@ function drawCollide(c: CanvasRenderingContext2D, x0: number, w: number, H: numb
     c.fillStyle = p.up; rr(c, x, mid - GAP - half, CW, half, R); c.fill()
     c.fillStyle = p.down; rr(c, x, mid + GAP, CW, half, R); c.fill()
     c.globalAlpha = 0.85
-    // 有数的最短也是一颗圆点（= 条宽），不至于缩成一条看不见的缝
-    const lu = k.up > 0 ? Math.max(CW, sqrtLen(k.up, scale, half)) : 0, ld = k.down > 0 ? Math.max(CW, sqrtLen(k.down, scale, half)) : 0
-    if (lu) { c.fillStyle = p.up; rr(c, x, mid - GAP - lu, CW, lu, R); c.fill() }
-    if (ld) { c.fillStyle = p.down; rr(c, x, mid + GAP, CW, ld, R); c.fill() }
+    // 填充短于条宽时画成矮矩形（圆角 3、最矮 4），长过条宽才用圆头——不然短条被圆角画成一颗圆点，像指示灯；
+    // 金额仍按「至少一个条宽」的位置写，短条长短变化时数字不跳
+    const fu = fillLen(k.up, scale, half), fd = fillLen(k.down, scale, half)
+    const lu = k.up > 0 ? Math.max(CW, fu) : 0, ld = k.down > 0 ? Math.max(CW, fd) : 0
+    if (fu) { c.fillStyle = p.up; rr(c, x, mid - GAP - fu, CW, fu, fillRadius(fu, CW)); c.fill() }
+    if (fd) { c.fillStyle = p.down; rr(c, x, mid + GAP, CW, fd, fillRadius(fd, CW)); c.fill() }
     c.globalAlpha = 1
     c.textAlign = 'center'; c.font = canvasFont(11)
     c.fillStyle = p.t2

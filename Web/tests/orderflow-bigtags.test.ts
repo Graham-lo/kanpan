@@ -291,6 +291,15 @@ describe('抽屉 · 画法', () => {
     expect(sqrtLen(20_000, 10_000, 80)).toBe(80)
     expect(sqrtLen(0, 10_000, 80)).toBe(0)
   })
+  it('对撞条填充：短于条宽是圆角 3 的矮矩形（最矮 4），长过条宽才是圆头；没数不画', async () => {
+    const { fillLen, fillRadius } = await import('../src/orderflow/drawer')
+    expect(fillLen(1, 10_000, 80)).toBe(4)                // 0.8 px 托到 4
+    expect(fillLen(100, 10_000, 80)).toBeCloseTo(8)
+    expect(fillLen(0, 10_000, 80)).toBe(0)
+    expect(fillRadius(8, 26)).toBe(3)
+    expect(fillRadius(26, 26)).toBe(3)
+    expect(fillRadius(60, 26)).toBe(13)
+  })
   it('占比条至少两段才画（100% 一段什么也没说）', async () => {
     const { splitWorth } = await import('../src/orderflow/drawer')
     expect(splitWorth([{ v: 5 }, { v: 0 }])).toBe(false)
