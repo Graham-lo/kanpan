@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   barText, bfHtml, placeAxis, liqBuckets, pickBucket, bucketCount, LIQ_BUCKETS, NET_BUCKETS, histFmt, srcHtml, pct, signed, tone,
   cumPoints, cumSvg, hourTicks, ivShort, levelsSvg, maxOf, hoverCardHtml,
+  bfLabel, barCols, barNeed, barHeadHtml, barRowHtml, type BarNeed, type BarCols, type Measure,
 } from '../src/orderflow/drawerView'
+import { pillFit, PILL_DOT } from '../src/orderflow/state'
 import type { LiqRow } from '../src/orderflow/liquidation'
 import type { BarBig } from '../src/orderflow/bigTags'
 
@@ -182,5 +184,109 @@ describe('周期短名', () => {
     expect(ivShort(24 * HOUR)).toBe('1日')
     expect(ivShort(7 * 24 * HOUR)).toBe('1周')
     expect(ivShort(30 * 24 * HOUR)).toBe('1月')
+  })
+})
+
+// ---- 逐根列布局（1024 宽窗口里列重叠：1 时「242/191」比 38 px 的笔数列宽，压到最大单笔）
+/** 假字宽：中文一个字 = 字号，其余 0.62 字号 */
+const mw: Measure = (t, _w = 600, size = 11) => [...t].reduce((a, ch) => a + (/[一-鿿]/.test(ch) ? size : size * 0.62), 0)
+const NEED: BarNeed = { tm: 40, tmWide: 70, bf: 30, n: 40, c: 30, m: 40, x: 30, v: 26 }
+/** cols 里定宽各列（px）与对撞条的下限 */
+const parseCols = (k: BarCols): { fixed: number[]; bfMin: number } => {
+  const m = /^(\d+)px minmax\((\d+)px, 1fr\)((?: \d+px)*)$/.exec(k.cols)!
+  return { fixed: [+m[1], ...m[3].trim().split(' ').filter(Boolean).map(x => parseInt(x))], bfMin: +m[2] }
+}
+const bigBar = (t: number, over: Partial<BarBig> = {}): { t: number; d: BarBig } => ({
+  t, d: { t, t1: t + HOUR, bb: 57.5e6, bs: 38.7e6, bn: 217, sn: 264, bmax: { usd: 17.3e6, price: 1, exchange: 'binance', product: 'usdtPerp', t }, smax: null, spot: 1e7, ex: [5e7, 3e7, 1e7, 5e6, 1.2e6], exact: true, ...over },
+})
+
+describe('逐根 · 列布局', () => {
+  it('行内宽 ≥ 788：宽卡大档（时间带日期、多一列现货），照原来的疏密', () => {
+    const k = barCols(800, NEED)
+    expect(k).toMatchObject({ wide: true, c: true, m: true, v: true, gap: 10 })
+    expect(k.cols).toBe('92px minmax(200px, 1fr) 80px 64px 80px 60px 120px')
+  })
+  it('628–787：宽卡小档', () => {
+    const k = barCols(640, NEED)
+    expect(k).toMatchObject({ wide: true, gap: 8 })
+    expect(k.cols.startsWith('80px minmax(150px, 1fr)')).toBe(true)
+  })
+  it('窄卡放得下：原来那套 52 / ≥76 / 52 / 38 / 50 / 26', () => {
+    const k = barCols(560, NEED)
+    expect(k).toMatchObject({ wide: false, c: true, m: true, v: true, gap: 6 })
+    expect(k.cols).toBe('52px minmax(76px, 1fr) 52px 38px 50px 26px')
+  })
+  it('字比设计宽宽：列跟着字放宽，不再让字压到隔壁（笔数 46 不再塞进 38）', () => {
+    const k = barCols(560, { ...NEED, c: 46 })
+    expect(parseCols(k).fixed[2]).toBe(46)
+  })
+  it('放不下时依次省来源、笔数、最大单笔；净额与时间一直在', () => {
+    const need = { ...NEED, tm: 46, n: 49, c: 48, m: 46, bf: 38 }
+    const order = [600, 330, 300, 250, 200].map(w => barCols(w, need))
+    expect(order.map(k => [k.v, k.c, k.m])).toEqual([[true, true, true], [false, true, true], [false, true, true], [false, false, true], [false, false, false]])
+  })
+  it('任何宽度：放得下的那档定宽 + 对撞条下限 + 间距不超过行宽，每列不比字窄', () => {
+    for (let w = 120; w <= 1000; w += 7) {
+      const need = { ...NEED, c: 30 + (w % 23), n: 38 + (w % 11), bf: 28 + (w % 13) }
+      const k = barCols(w, need), p = parseCols(k)
+      if (p.bfMin > 0) expect(p.fixed.reduce((a, b) => a + b, 0) + p.bfMin + p.fixed.length * k.gap).toBeLessThanOrEqual(w)
+      if (p.bfMin > 0) expect(p.bfMin).toBeGreaterThanOrEqual(2 * need.bf + 2)
+      expect(p.fixed[0]).toBeGreaterThanOrEqual(k.wide ? need.tmWide : need.tm)
+      expect(p.fixed[1]).toBeGreaterThanOrEqual(need.n)
+      if (k.c) expect(p.fixed[2]).toBeGreaterThanOrEqual(need.c)
+      expect(p.fixed.length).toBe(2 + (k.c ? 1 : 0) + (k.m ? 1 : 0) + (k.wide ? 1 : 0) + (k.v ? 1 : 0))
+    }
+  })
+  it('连最窄那档都放不下：对撞条退到 minmax(0, 1fr)（条里的字由 bfLabel 自己收）', () => {
+    expect(barCols(120, NEED).cols).toMatch(/minmax\(0px, 1fr\)/)
+  })
+  it('barNeed：表头「逐根 15分」、三位数笔数、收短的金额都量进去', () => {
+    const n = barNeed([bigBar(Date.UTC(2026, 9, 8, 5))], 15 * MIN, mw)
+    expect(n.tm).toBeGreaterThanOrEqual(mw('逐根', 650, 12) + 4 + mw('15分', 500, 11))
+    expect(n.c).toBeGreaterThanOrEqual(mw('217/264', 400))
+    expect(n.bf).toBeGreaterThanOrEqual(mw('58M') + 10)
+    expect(n.m).toBeGreaterThanOrEqual(9 + mw('17.3M', 400))
+  })
+  it('表头与行按同一份列摆：省掉的列两边都不出', () => {
+    const k: BarCols = { cols: '', gap: 6, wide: false, c: false, m: true, v: false }
+    const head = barHeadHtml(HOUR, k)
+    expect(head).not.toContain('笔数')
+    expect(head.match(/class="rt"/g)!.length).toBe(2) // 净额、最大单笔
+    const row = barRowHtml(bigBar(Date.UTC(2026, 9, 8, 5)), { k, half: 60, max: 1, lastT: 0, live: false, daily: false, sel: null, cross: null, tw })
+    expect(row).not.toContain('class="c num"')
+    expect(row).not.toContain('class="v"')
+    expect(row).toContain('class="m num"')
+    const wide = barRowHtml(bigBar(Date.UTC(2026, 9, 8, 5)), { k: { ...k, wide: true, c: true, v: true }, half: 60, max: 1, lastT: 0, live: false, daily: false, sel: null, cross: null, tw })
+    expect(wide.match(/class="c num"/g)!.length).toBe(2) // 笔数 + 现货
+    expect(wide).toContain('10-08 13:00')
+  })
+  it('没有行：表头只有标题', () => expect(barHeadHtml(MIN, null)).not.toContain('bf-h'))
+})
+
+describe('对撞条 · 半边放不下', () => {
+  it('完整 → 收成整数 → 不写字', () => {
+    expect(bfLabel(15.2e6, 100, tw)).toBe('15.2M')
+    expect(bfLabel(15.2e6, 32, tw)).toBe('15M')
+    expect(bfLabel(15.2e6, 20, tw)).toBe('')
+  })
+  it('不写字时只剩条，没有会漫进时间列的 span', () => {
+    const h = bfHtml({ s: 15.2e6, b: 1, max: 15.2e6, half: 20, tw })
+    expect(h).toMatch(/<div class="h s"><i style="width:20\.0px"><\/i><\/div>/)
+  })
+})
+
+describe('梯子大单胶囊 · 选档', () => {
+  it('放得下带交易所名（连小点）就用它', () => expect(pillFit(200, [80, 33, 22], 2)).toEqual({ i: 0, dots: 2, w: 80 + 12 + 16 }))
+  it('先丢名字、再丢小点、再收短', () => {
+    expect(pillFit(60, [80, 33, 22], 2)).toEqual({ i: 1, dots: 1, w: 33 + 12 + 9 })
+    expect(pillFit(46, [80, 33, 22], 2)).toEqual({ i: 1, dots: 0, w: 45 })
+    expect(pillFit(44, [80, 33, 22], 2)).toEqual({ i: 2, dots: 1, w: 22 + 12 + 9 })
+  })
+  it('连收短的金额也放不下：不写字只画小圆点；再窄连点也不画', () => {
+    expect(pillFit(24, [80, 33, 22], 0)).toEqual({ i: -1, dots: 0, w: PILL_DOT })
+    expect(pillFit(8, [80, 33, 22], 0)).toEqual({ i: -1, dots: 0, w: 0 })
+  })
+  it('任何 room：胶囊都不比 room 宽（不会被画布边裁成半截字）', () => {
+    for (let room = 0; room < 120; room++) for (const o of [0, 1, 3, 5]) expect(pillFit(room, [70, 30, 20], o).w).toBeLessThanOrEqual(room)
   })
 })

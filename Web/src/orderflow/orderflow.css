@@ -255,26 +255,16 @@
 
 /* 每根 */
 .of-dr .of-bars { padding: 9px 6px 6px; }
-/* 窄卡：时间列放得下「● 00:00」与「逐根 15分」，对撞条至少 76（两半各能放一个收短的金额）；卡宽不到 360 时「来源」细带收起（汇总卡底部有同一份各家占比） */
-.of-dr .bh, .of-dr .br { display: grid; grid-template-columns: 52px minmax(76px, 1fr) 52px 38px 50px 26px; gap: 0 6px; align-items: center; padding: 0 6px; }
-.of-dr .br .x, .of-dr .bh .x { display: none; }
-@container (max-width: 359px) {
-  .of-dr .bh, .of-dr .br { grid-template-columns: 52px minmax(70px, 1fr) 52px 38px 50px; }
-  .of-dr .br .v, .of-dr .bh .rt:last-child { display: none; }
-}
-/* 宽卡多一列「现货」、时间带日期；640–799 收紧各列（列宽合计 606 ≤ 行宽 628），≥ 800 才放开（合计 756） */
-@container (min-width: 640px) {
-  .of-dr .bh, .of-dr .br { grid-template-columns: 80px minmax(150px, 1fr) 68px 50px 70px 50px 90px; gap: 0 8px; }
-  .of-dr .br .x, .of-dr .bh .x { display: block; }
-}
-@container (min-width: 800px) {
-  .of-dr .bh, .of-dr .br { grid-template-columns: 92px minmax(200px, 1fr) 80px 64px 80px 60px 120px; gap: 0 10px; }
-}
+/* 列由 drawer.ts 按这一屏的真实字宽与卡宽算好写进 --bcols / --bgap（drawerView.barCols：放不下先省来源、再省笔数、再省最大单笔），
+ * 不再是写死的像素列——那样 1 时「242/191」比 38 px 的笔数列宽，字压到最大单笔上。下面的值只是第一次算出来之前的样子 */
+.of-dr .bh, .of-dr .br { display: grid; grid-template-columns: var(--bcols, 52px minmax(0, 1fr) 52px 38px 50px); gap: 0 var(--bgap, 6px); align-items: center; padding: 0 6px; }
+/* 表头与列表同一套网格：列表出滚动条时表头也让出同一道（否则对撞条那列表头比行宽一道滚动条，右边几列对不齐） */
+.of-dr .bh { overflow: hidden; scrollbar-gutter: stable; scrollbar-width: thin; }
 .of-dr .bh { height: 18px; font-size: 11px; color: var(--text-3); flex: none; }
 .of-dr .bh .t { font-size: 12px; font-weight: 650; color: var(--text-1); white-space: nowrap; position: relative; z-index: 1; }
 .of-dr .bh .t em { font-style: normal; font-weight: 500; color: var(--text-3); margin-left: 4px; font-size: 11px; }
 .of-dr .bh .rt { text-align: right; white-space: nowrap; }
-.of-dr .bl { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; margin-top: 3px; display: flex; flex-direction: column; gap: 1px; position: relative; }
+.of-dr .bl { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-gutter: stable; margin-top: 3px; display: flex; flex-direction: column; gap: 1px; position: relative; }
 .of-dr .br { height: 22px; flex: none; font-size: 12px; border-radius: 6px; position: relative; cursor: pointer; }
 .of-dr .br:hover { background: var(--surface-3); }
 .of-dr .br .tm { color: var(--text-2); font-size: 11px; display: flex; align-items: center; gap: 4px; white-space: nowrap; }

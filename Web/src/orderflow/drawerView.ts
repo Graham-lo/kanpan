@@ -10,13 +10,13 @@
  */
 import { udOf, type BarBig, type BarLiq } from './bigTags'
 import type { LiqRow } from './liquidation'
-import { amt, amtTight } from './state'
+import { amt, amtTight, hm, mdhm } from './state'
 import { BT, fill } from '../terms'
 import { EXCHANGE_COLORS, EXCHANGE_NAMES } from '../venues'
 
 export const MINUS = '−'
 export const DASH = '<span class="dash">—</span>'
-const MIN = 60_000, HOUR = 3_600_000
+const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000
 
 /** 带符号的金额：+1.2M / −3.4M / 0 */
 export const signed = (v: number): string => Math.abs(v) < 0.5 ? '0' : v > 0 ? `+${amt(v)}` : `${MINUS}${amt(-v)}`
@@ -38,17 +38,139 @@ export function barText(bar: number, text: number, half: number): { bar: number;
 }
 
 export interface BfIn { s: number; b: number; max: number; half: number; tw: (t: string) => number }
+/** 半边条里写哪一档金额：完整（15.2M）→ 收成整数（15M）→ 都放不下就不写字（''，只剩条）。字宽含左右各 5 的内边距 */
+export function bfLabel(v: number, half: number, tw: (t: string) => number): string {
+  const t0 = v > 0 ? amt(v) : '0'
+  if (tw(t0) + 10 <= half) return t0
+  const t1 = amtTight(v)
+  return tw(t1) + 10 <= half ? t1 : ''
+}
 /** 一条对撞条：左半卖（跌色，从中线往左）、右半买（涨色，往右），金额写在条里；max = 比例尺（窄屏按本行、宽屏整列共用） */
 export function bfHtml({ s, b, max, half, tw }: BfIn): string {
   const m = Math.max(1, max)
   const side = (v: number, cls: 's' | 'b'): string => {
-    // 半边放不下完整金额就收成整数（15.2M → 15M），不让字溢出到中线另一侧或旁边的净额列
-    const t0 = v > 0 ? amt(v) : '0', t = tw(t0) + 10 > half ? amtTight(v) : t0
+    // 半边放不下完整金额就收成整数（15.2M → 15M），再放不下就只画条不写字——字不许溢出到中线另一侧、时间列或旁边的净额列
+    const t = bfLabel(v, half, tw)
+    if (!t) return `<div class="h ${cls}"><i style="width:${(v > 0 ? Math.max(2, v / m * half) : 0).toFixed(1)}px"></i></div>`
     const p = barText(v > 0 ? Math.max(2, v / m * half) : 0, tw(t) + 10, half)
     const mg = p.shift ? ` style="margin-${cls === 's' ? 'right' : 'left'}:${p.shift.toFixed(1)}px"` : ''
     return `<div class="h ${cls}"><i style="width:${p.bar.toFixed(1)}px"></i><span class="num${v > 0 ? '' : ' z'}"${mg}>${t}</span></div>`
   }
   return `<div class="bf">${side(s, 's')}${side(b, 'b')}</div>`
+}
+
+// ------------------------------------------------------------------ 逐根：列布局与行
+//
+// 原来是 CSS 里三套写死的像素列（窄卡 52 / ≥76 / 52 / 38 / 50 / 26），字比列宽就压到隔壁：1 时「242/191」有 45 px 却只给 38，
+// 顶到最大单笔；对撞条半边比收短的金额还窄时字往左漫进时间列。现在先按这一屏的真实字宽量出每列要多宽（barNeed），
+// 再按行宽挑列（barCols）：放得下照原来的疏密，放不下各列贴着字宽，再放不下依次省「来源」「笔数」「最大单笔」（悬停卡里都有）。
+
+/** 量字宽：weight / size 默认 600 / 11；ui = 界面字体（表头的中文），否则数字字体 */
+export type Measure = (t: string, weight?: number, size?: number, ui?: boolean) => number
+/** 逐根各列要多宽（px，按真实字宽量好、已含小点等装饰）。tm / tmWide：窄卡只写时:分（日线月-日）/ 宽卡带日期，表头「逐根 15分」也在这一列；
+ *  bf：对撞条单边收短金额最宽的那个 + 内边距；n 净额；c 笔数「买/卖」；m 最大单笔；x 现货占比；v 来源 */
+export interface BarNeed { tm: number; tmWide: number; bf: number; n: number; c: number; m: number; x: number; v: number }
+/** 逐根的列：cols = grid-template-columns，gap 列间距；wide = 宽卡（时间带日期、多一列现货、整列共用一把尺子）；c / m / v = 笔数、最大单笔、来源在不在 */
+export interface BarCols { cols: string; gap: number; wide: boolean; c: boolean; m: boolean; v: boolean }
+
+/** 设计宽（字比它窄时照这个摆，留住原来的疏密）。min = 行内宽（卡内宽减行左右各 6）到多少才用宽卡那两档 */
+const COLS_NARROW = { tm: 52, bf: 76, n: 52, c: 38, m: 50, v: 26, gap: 6 }
+const COLS_WIDE = [
+  { min: 788, tm: 92, bf: 200, n: 80, c: 64, m: 80, x: 60, v: 120, gap: 10 },
+  { min: 628, tm: 80, bf: 150, n: 68, c: 50, m: 70, x: 50, v: 90, gap: 8 },
+] as const
+
+const cpx = (v: number): string => `${Math.ceil(v)}px`
+
+/** 按行内宽 w 挑列。宽卡两档放得下才用；窄卡依次试：设计宽全列 → 设计宽省来源 → 贴字宽省来源 → 再省笔数 → 再省最大单笔。
+ *  连最后一档都放不下时对撞条退到 minmax(0, 1fr)，条里的字由 bfLabel 自己收（收不下就不写），不会压到别列 */
+export function barCols(w: number, need: BarNeed): BarCols {
+  const bfMin = Math.ceil(2 * need.bf + 2)
+  for (const d of COLS_WIDE) {
+    if (w < d.min) continue
+    const ws = [Math.max(d.tm, need.tmWide), Math.max(d.n, need.n), Math.max(d.c, need.c), Math.max(d.m, need.m), Math.max(d.x, need.x), Math.max(d.v, need.v)].map(Math.ceil)
+    const bf = Math.max(d.bf, bfMin)
+    if (ws.reduce((a, b) => a + b, 0) + bf + 6 * d.gap <= w) {
+      return { cols: `${cpx(ws[0])} minmax(${bf}px, 1fr) ${ws.slice(1).map(cpx).join(' ')}`, gap: d.gap, wide: true, c: true, m: true, v: true }
+    }
+  }
+  const d = COLS_NARROW, g = d.gap
+  // [照设计宽, 笔数, 最大单笔, 来源]
+  const tries: readonly [boolean, boolean, boolean, boolean][] = [[true, true, true, true], [true, true, true, false], [false, true, true, false], [false, false, true, false], [false, false, false, false]]
+  let last: BarCols | null = null
+  for (const [loose, c, m, v] of tries) {
+    const pick = (k: 'tm' | 'n' | 'c' | 'm' | 'v'): number => Math.ceil(loose ? Math.max(d[k], need[k]) : need[k])
+    const ws = [pick('tm'), pick('n'), ...(c ? [pick('c')] : []), ...(m ? [pick('m')] : []), ...(v ? [Math.max(d.v, Math.ceil(need.v))] : [])]
+    const bf = loose ? Math.max(d.bf, bfMin) : bfMin
+    const fits = ws.reduce((a, b) => a + b, 0) + bf + ws.length * g <= w
+    last = { cols: `${cpx(ws[0])} minmax(${fits ? bf : 0}px, 1fr) ${ws.slice(1).map(cpx).join(' ')}`, gap: g, wide: false, c, m, v }
+    if (fits) return last
+  }
+  return last!
+}
+
+/** 一根的时间：日线及以上写月-日；宽卡带日期；窄卡只写时:分（跨天处另插一行日期） */
+export function barTime(t: number, wide: boolean, daily: boolean): string {
+  const md = mdhm(t)
+  return daily ? md.slice(0, 5) : wide ? md : hm(t)
+}
+
+export interface BarRowIn { t: number; d: BarBig }
+const LIVE_W = 10 // 正在走那根的小点 6 + 间距 4
+const SLACK = 2 // 量出来的字宽与真实排版之间留一点余量（亚像素、字距）
+/** 量这一屏要多宽：每列取表头与各行里最宽的那个 */
+export function barNeed(rows: readonly BarRowIn[], iv: number, tw: Measure): BarNeed {
+  const daily = iv >= DAY
+  const title = tw(BT.perBar, 650, 12, true) + 4 + tw(ivShort(iv), 500, 11, true)
+  let tm = 0, tmW = 0, bf = tw('0') + 10
+  let n = tw(BT.net, 400, 11, true), c = tw(BT.trades, 400, 11, true), m = tw(BT.maxSingle, 400, 11, true)
+  const x = Math.max(tw(BT.spot, 400, 11, true), tw('100%', 400)), v = tw(BT.source, 400, 11, true)
+  for (const { t, d } of rows) {
+    tm = Math.max(tm, tw(barTime(t, false, daily)))
+    tmW = Math.max(tmW, tw(barTime(t, true, daily)))
+    for (const a of [d.bs, d.bb]) if (a > 0) bf = Math.max(bf, tw(amtTight(a)) + 10)
+    n = Math.max(n, tw(signed(d.bb - d.bs), 650, 12))
+    c = Math.max(c, d.bn != null && d.sn != null ? tw(`${d.bn}/${d.sn}`, 400) : tw('—', 400))
+    const mx = d.exact ? maxOf(d) : null
+    m = Math.max(m, mx ? 9 + tw(amt(mx.usd), 400) : tw('—', 400))
+  }
+  return {
+    tm: Math.max(title, tm + LIVE_W) + SLACK, tmWide: Math.max(title, tmW + LIVE_W) + SLACK, bf: bf + 1,
+    n: n + SLACK, c: c + SLACK, m: m + SLACK, x: x + SLACK, v: v + SLACK,
+  }
+}
+
+/** 逐根的表头：只摆 k 里在的列；k = null（没有行）只写标题 */
+export function barHeadHtml(iv: number, k: BarCols | null): string {
+  const t = `<span class="t">${BT.perBar}<em>${ivShort(iv)}</em></span>`
+  if (!k) return t
+  return t + `<div class="bf-h"><span>${BT.sellShort}</span><span>${BT.buyShort}</span></div><span class="rt">${BT.net}</span>` +
+    (k.c ? `<span class="rt">${BT.trades}</span>` : '') + (k.m ? `<span class="rt">${BT.maxSingle}</span>` : '') +
+    (k.wide ? `<span class="rt">${BT.spot}</span>` : '') + (k.v ? `<span class="rt">${BT.source}</span>` : '')
+}
+
+export interface BarRowEnv {
+  k: BarCols; half: number; max: number; lastT: number; live: boolean; daily: boolean
+  /** 选中的那根、十字线停的那根（开盘时间） */
+  sel: number | null; cross: number | null
+  tw: (t: string) => number
+}
+/** 逐根一行：时间 | 对撞条 | 净额 |（笔数）|（最大单笔）|（现货）|（来源），括号里的按 k 摆 */
+export function barRowHtml(r: BarRowIn, e: BarRowEnv): string {
+  const d = r.d, n = d.bb - d.bs, k = e.k
+  const cur = r.t === e.lastT, xh = e.cross === r.t, sel = e.sel === r.t
+  const tm = barTime(r.t, k.wide, e.daily)
+  const mark = !xh && cur && e.live ? '<span class="live"></span>' : ''
+  const tot = d.bb + d.bs
+  let tail = ''
+  if (k.c) tail += `<span class="c num">${d.bn != null && d.sn != null ? `<span class="up">${d.bn}</span><span class="t3">/</span><span class="dn">${d.sn}</span>` : DASH}</span>`
+  if (k.m) { const mx = d.exact ? maxOf(d) : null; tail += `<span class="m num">${mx ? `<i style="background:var(--${mx.buy ? 'up' : 'down'})"></i>${amt(mx.usd)}` : DASH}</span>` }
+  if (k.wide) tail += `<span class="c num">${d.spot != null && tot > 0 ? pct(d.spot, tot) : DASH}</span>`
+  if (k.v) tail += `<span class="v">${d.ex && tot > 0 ? seg3(VENUES.map(([, col], j) => [d.ex![j], col] as [number, string]), 'v3') : `<span class="dash">—</span>`}</span>`
+  return `<div class="br${cur ? ' cur' : ''}${xh ? ' xh' : ''}${sel ? ' sel' : ''}" role="listitem" data-t="${r.t}" data-k="${r.t}">` +
+    `<span class="tm num">${xh ? `<span class="xtag">${tm}</span>` : tm}${mark}</span>` +
+    bfHtml({ s: d.bs, b: d.bb, max: k.wide ? e.max : Math.max(d.bs, d.bb), half: e.half, tw: e.tw }) +
+    `<span class="n num ${tone(n)}">${signed(n)}</span>` + tail + '</div>'
 }
 
 /** 三段细带（各家 / 现货合约）：没有数据画一条底轨 */

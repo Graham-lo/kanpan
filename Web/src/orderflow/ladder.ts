@@ -16,7 +16,7 @@ import { I, esc } from '../ui/dom'
 import { hexA } from '../util/format'
 import { bucketIndex, mergeFactor } from './bucket'
 import { ladderRows, rowOf, type LadderRow, venueName, exName } from './aggregate'
-import { OF, savePrefs, bandColor, bandInk, productColor, surfaceColor, showCard, hideCard, amt, amtTight, hm, durShort, decFor, px, canvasFont } from './state'
+import { OF, savePrefs, bandColor, bandInk, productColor, surfaceColor, showCard, hideCard, amt, amtTight, pillFit, PILL_DOT, hm, durShort, decFor, px, canvasFont } from './state'
 import { deltaPct, fromMidPct, signedPct, type TradeRow } from './tradeLadder'
 import { snapFine, deltaRows, rowSeries, sparkSVG, niceCeil, WIN_MS, type DeltaRow, type DeltaWin } from './depthDelta'
 import type { SplitCol } from './heatFetch'
@@ -314,27 +314,23 @@ function pill(c: CanvasRenderingContext2D, x: LadderRow, y: number, bidRow: bool
   const seen = new Set([o.venueID + o.side])
   const others: typeof x.orders = []
   for (const q of x.orders) if (!seen.has(q.venueID + q.side)) { seen.add(q.venueID + q.side); others.push(q) }
-  const dotW = (n: number): number => n ? n * 7 + 2 : 0
+  // 带交易所名那一档只在小点也放得下时用（小点比名字更要紧：同一价位还有别家）；连收短的金额都放不下（梯子拖到最窄）就只画一颗小圆点
   const texts = [`${venueName(exName(o.exchange), o.product)} ${amt(o.notional)}`, amt(o.notional), amtTight(o.notional)]
-  let t = texts[2], nd = 0
-  const maxD = Math.min(3, others.length)
-  pick: for (let i = 0; i < texts.length; i++) {
-    const tw = c.measureText(texts[i]).width + 12
-    // 带交易所名那一档只在小点也放得下时用（小点比名字更要紧：同一价位还有别家）
-    for (let n = maxD; n >= (i ? 0 : maxD); n--) if (tw + dotW(n) <= room) { t = texts[i]; nd = n; break pick }
-  }
-  const dots = others.slice(0, nd)
-  const dw = dotW(nd)
-  const w = Math.max(16, c.measureText(t).width + 12 + dw), h = 16
+  const fit = pillFit(room, texts.map(s => c.measureText(s).width), others.length)
+  if (!fit.w) return
+  const dots = others.slice(0, fit.dots)
+  const w = fit.w, h = fit.i < 0 ? PILL_DOT : 16
   const x0 = bidRow ? R + 4 : L - 4 - w
   // 字不压实色底（规范 §5b）：方向色淡底 + 方向文字色，品类只是行尾的小点
   const dark = darkUI()
   c.fillStyle = surfaceColor()
-  roundRect(c, x0, y - h / 2, w, h, 8); c.fill()
+  roundRect(c, x0, y - h / 2, w, h, h / 2); c.fill()
   c.fillStyle = bandColor(o.product, o.side, dark ? 0.24 : 0.16)
-  roundRect(c, x0, y - h / 2, w, h, 8); c.fill()
-  c.fillStyle = bandInk(o.product, o.side); c.textAlign = 'left'
-  c.fillText(t, x0 + 6, y)
+  roundRect(c, x0, y - h / 2, w, h, h / 2); c.fill()
+  c.fillStyle = bandInk(o.product, o.side)
+  if (fit.i < 0) { c.beginPath(); c.arc(x0 + w / 2, y, 2, 0, Math.PI * 2); c.fill(); return }
+  c.textAlign = 'left'
+  c.fillText(texts[fit.i], x0 + 6, y)
   dots.forEach((q, i) => {
     const cx = x0 + w - 8 - i * 7
     c.beginPath(); c.arc(cx, y, 2.5, 0, Math.PI * 2); c.fillStyle = productColor(q.product, dark); c.fill()

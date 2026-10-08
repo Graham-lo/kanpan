@@ -232,6 +232,20 @@ export function amtTight(v: number | null | undefined): string {
   const t = amt(v), m = /^(-?)(\d+)\.\d([A-Za-z]*)$/.exec(t)
   return m && +m[2] >= 10 ? m[1] + m[2] + m[3] : t
 }
+/** 梯子大单胶囊：左右内边距合计、没字时那颗小圆点的直径 */
+export const PILL_PAD = 12, PILL_DOT = 10
+/** 胶囊写哪一档：widths = 各档文字宽（带交易所名 / 完整金额 / 收成整数），others = 同一行别家大单数（后面跟小点，最多三个），room = 半边能用的宽。
+ *  整段放得下才用：带名那档要连小点一起放得下，其余档先丢小点；连收短的金额也放不下就不写字（i = −1），
+ *  只画一颗 PILL_DOT 的带底色小圆点，再窄连点也不画（w = 0，行首 3 px 竖条已经标着这行有大单）——不再画出被画布边裁掉的半截字 */
+export function pillFit(room: number, widths: readonly number[], others: number): { i: number; dots: number; w: number } {
+  const dotW = (n: number): number => n ? n * 7 + 2 : 0
+  const maxD = Math.min(3, Math.max(0, others))
+  for (let i = 0; i < widths.length; i++) {
+    const tw = Math.max(16, widths[i] + PILL_PAD)
+    for (let n = maxD; n >= (i ? 0 : maxD); n--) if (tw + dotW(n) <= room) return { i, dots: n, w: tw + dotW(n) }
+  }
+  return { i: -1, dots: 0, w: room >= PILL_DOT ? PILL_DOT : 0 }
+}
 /** 上海时间 时:分:秒 */
 export function hms(t: number): string { const d = sh(t); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}` }
 /** 上海时间 时:分 */

@@ -6,6 +6,7 @@
  *      抽屉拉高（> 300）时迷你走势换成一张大图：累计净额 · 8:00 起 + 逐根净额柱与整点刻度。
  *   2. 每根：跟当前周期，最新在上，只列图上有气泡（或小圆点）且有大单的那几根（与图上同一套两级金额线，向上 / 向下含爆仓）。时间 | 对撞条 | 净额 | 笔数（买 / 卖）|
  *      最大（方向点 + 额）| 来源（各家细带）；卡宽 ≥ 640 时多一列现货、时间带日期、整列共用一把尺子，窄时每行自己比。
+ *      列宽按这一屏的真实字宽挑（drawerView.barCols）：放不下先省来源、再省笔数、再省最大单笔，字不压到隔壁列。
  *      正在走的那根带一个强调色小点；图上十字线停在哪根，那一行灰底 + 时间反白；点一行选中（强调色底与边线、图上那根一道竖带），再点取消。
  *   3. 价位：近 1 小时大单最集中的卖 / 买各三档，按真实价摆在一根竖轴上（挤了互相让开）；现价反白标签 + 虚线；
  *      最近的卖墙 / 买墙一道淡紫底带，右端一个小圆环（满一圈 = 挂了 1 小时）+ 「N分」，点墙图挪过去。
@@ -28,9 +29,9 @@ import { BigBarCache, LevelCache, unitFor, sumBig, udOf, type BarBig } from './b
 import { windows, liveShares, priceLevels, nearestWalls, dayStartUtc, HOUR, PX_MINUTES, type WinSum, type Wall, type TypicalAt } from './summary'
 import { klines } from '../market'
 import { LiqStore, LiqBarCache, noLiq, sumLiq, LIQ_EX, type LiqSum } from './liquidation'
-import { OF, feedIdleText, amt, hm, mdhm, px, decFor } from './state'
+import { OF, feedIdleText, amt, mdhm, px, decFor } from './state'
 import {
-  DASH, signed, tone, pct, bfHtml, seg3, VENUES, srcHtml, maxOf, ivShort, levelsSvg, svgWrap,
+  signed, tone, bfHtml, srcHtml, maxOf, levelsSvg, svgWrap, barCols, barNeed, barHeadHtml, barRowHtml, type BarRowEnv,
   pickBucket, liqBuckets, liqSvg, cumSvg, hourTicks, LIQ_BUCKETS, NET_BUCKETS,
 } from './drawerView'
 
@@ -361,19 +362,23 @@ function paintPills(c: Ctx | null): void {
   if (cut != null && pc) pc.innerHTML = fill(BT.thresholdValue, { v: `<b class="num">${amt(cut)}</b>` })
 }
 
-// ---- 文字宽（金额写在条里还是挪到条外，按真实字宽算）
+// ---- 文字宽（金额写在条里还是挪到条外、逐根各列多宽，按真实字宽算）
 let mctx: CanvasRenderingContext2D | null = null
 let numFamily = ''
+let uiFamily = ''
 const twCache = new Map<string, number>()
-function tw(t: string, weight = 600): number {
+/** 默认 11px / 600 的数字字体；ui = 界面字体（表头中文）。抽屉里的数字一律等宽数字（tabular-nums），
+ *  画布量不出这个，所以量之前把数字都换成 0（等宽数字的宽就是 0 的宽），不然「111」这类会量窄、排出来压到隔壁 */
+function tw(t: string, weight = 600, size = 11, ui = false): number {
   if (!t) return 0
-  const k = weight + t
+  const k = `${weight}|${size}|${ui ? 1 : 0}|${t}`
   const hit = twCache.get(k)
   if (hit != null) return hit
   if (!mctx) mctx = document.createElement('canvas').getContext('2d')
   if (!numFamily) numFamily = getComputedStyle(document.documentElement).getPropertyValue('--font-num').trim() || 'system-ui'
-  let w = t.length * 6.6
-  if (mctx) { mctx.font = `${weight} 11px ${numFamily}`; w = mctx.measureText(t).width }
+  if (!uiFamily) uiFamily = getComputedStyle(document.body).fontFamily || 'system-ui'
+  let w = t.length * size * 0.6
+  if (mctx) { mctx.font = `${weight} ${size}px ${ui ? uiFamily : numFamily}`; w = mctx.measureText(ui ? t : t.replace(/\d/g, '0')).width }
   if (twCache.size > 2000) twCache.clear()
   twCache.set(k, w)
   return w
@@ -427,36 +432,10 @@ function netsOf(c: Ctx, from: number, B: number): number[] {
   return out
 }
 
-// ---- 2. 每根
+// ---- 2. 每根（列宽按这一屏的真实字宽与卡宽挑，见 drawerView.barCols）
 
-function bhHtml(iv: number, empty: boolean): string {
-  const t = `<span class="t">${BT.perBar}<em>${ivShort(iv)}</em></span>`
-  if (empty) return t
-  return t + `<div class="bf-h"><span>${BT.sellShort}</span><span>${BT.buyShort}</span></div><span class="rt">${BT.net}</span><span class="rt">${BT.trades}</span><span class="rt">${BT.maxSingle}</span><span class="x rt">${BT.spot}</span><span class="rt">${BT.source}</span>`
-}
-
-interface RowEnv { wide: boolean; half: number; max: number; lastT: number; live: boolean; daily: boolean; sel: number | null }
-let env: RowEnv | null = null
-
-function rowHtml(r: RowD, e: RowEnv): string {
-  const d = r.d, n = d.bb - d.bs
-  const cur = r.t === e.lastT, xh = OF.crossT === r.t, sel = e.sel === r.t
-  const md = mdhm(r.t)
-  const tm = e.daily ? md.slice(0, 5) : e.wide ? md : hm(r.t)
-  const mark = !xh && cur && e.live ? '<span class="live"></span>' : ''
-  const mx = d.exact ? maxOf(d) : null
-  const cnt = d.bn != null && d.sn != null ? `<span class="up">${d.bn}</span><span class="t3">/</span><span class="dn">${d.sn}</span>` : DASH
-  const tot = d.bb + d.bs
-  const ex = d.ex && tot > 0 ? seg3(VENUES.map(([, col], j) => [d.ex![j], col] as [number, string]), 'v3') : `<span class="dash">—</span>`
-  return `<div class="br${cur ? ' cur' : ''}${xh ? ' xh' : ''}${sel ? ' sel' : ''}" role="listitem" data-t="${r.t}" data-k="${r.t}">` +
-    `<span class="tm num">${xh ? `<span class="xtag">${tm}</span>` : tm}${mark}</span>` +
-    bfHtml({ s: d.bs, b: d.bb, max: e.wide ? e.max : Math.max(d.bs, d.bb), half: e.half, tw }) +
-    `<span class="n num ${tone(n)}">${signed(n)}</span>` +
-    `<span class="c num">${cnt}</span>` +
-    `<span class="m num">${mx ? `<i style="background:var(--${mx.buy ? 'up' : 'down'})"></i>${amt(mx.usd)}` : DASH}</span>` +
-    `<span class="x c num">${d.spot != null && tot > 0 ? pct(d.spot, tot) : DASH}</span>` +
-    `<span class="v">${ex}</span></div>`
-}
+let env: BarRowEnv | null = null
+const rowHtml = (r: RowD, e: BarRowEnv): string => barRowHtml(r, { ...e, cross: OF.crossT })
 
 function patchRow(t: number): void {
   const el = rowEl(t), r = rows.find(x => x.t === t)
@@ -478,7 +457,7 @@ function paintBars(c: Ctx | null = ctxNow()): void {
   const a = OF.api?.activeChart()
   const iv = a?.chart.iv ?? MIN
   if (!rows.length || !c) {
-    setHtml(bh, bhHtml(iv, true))
+    setHtml(bh, barHeadHtml(iv, null))
     patchKeyedRows(bl, [], 'data-k')
     setHidden(bl, true); setHidden(fade, true); setHidden(be, false)
     const s = a?.symbol.toUpperCase() ?? ''
@@ -491,21 +470,25 @@ function paintBars(c: Ctx | null = ctxNow()): void {
     return
   }
   setHidden(bl, false); setHidden(fade, false); setHidden(be, true)
-  setHtml(bh, bhHtml(iv, false))
-  const bfh = bh.querySelector<HTMLElement>('.bf-h'), xcol = bh.querySelector<HTMLElement>('.x')
-  const wide = !!xcol && getComputedStyle(xcol).display !== 'none'
+  // 行内宽 = 列表可用宽（.bl 留着滚动条那一道，表头同样留，两边同一套网格）− 行左右内边距各 6
+  const k = barCols(bl.clientWidth - 12, barNeed(rows, iv, tw))
+  const sec = bl.parentElement!
+  if (sec.style.getPropertyValue('--bcols') !== k.cols) sec.style.setProperty('--bcols', k.cols)
+  if (sec.style.getPropertyValue('--bgap') !== `${k.gap}px`) sec.style.setProperty('--bgap', `${k.gap}px`)
+  setHtml(bh, barHeadHtml(iv, k))
+  const bfh = bh.querySelector<HTMLElement>('.bf-h')
   const half = Math.max(16, ((bfh?.clientWidth ?? 120) - 2) / 2)
   let max = 1
   for (const r of rows) max = Math.max(max, r.d.bb, r.d.bs)
   const live = OF.feed?.symbol === c.sym
   const b = c.chart.bars
-  env = { wide, half, max, lastT: b[b.length - 1].t, live, daily: c.iv >= DAY, sel: selT() }
+  env = { k, half, max, lastT: b[b.length - 1].t, live, daily: c.iv >= DAY, sel: selT(), cross: null, tw }
   const today = mdhm(c.now).slice(0, 5)
   const out: [string, string][] = []
   let day = today
   for (const r of rows) {
     // 窄卡的时间列只写时:分，跨天处插一行日期
-    if (!wide && !env.daily) {
+    if (!k.wide && !env.daily) {
       const dd = mdhm(r.t).slice(0, 5)
       if (dd !== day) { day = dd; out.push([`d${dd}`, `<div class="bd num" data-k="d${dd}">${dd}</div>`]) }
     }
