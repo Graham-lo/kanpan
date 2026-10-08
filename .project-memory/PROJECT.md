@@ -1924,3 +1924,20 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **电脑网页**：自选侧栏价格文字的跳价闪色（`watch/logic.ts flashClass`）是早先的另一件事，用户没点名，未动。
 - **走势线开关位置**（没动，只是用户没找到）：iOS 与手机网页都是「我的 › 设置 › 通用 › 自选走势线」，不在自选页里。
 - **验证**：iOS `make symbols-test` 242 条全过；网页 `tsc` 0 错、相关 vitest 26 条全过；`m-favorites-trend.mjs` 浅 / 深色全过。
+
+## 60. 10-08：电脑网页 K 线逐项照 TradingView 复刻（缩放、实体宽、成交量、底色网格十字线），指标展示同步对齐 TV
+
+- **起因**：用户对照 TV 网页版：放大时 TV 最右那根和价格一直在框里，我们的跑出去；TV 放大后 K 线更清楚；底色直接用 TV 的。
+  随后追加「pc 全部细节都复刻过来，k 线展示非常重要」「所有指标展示也对齐 TV」。
+- **TV 实测口径**（在 TV 网页版里读内部对象 / 画布像素 / 打包脚本）：
+  - 滚轮：`rightBarStaysOnScroll` 开着——缩放时右偏移（根数）不变，右沿不动；Mac 按 ⌘、别处按 Ctrl 滚轮才以鼠标为锚。
+    间距上限 `maxBarSpacing = 绘图区宽 / 2`、下限 0.5、默认 6、右留白 10 根；价格上下边距 10% / 8%。
+  - 实体宽 = lightweight-charts `optimalCandlestickWidth` + 影线奇偶（dpr 1：间距 6→5、10→7、20→15、50→39、120→95），影线 floor(pr)。
+  - 成交量：主图底部约 25%，涨 #26A69A / 跌 #EF5350 各 50%，柱宽 = round(间距·pr) − 1 物理像素。
+  - 配色（所有皮肤一样）：浅 #FFFFFF / 深 #0F0F0F；网格点线 rgba(46,46,46,.2) / rgba(242,242,242,.2)；十字线 #9C9C9C 虚线；
+    十字线标签 #0F0F0F / #3D3D3D；轴线透明；窗格分隔 #EBEBEB / #2E2E2E；轴字 #0F0F0F / #B8B8B8 12px；蜡烛 #089981 / #F23645。
+  - 线型：TV 画布 `[[w,3w],[5w,6w],[6w,6w],[w,4w],[2w,w]]`（点线 / 虚线 / 大虚线 / 稀点 / …），我们的 `dashOf` 点线 [w,3w]、虚线 [5w,6w]。
+- **改动**：`Web/src/chart/wheel.ts`（`maxSpacing`、`clampSpacing(s, plotW)`、`zoomStart(..., plotW)`）、`chart.ts`（`candleBodyPx`、`volW` / `volColor`、
+  网格点线、窗格分隔 `--chart-sep`、轴上标签不加粗、滚轮锚点）、`chartSettings.ts dashOf`、`styles/app.css` 各皮肤 `--chart-*`。
+  测试：`tests/candle-width.test.ts`（TV 实测表）、`wheel-zoom.test.ts`、`chart-settings.test.ts`。
+- **指标**：展示（线色 / 线宽 / 柱色规则 / 带填充 / 参考线 / 轴上末值标签）对齐 TV 默认；默认参数与算法不动（和 iOS / 手机同读数，见 § 53）。
