@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>大单与爆仓气泡原型</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;
+  --up:#089981; --down:#F23645;
+  --bn:#E8A800; --okx:#7C8596; --cb:#2EA3F2;
+  --spot:#8F7CF0; --perp:#55637D;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+:root,[data-theme="light"]{
+  color-scheme:light;
+  --app:#E9ECF1; --surface:#FFFFFF; --surface-2:#F6F7F9; --surface-3:#EEF0F3; --overlay:#FFFFFF;
+  --text-1:#131722; --text-2:#545B6A; --text-3:#666B77; --line:#E1E4EA; --line-strong:#CDD2DB; --control-line:#8C93A1;
+  --accent:#2B63F0; --accent-soft:#E7EEFF; --accent-text:#1F52D6;
+  --chart-grid:#F0F3FA; --chart-cross:#9598A1;
+  --card:linear-gradient(180deg,#FBFCFD 0%,#F5F7FA 100%); --card-line:#E8EBF0; --card-hi:rgba(255,255,255,.9);
+  --up-a:rgba(8,153,129,.12); --down-a:rgba(242,54,69,.10);
+  --up-b:rgba(8,153,129,.30); --down-b:rgba(242,54,69,.28);
+  --wall:#7B6CF0; --wall-a:rgba(123,108,240,.13);
+  --row-x:#EEF1F5; --row-sel:#E7EEFF;
+  --shadow-menu:0 0 0 1px rgba(19,23,34,.06),0 4px 12px rgba(19,23,34,.08),0 12px 32px rgba(19,23,34,.10);
+  --page:#E4E8EE;
+  --track:#E9ECF1;
+}
+[data-theme="dark"]{
+  color-scheme:dark;
+  --app:#07090D; --surface:#11141B; --surface-2:#181C25; --surface-3:#202532; --overlay:#1B1F29;
+  --text-1:#E3E6EC; --text-2:#A1A7B3; --text-3:#8A909B; --line:#232834; --line-strong:#353B49; --control-line:#62687A;
+  --accent:#4C7DFF; --accent-soft:#1B2747; --accent-text:#7FA2FF;
+  --chart-grid:#1A1E28; --chart-cross:#6B7080;
+  --card:linear-gradient(180deg,#171B24 0%,#141821 100%); --card-line:#222836; --card-hi:rgba(255,255,255,.035);
+  --up-a:rgba(8,153,129,.18); --down-a:rgba(242,54,69,.16);
+  --up-b:rgba(8,153,129,.42); --down-b:rgba(242,54,69,.40);
+  --wall:#9C90FF; --wall-a:rgba(156,144,255,.14);
+  --row-x:#1D222D; --row-sel:#1B2747;
+  --shadow-menu:0 0 0 1px rgba(255,255,255,.06),0 8px 24px rgba(0,0,0,.45),0 18px 48px rgba(0,0,0,.35);
+  --page:#05070A;
+  --track:#212632;
+  --okx:#9AA3B5; --perp:#7D8AA6;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--page);color:var(--text-1);font:13px/1.35 var(--font);-webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.up{color:var(--up)} .dn{color:var(--down)} .t2{color:var(--text-2)} .t3{color:var(--text-3)}
+
+/* ---------- 原型外壳 ---------- */
+.pbar{position:sticky;top:0;z-index:50;height:52px;display:flex;align-items:center;gap:20px;padding:0 24px;
+  background:color-mix(in srgb,var(--page) 82%,transparent);backdrop-filter:saturate(1.6) blur(14px);border-bottom:1px solid var(--line)}
+.pbar h1{font-size:14px;font-weight:650;letter-spacing:.01em}
+.pbar h1 span{color:var(--text-3);font-weight:500;margin-left:8px;font-size:12px}
+.seg{display:flex;background:var(--surface-3);border-radius:9px;padding:2px}
+.seg button{font-size:12px;padding:5px 14px;border-radius:7px;color:var(--text-2)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--text-1);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.segs{display:flex;gap:14px;margin-left:auto;align-items:center}
+.segs .k{font-size:11px;color:var(--text-3);margin-right:-8px}
+.wrap{max-width:1440px;margin:18px auto 40px;padding:0 24px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px}
+.chart{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;height:620px}
+.chart svg{position:absolute;inset:0}
+.chart .hd{position:absolute;left:14px;top:10px;font-size:12px;color:var(--text-2);z-index:2;pointer-events:none}
+.chart .hd b{color:var(--text-1);font-weight:650;margin-right:4px}
+.hcard{display:none;pointer-events:none}
+.hcard.show{display:block}
+.hcard{position:absolute;z-index:5;width:256px;background:var(--overlay);border-radius:12px;box-shadow:var(--shadow-menu);padding:12px 14px 12px;font-size:12px}
+.hc-h{display:flex;align-items:center;gap:6px;color:var(--text-2);font-size:11px}
+.hc-h b{color:var(--text-1);font-size:12px;font-weight:650}
+.hc-net{display:flex;align-items:baseline;justify-content:space-between;margin:8px 0 8px}
+.hc-net .v{font-size:20px;font-weight:700;letter-spacing:-.02em}
+.hc-net .l{font-size:11px;color:var(--text-3)}
+.hc-fly{height:8px;display:flex;border-radius:4px;overflow:hidden;gap:2px;margin-bottom:6px}
+.hc-fly i{display:block;height:100%}
+.hc-kv{display:grid;grid-template-columns:1fr auto auto;gap:4px 10px;align-items:baseline}
+.hc-kv span{color:var(--text-3);font-size:11px}
+.hc-kv b{font-weight:600;text-align:right}
+.hc-kv em{font-style:normal;color:var(--text-3);font-size:11px;text-align:right;min-width:30px;white-space:nowrap}
+.hc-kv em i{font-style:normal}
+.hc-src{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);display:grid;gap:7px}
+.sr .tx{display:flex;justify-content:space-between;font-size:11px;line-height:13px;color:var(--text-3);margin-bottom:3px;white-space:nowrap;gap:6px}
+.sr .tx b{color:var(--text-2);font-weight:600;margin-left:3px}
+.sr .tx span{display:inline-flex;align-items:center;gap:4px;flex:none}
+.sr .tx span i{width:6px;height:6px;border-radius:50%;display:block}
+.seg3{height:3px;display:flex;gap:2px}
+.seg3 i{display:block;height:100%;border-radius:2px}
+.sr{display:grid;gap:3px}
+.hcard .hc-src{display:grid;gap:7px}
+/* 气泡 */
+.bb{cursor:pointer}
+.bb circle.body{transition:transform .12s var(--ease);transform-box:fill-box;transform-origin:center}
+.bb:hover circle.body{transform:scale(1.1)}
+.bb text{pointer-events:none;font-weight:650;fill:#fff;text-anchor:middle;dominant-baseline:central;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+/* 右侧说明 */
+.doc{display:grid;gap:14px;align-content:start}
+.card{background:var(--card);border:1px solid var(--card-line);border-radius:12px;padding:14px 16px;box-shadow:inset 0 1px 0 var(--card-hi)}
+.card h3{font-size:13px;font-weight:650;margin-bottom:8px}
+.card p,.card li{font-size:12px;color:var(--text-2);line-height:1.6}
+.card ul{padding-left:16px}
+.card li b{color:var(--text-1);font-weight:600}
+.legend{display:grid;grid-template-columns:52px 1fr;gap:10px 12px;align-items:center}
+.legend .sw{display:flex;justify-content:center}
+.legend .t{font-size:12px;color:var(--text-2)} .legend .t b{color:var(--text-1);font-weight:600;display:block}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cmp div{font-size:12px;color:var(--text-2);line-height:1.55;padding:10px 12px;border-radius:9px;background:var(--surface-2)}
+.cmp div b{display:block;color:var(--text-1);font-weight:600;margin-bottom:3px}
+.cmp div.bad b{color:var(--down)} .cmp div.good b{color:var(--up)}
+</style>
+</head>
+<body>
+<div class="pbar"><h1>大单与爆仓 · 气泡原型<span>三端同一套 · 2026-10-08 · 假数据 · 替换图上的签与三角</span></h1>
+  <div class="segs">
+    <span class="k">画法</span><div class="seg" data-k="mode"><button aria-pressed="true" data-v="bubble">气泡</button><button data-v="tag">现在的签</button></div>
+    <span class="k">疏密</span><div class="seg" data-k="bw"><button data-v="16">疏</button><button aria-pressed="true" data-v="9">中</button><button data-v="4">密</button></div>
+    <div class="seg" data-k="theme"><button aria-pressed="true" data-v="light">浅色</button><button data-v="dark">深色</button></div>
+  </div>
+</div>
+<div class="wrap">
+  <div class="chart" id="chart"><div class="hd"><b>SOLUSDT</b>· 5分 · 币安永续</div><div class="hcard" id="hc"></div></div>
+  <aside class="doc">
+    <div class="card"><h3>气泡怎么读</h3>
+      <div class="legend">
+        <div class="sw"><svg width="44" height="44"><circle cx="22" cy="22" r="18" fill="var(--up)"/><circle cx="22" cy="22" r="22" fill="var(--up)" opacity=".16"/><text x="22" y="23" font-size="12" font-weight="650" fill="#fff" text-anchor="middle" dominant-baseline="central">34.1</text></svg></div>
+        <div class="t"><b>大买 · 大气泡带光晕</b>挂在那根 K 线最高点正上方，字是这根的大买合计（M）</div>
+        <div class="sw"><svg width="44" height="44"><circle cx="22" cy="22" r="13" fill="var(--down)"/><text x="22" y="23" font-size="10.5" font-weight="650" fill="#fff" text-anchor="middle" dominant-baseline="central">6.1</text></svg></div>
+        <div class="t"><b>大卖 · 中气泡</b>挂在最低点正下方；气泡大小跟金额走</div>
+        <div class="sw"><svg width="44" height="44"><circle cx="22" cy="22" r="14" fill="var(--down)" fill-opacity=".12" stroke="var(--down)" stroke-width="1.8"/><text x="22" y="23" font-size="10.5" font-weight="650" fill="var(--down)" text-anchor="middle" dominant-baseline="central">31K</text></svg></div>
+        <div class="t"><b>爆仓 · 空心环</b>多爆红环挂低点下、空爆绿环挂高点上，环里写爆仓金额；实心是成交、空心是爆仓，颜色只分红绿</div>
+        <div class="sw"><svg width="44" height="44"><circle cx="22" cy="22" r="3.2" fill="var(--up)"/></svg></div>
+        <div class="t"><b>小圆点</b>过了门槛但不算大，只点一下不写字（替掉原来的三角）</div>
+        <div class="sw"><svg width="44" height="44"><line x1="22" y1="10" x2="22" y2="34" stroke="var(--line-strong)"/><rect x="19" y="16" width="6" height="12" fill="var(--up)"/><line x1="22" y1="10" x2="22" y2="4" stroke="var(--up)" stroke-width="1.2"/><circle cx="22" cy="2" r="2" fill="var(--up)"/></svg></div>
+        <div class="t"><b>圆心永远对着那根</b>挤不下时气泡往外错开一层，一条细柄仍连回那根的高 / 低点</div>
+      </div></div>
+    <div class="card"><h3>和现在的签比</h3>
+      <div class="cmp">
+        <div class="bad"><b>签 + 三角</b>签比根宽、方形像标注；三角又像「方向」，有的在根下面，看不出属于哪根</div>
+        <div class="good"><b>气泡</b>圆形居中对根，一眼定位；大小即金额，不再有三角；和挂单墙（横带）、画线（直线）形状都不同</div>
+      </div></div>
+    <div class="card"><h3>三端一套</h3><p>iOS、手机网页、电脑网页用同一套气泡：同样的三档尺寸、同样的红绿与实 / 空心之分。手机上没有悬停，点气泡弹这根的大单卡，再点进大单列表；圆点不响应点击。</p></div>
+    <div class="card"><h3>交互</h3><ul>
+      <li>鼠标停上去：气泡放大一点、那根 K 线铺淡竖带、弹这根的大单卡</li>
+      <li>点一下：选中那根（带底边粗线），大单列表滚到它</li>
+      <li>买卖两边都过门槛的根：上下各一枚，大的那边先画</li>
+      <li>切周期 / 缩放：档位按最近 300 根的分布重定，密到一根不到 4 像素时只剩圆点</li>
+    </ul></div>
+  </aside>
+</div>
+<script>
+const MINUS = '−'
+function fm(v){ const a = Math.abs(v); if (a >= 1e9) return (a/1e9).toFixed(2)+'B'; if (a >= 1e6) return (a/1e6).toFixed(1)+'M'; if (a >= 1e3) return (a >= 1e5 ? Math.round(a/1e3) : (a/1e3).toFixed(1))+'K'; return String(Math.round(a)) }
+function fs(v){ if (Math.abs(v) < 1) return '0'; return (v > 0 ? '+' : MINUS) + fm(v) }
+function cls(v){ return v > 0 ? 'up' : v < 0 ? 'dn' : 't3' }
+function hm(m){ m = ((m % 1440) + 1440) % 1440; const h = Math.floor(m/60), mm = m % 60; return String(h).padStart(2,'0') + ':' + String(mm).padStart(2,'0') }
+function rng(seed){ let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296 } }
+const NS = 'http://www.w3.org/2000/svg'
+function svg(w, h, inner){ return `<svg xmlns="${NS}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;overflow:visible">${inner}</svg>` }
+/* ---------- 假数据：360 根 5 分钟 K，约两成的根有大单 ---------- */
+const STEP = 5, T_END = 14*60 + 15, N = 360, T0 = T_END - (N-1)*STEP, LIVE_FROM = 12*60 + 30
+const R = rng(20261008)
+const bars = []
+{ let c = 121.4, prev = c
+  for (let i = 0; i < N; i++){
+    const drift = i > N - 130 ? -.03 : .002
+    const cl = prev + (R() - .5)*.42 + drift
+    const o = prev, hi = Math.max(o, cl) + R()*.16, lo = Math.min(o, cl) - R()*.16
+    bars.push({ t: T0 + i*STEP, o, h: hi, l: lo, c: cl, v: .6 + R()*1.6, bb: 0, bs: 0 })
+    prev = cl } }
+const toMin = s => { const [h,m] = s.split(':').map(Number); return h*60+m }
+const BIG = [ ['14:15',2.5,4.2],['14:05',.9,3.1],['13:50',6.4,1.2],['13:40',19.7,34.1],['13:25',1.8,0],['13:10',4.9,23.2],['12:55',0,2.6],
+  ['12:40',7.3,3.0],['12:30',2.2,5.1],['12:10',3.6,11.8],['11:50',3.4,13.2],['11:35',14.3,7.0],['11:05',16.8,2.1],['10:40',5.2,12.3],
+  ['10:15',4.7,14.0],['09:50',0,3.3],['09:20',4.0,43.7],['08:45',2.8,6.1],['08:20',11.0,1.9],['07:55',3.0,50.5],['07:10',8.2,2.4],
+  ['06:30',1.1,4.4],['05:40',3.6,11.8],['05:05',6.0,.8],['04:40',2.2,7.4] ]
+for (const [s, b, a] of BIG){ const br = bars[(toMin(s) - T0)/STEP]; if (br) { br.bb = b*1e6; br.bs = a*1e6 } }
+{ const r = rng(99); for (let i = 0; i < N - 120; i++){ const br = bars[i]; if (r() > .22) continue
+    const big = Math.exp(r()*3.2)*0.8e6, side = r() < .5
+    br.bb = side ? big : (r() < .4 ? Math.exp(r()*2)*0.7e6 : 0); br.bs = side ? (r() < .4 ? Math.exp(r()*2)*0.7e6 : 0) : big } }
+bars.forEach((br, i) => { const b = br.bb, a = br.bs; if (!(a + b)) return
+  if (b > a*1.5) { br.c = Math.max(br.c, br.o + .12); br.h = Math.max(br.h, br.c + .08) }
+  if (a > b*1.5) { br.c = Math.min(br.c, br.o - .12); br.l = Math.min(br.l, br.c - .1 - a/400e6) }
+  br.v += (a + b)/9e6
+  if (bars[i+1]) bars[i+1].o = br.c
+  if (br.t >= LIVE_FROM){ const r2 = rng(br.t)
+    br.bn = b ? Math.max(1, Math.round(b/1.7e6)) : 0; br.sn = a ? Math.max(1, Math.round(a/1.7e6)) : 0
+    const mx = Math.max(a, b); br.mx = { usd: mx*(.32 + r2()*.22), side: a >= b ? 's' : 'b' }
+    const bn = .45 + r2()*.3, okx = (1 - bn)*(.55 + r2()*.3); br.ex = [bn, okx, 1 - bn - okx]; br.spot = .14 + r2()*.22 } })
+{ const r = rng(77); for (const br of bars){ br.L = r() < .3 ? r()*4.5e3 : 0; br.S = r() < .3 ? r()*4e3 : 0 }
+  const add = (s, L, S) => { const br = bars[(toMin(s) - T0)/STEP]; if (br) { br.L += L; br.S += S } }
+  add('09:15', 14e3, 0); add('13:30', 0, 22e3); add('13:45', 9e3, 6e3); add('11:00', 0, 8e3); add('07:55', 31e3, 0); add('09:20', 18e3, 0); add('12:10', 6.5e3, 0); add('10:05', 0, 11e3) }
+const LAST = bars[N-1].c
+const P = { mode: 'bubble', bw: 9, sel: toMin('13:10'), hover: null }
+
+/* ---------- 档位：最近 300 根里「大买 / 大卖大的那侧」的分布，P85 / P95 / max(P99, 3×P95)（和真图同一口径） ---------- */
+function tiers(vis){ const v = vis.map(b => Math.max(b.bb, b.bs)).filter(Boolean).sort((a, b) => a - b); if (!v.length) return null
+  const q = p => v[Math.min(v.length - 1, Math.floor(p*v.length))]; const p95 = q(.95); return { t1: q(.85), t2: p95, t3: Math.max(q(.99), 3*p95) } }
+const tierOf = (x, K) => x >= K.t3 ? 3 : x >= K.t2 ? 2 : x >= K.t1 ? 1 : 0
+const short = v => { const s = fm(v); return s.endsWith('M') ? s.slice(0, -1) : s }
+const textW = (s, fs) => s.length*fs*.66
+const liqTxt = v => v >= 1e6 ? fm(v) : v >= 1e3 ? Math.round(v/1e3) + 'K' : String(Math.round(v))
+
+/* ---------- 画图 ---------- */
+const el = document.getElementById('chart'), hcEl = document.getElementById('hc')
+let geo = null
+function draw(){
+  const w = el.clientWidth, h = el.clientHeight, axW = 64, tH = 24, volH = 64, padT = 46
+  const cw = w - axW, ph = h - tH - volH - padT - 10, bw = P.bw
+  const n = Math.min(N, Math.floor((cw - 16)/bw)), vis = bars.slice(N - n)
+  const lo = Math.min(...vis.map(b => b.l)) - .2, hi = Math.max(...vis.map(b => b.h)) + .2
+  const y = p => padT + (hi - p)/(hi - lo)*ph, x = i => 8 + i*bw + bw/2
+  geo = { vis, x, y, bw, h, tH, cw }
+  let g = '', front = ''
+  for (let p = Math.ceil(lo*2)/2; p <= hi; p += .5) g += `<line x1="0" x2="${cw}" y1="${y(p).toFixed(1)}" y2="${y(p).toFixed(1)}" stroke="var(--chart-grid)"/><text x="${cw + 8}" y="${(y(p) + 4).toFixed(1)}" font-size="11" fill="var(--text-3)" class="num">${p.toFixed(2)}</text>`
+  vis.forEach((b, i) => { if (b.t % 60 === 0) g += `<line x1="${x(i)}" x2="${x(i)}" y1="0" y2="${h - tH}" stroke="var(--chart-grid)"/><text x="${x(i)}" y="${h - 7}" font-size="11" text-anchor="middle" fill="var(--text-3)" class="num">${hm(b.t)}</text>` })
+  // 选中 / 悬停那根的竖带
+  const band = (t, strong) => { const i = vis.findIndex(b => b.t === t); if (i < 0) return ''
+    return `<rect x="${(x(i) - bw/2).toFixed(1)}" y="0" width="${bw}" height="${h - tH}" fill="var(--accent)" opacity="${strong ? .09 : .13}"/>` + (strong ? `<rect x="${(x(i) - bw/2).toFixed(1)}" y="${h - tH - 3}" width="${bw}" height="3" fill="var(--accent)" opacity=".85"/>` : '') }
+  g += band(P.sel, true); if (P.hover != null && P.hover !== P.sel) g += band(P.hover, false)
+  // 均线
+  const ma = n => vis.map((b, i) => { const a = vis.slice(Math.max(0, i - n + 1), i + 1); return a.reduce((s, q) => s + q.c, 0)/a.length })
+  for (const [k, c] of [[10, '#F5A524'], [30, '#3D6BF2']]){ const m = ma(k); g += `<path d="${m.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('')}" fill="none" stroke="${c}" stroke-width="1" opacity=".9"/>` }
+  // K 线 + 成交量
+  const vmax = Math.max(...vis.map(b => b.v)), cwid = Math.max(1, bw*.72)
+  vis.forEach((b, i) => { const up = b.c >= b.o, c = up ? 'var(--up)' : 'var(--down)', X = x(i)
+    g += `<line x1="${X}" x2="${X}" y1="${y(b.h).toFixed(1)}" y2="${y(b.l).toFixed(1)}" stroke="${c}"/>`
+    const top = y(Math.max(b.o, b.c)), bh = Math.max(1, Math.abs(y(b.o) - y(b.c)))
+    g += `<rect x="${(X - cwid/2).toFixed(1)}" y="${top.toFixed(1)}" width="${cwid.toFixed(1)}" height="${bh.toFixed(1)}" fill="${c}"/>`
+    const vh = b.v/vmax*(volH - 6)
+    g += `<rect x="${(X - cwid/2).toFixed(1)}" y="${(h - tH - vh).toFixed(1)}" width="${cwid.toFixed(1)}" height="${vh.toFixed(1)}" fill="${c}" opacity=".35"/>` })
+  front += P.mode === 'bubble' ? bubbles(vis, x, y, bw, padT, h - tH - volH) : tags(vis, x, y, bw)
+  // 现价线、轴线
+  g += `<line x1="0" x2="${cw}" y1="${y(LAST).toFixed(1)}" y2="${y(LAST).toFixed(1)}" stroke="var(--up)" stroke-dasharray="1 3"/><rect x="${cw}" y="${(y(LAST) - 9).toFixed(1)}" width="${axW}" height="18" fill="var(--up)"/><text x="${cw + 8}" y="${(y(LAST) + 4).toFixed(1)}" font-size="11" fill="#fff" class="num">${LAST.toFixed(2)}</text>`
+  g += `<line x1="${cw}" x2="${cw}" y1="0" y2="${h}" stroke="var(--line)"/><line x1="0" x2="${w}" y1="${h - tH}" y2="${h - tH}" stroke="var(--line)"/>`
+  el.querySelector('svg')?.remove()
+  el.insertAdjacentHTML('afterbegin', svg(w, h, g + front))
+}
+
+/* 气泡：大单 = 实心气泡（买绿在高点上、卖红在低点下），爆仓 = 空心环（空爆绿在上、多爆红在下）；
+   大小三档（点 / 中 / 大带光晕），圆心对根、细柄连回高低点；同侧相邻挤不下就往外错一层；大单先占位、爆仓让 */
+function bubbles(vis, x, y, bw, top, bottom){
+  const KT = tiers(vis.map(b => ({ bb: b.bb, bs: b.bs }))), KL = tiers(vis.map(b => ({ bb: b.S, bs: b.L })))
+  const placed = { b: [], s: [] }, dotR = Math.min(3.2, Math.max(1.6, bw*.42))
+  let out = '', stems = ''
+  const put = (kind, side, b, i, v, K) => {
+    const tier = tierOf(v, K); if (!tier) return
+    const up = side === 'b', c = up ? 'var(--up)' : 'var(--down)', X = x(i), anchor = up ? y(b.h) : y(b.l)
+    let r, fs = 0, txt = ''
+    if (tier === 1 || bw < 4) r = dotR
+    else { txt = kind === 'liq' ? liqTxt(v) : short(v); fs = tier === 3 ? 12 : 10.5
+      const base = tier === 3 ? 16 + 4*Math.min(1, (v - K.t3)/(K.t3*2)) : 12 + 3*Math.min(1, (v - K.t2)/(K.t3 - K.t2))
+      r = Math.max(base, textW(txt, fs)/2 + 4) }
+    const stem = tier === 1 ? 3 : 5
+    let cy = up ? anchor - stem - r : anchor + stem + r, guard = 0
+    while (guard++ < 6){ const hit = placed[side].find(p => Math.hypot(p.x - X, p.y - cy) < p.r + r + 2); if (!hit) break
+      cy = up ? hit.y - hit.r - r - 2 : hit.y + hit.r + r + 2 }
+    if (tier > 1 && (up ? cy - r < top + 4 : cy + r > bottom - 4)) { r = dotR; txt = ''; cy = up ? anchor - 3 - r : anchor + 3 + r }
+    placed[side].push({ x: X, y: cy, r })
+    const edge = up ? cy + r : cy - r, liq = kind === 'liq'
+    const body = liq
+      ? `<circle class="body" cx="${X}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${c}" fill-opacity=".12" stroke="${c}" stroke-width="${tier === 1 ? 1.2 : 1.8}"/>`
+      : (tier === 3 ? `<circle cx="${X}" cy="${cy.toFixed(1)}" r="${(r + 5).toFixed(1)}" fill="${c}" opacity=".16"/>` : '') +
+        `<circle class="body" cx="${X}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${c}"${tier === 1 ? '' : ' stroke="var(--surface)" stroke-width="1.2"'}/>` +
+        (tier > 1 ? `<ellipse cx="${(X - r*.28).toFixed(1)}" cy="${(cy - r*.42).toFixed(1)}" rx="${(r*.46).toFixed(1)}" ry="${(r*.26).toFixed(1)}" fill="#fff" opacity=".22" pointer-events="none"/>` : '')
+    if (txt) stems += `<line x1="${X}" x2="${X}" y1="${anchor.toFixed(1)}" y2="${edge.toFixed(1)}" stroke="${c}" stroke-width="1.2" opacity=".75"/>`
+    out += `<g class="bb${liq ? ' lq' : ''}" data-t="${b.t}">` + body +
+      (txt ? `<text x="${X}" y="${cy.toFixed(1)}" font-size="${fs}"${liq ? ` style="fill:${c}"` : ''}>${txt}</text>` : '') + '</g>'
+  }
+  if (KT) for (const side of ['b', 's']){
+    const o = vis.map((b, i) => ({ b, i, v: side === 'b' ? b.bb : b.bs })).filter(q => q.v > 0).sort((p, q) => q.v - p.v)
+    for (const { b, i, v } of o) put('trade', side, b, i, v, KT) }
+  if (KL) for (const side of ['b', 's']){
+    const o = vis.map((b, i) => ({ b, i, v: side === 'b' ? b.S : b.L })).filter(q => q.v > 0).sort((p, q) => q.v - p.v)
+    for (const { b, i, v } of o) put('liq', side, b, i, v, KL) }
+  return stems + out
+}
+
+/* 现在的签（对照用）：每根一枚，买挂高点上、卖挂低点下；三角 / 圆角签 / 大签 */
+function tags(vis, x, y, bw){
+  const K = tiers(vis); if (!K) return ''
+  let out = ''
+  vis.forEach((b, i) => { if (!(b.bb + b.bs)) return
+    const buy = b.bb >= b.bs, amt = buy ? b.bb : b.bs, tier = tierOf(amt, K); if (!tier) return
+    const c = buy ? 'var(--up)' : 'var(--down)', X = x(i), yy = buy ? y(b.h) - 6 : y(b.l) + 6
+    if (tier === 1){ out += `<g class="bb" data-t="${b.t}"><path d="M${X - 4},${yy}L${X + 4},${yy}L${X},${buy ? yy - 6 : yy + 6}Z" fill="${c}"/></g>`; return }
+    const t = short(amt), big = tier === 3, tw = t.length*(big ? 7.2 : 6.4) + 10, th = big ? 18 : 16
+    const ty = buy ? yy - th - 3 : yy + 3
+    out += `<g class="bb" data-t="${b.t}"><line x1="${X}" x2="${X}" y1="${yy}" y2="${buy ? yy - 3 : yy + 3}" stroke="${c}"/>` +
+      (big ? `<rect x="${X - tw/2}" y="${ty}" width="${tw}" height="${th}" rx="4" fill="${c}"/><text x="${X}" y="${ty + 9}" font-size="11.5" style="fill:#fff">${t}</text>`
+           : `<rect x="${X - tw/2}" y="${ty}" width="${tw}" height="${th}" rx="4" fill="var(--surface)" stroke="${c}"/><text x="${X}" y="${ty + 8}" font-size="10.5" style="fill:${c}">${t}</text>`) + '</g>' })
+  return out
+}
+
+/* ---------- 悬停卡（和真图同一张） ---------- */
+function hoverCard(b){
+  const n = b.bb - b.bs, t = b.bb + b.bs || 1
+  const live = b.bn != null
+  return `<div class="hc-h"><b class="num">10-08 ${hm(b.t)}</b>· 5分</div>
+    <div class="hc-net"><span class="v num ${cls(n)}">${fs(n)}</span><span class="l">净额</span></div>
+    <div class="hc-fly"><i style="flex:${b.bs/t};background:linear-gradient(90deg,color-mix(in srgb,var(--down) 60%,transparent),var(--down))"></i><i style="flex:${b.bb/t};background:linear-gradient(90deg,var(--up),color-mix(in srgb,var(--up) 60%,transparent))"></i></div>
+    <div class="hc-kv">
+      <span>大卖</span><b class="num dn">${fm(b.bs)}</b><em class="num">${live ? b.sn + ' 笔' : ''}</em>
+      <span>大买</span><b class="num up">${fm(b.bb)}</b><em class="num">${live ? b.bn + ' 笔' : ''}</em>
+      ${b.L + b.S ? `<span>爆仓</span><b class="num">${liqTxt(b.L + b.S)}</b><em class="num">${b.L ? '<i class="dn">多 ' + liqTxt(b.L) + '</i>' : ''}${b.L && b.S ? ' · ' : ''}${b.S ? '<i class="up">空 ' + liqTxt(b.S) + '</i>' : ''}</em>` : ''}
+      ${live ? `<span>最大一笔</span><b class="num">${fm(b.mx.usd)}</b><em class="${b.mx.side === 's' ? 'dn' : 'up'}">${b.mx.side === 's' ? '卖' : '买'}</em>` : ''}
+    </div>` + (live ? `<div class="hc-src">
+      <div class="sr"><div class="tx"><span>现货<b class="num">${Math.round(b.spot*100)}%</b></span><span>合约<b class="num">${Math.round((1 - b.spot)*100)}%</b></span></div><div class="seg3"><i style="flex:${b.spot};background:var(--spot)"></i><i style="flex:${1 - b.spot};background:var(--perp)"></i></div></div>
+      <div class="sr"><div class="tx">${['币安','OKX','Coinbase'].map((k, j) => `<span><i style="background:var(--${['bn','okx','cb'][j]})"></i>${k}<b class="num">${Math.round(b.ex[j]*100)}%</b></span>`).join('')}</div><div class="seg3">${b.ex.map((v, j) => `<i style="flex:${v};background:var(--${['bn','okx','cb'][j]})"></i>`).join('')}</div></div>
+    </div>` : '')
+}
+
+el.addEventListener('mousemove', e => {
+  const g = e.target.closest('.bb'); const t = g ? +g.dataset.t : null
+  if (t !== P.hover){ P.hover = t; draw() }
+  if (t == null){ hcEl.classList.remove('show'); return }
+  const b = bars.find(q => q.t === t), rc = el.getBoundingClientRect()
+  hcEl.innerHTML = hoverCard(b)
+  const cx = e.clientX - rc.left, cy = e.clientY - rc.top
+  hcEl.style.left = Math.min(rc.width - 270, Math.max(8, cx + 16)) + 'px'
+  hcEl.style.top = Math.min(rc.height - hcEl.offsetHeight - 40, Math.max(8, cy - 40)) + 'px'
+  hcEl.classList.add('show')
+})
+el.addEventListener('mouseleave', () => { P.hover = null; hcEl.classList.remove('show'); draw() })
+el.addEventListener('click', e => { const g = e.target.closest('.bb'); if (!g) return; P.sel = +g.dataset.t; draw() })
+document.querySelectorAll('.seg').forEach(s => s.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return
+  s.querySelectorAll('button').forEach(q => q.setAttribute('aria-pressed', q === b)); const k = s.dataset.k, v = b.dataset.v
+  if (k === 'theme') document.documentElement.dataset.theme = v; else if (k === 'bw') P.bw = +v; else P.mode = v
+  draw() }))
+addEventListener('resize', draw)
+draw()
+</script>
+</body>
+</html>
