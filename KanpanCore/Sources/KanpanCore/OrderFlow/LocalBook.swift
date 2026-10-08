@@ -3,8 +3,8 @@ import Foundation
 // 主力订单流 · 本地簿。
 //
 // 逐行移植 send-tradfi `crates/bit-orderbook-book/src/lib.rs`（bootstrap :108、apply :232、
-// replace_from_stream_snapshot :300、begin_resync :345、fail_sequence）。三家交易所的序号
-// 规则都在 `DepthSequenceModel` 里；簿本身与交易所无关，由 KanpanNetwork 的适配器把各家帧
+// replace_from_stream_snapshot :300、begin_resync :345、fail_sequence）。各家交易所的序号
+// 规则都在 `DepthSequenceModel` 里（哪家用哪种由 KanpanNetwork 的交易所注册表定）；簿本身与交易所无关，由 KanpanNetwork 的适配器把各家帧
 // 解成 `BookSnapshot` / `BookDelta`。原项目用 Decimal，这里用 Double：同一个价格字符串解出来
 // 的 Double 恒等，作字典键安全。
 
@@ -26,6 +26,8 @@ public enum DepthSequenceModel: Sendable, Equatable {
   case previousFinalExact
   /// 整条连接一个递增序号：每条 first == final == prev+1，不带 pu。
   case strictIncrementing
+  /// 没有序号、每一帧都是整本簿：来一帧整本替换一次，不接续、不查缺口（也不会有增量）。
+  case snapshotOnly
 
   /// 这条缓冲增量够不够得着最后序号是 `lastUpdateID` 的快照：够得着的第一条就是对序号的那一条；
   /// 一条都够不着时快照比缓冲新，只能等增量追上来。
@@ -33,6 +35,7 @@ public enum DepthSequenceModel: Sendable, Equatable {
     switch self {
     case .rangeOverlap, .strictIncrementing, .previousFinalExact: delta.finalUpdateID > lastUpdateID
     case .previousFinalOverlap: delta.finalUpdateID >= lastUpdateID
+    case .snapshotOnly: true
     }
   }
 }
@@ -50,11 +53,15 @@ public struct BookSnapshot: Sendable, Equatable {
   /// 永远不推；某一档被挤出窗口时推一个 0——和真撤单长得一样。本地簿据此改用「窗口最深一档以内才知道」
   /// （见 `LocalBook.knows`），也不裁远处（表本来就封顶这么多档）。
   public var slidingWindow: Bool
+  /// 交易所把序号从头开始数了（服务重启后推一份序号为 1 的快照，要求本地整本重来）：
+  /// 这份快照比本地序号小也照收，不当成倒退。
+  public var restartsSequence: Bool
   public init(lastUpdateID: Int64, requestedLevels: Int, bids: [BookLevel], asks: [BookLevel],
-              eventTimeMs: Int64? = nil, connection: Int = 0, slidingWindow: Bool = false) {
+              eventTimeMs: Int64? = nil, connection: Int = 0, slidingWindow: Bool = false,
+              restartsSequence: Bool = false) {
     self.lastUpdateID = lastUpdateID; self.requestedLevels = requestedLevels
     self.bids = bids; self.asks = asks; self.eventTimeMs = eventTimeMs; self.connection = connection
-    self.slidingWindow = slidingWindow
+    self.slidingWindow = slidingWindow; self.restartsSequence = restartsSequence
   }
 }
 
@@ -285,6 +292,8 @@ public struct LocalBook: Sendable {
       if first.previousFinalUpdateID != L { try failSequence(noOverlap) }
     case .strictIncrementing:
       if first.previousFinalUpdateID != nil || first.finalUpdateID != L &+ 1 { try failSequence(noOverlap) }
+    case .snapshotOnly:
+      break
     }
     applyLevels(first)
     lastUpdateID = first.finalUpdateID
@@ -324,6 +333,8 @@ public struct LocalBook: Sendable {
         || delta.finalUpdateID != delta.firstUpdateID {
         try failSequence(gap)
       }
+    case .snapshotOnly:
+      break
     }
     applyLevels(delta)
     lastUpdateID = delta.finalUpdateID
@@ -335,7 +346,8 @@ public struct LocalBook: Sendable {
 
   public mutating func replaceFromStreamSnapshot(_ snapshot: BookSnapshot) throws(BookError) {
     try validateIdentity(snapshot.connection)
-    if let previous = lastUpdateID, snapshot.lastUpdateID < previous {
+    if sequenceModel != .snapshotOnly, !snapshot.restartsSequence,
+       let previous = lastUpdateID, snapshot.lastUpdateID < previous {
       try failSequence(.regressedStreamSnapshot(previous: previous, snapshot: snapshot.lastUpdateID))
     }
     if snapshot.requestedLevels <= 0 || snapshot.bids.count > snapshot.requestedLevels

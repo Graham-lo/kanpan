@@ -3,28 +3,23 @@ import KanpanCore
 
 // 主力订单流的数据链路。照 CoinAnk「主力大额挂单」：打开一只币，把它在各家交易所、各种产品上的
 // 每一本簿都订上。一本簿是一个 `DepthBook`（Core 的 `OrderFlowVenue` + 价格换算），
-// 几本簿合用一条连接的是一个适配器（`DepthFeedAdapter`）——币安合约一条组合流带好几只合约，
-// OKX 一条中继订好几只 instId，省连接（网关中继全进程只有 64 条）。
+// 几本簿合用一条连接的是一个适配器（`DepthFeedAdapter`）——一条组合流 / 一条中继订好几只合约，
+// 省连接（网关中继全进程有上限）。
 //
 // 适配器说清楚四件事：连哪儿、订什么（`connect`），一帧属于哪本簿、是什么（`decode`），
 // 快照从哪儿拿（`fetchSnapshot`），要不要定时发保活（`keepAlive`）。
 // 本地簿、分桶、门槛与交易所无关，全在 KanpanCore/OrderFlow；连接与重连在 `DepthStream`；
-// 这只币有哪几本簿、怎么分组在 `OrderFlowCatalog`。
+// 这只币有哪几本簿、怎么分组在 `OrderFlowCatalog`（只查交易所注册表 `VenueRegistry.orderFlow`）。
 //
-// | 分组 | 产品 | 增量 | 快照 | 连接 |
-// |---|---|---|---|---|
-// | 币安 U 本位 | U 本位永续、U 本位交割 | `@depth@100ms` + `@aggTrade` | kanpan-api `/v1/market/depth?market=um` | 恒走中继 `/v1/market/ws/binance`（服务端分 fstream `/public` 与 `/market`） |
-// | 币安币本位 | 币本位永续、币本位交割 | 同上 | kanpan-api `market=cm` | 恒走中继（服务端连 dstream） |
-// | 币安现货 | 现货 | 同上（无 pu） | REST data-api.binance.vision | 恒直连 data-stream.binance.vision |
-// | OKX | 四种都有 | `books` + `trades` | 流内 snapshot | 恒走中继 `/v1/market/ws/okx`（国内连不上 OKX） |
-// | Coinbase | 现货 | `level2` + `market_trades` | 流内 snapshot | 恒直连 |
-//
-// 「中继」「kanpan-api」都是 `MarketRoute.apiHosts`（只有主机），不随线路两档变：线路只管币安主行情。
+// 各家的适配器与注册表条目都在各自目录（`KanpanNetwork/Sources/KanpanNetwork/<交易所>/`），
+// 本目录只放通用的部分：协议、连接（`DepthStream`）、品种表（`OrderFlowCatalog`）、注册表条目的形状
+// （`OrderFlowExchange`）、大单与爆仓表。「中继」「kanpan-api」都是 `MarketRoute.apiHosts`（只有主机），
+// 不随线路两档变：线路只管主行情。
 
 /// 一本簿：Core 的描述 + 把这一家报的价格换到图上那只品种的价格口径。
 ///
-/// 币安把 PEPE、SHIB 这类挂成 `1000PEPEUSDT`（价格按 1000 个币报）。看的是 `1000PEPEUSDT` 时
-/// 图上的价是「1000 个币」的价，OKX `PEPE-USDT-SWAP` 报的是一个币的价，要乘 1000 才能叠到同一张图上。
+/// 有的交易所把 PEPE、SHIB 这类挂成 `1000PEPEUSDT` / `kPEPE`（价格按 1000 个币报）。看的是 `1000PEPEUSDT` 时
+/// 图上的价是「1000 个币」的价，按一个币报价的那几本要乘 1000 才能叠到同一张图上。
 /// `priceFactor` 就是这个倍数：本家价格 × priceFactor = 图上的价格。
 /// 数量同步除以它（正向合约），名义美元不变；反向合约的数量是张数，与价格无关，不动。
 public struct DepthBook: Sendable, Equatable {
@@ -65,9 +60,9 @@ public struct VenueMessage: Sendable, Equatable {
   public init(_ venueID: String, _ message: DepthMessage) { self.venueID = venueID; self.message = message }
 }
 
-/// 一条深度连接上的几本簿。实现都在本目录，出了这个目录谁也不认识哪家的报文。
+/// 一条深度连接上的几本簿。实现都在各家目录里，出了那个目录谁也不认识那一家的报文。
 public protocol DepthFeedAdapter: Sendable {
-  /// 日志里认这条连接用（「币安 U 本位 BTCUSDT,BTCUSDT_260925」）。
+  /// 日志里认这条连接用（交易所显示名 + 分组 + 合约代号）。
   var name: String { get }
   /// 这条连接上的簿。
   var books: [DepthBook] { get }
@@ -76,17 +71,19 @@ public protocol DepthFeedAdapter: Sendable {
   /// 拨第 `candidate` 条（按候选数取模）并订好，返回的 socket 直接开始收帧。
   ///
   /// 不经 `MarketSocketRouter`：它要先收到一帧认得出的 K 线 / 报价才算连通，
-  /// 深度信封它不认，Coinbase、OKX 更是要先发订阅才有帧，经它会一直判超时。
+  /// 深度信封它不认，要先发订阅才有帧的那几家更是会一直判超时。
   func connect(candidate: Int) async throws -> any WSSocket
   /// 一帧文本 → 零到多条消息。不认识的帧返回空。
   func decode(_ text: String) -> [VenueMessage]
   /// REST 快照（只有 `snapshotInBand == false` 的簿会被调用）。
   func fetchSnapshot(venueID: String) async throws -> BookSnapshot
-  /// 连上之后每隔多久发一句什么保活（OKX 30 秒没有帧就断，要自己发 `ping`）。不用就是 nil。
+  /// 连上之后每隔多久发一句什么保活（有的交易所半分钟没有帧就断，要自己发 ping）。不用就是 nil。
   var keepAlive: DepthKeepAlive? { get }
-  /// 只让这一本簿重新下发流内快照要在当前连接上发的几句（OKX：退订再订那一个 instId 的 `books`）。
+  /// 只让这一本簿重新下发流内快照要在当前连接上发的几句（退订再订那一本的深度频道）。
   /// 做不到单本重订（序号是整条连接一个的那家、或快照不在流里的）就是 nil，调用方整条重拨。
   func resubscribeMessages(venueID: String) -> [String]?
+  /// 多久一帧都没有就当断了；nil 用 `DepthStream.defaultSilenceMs`。
+  var silenceMs: Double? { get }
 }
 
 public struct DepthKeepAlive: Sendable, Equatable {
@@ -98,14 +95,15 @@ public struct DepthKeepAlive: Sendable, Equatable {
 public extension DepthFeedAdapter {
   var venues: [OrderFlowVenue] { books.map(\.venue) }
   var keepAlive: DepthKeepAlive? { nil }
+  var silenceMs: Double? { nil }
   func resubscribeMessages(venueID: String) -> [String]? { nil }
   func fetchSnapshot(venueID: String) async throws -> BookSnapshot {
     throw FeedError.unsupported("深度快照")
   }
 }
 
-/// 能给出主力订单流接入的提供者（币安、Coinbase）：一只币各家各产品的簿都从这里查。
-/// 实现在 `DepthFeedFactory.swift`，提供者文件不动。
+/// 能给出主力订单流接入的提供者：一只币各家各产品的簿都从这里查。
+/// 实现在各家目录的 `<交易所>OrderFlow.swift`，提供者文件不动。
 public protocol OrderFlowSourcing: Sendable {
   var orderFlowCatalog: OrderFlowCatalog { get }
 }
@@ -170,4 +168,12 @@ enum DepthWire {
     }
     return out
   }
+}
+
+/// 快照接口回了非 2xx。4xx（品种不认、参数不对）换主机也没用，直接报；5xx 带 Retry-After 时照办。
+public struct DepthSnapshotError: Error, Sendable, Equatable {
+  public var status: Int
+  public var retryAfterMs: Double?
+  public var isClientError: Bool { (400..<500).contains(status) && status != 429 && status != 418 }
+  public init(status: Int, retryAfterMs: Double? = nil) { self.status = status; self.retryAfterMs = retryAfterMs }
 }

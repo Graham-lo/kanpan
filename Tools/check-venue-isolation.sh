@@ -8,13 +8,14 @@
 #   - Kanpan/Kanpan/Exchange/ExchangeAccountRegistry.swift（只读账户的交易所清单）
 # 其余源码一律只认 `MarketProvider` 与 `ProviderCapabilities`。测试不在此列。
 # 同名的上市公司（COIN 的中文名「Coinbase」）在那一行行尾标 `// venue-name-ok` 放行。
+# 主力订单流的通用代码（OrderFlow/）2026-10-08 起只查注册表（`VenueRegistry.orderFlow`），不再整目录放行。
 # 接新交易所时把它的目录加进 VENUE_DIRS。见 docs/多交易所-接入指南.md。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VENUE_DIRS='^(KanpanNetwork/Sources/KanpanNetwork/(Binance|Coinbase|Macro|OrderFlow)|Kanpan/Kanpan/Exchange/(Binance))/'
+VENUE_DIRS='^(KanpanNetwork/Sources/KanpanNetwork/(Binance|Coinbase|OKX|Bybit|Hyperliquid|Macro)|Kanpan/Kanpan/Exchange/(Binance))/'
 REGISTRY='^(KanpanNetwork/Sources/KanpanNetwork/Provider/VenueRegistry|Kanpan/Kanpan/Exchange/ExchangeAccountRegistry)\.swift$'
-PATTERN='Binance\|Coinbase\|fapi\.binance\|coinbase\.com\|hasSuffix("USDT")'
+PATTERN='Binance\|Coinbase\|fapi\.binance\|coinbase\.com\|Bybit\|bybit\.com\|bytick\|Hyperliquid\|hyperliquid\.xyz\|hasSuffix("USDT")'
 
 files=$(git ls-files --cached --others --exclude-standard -- '*.swift' \
   | grep -Ev 'Tests/|Tests\.swift$' \

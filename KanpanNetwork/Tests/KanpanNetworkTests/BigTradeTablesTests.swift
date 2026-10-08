@@ -26,17 +26,22 @@ struct BigTradeTablesTests {
     #expect(await dead.urls().count == 2)
   }
 
-  @Test("/liq：八列成行，哪边 0 多 / 1 空、哪家 0 币安 / 1 OKX，别的值当 0；缺后四列当 0；不足四列丢行")
+  @Test("/liq：八列成行，哪边 0 多 / 1 空、哪家 0 币安 / 1 OKX / 2 Bybit，别的值当 0；缺后四列当 0；不足四列丢行")
   func liquidations() async throws {
-    let body = #"{"base":"SOL","tracked":true,"rows":[[60000,150000,1,3,120001,142.375,0,1],[120000,0,9000,1,9000,140.5,1,0],[180000,5,6,1],[240000,1,2],[300000,-1,2,2,7,1,5,9]]}"#
+    let body = #"{"base":"SOL","tracked":true,"rows":[[60000,150000,1,3,120001,142.375,0,1],[120000,0,9000,1,9000,140.5,1,0],[180000,5,6,1],[240000,1,2],[300000,-1,2,2,7,1,5,9],[360000,0,40000,2,30000,82000.5,1,2]]}"#
     let server = FakeServer { _ in json(body) }
     let page = try #require(await OrderFlowAdapterTests.catalog(.direct, server: server).liquidations(base: "SOL", fromMs: 0, toMs: 1))
-    #expect(page.tracked && page.rows.count == 4)
+    #expect(page.tracked && page.rows.count == 5)
     #expect(page.rows[0] == LiquidationRow(minuteMs: 60_000, longUsd: 150_000, shortUsd: 1, count: 3, maxUsd: 120_001,
                                             maxPrice: 142.375, maxIsLong: true, maxExchange: .okx))
     #expect(page.rows[1].maxIsLong == false && page.rows[1].maxExchange == .binance)
     #expect(page.rows[2] == LiquidationRow(minuteMs: 180_000, longUsd: 5, shortUsd: 6, count: 1))
     #expect(page.rows[3].longUsd == 0 && page.rows[3].maxIsLong && page.rows[3].maxExchange == .binance)
+    #expect(page.rows[4].maxExchange == .bybit && !page.rows[4].maxIsLong)
+    // 编号与注册表对得上：0 币安、1 OKX、2 Bybit；Coinbase、Hyperliquid 没有强平推送。
+    #expect(LiquidationRow.Exchange.allCases.map { OrderFlowExchange.liquidationVenue($0.rawValue)?.key } ==
+      LiquidationRow.Exchange.allCases.map(\.key))
+    #expect(OrderFlowExchange.named("hyperliquid")?.liquidationCode == nil && OrderFlowExchange.named("coinbase")?.liquidationCode == nil)
     #expect(await server.urls().map(\.absoluteString) == ["https://gw-a.example/v1/market/orderflow/liq?base=SOL&from=0&to=1"])
     #expect(OrderFlowCatalog.parseLiquidations(Data(body.utf8), base: "ETH") == nil)
   }

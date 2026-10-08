@@ -3,7 +3,7 @@ import Foundation
 // 主力订单流 · 一本簿的接续。
 //
 // 每本簿各守各的序列规则、各拉各的快照：连上就换一个连接代号，快照不在流里的那家（币安）
-// 先缓冲增量、等 REST 快照对上序号；快照在流里的（OKX 与美国那家现货）收到首帧就绪。
+// 先缓冲增量、等 REST 快照对上序号；快照在流里的收到首帧就绪；每帧整本的（`snapshotOnly`）每帧整本替换。
 // 接不上就回一个 `Action` 让 KanpanData 去重拉快照或重订。
 
 /// 一本簿：连接代号、缓冲增量、快照对序号、就绪时刻。
@@ -51,7 +51,8 @@ public struct VenueBook: Sendable {
       snapshot.connection = connection
       do {
         try book.replaceFromStreamSnapshot(snapshot)
-        readySinceMs = nowMs
+        // 每帧整本的簿（`snapshotOnly`）每一帧都是快照：就绪时刻记第一帧的，不随每帧往后挪。
+        if readySinceMs == nil || book.sequenceModel != .snapshotOnly { readySinceMs = nowMs }
         return .none
       } catch {
         readySinceMs = nil

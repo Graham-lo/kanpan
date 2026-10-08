@@ -157,7 +157,8 @@ struct SequenceDriver {
     case .previousFinalExact:
       d = BookDelta(firstUpdateID: last + 1, finalUpdateID: last + 1, previousFinalUpdateID: last, bids: bids, asks: asks)
       last += 1
-    case .strictIncrementing:
+    case .strictIncrementing, .snapshotOnly:
+      // snapshotOnly（Hyperliquid）实际只来整本快照；这里给一条照样能吃的增量，压测里不走这条。
       d = BookDelta(firstUpdateID: last + 1, finalUpdateID: last + 1, previousFinalUpdateID: nil, bids: bids, asks: asks)
       last += 1
     }
@@ -735,5 +736,171 @@ final class OrderFlowStressSequenceTests: XCTestCase {
       XCTAssertGreaterThan(r.gaps, 5, "\(c.0)：故障注入没有触发任何断档")
       XCTAssertGreaterThan(r.checks, 100, "\(c.0)：就绪时刻太少，核对不充分")
     }
+  }
+}
+
+// MARK: - 6. 五家交易所 × 四只品种、十分钟（2026-10-08，接 Bybit 与 Hyperliquid 后）
+
+/// 每只品种 8 本簿，照各家实际的序号规则、快照来路与推送节奏：
+/// 币安 U 本位 / 现货（REST 快照、每 100 ms 一条增量）、OKX 永续 / 现货（流内快照、100 ms）、
+/// Coinbase 现货（流内快照、100 ms）、Bybit U 本位 / 现货（流内 1000 档滑动窗口快照、200 ms）、
+/// Hyperliquid 永续（`snapshotOnly`：每 1 秒一份 20 档整本，实测约 2.7 秒一份，这里取更密的）。
+/// 每 100 ms 每本 0–3 笔成交进模型、也进这只品种的大单流；每 500 ms 评估一次、每秒大单流心跳一次。
+final class OrderFlowStressFiveVenueTests: XCTestCase {
+  struct Spec {
+    let exchange: String, label: String, product: OrderFlowProduct, instrument: String
+    let model: DepthSequenceModel, inBand: Bool, everyTicks: Int, sliding: Bool
+  }
+
+  static func specs(_ base: String) -> [Spec] {
+    [
+      Spec(exchange: "binance", label: "币安", product: .usdtPerp, instrument: "\(base)USDT",
+           model: .previousFinalOverlap, inBand: false, everyTicks: 1, sliding: false),
+      Spec(exchange: "binance", label: "币安", product: .spot, instrument: "\(base)USDT",
+           model: .rangeOverlap, inBand: false, everyTicks: 1, sliding: false),
+      Spec(exchange: "okx", label: "OKX", product: .usdtPerp, instrument: "\(base)-USDT-SWAP",
+           model: .previousFinalExact, inBand: true, everyTicks: 1, sliding: true),
+      Spec(exchange: "okx", label: "OKX", product: .spot, instrument: "\(base)-USDT",
+           model: .previousFinalExact, inBand: true, everyTicks: 1, sliding: true),
+      Spec(exchange: "coinbase", label: "Coinbase", product: .spot, instrument: "\(base)-USD",
+           model: .strictIncrementing, inBand: true, everyTicks: 1, sliding: false),
+      Spec(exchange: "bybit", label: "Bybit", product: .usdtPerp, instrument: "\(base)USDT",
+           model: .strictIncrementing, inBand: true, everyTicks: 2, sliding: true),
+      Spec(exchange: "bybit", label: "Bybit", product: .spot, instrument: "\(base)USDT",
+           model: .strictIncrementing, inBand: true, everyTicks: 2, sliding: true),
+      Spec(exchange: "hyperliquid", label: "Hyperliquid", product: .usdtPerp, instrument: base,
+           model: .snapshotOnly, inBand: true, everyTicks: 10, sliding: false),
+    ]
+  }
+
+  /// 四只品种：价格量级各不相同，每档名义都在 10 万美元上下（和 13 本那组同一个密度）。
+  static let coins: [(base: String, tick: Double, midTick: Int)] = [
+    ("BTC", 1, 60_000), ("ETH", 0.1, 30_000), ("SOL", 0.01, 15_000), ("DOGE", 0.00001, 15_000),
+  ]
+
+  func testFiveExchangesFourCoinsTenMinutes() {
+    var rng = StressRNG(seed: 0x5FE7)
+    let tickMs: Int64 = 100
+    let ticks = 6_000  // 10 分钟
+    let t0: Int64 = 1_800_000_000_000
+    let snapshotID: Int64 = 9_000
+
+    struct Lane { var venue: OrderFlowVenue; var spec: Spec; var truth: SyntheticBook; var driver: SequenceDriver }
+    var models: [OrderFlowModel] = []
+    var flows: [BigTradeFlow] = []
+    var lanes: [[Lane]] = []
+    let rssStart = Stress.residentMB()
+    var rssPeak = rssStart
+
+    for coin in Self.coins {
+      let price = Double(coin.midTick) * coin.tick
+      let step = coin.tick * 10
+      let threshold = 1_100_000.0
+      let thresholds = OrderFlowThresholds(spot: threshold, usdtPerp: threshold, coinPerp: threshold,
+                                           delivery: threshold, step: step)
+      var model = OrderFlowModel(symbol: "\(coin.base)USDT", thresholds: thresholds)
+      let qty = (0.5 * 60_000 / price)...(3 * 60_000 / price)
+      var row: [Lane] = []
+      for spec in Self.specs(coin.base) {
+        let venue = OrderFlowVenue(exchange: spec.exchange, label: spec.label, product: spec.product,
+                                   instrument: spec.instrument, notional: .linear(multiplier: 1),
+                                   sequenceModel: spec.model, snapshotInBand: spec.inBand)
+        model.addVenue(venue)
+        _ = model.connectionOpened(venue.id)
+        let truth = SyntheticBook(tick: coin.tick, midTick: coin.midTick, levels: 1_000, qty: qty, rng: &rng)
+        var driver = SequenceDriver(model: spec.model, last: snapshotID)
+        switch spec.model {
+        case .snapshotOnly:
+          XCTAssertEqual(model.ingest(venue.id, .snapshot(truth.snapshot(lastUpdateID: t0, requestedLevels: 20)), nowMs: t0), .none)
+        default:
+          var snap = truth.snapshot(lastUpdateID: snapshotID, requestedLevels: spec.sliding ? 1_000 : 5_000)
+          snap.slidingWindow = spec.sliding
+          if spec.inBand {
+            XCTAssertEqual(model.ingest(venue.id, .snapshot(snap), nowMs: t0), .none)
+          } else {
+            _ = model.ingest(venue.id, .delta(driver.bridge(after: snapshotID)), nowMs: t0)
+            XCTAssertEqual(model.applySnapshot(venue.id, snap, nowMs: t0), .none)
+          }
+        }
+        row.append(Lane(venue: venue, spec: spec, truth: truth, driver: driver))
+      }
+      for lane in row { XCTAssertTrue(model.isReady(lane.venue.id), lane.venue.id) }
+      models.append(model)
+      flows.append(BigTradeFlow(symbol: "\(coin.base)USDT"))
+      lanes.append(row)
+    }
+    let books = lanes.reduce(0) { $0 + $1.count }
+
+    var deltas = 0, snapshots = 0, trades = 0, bigTrades = 0, changes = 0, notReady = 0
+    var evalMs: [Double] = [], tickMsSamples: [Double] = []
+    var maxLive = 0
+    let wall0 = Stress.nowNs()
+    for k in 1...ticks {
+      let now = t0 + Int64(k) * tickMs
+      let tt = Stress.nowNs()
+      var evalThisTick: Double = 0
+      for c in models.indices {
+        let cut = BigTradeFlow.threshold(models[c].thresholds).map(BigTradeFlow.cut(threshold:))
+        for i in lanes[c].indices where k % lanes[c][i].spec.everyTicks == 0 {
+          let id = lanes[c][i].venue.id
+          let n = rng.int(20...120)
+          changes += n
+          let ch = lanes[c][i].truth.changes(n, reach: 1_000, rng: &rng)
+          if lanes[c][i].spec.model == .snapshotOnly {
+            let snap = lanes[c][i].truth.snapshot(lastUpdateID: now, requestedLevels: 20)
+            if models[c].ingest(id, .snapshot(snap), nowMs: now) != .none { notReady += 1 }
+            snapshots += 1
+          } else {
+            let d = lanes[c][i].driver.next(bids: ch.bids, asks: ch.asks)
+            if models[c].ingest(id, .delta(d), nowMs: now) != .none { notReady += 1 }
+            deltas += 1
+          }
+          // 0–3 笔成交：价在中间价两侧一档，名义 200 美元到 6 万美元（大单线 = 门槛 ÷ 50 = 2.2 万，约六成过线）。
+          let px = Double(lanes[c][i].truth.midTick) * lanes[c][i].truth.tick
+          for _ in 0..<rng.int(0...3) {
+            let buy = rng.chance(0.5)
+            let usd = rng.double(200, 60_000)
+            let p = px + (buy ? 1 : -1) * lanes[c][i].truth.tick
+            _ = models[c].ingest(id, .trade(OrderFlowTrade(price: p, quantity: usd / p, hitSide: buy ? .ask : .bid,
+                                                            timeMs: now)), nowMs: now)
+            if flows[c].record(timeMs: now, price: p, usd: usd, buy: buy, cut: cut) { bigTrades += 1 }
+            trades += 1
+          }
+        }
+        if k % 5 == 0 {
+          var frame = OrderFlowSnapshot.loading("x")
+          let e = Stress.ms { frame = models[c].evaluate(nowMs: now) }
+          evalMs.append(e); evalThisTick += e
+          maxLive = max(maxLive, frame.orders.count(where: \.isLive))
+        }
+        if k % 10 == 0 { flows[c].beat(nowMs: now, ok: true) }
+      }
+      // 一拍只算吃帧与成交（评估单独计）。
+      tickMsSamples.append(Double(Stress.nowNs() - tt) / 1e6 - evalThisTick)
+      if k % 100 == 0 { rssPeak = max(rssPeak, Stress.residentMB()) }
+    }
+    let wallS = Double(Stress.nowNs() - wall0) / 1e9
+    let end = t0 + Int64(ticks) * tickMs
+    let sums = flows.map { $0.sum(t0, end + 1, nowMs: end) }
+    let p = Stress.percentiles(evalMs), q = Stress.percentiles(tickMsSamples)
+
+    Stress.report("五家[\(Stress.build)] 4 只 × 8 本 = \(books) 本（币安 2、OKX 2、Coinbase 1、Bybit 2、Hyperliquid 1），"
+      + "模拟 10 分钟（\(ticks) 拍 × 100 ms）：增量 \(deltas) 条（\(changes) 档变动）、Hyperliquid 整本 \(snapshots) 份、"
+      + "成交 \(trades) 笔（大单 \(bigTrades) 笔）；墙钟 \(Stress.fmt(wallS, 2)) s")
+    Stress.report("五家[\(Stress.build)] 一拍（100 ms 的全部帧 + 成交，不含评估）p50 \(Stress.fmt(q.p50)) ms / p95 \(Stress.fmt(q.p95)) ms / max \(Stress.fmt(q.max)) ms；"
+      + "单只 evaluate p50 \(Stress.fmt(p.p50)) ms / p95 \(Stress.fmt(p.p95)) ms / max \(Stress.fmt(p.max)) ms；挂着峰值 \(maxLive) 条；"
+      + "常驻内存 起 \(Stress.fmt(rssStart, 1)) MB / 峰值 \(Stress.fmt(rssPeak, 1)) MB")
+
+    XCTAssertEqual(notReady, 0, "连续的增量与整本快照不该触发任何重拉 / 重订")
+    for (c, row) in lanes.enumerated() { for lane in row { XCTAssertTrue(models[c].isReady(lane.venue.id), lane.venue.id) } }
+    XCTAssertGreaterThan(maxLive, 50, "压测场景应有不少同时挂着的大单")
+    for (c, s) in sums.enumerated() {
+      XCTAssertTrue(s.has, Self.coins[c].base)
+      XCTAssertGreaterThan(s.buyUsd + s.sellUsd, 0, "\(Self.coins[c].base) 大单流没记到五家的成交")
+    }
+    // 数量级闸：一拍 32 本在 debug 下也该远小于 100 ms（一拍的间隔）；整场十分钟模拟两分钟内跑完。
+    XCTAssertLessThan(q.p95, 100, "一拍吃不完 100 ms：五家簿更新跟不上推送")
+    XCTAssertLessThan(p.p95, 250, "一次评估吃掉半拍以上")
+    XCTAssertLessThan(rssPeak - rssStart, 512, "十分钟里常驻内存涨了半个 G 以上")
   }
 }

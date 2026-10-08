@@ -1,19 +1,17 @@
 import Foundation
 import KanpanCore
 
-/// 一只币有哪几本簿、怎么分到几条连接上。
+/// 一只币有哪几本簿、怎么分到几条连接上。本文件只查交易所注册表（`VenueRegistry.orderFlow`），
+/// 不认识任何一家；各家的序号模型、快照来源、连接怎么分、保底订哪几本都写在各家目录的条目里。
 ///
-/// 1. 查 kanpan-api 的品种表 `GET /v1/market/orderflow/instruments?base=BTC`（每 10 分钟把币安 /
-///    OKX / Coinbase 的七张合约表汇总一次，只查内存）：各家各产品的合约代号、面值口径、交割时间、
-///    币安带前缀的缩放（`1000PEPE`）。两条线路都查 `MarketRoute.apiHosts`（只有主机）——和行情走哪条路无关。
+/// 1. 查 kanpan-api 的品种表 `GET /v1/market/orderflow/instruments?base=BTC`（服务端每 10 分钟把各家合约表
+///    汇总一次，只查内存）：各家各产品的合约代号、面值口径、交割时间、价格缩放（`priceScale`）。
+///    两条线路都查 `MarketRoute.apiHosts`（只有主机）——和行情走哪条路无关。
 ///    表在本机留一份（`OrderFlowCatalogCache`，Caches 目录，按币）：10 分钟内直接用；24 小时内先用着、后台再问一次；
 ///    再旧才等服务端。原来只留内存、冷启动开图每只币都先等这一问（一个往返 0.6 秒以上，2026-10-07）。
-/// 2. 查不到（网关都不通、回了坏数据、一本都没有）就用保底那几本：币安 U 本位永续 `<BASE>USDT`、
-///    币安现货 `<BASE>USDT`、Coinbase `<BASE>-USD`。哪本不存在，它的快照回 4xx，那本就一直不就绪，
-///    图上少一本而已。
-/// 3. 分连接（`adapters`）：币安 U 本位、币本位各一条组合流（一条最多 4 本），币安现货一条，
-///    OKX 一条中继（一条最多 12 本），Coinbase 一本一条。一只 BTC 满打满算 5 条连接，其中走网关中继的
-///    2–3 条（中继全进程上限 64 条）。
+/// 2. 查不到（网关都不通、回了坏数据、一本都没有）就按注册表顺序取各家的保底簿（`OrderFlowExchange.fallback`）。
+///    哪本不存在，它就一直不就绪，图上少一本而已。
+/// 3. 分连接（`adapters`）：按注册表顺序把簿交给各家的 `makeAdapters`。
 ///
 /// 哪几种产品真的要订由调用方按门槛决定（没有门槛的产品不订，例如非加密只有 U 本位永续）。
 public struct OrderFlowCatalog: Sendable {
@@ -23,16 +21,15 @@ public struct OrderFlowCatalog: Sendable {
   static let staleMs: Int64 = 24 * 3_600_000
 
   let route: MarketRoute
-  let binanceHosts: BinanceHosts
   let sockets: any WSSocketFactory
   let http: any HTTPTransport
   let cache: OrderFlowCatalogCache
 
-  public init(route: MarketRoute, binanceHosts: BinanceHosts = .default,
+  public init(route: MarketRoute,
               sockets: any WSSocketFactory = URLSessionSocketFactory(),
               http: any HTTPTransport = URLSessionTransport(),
               cache: OrderFlowCatalogCache = .shared) {
-    self.route = route; self.binanceHosts = binanceHosts
+    self.route = route
     self.sockets = sockets; self.http = http; self.cache = cache
   }
 
@@ -153,7 +150,7 @@ public struct OrderFlowCatalog: Sendable {
     public var priceScale: Double
   }
 
-  /// 解析品种表。整体不是那个形状就是 nil；单行坏了（未知交易所、未知产品、面值不对）只丢那一行。
+  /// 解析品种表。整体不是那个形状就是 nil；单行坏了（注册表里没有的交易所、未知产品、面值不对）只丢那一行。
   static func parse(_ data: Data) -> [Row]? {
     guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
           let venues = obj["venues"] as? [[String: Any]] else { return nil }
@@ -207,79 +204,44 @@ public struct OrderFlowCatalog: Sendable {
     }
   }
 
+  /// 保底簿：按注册表顺序取各家的 `fallback`。
   static func fallback(viewedBase: String, base: String, chartScale: Double) -> [DepthBook] {
-    [DepthBook(venue: venue(exchange: "binance", product: .usdtPerp, instrument: viewedBase + "USDT",
-                            notional: .linear(multiplier: 1))),
-     DepthBook(venue: venue(exchange: "binance", product: .spot, instrument: base + "USDT",
-                            notional: .linear(multiplier: 1)), priceFactor: chartScale),
-     DepthBook(venue: venue(exchange: "coinbase", product: .spot, instrument: base + "-USD",
-                            notional: .linear(multiplier: 1)), priceFactor: chartScale)]
+    VenueRegistry.orderFlow.flatMap { exchange in
+      exchange.fallback(viewedBase, base, chartScale).map { f in
+        DepthBook(venue: venue(exchange: exchange.key, product: f.product, instrument: f.instrument, notional: f.notional),
+                  priceFactor: f.priceFactor)
+      }
+    }
   }
 
+  /// 一本簿的身份：序号模型、快照来源、显示名都查注册表。表里没有的交易所（服务端先上了、客户端还没认）
+  /// 按「每帧整本」记着，`adapters` 不给它连接。
   static func venue(exchange: String, product: OrderFlowProduct, instrument: String,
                     notional: OrderFlowNotional) -> OrderFlowVenue {
-    let model: DepthSequenceModel
-    let inBand: Bool
-    switch exchange {
-    case "okx": model = .previousFinalExact; inBand = true
-    case "coinbase": model = .strictIncrementing; inBand = true
-    default: model = product == .spot ? .rangeOverlap : .previousFinalOverlap; inBand = false
-    }
-    return OrderFlowVenue(exchange: exchange, label: OrderFlowBase.exchanges[exchange] ?? exchange, product: product,
-                          instrument: instrument, notional: notional, sequenceModel: model, snapshotInBand: inBand)
+    let entry = OrderFlowExchange.named(exchange)
+    return OrderFlowVenue(exchange: exchange, label: entry?.displayName ?? exchange, product: product,
+                          instrument: instrument, notional: notional,
+                          sequenceModel: entry?.sequenceModel(product, notional) ?? .snapshotOnly,
+                          snapshotInBand: entry?.snapshotInBand(product) ?? true)
   }
 
   // ------------------------------------------------------------------ 分连接
 
-  /// 把要订的簿分到连接上。顺序：币安 U 本位、币安币本位、币安现货、OKX、Coinbase。
-  /// 没有 kanpan-api 主机时 OKX 那几本订不了（只有中继能到 OKX），直接不给。
+  /// 把要订的簿分到连接上：按注册表顺序，每家只拿到自己的簿。注册表里没有的交易所不订。
   public func adapters(_ books: [DepthBook]) -> [any DepthFeedAdapter] {
-    var binance: [BinanceDepthAdapter.Market: [DepthBook]] = [:]
-    var okx: [DepthBook] = []
-    var coinbase: [DepthBook] = []
-    for book in books {
-      switch book.venue.exchange {
-      case "binance": binance[Self.binanceMarket(book.venue), default: []].append(book)
-      case "okx": okx.append(book)
-      case "coinbase": coinbase.append(book)
-      default: continue
-      }
+    let context = OrderFlowConnectContext(route: route, sockets: sockets, http: http)
+    return VenueRegistry.orderFlow.flatMap { exchange -> [any DepthFeedAdapter] in
+      let mine = books.filter { $0.venue.exchange == exchange.key }
+      return mine.isEmpty ? [] : exchange.makeAdapters(mine, context)
     }
-    var out: [any DepthFeedAdapter] = []
-    for market in BinanceDepthAdapter.Market.allCases {
-      for chunk in Self.chunks(binance[market] ?? [], BinanceDepthAdapter.maxBooks) {
-        out.append(BinanceDepthAdapter(market: market, books: chunk, hosts: binanceHosts, route: route,
-                                       sockets: sockets, http: http))
-      }
-    }
-    if !route.apiHosts.isEmpty {
-      for chunk in Self.chunks(okx, OKXBooksAdapter.maxBooks) {
-        out.append(OKXBooksAdapter(books: chunk, gateways: route.apiHosts, sockets: sockets))
-      }
-    }
-    for book in coinbase { out.append(CoinbaseLevel2Adapter(book: book, sockets: sockets)) }
-    return out
-  }
-
-  static func binanceMarket(_ venue: OrderFlowVenue) -> BinanceDepthAdapter.Market {
-    switch venue.product {
-    case .spot: .spot
-    case .usdtPerp: .um
-    case .coinPerp: .cm
-    case .delivery:
-      if case .inverse = venue.notional { .cm } else { .um }
-    }
-  }
-
-  static func chunks(_ books: [DepthBook], _ size: Int) -> [[DepthBook]] {
-    stride(from: 0, to: books.count, by: max(1, size)).map { Array(books[$0..<min($0 + max(1, size), books.count)]) }
   }
 }
 
 /// 币名的小工具。
 public enum OrderFlowBase {
-  /// 交易所代号 → 显示名。
-  public static let exchanges: [String: String] = ["binance": "币安", "okx": "OKX", "coinbase": "Coinbase"]
+  /// 交易所代号 → 显示名（由注册表生成）。
+  public static let exchanges: [String: String] = Dictionary(
+    VenueRegistry.orderFlow.map { ($0.key, $0.displayName) }, uniquingKeysWith: { first, _ in first })
 
   /// 币安给单价极小的币加的前缀（和 kanpan-api `BINANCE_SCALED` 同一张）。长的在前。
   /// public 是因为 App 测试里的契约生成器（`SettingsFieldContract`）要把它导出到

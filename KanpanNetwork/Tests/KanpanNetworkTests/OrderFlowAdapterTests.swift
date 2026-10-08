@@ -9,7 +9,6 @@ import KanpanCore
 @Suite("主力订单流 · 深度适配器")
 struct OrderFlowAdapterTests {
   static let gateways = ["gw-a.example", "gw-b.example:8443"]
-  static let hosts = BinanceHosts()
 
   /// `api` 缺省时跟生产一样只有第一台（主机）：备用机跑 metrics 模式，订单流那几条它回 404。
   static func route(_ policy: MarketRoutePolicy, api: [String]? = nil) -> MarketRoute {
@@ -31,7 +30,7 @@ struct OrderFlowAdapterTests {
   static func binance(_ market: BinanceDepthAdapter.Market, _ books: [DepthBook], _ policy: MarketRoutePolicy,
                       server: FakeServer = FakeServer { _ in json("{}") },
                       deck: ReplayDeck = ReplayDeck([.hang]), api: [String]? = nil) -> BinanceDepthAdapter {
-    BinanceDepthAdapter(market: market, books: books, hosts: hosts, route: route(policy, api: api),
+    BinanceDepthAdapter(market: market, books: books, route: route(policy, api: api),
                         sockets: ReplayFactory(deck: deck, pacer: FastPacer()), http: FakeTransport(server))
   }
 
@@ -284,6 +283,10 @@ struct OrderFlowAdapterTests {
    {"exchange":"binance","product":"spot","instrument":"BTCUSDT","notional":{"kind":"linear","multiplier":1.0},"tick":0.01},
    {"exchange":"okx","product":"spot","instrument":"BTC-USDT","notional":{"kind":"linear","multiplier":1.0},"tick":0.1},
    {"exchange":"coinbase","product":"spot","instrument":"BTC-USD","notional":{"kind":"linear","multiplier":1.0},"tick":0.01},
+   {"exchange":"bybit","product":"usdtPerp","instrument":"BTCUSDT","notional":{"kind":"linear","multiplier":1.0},"tick":0.1},
+   {"exchange":"bybit","product":"coinPerp","instrument":"BTCUSD","notional":{"kind":"inverse","contractUsd":1.0},"tick":0.5},
+   {"exchange":"bybit","product":"spot","instrument":"BTCUSDT","notional":{"kind":"linear","multiplier":1.0},"tick":0.1},
+   {"exchange":"hyperliquid","product":"usdtPerp","instrument":"BTC","notional":{"kind":"linear","multiplier":1.0},"tick":1},
    {"exchange":"kraken","product":"spot","instrument":"XBT-USD","notional":{"kind":"linear","multiplier":1.0},"tick":0.1},
    {"exchange":"okx","product":"usdtPerp","instrument":"BAD-ZERO","notional":{"kind":"linear","multiplier":0},"tick":0.1}
   ]}
@@ -292,7 +295,7 @@ struct OrderFlowAdapterTests {
   static func catalog(_ policy: MarketRoutePolicy, server: FakeServer, gateways: [String] = gateways,
                       api: [String]? = nil, cache: OrderFlowCatalogCache = OrderFlowCatalogCache()) -> OrderFlowCatalog {
     OrderFlowCatalog(route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways, api: api)),
-                     binanceHosts: hosts, sockets: ReplayFactory(deck: ReplayDeck([.hang]), pacer: FastPacer()),
+                     sockets: ReplayFactory(deck: ReplayDeck([.hang]), pacer: FastPacer()),
                      http: FakeTransport(server), cache: cache)
   }
 
@@ -310,12 +313,12 @@ struct OrderFlowAdapterTests {
     // 「再开 app」：新的缓存对象从文件读回来，10 分钟内一次都不问。
     let reopened = Self.catalog(.direct, server: server, cache: OrderFlowCatalogCache(file: file))
     let got = await reopened.books(base: "btc", nowMs: t0 + 60_000)
-    #expect(got.fromCatalog && got.books.count == 10)
+    #expect(got.fromCatalog && got.books.count == 14)
     #expect(await server.urls().count == 1)
 
     // 过了 10 分钟、没到 24 小时：马上用旧表，后台补问一次（不等它）。
     let later = await reopened.books(base: "BTC", nowMs: t0 + 2 * 3_600_000)
-    #expect(later.fromCatalog && later.books.count == 10)
+    #expect(later.fromCatalog && later.books.count == 14)
     for _ in 0..<50 where await server.urls().count < 2 { try await Task.sleep(for: .milliseconds(20)) }
     #expect(await server.urls().count == 2)
 
@@ -331,7 +334,7 @@ struct OrderFlowAdapterTests {
     #expect(await server.urls().count == 4)
   }
 
-  @Test("品种表：解析各家各产品，丢掉未知交易所、坏面值、已过交割时间的，分到 5 条连接")
+  @Test("品种表：解析五家各产品，丢掉未知交易所、坏面值、已过交割时间的，分到 8 条连接")
   func catalogParses() async throws {
     let server = FakeServer { _ in json(Self.catalogJSON) }
     let c = Self.catalog(.direct, server: server)
@@ -341,7 +344,12 @@ struct OrderFlowAdapterTests {
       "binance:usdtPerp:BTCUSDT", "binance:delivery:BTCUSDT_260925", "binance:coinPerp:BTCUSD_PERP",
       "binance:delivery:BTCUSD_260925", "okx:usdtPerp:BTC-USDT-SWAP", "okx:coinPerp:BTC-USD-SWAP",
       "okx:delivery:BTC-USD-260925", "binance:spot:BTCUSDT", "okx:spot:BTC-USDT", "coinbase:spot:BTC-USD",
+      "bybit:usdtPerp:BTCUSDT", "bybit:coinPerp:BTCUSD", "bybit:spot:BTCUSDT", "hyperliquid:usdtPerp:BTC",
     ])
+    #expect(got.books.first { $0.id == "bybit:coinPerp:BTCUSD" }?.venue.notional == .inverse(contractUsd: 1))
+    #expect(got.books.first { $0.id == "bybit:usdtPerp:BTCUSDT" }?.venue.sequenceModel == .strictIncrementing)
+    #expect(got.books.first { $0.id == "hyperliquid:usdtPerp:BTC" }?.venue.sequenceModel == .snapshotOnly)
+    #expect(got.books.first { $0.id == "hyperliquid:usdtPerp:BTC" }?.venue.label == "Hyperliquid")
     #expect(got.books.first { $0.id == "okx:coinPerp:BTC-USD-SWAP" }?.venue.notional == .inverse(contractUsd: 100))
     #expect(got.books.first { $0.id == "binance:delivery:BTCUSD_260925" }?.expiryMs == 1_790_323_200_000)
     #expect(await server.urls().map(\.absoluteString) == ["https://gw-a.example/v1/market/orderflow/instruments?base=BTC"])
@@ -349,33 +357,35 @@ struct OrderFlowAdapterTests {
     #expect(adapters.map(\.name) == [
       "币安U 本位 BTCUSDT,BTCUSDT_260925", "币安币本位 BTCUSD_PERP,BTCUSD_260925", "币安现货 BTCUSDT",
       "OKX BTC-USDT-SWAP,BTC-USD-SWAP,BTC-USD-260925,BTC-USDT", "Coinbase BTC-USD",
+      "Bybit现货 BTCUSDT", "BybitU 本位 BTCUSDT", "Bybit币本位 BTCUSD", "Hyperliquid BTC",
     ])
     // 第二次同一只币走内存缓存，不再请求。
     _ = await c.books(base: "BTC", nowMs: 1_790_000_060_000)
     #expect(await server.urls().count == 1)
   }
 
-  @Test("品种表：只问主机（备用机没有这条）；kanpan-api 若有多台才按序换；都不通给保底三本（币安永续、币安现货、Coinbase）")
+  @Test("品种表：只问主机（备用机没有这条）；kanpan-api 若有多台才按序换；都不通给保底五本（币安永续、币安现货、Coinbase、Bybit 永续、Hyperliquid）")
   func catalogFallback() async throws {
     let flaky = FakeServer { url in url.host == "gw-a.example" ? json("{}", status: 502) : json(Self.catalogJSON) }
     let primaryOnly = await Self.catalog(.gateway, server: flaky).books(base: "BTC", nowMs: 1_790_000_000_000)
     #expect(!primaryOnly.fromCatalog)
     #expect(await flaky.urls().compactMap(\.host) == ["gw-a.example"])
     let ok = await Self.catalog(.gateway, server: flaky, api: Self.gateways).books(base: "BTC", nowMs: 1_790_000_000_000)
-    #expect(ok.fromCatalog && ok.books.count == 10)
+    #expect(ok.fromCatalog && ok.books.count == 14)
     let dead = FakeServer { _ in json("oops", status: 500) }
     let fallback = await Self.catalog(.gateway, server: dead, api: Self.gateways).books(base: "ETH", nowMs: 1)
     #expect(!fallback.fromCatalog)
-    #expect(fallback.books.map(\.id) == ["binance:usdtPerp:ETHUSDT", "binance:spot:ETHUSDT", "coinbase:spot:ETH-USD"])
+    #expect(fallback.books.map(\.id) == ["binance:usdtPerp:ETHUSDT", "binance:spot:ETHUSDT", "coinbase:spot:ETH-USD",
+                                         "bybit:usdtPerp:ETHUSDT", "hyperliquid:usdtPerp:ETH"])
     #expect(await dead.urls().count == 2)
     // 两档线路下 OKX 都拨主机中继。
     for policy in [MarketRoutePolicy.direct, .gateway] {
       let names = Self.catalog(policy, server: dead).adapters([Self.okxSwap]).map(\.name)
       #expect(names == ["OKX BTC-USDT-SWAP"], "\(policy)")
     }
-    // 没有网关：OKX 那几本订不了，不给连接。
+    // 没有网关：OKX、Bybit、Hyperliquid 那几本订不了（只能走中继），不给连接。
     let noGateway = Self.catalog(.direct, server: dead, gateways: [])
-    #expect(noGateway.adapters([Self.okxSwap, Self.umPerp]).map(\.name) == ["币安U 本位 BTCUSDT"])
+    #expect(noGateway.adapters([Self.okxSwap, Self.umPerp, Self.bybitLinear, Self.hlBTC]).map(\.name) == ["币安U 本位 BTCUSDT"])
   }
 
   @Test("服务端历史：带 base/from/to 问主机，解析成一页；主机不通、回了坏数据、别的币的页都当没有")
@@ -431,8 +441,9 @@ struct OrderFlowAdapterTests {
     #expect(got.books.map(\.priceFactor) == [1, 1000])
     #expect(await server.urls().first?.absoluteString == "https://gw-a.example/v1/market/orderflow/instruments?base=PEPE")
     let fallback = OrderFlowCatalog.fallback(viewedBase: "1000PEPE", base: "PEPE", chartScale: 1000)
-    #expect(fallback.map(\.id) == ["binance:usdtPerp:1000PEPEUSDT", "binance:spot:PEPEUSDT", "coinbase:spot:PEPE-USD"])
-    #expect(fallback.map(\.priceFactor) == [1, 1000, 1000])
+    #expect(fallback.map(\.id) == ["binance:usdtPerp:1000PEPEUSDT", "binance:spot:PEPEUSDT", "coinbase:spot:PEPE-USD",
+                                  "bybit:usdtPerp:1000PEPEUSDT", "hyperliquid:usdtPerp:PEPE"])
+    #expect(fallback.map(\.priceFactor) == [1, 1000, 1000, 1, 1000])
     for (raw, base, scale) in [("1MBABYDOGE", "BABYDOGE", 1_000_000.0), ("1000000MOG", "MOG", 1_000_000),
                                ("1INCH", "1INCH", 1), ("1000", "1000", 1), ("1000pepe", "PEPE", 1000)] {
       let n = OrderFlowBase.normalize(raw)
@@ -443,8 +454,8 @@ struct OrderFlowAdapterTests {
 
   @Test("提供者：币安（两条线路）与 Coinbase 都给得出品种表，线路跟着提供者走")
   func providersSource() {
-    let direct: any MarketProvider = BinanceProvider(upstream: .binance, hosts: Self.hosts, policy: .direct)
-    let gateway: any MarketProvider = BinanceProvider(upstream: .okx, hosts: Self.hosts, policy: .gateway)
+    let direct: any MarketProvider = BinanceProvider(upstream: .binance, hosts: BinanceHosts(), policy: .direct)
+    let gateway: any MarketProvider = BinanceProvider(upstream: .okx, hosts: BinanceHosts(), policy: .gateway)
     let coinbase: any MarketProvider = CoinbaseProvider(policy: .gateway, endpoints: MarketEndpoints(gateways: ["gw-a.example"]))
     #expect((direct as? any OrderFlowSourcing)?.orderFlowCatalog.route.viaGateway == false)
     #expect((gateway as? any OrderFlowSourcing)?.orderFlowCatalog.route.viaGateway == true)

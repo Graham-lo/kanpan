@@ -78,6 +78,11 @@ public enum VenueRegistry {
     MacroProvider(route: route, log: log)
   }
 
+  /// 主力订单流接了哪几家（顺序就是保底簿、分连接、图例的顺序）。条目定义在各家目录
+  /// （`<交易所>/<交易所>OrderFlow.swift`），通用的 `OrderFlow/` 只查这张表。
+  /// 和上面的行情交易所清单（`all`）是两回事：订单流可以接一家不在行情里的交易所（只看它的盘口和成交）。
+  public static let orderFlow: [OrderFlowExchange] = [.binance, .okx, .coinbase, .bybit, .hyperliquid]
+
   /// 注册顺序就是自选分类条、设置里出现的顺序。第一家是默认交易所。
   public static let all: [VenueDescriptor] = [binance, coinbase, macro]
 

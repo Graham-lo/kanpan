@@ -113,9 +113,20 @@ public enum BigTradeDigest {
 
 // MARK: - 爆仓
 
-/// 服务端 /liq 的一行：一分钟里币安 + OKX 的强平合计。多单被平用跌色、空单被平用涨色。
+/// 服务端 /liq 的一行：一分钟里各家（有强平推送的那几家）的强平合计。多单被平用跌色、空单被平用涨色。
 public struct LiquidationRow: Sendable, Equatable {
-  public enum Exchange: Int, Sendable { case binance = 0, okx = 1 }
+  /// 服务端「哪家」列的编号（0 / 1 / 2）。显示名不在 Core：拿 `key` 去 KanpanNetwork 的交易所注册表查。
+  public enum Exchange: Int, Sendable, CaseIterable {
+    case binance = 0, okx = 1, bybit = 2
+    /// 交易所代号（与 `OrderFlowVenue.exchange` 同一套）。
+    public var key: String {
+      switch self {
+      case .binance: "binance"
+      case .okx: "okx"
+      case .bybit: "bybit"
+      }
+    }
+  }
   public var minuteMs: Int64
   /// 多头被平 / 空头被平（美元）。
   public var longUsd: Double

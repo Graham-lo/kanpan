@@ -56,10 +56,14 @@ public actor DepthStream {
   private var run = 0
   private var sink: AsyncStream<DepthStreamEvent>.Continuation?
 
-  public init(adapter: any DepthFeedAdapter, pacer: any Pacer = SystemPacer(), silenceMs: Double = 30_000,
+  /// 静默多久算断：调用方给了就用调用方的，否则用适配器要的（有的交易所冷门币一分钟都可能不变），再否则 30 秒。
+  public static let defaultSilenceMs: Double = 30_000
+
+  public init(adapter: any DepthFeedAdapter, pacer: any Pacer = SystemPacer(), silenceMs: Double? = nil,
               backoff: Backoff = Backoff(baseMs: 1000, capMs: 30_000), bufferLimit: Int = DepthStream.bufferLimit,
               log: FeedLog = .silent) {
-    self.adapter = adapter; self.pacer = pacer; self.silenceMs = silenceMs
+    self.adapter = adapter; self.pacer = pacer
+    self.silenceMs = silenceMs ?? adapter.silenceMs ?? Self.defaultSilenceMs
     self.backoff = backoff; self.bufferLimit = max(1, bufferLimit); self.log = log
   }
 

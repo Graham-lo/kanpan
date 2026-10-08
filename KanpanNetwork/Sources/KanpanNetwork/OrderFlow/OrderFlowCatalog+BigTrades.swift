@@ -57,8 +57,9 @@ extension OrderFlowCatalog {
     return BigTradeFlowPage(tracked: tracked, bigUsd: big, rows: parsed)
   }
 
-  /// `{"base","tracked","rows":[[minute_ms,多头被平,空头被平,笔数,最大一笔,价格,哪边(0 多/1 空),哪家(0 币安/1 OKX)],…]}`。
-  /// 单行至少要前四个数；后四个缺了当 0；负数当 0；「哪边」「哪家」只认 1，别的都当 0。
+  /// `{"base","tracked","rows":[[minute_ms,多头被平,空头被平,笔数,最大一笔,价格,哪边(0 多/1 空),哪家],…]}`。
+  /// 「哪家」是注册表条目的 `liquidationCode`（`LiquidationRow.Exchange` 同一套编号：0 / 1 / 2）。
+  /// 单行至少要前四个数；后四个缺了当 0；负数当 0；「哪边」只认 1，「哪家」认不出的编号当 0。
   static func parseLiquidations(_ data: Data, base: String) -> LiquidationPage? {
     guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
           obj["base"] as? String == base,
@@ -70,7 +71,7 @@ extension OrderFlowCatalog {
       func at(_ i: Int) -> Double { i < n.count ? max(0, n[i] ?? 0) : 0 }
       return LiquidationRow(minuteMs: Int64(m), longUsd: max(0, long), shortUsd: max(0, short),
                             count: Int(max(0, count)), maxUsd: at(4), maxPrice: at(5),
-                            maxIsLong: at(6) != 1, maxExchange: at(7) == 1 ? .okx : .binance)
+                            maxIsLong: at(6) != 1, maxExchange: LiquidationRow.Exchange(rawValue: Int(at(7))) ?? .binance)
     }
     return LiquidationPage(tracked: tracked, rows: parsed)
   }

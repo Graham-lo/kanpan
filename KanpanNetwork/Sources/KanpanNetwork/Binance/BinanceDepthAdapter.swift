@@ -49,19 +49,18 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
 
   public let market: Market
   public let books: [DepthBook]
-  let hosts: BinanceHosts
   let route: MarketRoute
   let sockets: any WSSocketFactory
   let http: any HTTPTransport
   /// 报文里的 `s`（大写合约代号）→ 簿。
   private let byInstrument: [String: DepthBook]
 
-  public init(market: Market, books: [DepthBook], hosts: BinanceHosts, route: MarketRoute,
+  public init(market: Market, books: [DepthBook], route: MarketRoute,
               sockets: any WSSocketFactory = URLSessionSocketFactory(),
               http: any HTTPTransport = URLSessionTransport()) {
     self.market = market
     self.books = Array(books.prefix(Self.maxBooks))
-    self.hosts = hosts; self.route = route; self.sockets = sockets; self.http = http
+    self.route = route; self.sockets = sockets; self.http = http
     var map: [String: DepthBook] = [:]
     for book in self.books { map[book.venue.instrument.uppercased()] = book }
     byInstrument = map
@@ -178,12 +177,4 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
     return BookSnapshot(lastUpdateID: last, requestedLevels: requestedLevels, bids: bids, asks: asks,
                         eventTimeMs: DepthWire.integer(obj["E"]))
   }
-}
-
-/// 快照接口回了非 2xx。4xx（品种不认、参数不对）换主机也没用，直接报；5xx 带 Retry-After 时照办。
-public struct DepthSnapshotError: Error, Sendable, Equatable {
-  public var status: Int
-  public var retryAfterMs: Double?
-  public var isClientError: Bool { (400..<500).contains(status) && status != 429 && status != 418 }
-  public init(status: Int, retryAfterMs: Double? = nil) { self.status = status; self.retryAfterMs = retryAfterMs }
 }
