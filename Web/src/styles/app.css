@@ -528,7 +528,7 @@ kbd {
 /* 往左翻历史：左缘一枚小标，慢了才淡入（快的看不见） */
 .chart-more { position: absolute; left: var(--s3); top: 50%; transform: translateY(-50%); z-index: 2; pointer-events: none;
   display: flex; align-items: center; gap: 6px; padding: 2px var(--s2); border-radius: 999px; font-size: var(--t12); color: var(--text-2);
-  background: color-mix(in srgb, var(--chart-bg) 88%, transparent); animation: hkFadeIn .2s ease .25s both; }
+  background: color-mix(in srgb, var(--chart-bg) 88%, transparent); animation: hkFadeIn .2s ease .5s both; }
 .chart-more[hidden] { display: none; }
 .chart-more .spin, .legend .cmp-wait { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%;
   border: 1.5px solid currentColor; border-right-color: transparent; animation: hkSpin .8s linear infinite; }

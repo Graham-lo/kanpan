@@ -230,8 +230,8 @@ async function netShim(ctx) {
 }
 
 /** 一个干净的上下文 + 页面；errors 收集未捕获异常与控制台报错 */
-export async function openCtx(browser, url, { viewport = { width: 1600, height: 1000 }, depth = 20000, delay = 20 } = {}) {
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
+export async function openCtx(browser, url, { viewport = { width: 1600, height: 1000 }, depth = 20000, delay = 20, dpr = 1 } = {}) {
+  const ctx = await browser.newContext({ viewport, deviceScaleFactor: dpr, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
   await ctx.addInitScript(INSTR)
   await ctx.addInitScript(WS_STUB)
   await ctx.addInitScript(PAGE)

@@ -34,7 +34,7 @@ import { DEFAULTS as CS_DEFAULTS, crossText, dashOf, dayStartSh, marginRange, ty
 import { COMPARE_COLORS, alignCompare, compareBaseIndexFrom, comparePercentAt, comparePercentLabel, compareSegments, pctOf, percentTickLabel, percentTicks, priceOfPct, type Aligned, type CompareLine } from './compare'
 
 // 间距上下限、默认间距、右侧留白与滚轮手感都照 TradingView，见 ./wheel
-import { DEFAULT_SPACING, MAX_SPACING, MIN_SPACING, clampRightBar, isWinChromium, panPx, pinchFactor, timeAxisDragSpacing, wheelDelta, wheelSpeed, zoomFactor, zoomScale, zoomStart, zoomStep, type ZoomAnim } from './wheel'
+import { DEFAULT_SPACING, MAX_SPACING, MIN_SPACING, anchoredRightBar, clampRightBar, clampSpacing, isWinChromium, panPx, pinchFactor, timeAxisDragSpacing, wheelDelta, wheelSpeed, zoomFactor, zoomScale, zoomStart, zoomStep, type ZoomAnim } from './wheel'
 const SEP_HIT = 3 // 窗格分隔线上下各 3 px，热区 6 px
 
 // 线条规格（网页版自己的一套，和手机端无关）。基准屏 1 CSS px = 1 物理像素：
@@ -359,6 +359,8 @@ export class TVChart {
   private layerHover: ChartLayer | null = null
   colors: ThemeColors = { bg: '', grid: '', text: '', text2: '', text3: '', cross: '', crossLabel: '', scaleLine: '', up: '', down: '', accent: '', alert: '', line: '' }
   font = '12px sans-serif'
+  /** 画布已套用的像素比（resize 时定）：K 线横向几何按物理像素取整用它 */
+  pr = 1
   /** 画完的测量框（下一次点击就清掉） */
   measure: Drawing | null = null
   /** app 在加载更早历史时置 true，期间不再催 onNeedMore；左缘挂一个「加载更早…」小标（稍等一下才淡入，快的看不见） */
@@ -520,11 +522,15 @@ export class TVChart {
     const n = this.bars.length
     if (!n) return
     const last = this.bars[n - 1]
-    if (b.t === last.t) { Object.assign(last, b) }
+    // 推送来的 K 线不带持仓量：同一根保留已取到的值；新开一根先顺延上一根的，等每分钟的尾巴补取换成币安那一桶的真值
+    if (b.t === last.t) { const oi = last.oi; Object.assign(last, b); if (last.oi == null && oi != null) last.oi = oi }
     else if (b.t > last.t) {
       const atEdge = this.rightBar >= n - 1
+      if (b.oi == null && last.oi != null) b.oi = last.oi
       this.bars.push(b)
-      if (atEdge) this.rightBar += 1
+      // 贴着右沿时新的一根顶出来：视口跟着挪一根；正拖着（平移 / 拖时间轴）的话起拖记的右缘下标也要 +1，
+      // 否则下一次 mousemove 按旧下标算，视口跳回一根（1 秒线 / 1 分钟线拖动中每到收线就闪一下）
+      if (atEdge) { this.rightBar += 1; if (this.drag?.kind === 'pan') this.drag.right0 += 1 }
     } else return
     this.recalcTail(); this.dirty = true
     if (!this.cross) this.legendDirty = true
@@ -788,10 +794,19 @@ export class TVChart {
   private clampRB(rb: number): number { return clampRightBar(rb, this.lastIndex(), this.plotW(), this.spacing) }
   /** 滚轮 / 捏合缩放（TV TimeScale.zoom）：x 底下那根 K 线不动；间距 ZOOM_MS 内顺滑插到目标（共用帧里 stepZoom 推），
    *  还没到位又滚一格就在目标上再乘一格，锚点换成这一格鼠标下那根 */
-  wheelZoom(f: number, x: number, now = performance.now()): void {
+  wheelZoom(f: number, x: number, now = performance.now(), instant = false): void {
     const W = this.plotW()
     if (!this.bars.length || !(W > 0) || !(f > 0) || f === 1) return
     const ax = clamp(x, 1, W) // TV zoomTime 把锚点夹在 [1, 宽]
+    if (instant) { // 触控板捏合：一个事件一小口、每帧都来，直接按量缩才跟手（TV 同款）；再插值就是手指停了图还在追
+      this.zAnim = null
+      const idx = this.xToIndex(ax)
+      this.spacing = clampSpacing(this.spacing * f)
+      this.rightBar = this.clampRB(anchoredRightBar(idx, ax, W, this.spacing))
+      this.dirty = true; this.legendDirty = true
+      this.maybeMore(); this.emitView()
+      return
+    }
     this.zAnim = zoomStart(this.zAnim, this.spacing, this.rightBar, f, this.xToIndex(ax), ax, now)
     if (this.zAnim) kick()
   }
@@ -928,6 +943,7 @@ export class TVChart {
     this.canvas.width = Math.round(this.w * dpr); this.canvas.height = Math.round(this.h * dpr)
     this.canvas.style.width = this.w + 'px'; this.canvas.style.height = this.h + 'px'
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    this.pr = dpr
     this.dirty = true
   }
   /** 设备像素比变了（窗口从 2K 外接屏拖到 Retina 笔记本屏上）：格子的 CSS 尺寸没变，ResizeObserver 不响，
@@ -1247,21 +1263,26 @@ export class TVChart {
     return timeTicks(i => this.timeAt(i), lo, hi, this.spacing, this.iv, TIME_TICK_MIN_PX, i => this.indexToX(i))
   }
 
-  wickW(): number { return this.spacing >= 20 ? 2 : 1 }
-  candleW(): number { // 实体取间距的 3/4，再按影线的奇偶收一格，让影线正好居中；间距 < 2.5 时只剩影线
-    const s = this.spacing, wick = this.wickW()
-    if (s < 2.5) return 1
-    let w = Math.max(3, Math.floor(s * 0.75))
-    if (w % 2 !== wick % 2) w -= 1
-    return Math.max(wick, w)
+  /** K 线的横向几何一律按物理像素取整（TV 的 pixelRatio 做法），返回值仍是 CSS 像素（画布已按 pr 缩放）：
+   *  Retina 上一根能挪半个 CSS 像素、宽度一次只变一个物理像素——按 CSS 像素取整时缩放中每根都是 2 个物理像素一跳，整屏在爬 */
+  snapX(x: number): number { const k = this.pr; return Math.round(x * k) / k }
+  /** 影线：1 个物理像素向上凑到 CSS 像素（TV wickWidth = floor(pixelRatio)，最密时不超过间距），任何间距都一样粗——
+   *  原来间距过 20 跳成 2 px，放大过这一档时整屏影线一起变粗、实体同时换奇偶，就是「闪一下」 */
+  wickW(): number { const k = this.pr; return Math.max(1, Math.min(Math.floor(k), Math.floor(this.spacing * k))) / k }
+  candleW(): number { // 实体取间距的 3/4（物理像素取整），再按影线的奇偶收一格让影线正好居中；间距 < 2.5 时只剩影线
+    const k = this.pr, s = this.spacing, wick = Math.round(this.wickW() * k)
+    if (s < 2.5) return wick / k
+    let w = Math.max(3, Math.floor(s * k * 0.75))
+    if ((w - wick) % 2 !== 0) w = w - 1 > wick ? w - 1 : w + 1 // 收一格会收成没实体（Retina 上最窄那档）就放一格
+    return Math.max(wick, w) / k
   }
   /** K 线：实体 / 边框 / 影线各自开关与涨跌色（图表设置「商品」；颜色没改过就跟涨跌色）。
    *  边框和实体同色（默认）时不另描——实体本身就是边，和原来一样两遍填充 */
   drawCandles(p: Pane, r: PriceRange, from: number, to: number): void {
-    if (this.spacing < 1) { this.drawColumns(p, r, from, to); return }
-    const c = this.ctx, C = this.colors, S = this.cs(), bw = this.candleW(), wick = this.wickW()
-    const half = Math.floor(bw / 2), wh = wick >> 1
-    const bodyOn = S.body && (bw > wick || !S.wick), borderOn = S.border && bw >= 3
+    if (this.spacing * this.pr < 1) { this.drawColumns(p, r, from, to); return }
+    const c = this.ctx, C = this.colors, S = this.cs(), k = this.pr, bw = this.candleW(), wick = this.wickW()
+    const half = Math.floor(bw * k / 2) / k, wh = (Math.round(wick * k) >> 1) / k
+    const bodyOn = S.body && (bw > wick || !S.wick), borderOn = S.border && bw * k >= 3
     const isUp = (i: number, b: Bar): boolean => { const q = S.prevCloseColor ? this.bars[i - 1] : undefined; return q ? b.c >= q.c : b.c >= b.o }
     for (const pass of [0, 1]) {
       const base = pass ? C.up : C.down
@@ -1274,7 +1295,7 @@ export class TVChart {
         for (let i = from; i <= to; i++) {
           const b = this.bars[i]; if (!b) continue
           if ((pass === 1) !== isUp(i, b)) continue
-          const x = Math.round(this.indexToX(i))
+          const x = this.snapX(this.indexToX(i))
           if (part === 0) {
             const yh = Math.round(this.priceToY(b.h, p, r)), yl = Math.round(this.priceToY(b.l, p, r))
             if (bodyOn || bw <= wick) { c.rect(x - wh, yh, wick, Math.max(1, yl - yh)); continue }
@@ -1299,7 +1320,7 @@ export class TVChart {
     const xs: number[] = [], bs: Bar[] = []
     for (let i = Math.max(0, from); i <= to; i++) {
       const b = this.bars[i]; if (!b) continue
-      const x = Math.round(this.indexToX(i)), k = bs.length - 1
+      const x = this.snapX(this.indexToX(i)), k = bs.length - 1
       if (k >= 0 && xs[k] === x) {
         const m = bs[k]; m.c = b.c; if (b.h > m.h) m.h = b.h; if (b.l < m.l) m.l = b.l
         m.v = (Number.isFinite(m.v) && m.v > 0 ? m.v : 0) + (Number.isFinite(b.v) && b.v > 0 ? b.v : 0)
@@ -1318,13 +1339,13 @@ export class TVChart {
         const b = bs[k], up = S.prevCloseColor && k > 0 ? b.c >= bs[k - 1].c : b.c >= b.o
         if ((pass === 1) !== up) continue
         const yh = Math.round(this.priceToY(b.h, p, r)), yl = Math.round(this.priceToY(b.l, p, r))
-        c.rect(xs[k], yh, 1, Math.max(1, yl - yh))
+        c.rect(xs[k], yh, 1 / this.pr, Math.max(1, yl - yh))
       }
       c.fill()
     }
   }
   drawVolume(p: Pane, from: number, to: number): void {
-    if (this.spacing < 1) { this.drawVolumeColumns(p, from, to); return }
+    if (this.spacing * this.pr < 1) { this.drawVolumeColumns(p, from, to); return }
     const c = this.ctx, C = this.colors, bw = this.candleW()
     let mx = 0
     // 坏量（NaN / Infinity / 负数）不画也不参与取顶：一根 Infinity 会把整屏的量柱压成 0 高
@@ -1332,15 +1353,15 @@ export class TVChart {
     for (let i = from; i <= to; i++) { const v = this.bars[i]?.v; if (vOk(v)) mx = Math.max(mx, v) }
     if (!mx) return
     const h = p.h * VOL_H, base = p.y + p.h
-    const half = Math.floor(bw / 2)
+    const half = Math.floor(bw * this.pr / 2) / this.pr
     for (const pass of [0, 1]) {
       c.fillStyle = hexA(pass ? C.up : C.down, VOL_ALPHA)
       c.beginPath()
       for (let i = from; i <= to; i++) {
         const b = this.bars[i]; if (!b || !vOk(b.v)) continue
         if ((b.c >= b.o) !== (pass === 1)) continue
-        const x = Math.round(this.indexToX(i)), vh = Math.max(1, b.v / mx * h)
-        c.rect(x - half, Math.round(base - vh), Math.max(1, bw), Math.round(vh))
+        const x = this.snapX(this.indexToX(i)), vh = Math.max(1, b.v / mx * h)
+        c.rect(x - half, Math.round(base - vh), Math.max(1 / this.pr, bw), Math.round(vh))
       }
       c.fill()
     }
@@ -1359,7 +1380,7 @@ export class TVChart {
         const b = bs[k]
         if (!(Number.isFinite(b.v) && b.v > 0) || (b.c >= b.o) !== (pass === 1)) continue
         const vh = Math.max(1, b.v / mx * h)
-        c.rect(xs[k], Math.round(base - vh), 1, Math.round(vh))
+        c.rect(xs[k], Math.round(base - vh), 1 / this.pr, Math.round(vh))
       }
       c.fill()
     }
@@ -1422,8 +1443,8 @@ export class TVChart {
     }
     const styles: readonly SubStyle[] = id === 'macd' ? ['line', 'line', 'hist4'] : subStyles(id) ?? []
     const style = (k: number): SubStyle => styles[k] ?? 'line'
-    const bw = this.candleW(), half = Math.floor(bw / 2), y0 = y(0)
-    const bar = (i: number, v: number) => { const x = Math.round(this.indexToX(i)), yy = y(v); c.fillRect(x - half, Math.round(Math.min(y0, yy)), Math.max(1, bw), Math.max(1, Math.round(Math.abs(yy - y0)))) }
+    const bw = this.candleW(), half = Math.floor(bw * this.pr / 2) / this.pr, y0 = y(0)
+    const bar = (i: number, v: number) => { const x = this.snapX(this.indexToX(i)), yy = y(v); c.fillRect(x - half, Math.round(Math.min(y0, yy)), Math.max(1 / this.pr, bw), Math.max(1, Math.round(Math.abs(yy - y0)))) }
     const h4 = this.hist4Colors()
     ser.forEach((s, k) => {
       const st = style(k), col = cols[k % cols.length] || C.text2
@@ -2174,7 +2195,7 @@ export class TVChart {
         if (zf !== 1) this.zoomPrice(1 / zf, main ? y : undefined)
         return
       }
-      if (zf !== 1) this.wheelZoom(zf, reg === 'time' || reg === 'corner' ? this.plotW() : x)
+      if (zf !== 1) this.wheelZoom(zf, reg === 'time' || reg === 'corner' ? this.plotW() : x, undefined, e.ctrlKey)
       if (dx) { this.wheelPan(panPx(dx)); this.legendDirty = true; this.emitView() }
     }, { passive: false, signal })
     cv.addEventListener('contextmenu', e => {
