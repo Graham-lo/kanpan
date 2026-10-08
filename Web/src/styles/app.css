@@ -39,26 +39,37 @@
   --d-pop: 160ms;
 }
 
-/* ---------------------------------------------------------------- 浅色 */
+/* ---------------------------------------------------------------- 材料（docs/design/电脑网页UI规范-2026-10-08.md）
+ * 只有两层：
+ *   框架 --frame：顶栏、图表工具条、左画线栏、右侧栏和它们之间的缝，一整块连续的底，不是卡片；
+ *   内容 --surface：图表格子、抽屉、右侧面板，嵌在框架里的卡片；K 线画布与卡片同一个底（--chart-bg = --surface）。
+ * 浅色不拿纯白大面积铺底（用户 2026-10-08：刺眼）——卡片 97–98% 明度的柔白，纯白只给浮层（--overlay）；
+ * 深色靠卡片比框架亮一级分块，不靠亮缝。主文字都不用纯黑 / 纯白。
+ * 对比度：--text-3 与涨跌字在面板、悬停行、选中行上都 ≥ 4.5:1（tests/b-contrast.test.ts）。 */
+
+/* ---------------------------------------------------------------- 浅色 · 经典 */
 :root, [data-theme="light"] {
   color-scheme: light;
-  --app: #E9ECF1;          /* 面板之间的缝 */
-  --surface: #FFFFFF;      /* 面板、图表底 */
-  --surface-2: #F6F7F9;    /* 面板里的次级底：输入框、表头 */
-  --surface-3: #EEF0F3;    /* 悬停 */
-  --overlay: #FFFFFF;      /* 菜单、对话框 */
+  --frame: #E7EAEE;        /* 框架层与缝 */
+  --frame-hover: #DCE0E6;  /* 框架上的悬停 */
+  --frame-line: #D3D8DF;   /* 框架上的分隔 */
+  --app: #E7EAEE;
+  --surface: #F8F9FA;      /* 内容卡片、K 线画布 */
+  --surface-2: #F0F2F4;    /* 卡片里的次级底：输入框、表头 */
+  --surface-3: #E8EBEF;    /* 悬停 */
+  --overlay: #FFFFFF;      /* 菜单、对话框、悬停卡：只有浮层用纯白 */
   --scrim: rgba(19, 23, 34, .32);
 
-  --text-1: #131722;       /* 16.8:1 */
-  --text-2: #545B6A;       /* 6.9:1 */
-  --text-3: #666B77;       /* 面板 5.4:1、悬停行 5.0:1、选中行 4.6:1 —— 占位、辅助说明的下限 */
+  --text-1: #161A22;
+  --text-2: #4D5462;
+  --text-3: #5C6270;
   --text-inv: #FFFFFF;
 
-  --line: #E1E4EA;         /* 分隔线 */
-  --line-strong: #CDD2DB;  /* 装饰性分隔、滚动条 */
+  --line: #E2E5EA;
+  --line-strong: #CDD2DB;
   --control-line: #8C93A1; /* 输入框 / 次要按钮 / 开关 / 复选框的边界：对 --surface ≥ 3:1（WCAG 1.4.11） */
 
-  --accent: #2B63F0;       /* 5.1:1 */
+  --accent: #2B63F0;
   --accent-hover: #1F52D6;
   --accent-soft: #E7EEFF;
   --accent-text: #1F52D6;
@@ -66,37 +77,39 @@
   --warn: #C2410C;
   --alert-line: #F59E0B;
 
-  /* 图表（TradingView 浅色） */
-  /* K 线图照 TradingView 默认浅色（所有皮肤一样）：白底、点线网格、无轴线、窗格分隔 #EBEBEB */
-  --chart-bg: #FFFFFF;
+  /* 图表：网格、轴字、十字线照 TradingView；底与卡片同一块材料 */
+  --chart-bg: var(--surface);
   --chart-grid: rgba(46,46,46,0.2);
-  --chart-axis-text: #0F0F0F;
+  --chart-axis-text: #2A2E37;
   --chart-cross: #9C9C9C;
-  --chart-cross-label: #0F0F0F;
+  --chart-cross-label: #161A22;
   --chart-scale-line: transparent;
-  --chart-sep: #EBEBEB;
+  --chart-sep: var(--line);
 
   --shadow-menu: 0 0 0 1px rgba(19,23,34,.06), 0 4px 12px rgba(19,23,34,.08), 0 12px 32px rgba(19,23,34,.10);
   --shadow-dialog: 0 0 0 1px rgba(19,23,34,.06), 0 12px 32px rgba(19,23,34,.12), 0 32px 80px rgba(19,23,34,.18);
 }
 
-/* ---------------------------------------------------------------- 深色 */
+/* ---------------------------------------------------------------- 深色 · 经典 */
 [data-theme="dark"] {
   color-scheme: dark;
-  --app: #07090D;
-  --surface: #11141B;
-  --surface-2: #181C25;
-  --surface-3: #202532;
-  --overlay: #1B1F29;
+  --frame: #0A0C10;
+  --frame-hover: #161A22;
+  --frame-line: #1D222B;
+  --app: #0A0C10;
+  --surface: #14171D;
+  --surface-2: #1B1F27;
+  --surface-3: #222732;
+  --overlay: #1D2129;
   --scrim: rgba(0, 0, 0, .55);
 
-  --text-1: #E3E6EC;       /* 14.9:1 */
-  --text-2: #A1A7B3;       /* 7.6:1 */
-  --text-3: #8A909B;       /* 面板 5.7:1、悬停行 5.3:1、选中行 4.6:1 */
+  --text-1: #E4E7ED;
+  --text-2: #A2A8B4;
+  --text-3: #8E94A0;
   --text-inv: #FFFFFF;
 
-  --line: #232834;
-  --line-strong: #353B49;
+  --line: #242A35;
+  --line-strong: #363C4A;
   --control-line: #62687A;
 
   --accent: #4C7DFF;
@@ -107,62 +120,59 @@
   --warn: #FB923C;
   --alert-line: #F59E0B;
 
-  /* TradingView 默认深色 */
-  --chart-bg: #0F0F0F;
+  --chart-bg: var(--surface);
   --chart-grid: rgba(242,242,242,0.2);
-  --chart-axis-text: #B8B8B8;
+  --chart-axis-text: #B4B9C2;
   --chart-cross: #9C9C9C;
-  --chart-cross-label: #3D3D3D;
+  --chart-cross-label: #3A404C;
   --chart-scale-line: transparent;
-  --chart-sep: #2E2E2E;
+  --chart-sep: var(--line);
 
   --shadow-menu: 0 0 0 1px rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.45);
   --shadow-dialog: 0 0 0 1px rgba(255,255,255,.07), 0 24px 72px rgba(0,0,0,.6);
 }
 
 /* ---------------------------------------------------------------- 皮肤
- * 上面两块（浅 / 深）是「经典 · 白」：中性灰白 + 蓝，TradingView 的味道。
- * 下面四块把手机端的两套皮肤搬到大屏上：青苔（冷 · 墨绿，出厂）与陶土（暖 · 赤陶），
- * 种子取自 KanpanPresentation/Palette.swift，按网页的层级重新分配：
- *   --app 是面板之间 4 px 的缝，用皮肤的「地色」，整屏读成一块带色的材料；
- *   --surface 是面板与画布，用皮肤的「页底」，K 线不落在纯白补丁上；
- *   文字、强调色照搬手机端，对比度都过 4.5:1（规范页里实时算）。
- * K 线本身的红绿不跟皮肤走（TradingView 那一套），皮肤融的是图外。 */
+ * 经典（上面两块）是中性灰 + 蓝；青苔（冷 · 墨绿，出厂）与陶土（暖 · 赤陶）种子取自 KanpanPresentation/Palette.swift。
+ * 框架用皮肤的「地色」但压低饱和，整屏读成一块安静的底；卡片与画布是皮肤的柔白 / 深底。
+ * K 线本身的红绿不跟皮肤走（TradingView 那一套），皮肤融的是材料与强调色。 */
 html[data-skin="sage"][data-theme="light"] {
-  --app: #CFDFD6; --surface: #F4F8F5; --surface-2: #E9F1EC; --surface-3: #DEE9E2; --overlay: #FFFFFF;
+  --frame: #E4EAE6; --frame-hover: #D9E1DC; --frame-line: #CFD9D3; --app: #E4EAE6;
+  --surface: #F8FAF8; --surface-2: #F0F4F1; --surface-3: #E8EEEA; --overlay: #FFFFFF;
   --scrim: rgba(20, 33, 27, .34);
-  --text-1: #14211B; --text-2: #4E6158; --text-3: #5D6C64;
-  --tv-red-text: #C82738; --tv-green-text: #067665;
-  --line: #D6E3DA; --line-strong: #B9CCC0; --control-line: #74897F;
+  --text-1: #17201B; --text-2: #4A5A52; --text-3: #58665F;
+  --line: #E0E7E2; --line-strong: #C3D1C8; --control-line: #74897F;
   --accent: #2E7D6B; --accent-hover: #266B5B; --accent-soft: #DCEEE8; --accent-text: #256859; --accent-2: #4FA58F;
-  --chart-bg: #FFFFFF; --chart-grid: rgba(46,46,46,0.2); --chart-axis-text: #0F0F0F; --chart-cross: #9C9C9C; --chart-cross-label: #0F0F0F; --chart-scale-line: transparent; --chart-sep: #EBEBEB;
+  --chart-bg: var(--surface); --chart-sep: var(--line);
   --shadow-menu: 0 0 0 1px rgba(20,33,27,.08), 0 4px 12px rgba(20,33,27,.10), 0 12px 32px rgba(20,33,27,.12);
   --shadow-dialog: 0 0 0 1px rgba(20,33,27,.08), 0 12px 32px rgba(20,33,27,.14), 0 32px 80px rgba(20,33,27,.20);
 }
 html[data-skin="sage"][data-theme="dark"] {
-  --app: #050807; --surface: #0E1512; --surface-2: #151E1A; --surface-3: #1C2823; --overlay: #172019;
-  --text-1: #E9F2EC; --text-2: #A5B8AE; --text-3: #869790;
-  --line: #1F2B26; --line-strong: #33413A; --control-line: #5E6F67;
+  --frame: #090D0B; --frame-hover: #151C18; --frame-line: #1A221E; --app: #090D0B;
+  --surface: #121815; --surface-2: #182019; --surface-3: #1F2823; --overlay: #1A221E;
+  --text-1: #E6ECE8; --text-2: #A3B2AA; --text-3: #8C9A93;
+  --line: #212B26; --line-strong: #33413A; --control-line: #5E6F67;
   --accent: #4FB69C; --accent-hover: #6BC8B0; --accent-soft: #16302A; --accent-text: #7CD2BC; --accent-2: #2E7D6B;
-  --chart-bg: #0F0F0F; --chart-grid: rgba(242,242,242,0.2); --chart-axis-text: #B8B8B8; --chart-cross: #9C9C9C; --chart-cross-label: #3D3D3D; --chart-scale-line: transparent; --chart-sep: #2E2E2E;
+  --chart-bg: var(--surface); --chart-sep: var(--line);
 }
 html[data-skin="terra"][data-theme="light"] {
-  --app: #DFD0C0; --surface: #FBF6F0; --surface-2: #F2E8DE; --surface-3: #EADFD2; --overlay: #FFFFFF;
+  --frame: #ECE4DA; --frame-hover: #E2D8CC; --frame-line: #DCD0C2; --app: #ECE4DA;
+  --surface: #FBF8F4; --surface-2: #F4EEE7; --surface-3: #EDE5DB; --overlay: #FFFFFF;
   --scrim: rgba(36, 26, 19, .34);
-  --text-1: #241A13; --text-2: #6E5C4D; --text-3: #726356;
-  --tv-red-text: #C32636; --tv-green-text: #067261;
-  --line: #E7DACB; --line-strong: #CDB9A5; --control-line: #8C7A6A;
+  --text-1: #231A13; --text-2: #67574A; --text-3: #6B5C50;
+  --line: #E9DFD3; --line-strong: #D3C2B0; --control-line: #8C7A6A;
   --accent: #B25735; --accent-hover: #9E4A2B; --accent-soft: #F6E1D6; --accent-text: #9E4A2B; --accent-2: #D98A62;
-  --chart-bg: #FFFFFF; --chart-grid: rgba(46,46,46,0.2); --chart-axis-text: #0F0F0F; --chart-cross: #9C9C9C; --chart-cross-label: #0F0F0F; --chart-scale-line: transparent; --chart-sep: #EBEBEB;
+  --chart-bg: var(--surface); --chart-sep: var(--line);
   --shadow-menu: 0 0 0 1px rgba(36,26,19,.08), 0 4px 12px rgba(36,26,19,.10), 0 12px 32px rgba(36,26,19,.12);
   --shadow-dialog: 0 0 0 1px rgba(36,26,19,.08), 0 12px 32px rgba(36,26,19,.14), 0 32px 80px rgba(36,26,19,.20);
 }
 html[data-skin="terra"][data-theme="dark"] {
-  --app: #0A0704; --surface: #161009; --surface-2: #211812; --surface-3: #2A1F17; --overlay: #231A13;
-  --text-1: #F7EFE6; --text-2: #C2AC98; --text-3: #9E8E7F;
-  --line: #2E2219; --line-strong: #46362A; --control-line: #6E5B4B;
+  --frame: #0C0805; --frame-hover: #1A130D; --frame-line: #21180F; --app: #0C0805;
+  --surface: #18120C; --surface-2: #201811; --surface-3: #291F16; --overlay: #231A12;
+  --text-1: #F2EAE1; --text-2: #BFAB98; --text-3: #A39486;
+  --line: #2C2118; --line-strong: #46362A; --control-line: #6E5B4B;
   --accent: #E2874F; --accent-hover: #ECA070; --accent-soft: #3A2517; --accent-text: #F0A574; --accent-2: #B25735;
-  --chart-bg: #0F0F0F; --chart-grid: rgba(242,242,242,0.2); --chart-axis-text: #B8B8B8; --chart-cross: #9C9C9C; --chart-cross-label: #3D3D3D; --chart-scale-line: transparent; --chart-sep: #2E2E2E;
+  --chart-bg: var(--surface); --chart-sep: var(--line);
 }
 :root, [data-theme="light"] { --accent-2: #5B7CFA; --card-edge: transparent; }
 [data-theme="dark"] { --accent-2: #7FA2FF; --card-edge: var(--line); }
@@ -180,11 +190,11 @@ html[data-skin="terra"][data-theme="dark"] { --kl-day: #C47BB3; --kl-week: #5F9F
  * （青苔、陶土浅色的底偏绿 / 偏暖，各自在皮肤块里再压深一点；tests/b-contrast.test.ts 守着） */
 :root, [data-theme="light"] {
   --tv-red: #F23645; --tv-green: #089981;
-  --tv-red-text: #CC2839; --tv-green-text: #067866;
+  --tv-red-text: #BC2434; --tv-green-text: #04705E;
 }
 [data-theme="dark"] {
   --tv-red: #F23645; --tv-green: #089981;
-  --tv-red-text: #FF5E6B; --tv-green-text: #2DBF9F;
+  --tv-red-text: #FF6874; --tv-green-text: #34C5A4;
 }
 [data-updown="red-up"] { --up: var(--tv-red); --down: var(--tv-green); --up-text: var(--tv-red-text); --down-text: var(--tv-green-text); }
 [data-updown="green-up"] { --up: var(--tv-green); --down: var(--tv-red); --up-text: var(--tv-green-text); --down-text: var(--tv-red-text); }
@@ -997,3 +1007,67 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; }
 .cs-pop-foot .btn { flex: 1; position: relative; overflow: hidden; }
 .cs-pop-foot input[type="color"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .cs-dlg .dialog-foot { justify-content: flex-start; }
+
+/* ---------------------------------------------------------------- 框架层与层级（docs/design/电脑网页UI规范-2026-10-08.md §2 §3）
+ * 顶栏、图表工具条、左画线栏、右侧栏和缝是同一块 --frame：不是卡片、没有圆角和描边，悬停走 --frame-hover；
+ * 图标静止就是 --text-1（原来 --text-2 加淡衬底，左右栏看着「虚」）。
+ * 内容卡片（图表格子、抽屉、右侧面板）仍是 .card，比框架亮一级。 */
+.app-header { background: var(--frame); border-bottom: 0; }
+.app-header .search-trigger { background: var(--surface); border-color: var(--frame-line); }
+.app-header .search-trigger:hover { border-color: var(--line-strong); }
+.app-header .ibtn, .header-actions .ibtn { color: var(--text-1); }
+.app-header .ibtn:hover { background: var(--frame-hover); }
+.nav a:hover { color: var(--text-1); }
+
+#page-chart > .chart-toolbar.card,
+#page-chart > .drawbar.card,
+#page-chart > .rail.card { background: var(--frame); box-shadow: none; border-radius: 0; }
+
+/* 框架上的按钮：静止满对比度，悬停一级框架色 */
+.chart-toolbar .tb-btn:hover,
+.chart-toolbar .ibtn:hover,
+.rail .ibtn:hover { background: var(--frame-hover); color: var(--text-1); }
+#page-chart > .drawbar .ibtn:hover::before,
+#page-chart > .drawbar .fly-chev:hover { background: var(--frame-hover); }
+.rail .ibtn, #page-chart > .drawbar .ibtn { color: var(--text-1); }
+.rail .ibtn.on, #page-chart > .drawbar .ibtn.on { color: var(--accent-text); }
+.chart-toolbar .tb-sep, .rail .grp-sep, #page-chart > .drawbar .grp-sep { background: var(--frame-line); }
+
+/* 右侧栏照 TradingView：48 宽、40 见方的格子、24 图标 */
+.rail .ibtn { width: 40px; height: 40px; }
+.rail .ibtn > .icon { width: 24px; height: 24px; }
+.rail .ibtn.on::before { left: -4px; }
+
+/* 一级：品种 16 / 650；周期是一条分段控件，选中项实底 */
+.chart-toolbar #tbSymbol { font-size: var(--t16); font-weight: 650; letter-spacing: -.01em; }
+.chart-toolbar .intervals {
+  gap: 0; padding: 2px; border-radius: var(--r-sm);
+  background: var(--frame-hover);
+}
+.chart-toolbar .intervals button { height: 24px; min-width: 34px; border-radius: 4px; color: var(--text-2); }
+.chart-toolbar .intervals button:hover { background: transparent; color: var(--text-1); }
+.chart-toolbar .intervals button[aria-pressed="true"] {
+  background: var(--surface); color: var(--accent-text); font-weight: 600;
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.06);
+}
+.chart-toolbar #tbMoreIv { height: 24px; border-radius: 4px; color: var(--text-2); }
+.chart-toolbar #tbMoreIv:hover { background: transparent; color: var(--text-1); }
+
+/* 二级：指标、提醒——图标与字都是 --text-1 */
+.chart-toolbar #tbInd, .chart-toolbar #tbInd .icon,
+.chart-toolbar #tbAlert, .chart-toolbar #tbAlert .icon { color: var(--text-1); }
+/* 三级：对比、记一笔、热力——排到提醒后面（flex 次序），字与图标退到 --text-2，前面一道分隔 */
+.chart-toolbar #tbCompare, .chart-toolbar #tbNote, .chart-toolbar #tbHeat { order: 1; }
+.chart-toolbar .tb-right { order: 2; }
+.chart-toolbar #tbCompare { position: relative; margin-left: 9px; }
+.chart-toolbar #tbCompare::before { content: ""; position: absolute; left: -6px; top: 4px; bottom: 4px; width: 1px; background: var(--frame-line); }
+.chart-toolbar #tbCompare, .chart-toolbar #tbCompare .icon,
+.chart-toolbar #tbNote, .chart-toolbar #tbNote .icon,
+.chart-toolbar #tbHeat:not(.on), .chart-toolbar #tbHeat:not(.on) .icon { color: var(--text-2); }
+.chart-toolbar #tbCompare:hover, .chart-toolbar #tbCompare:hover .icon,
+.chart-toolbar #tbNote:hover, .chart-toolbar #tbNote:hover .icon,
+.chart-toolbar #tbHeat:not(.on):hover, .chart-toolbar #tbHeat:not(.on):hover .icon { color: var(--text-1); }
+/* 四级：右侧纯图标组 --text-2，悬停 --text-1 */
+.chart-toolbar .tb-right .tb-btn .icon, .chart-toolbar .tb-right .ibtn { color: var(--text-2); }
+.chart-toolbar .tb-right .tb-btn:hover .icon, .chart-toolbar .tb-right .ibtn:hover { color: var(--text-1); }
+.chart-toolbar .tb-btn.on, .chart-toolbar .tb-btn.on .icon { color: var(--accent-text); }
