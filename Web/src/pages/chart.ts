@@ -36,8 +36,9 @@ import { $, $$, I, esc, tgt } from '../ui/dom'
 import { morphHtml } from '../ui/patch'
 import { toast, menu, menuFrom, closeMenu, menuOpen, dialog, dialogs, head, term, type MenuItem } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioText, ratioCls } from '../ui/common'
+import { DS } from '../terms'
 import { TVChart, type Drawing, type DrawingType, type ContextMenuInfo, type AlertLine, type AlertSignal } from '../chart/chart'
-import { installDrawing, selectTool, drawTool, drawSticky, toolDone, renderDrawbar, onDrawbarClick, onDrawbarContext, styleFor, canAdd, newDrawing, showQuick, hideQuick, refreshQuick, quickFade, copyDrawing, pasteDrawing, nudge, nudgeEnd, editText } from './drawing'
+import { installDrawing, selectTool, drawTool, drawSticky, toolDone, renderDrawbar, onDrawbarClick, onDrawbarContext, styleFor, canAdd, newDrawing, showQuick, hideQuick, refreshQuick, quickFade, copyDrawing, pasteDrawing, nudge, nudgeEnd, editText, openSettings } from './drawing'
 import { CATALOG, MAX_SUBS, type Bar, type IndicatorId, type IndParams, type SubId } from '../chart/calc'
 import { isMoreMain, MORE_PARAM_NAME } from '../chart/mainIndicators'
 import { indicatorRows, matchRow, IND_GROUPS } from './indicatorPicker'
@@ -303,6 +304,7 @@ function makeCell(i: number): Cell {
     onToolDone: d => toolDone(cell, d),
     onSelectDrawing: d => showQuick(d, cell),
     onEditText: (d, at) => editText(cell, d, at),
+    onDrawSettings: d => openSettings(cell, d),
     onDrawingsChanged: () => drawingsChanged(cell),
     onAlertCreate: p => quickAlert(cfg(cell).symbol, p),
     onAlertMove: (a, p) => { if (a.id) moveAlert(a.id, p) },
@@ -959,7 +961,9 @@ function chartContextMenu(cell: Cell, info: ContextMenuInfo): void {
   if (dr) {
     items.push({ header: '这条画线' }, { icon: 'lock', label: dr.locked ? '解锁' : '锁定', run: () => { dr.locked = !dr.locked; drawingsChanged(cell) } },
       { icon: 'link', label: '复制', sc: '⌘ C', disabled: dr.type === 'measure', run: () => { cell.chart.selected = dr; cell.chart.dirty = true; copyDrawing(cell) } },
-      { icon: 'trash', label: '删除', sc: 'Delete', run: () => { cell.chart.selected = dr; cell.chart.deleteSelected() } }, '-')
+      { icon: 'trash', label: '删除', sc: 'Delete', run: () => { cell.chart.selected = dr; cell.chart.deleteSelected() } })
+    if (dr.type !== 'measure') items.push({ icon: 'gear', label: DS.settings, run: () => openSettings(cell, dr) })
+    items.push('-')
   }
   if (p != null) items.push(
     { icon: 'bellPlus', label: `在 ${pt} 创建提醒`, run: () => quickAlert(c.symbol, p) },

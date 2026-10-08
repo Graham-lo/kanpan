@@ -2,7 +2,7 @@
  *
  *   · 左侧工具栏按组：一组一个按钮，显示这一组上次用的那把；单击 = 用它，双击 = 连续画（按钮上一个小点），
  *     右键工具栏 / 右键图 / Esc 退出；组按钮右边的小箭头展开同组的工具
- *   · 选中画线：格子上沿居中出一条临时快捷条（当前色 + 最近两种色、调色板、粗细、线型、提醒、锁、删），
+ *   · 选中画线：格子上沿居中出一条临时快捷条（当前色 + 最近两种色、调色板、粗细、线型、提醒、锁、设置、删；设置开画线设置框 drawSettingsDialog.ts），
  *     拖动画线时淡出；改过的样式记到同族工具上，下一条同族的画线照这个来
  *   · ⌘C / ⌘V：复制选中的画线、贴回同一只品种（每贴一次往右下错开一点）
  *   · 方向键微移选中的画线：1 px，⇧ 10 px；松键才记一步撤销
@@ -10,11 +10,15 @@
  */
 import { st, save } from '../app/store'
 import type { Drawing, DrawingType, TVChart } from '../chart/chart'
-import { QUOTA, TOOL_GROUPS, cleanDrawColor, cleanDrawWidth, familyOf, groupOf, quotaOK, toolName, usesFill, usesLevels, usesText, type Dash } from '../chart/drawTools'
+import { QUOTA, TOOL_GROUPS, cleanDrawColor, cleanDrawWidth, familyOf, groupOf, quotaOK, toolName, type Dash } from '../chart/drawTools'
+import { isDarkBg } from '../chart/volumeProfile'
 import { drawingAlertOf, drawingCanAlert, toggleDrawingAlert } from '../alerts/model'
 import { askNotify } from '../alerts/panel'
 import { $$, I, esc, tgt } from '../ui/dom'
 import { toast, menu, closeMenu, type MenuItem } from '../ui/overlay'
+import { knobs } from '../chart/drawSettingsModel'
+import { DS } from '../terms'
+import { openDrawSettings } from './drawSettingsDialog'
 import { ago } from '../util/clock'
 import { applyPreset } from '../chart/drawPreset'
 
@@ -229,14 +233,6 @@ const widthSvg = (raw: unknown) => { const w = cleanDrawWidth(raw); return `<svg
 const swatchBtn = (raw: unknown, pressed: boolean, tip: string) => { const c = esc(cleanDrawColor(raw)); return `<button class="swatch-btn" data-color="${c}" aria-label="${esc(tip)} ${c}" data-tip="${esc(tip)}" aria-pressed="${pressed}"><span class="swatch" style="background:${c}"></span></button>` }
 const sameColor = (a: unknown, b: unknown): boolean => cleanDrawColor(a).toUpperCase() === cleanDrawColor(b).toUpperCase()
 
-/** 这条画线能调哪些样式（多空持仓固定红绿；两把成交量分布只有框色；标注类没有线宽线型；刻度一族没有线型） */
-function knobs(t: DrawingType): { color: boolean; width: boolean; dash: boolean; fill: boolean; text: boolean } {
-  const fill = usesFill(t) && t !== 'position', text = usesText(t)
-  if (t === 'position') return { color: false, width: false, dash: false, fill: false, text: false }
-  if (t === 'fvp' || t === 'anchoredVolumeProfile') return { color: true, width: false, dash: false, fill: false, text: false }
-  if (t === 'note' || t === 'callout' || t === 'flag' || t === 'priceLabel' || t === 'markerUp' || t === 'markerDown') return { color: true, width: false, dash: false, fill, text }
-  return { color: true, width: true, dash: t !== 'fib' && !usesLevels(t), fill, text }
-}
 const FILL_SVG = (on: boolean) => `<svg class="icon-16" viewBox="0 0 16 16"><rect x="2.5" y="3.5" width="11" height="9" rx="2" fill="${on ? 'currentColor' : 'none'}" fill-opacity=".35" stroke="currentColor" stroke-width="1.5"/></svg>`
 
 export function showQuick(d: Drawing | null, c?: DrawCell): void {
@@ -294,6 +290,7 @@ function renderQuick(): void {
     `<span class="tb-sep"></span>
     ${canAlert ? `<button class="ibtn xs" data-q="alert" aria-pressed="${hasAlert}" aria-label="画线提醒" data-tip="价格碰到这条线时提醒我">${I('bellPlus', 'icon-16')}</button>` : ''}
     <button class="ibtn xs" data-q="lock" aria-pressed="${locked}" aria-label="${locked ? '解锁' : '锁定'}" data-tip="${locked ? '解锁这条' : '锁定这条（不能拖、不能改）'}">${I('lock', 'icon-16')}</button>
+    <button class="ibtn xs" data-q="settings" aria-label="${esc(DS.settingsTip)}" data-tip="${esc(DS.settingsTip)}" aria-haspopup="dialog">${I('gear', 'icon-16')}</button>
     <button class="ibtn xs" data-q="del" aria-label="删除" data-tip="删除" data-kbd="Delete">${I('trash', 'icon-16')}</button>`
   placeQuick()
 }
@@ -334,8 +331,22 @@ function quickClick(e: MouseEvent): void {
   if (q === 'fill') { d.filled = d.filled === false; if (d.filled) delete d.filled; c.chart.dirty = true; host.changed(c); renderQuick(); return }
   if (q === 'text') { const at = c.chart.textRectOf(d); if (at) editText(c, d, at); return }
   if (q === 'alert') { if (toggleDrawingAlert(host.symbolOf(c), d)) { toast('画线提醒已开', '价格碰到这条线时通知你', 'bell'); askNotify() } host.changed(c); renderQuick(); return }
+  if (q === 'settings') { openSettings(c, d); return }
   if (q === 'lock') { d.locked = !d.locked; host.changed(c); renderQuick(); return }
   if (q === 'del') { c.chart.selected = d; c.chart.deleteSelected() }
+}
+
+/** 打开这条画线的设置框（快捷条齿轮、双击不带字的线、右键「设置…」）：改了立即重画，松手 / 选完才记一步撤销并同步 */
+export function openSettings(c: DrawCell, d: Drawing): void {
+  if (!c.chart.drawings.includes(d) || d.type === 'measure') return
+  endEdit(true)
+  openDrawSettings(d, {
+    alive: () => c.el.isConnected && c.chart.drawings.includes(d),
+    redraw: () => { c.chart.dirty = true },
+    commit: () => { c.chart.dirty = true; host.changed(c); refreshQuick() },
+    dark: () => isDarkBg(c.chart.colors.bg),
+    dec: () => c.chart.meta.dec,
+  })
 }
 
 // ------------------------------------------------------------ 剪贴板

@@ -998,6 +998,43 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; }
 .cs-pop-foot input[type="color"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .cs-dlg .dialog-foot { justify-content: flex-start; }
 
+/* 画线设置对话框（pages/drawSettingsDialog.ts）：版式与控件照图表设置（cs-*），尺寸照 TradingView 画线设置弹窗收窄一档 */
+.ds-dlg { width: 600px; height: 600px; }
+.ds-dlg .body { grid-template-columns: 156px 1fr; }
+.ds-dlg .cs-pane { padding: 0 var(--s5) var(--s5); }
+.ds-pane.ds-ro :is(.cs-row, .ds-levels, .ds-textrow) { opacity: .55; }
+.ds-dd-w { min-width: 64px; padding-left: var(--s2); }
+.ds-sample { width: 24px; height: 16px; flex: none; color: var(--text-1); }
+.menu .dq-sample .ds-sample { width: 24px; }
+.ds-tg { width: var(--h-sm); height: var(--h-sm); border: 1px solid var(--control-line); border-radius: var(--r-sm); background: var(--surface);
+  color: var(--text-2); font-size: var(--t14); font-weight: 600; line-height: 1; }
+.ds-tg:hover { border-color: var(--text-3); color: var(--text-1); }
+.ds-tg-italic { font-family: Georgia, "Times New Roman", serif; font-style: italic; font-weight: 500; }
+.ds-tg[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); }
+.ds-textrow { padding: var(--s4) 0 var(--s2); }
+.ds-text { display: block; height: auto; min-height: 76px; padding: var(--s2) var(--s3); resize: vertical; font: inherit; line-height: 20px; }
+.ds-time { width: 200px; height: var(--h-sm); font-variant-numeric: tabular-nums; }
+.ds-price .input { width: 112px; }
+.ds-to { width: 10px; height: 1px; background: var(--text-3); flex: none; }
+.ds-dlg .cs-num .input { width: 64px; }
+/* 数字框不要上下小箭头（照 TradingView；箭头占掉的宽会把三位数挤掉一截） */
+.ds-dlg input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+.ds-dlg input[type="number"]::-webkit-inner-spin-button, .ds-dlg input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.ds-levels { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--s4); padding-bottom: var(--s2); }
+.ds-lv { display: flex; align-items: center; gap: var(--s2); height: 36px; }
+.ds-lv .ds-lv-chk { flex: none; min-height: 0; }
+.ds-lv .input { flex: 1; min-width: 0; width: 0; height: var(--h-sm); text-align: right; font-variant-numeric: tabular-nums; }
+.ds-lv.off .input { color: var(--text-3); }
+.ds-pop-grid { grid-template-columns: repeat(10, var(--h-xs)); }
+.ds-alpha { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); padding-top: var(--s2); border-top: 1px solid var(--line); color: var(--text-2); font-size: var(--t12); }
+.ds-alpha input { flex: 1; min-width: 0; accent-color: var(--accent); }
+.ds-alpha output { width: 36px; text-align: right; color: var(--text-1); font-variant-numeric: tabular-nums; }
+.ds-tpl { min-width: 96px; }
+/* 模板菜单：每项行尾的删除只在悬停 / 键盘停在这一行时出现 */
+.ds-tpl-menu .mi .mi-trail { opacity: 0; }
+.ds-tpl-menu .mi:hover .mi-trail, .ds-tpl-menu .mi:focus-visible .mi-trail { opacity: 1; }
+.ds-name-dlg { width: 360px; }
+
 /* ---------------------------------------------------------------- 框架层与层级（docs/design/电脑网页UI规范-2026-10-08.md §2 §3）
  * 顶栏、图表工具条、左画线栏、右侧栏和缝是同一块 --frame：不是卡片、没有圆角和描边，悬停走 --frame-hover；
  * 图标静止就是 --text-1（原来 --text-2 加淡衬底，左右栏看着「虚」）。
