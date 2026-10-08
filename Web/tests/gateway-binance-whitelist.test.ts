@@ -2,7 +2,7 @@
  * （Backend/kanpan-api/src/venues/binance.rs 的 upstream_of / query_ok；不在里面的服务端回 404 / 400，那条数据在网关线路上整条是空的）。
  * 原来手机网页的基差副图（futures/data/basis?pair=…&contractType=PERPETUAL）两样都不在白名单里。 */
 import { describe, expect, it } from 'vitest'
-import RS from '../../Backend/kanpan-api/src/venues/binance.rs?raw'
+import RS from '../../Backend/kanpan-api/src/venues/binance/mod.rs?raw'
 import { EXTERNAL_IDS, fetchMetric } from '../src/m/chart/external.source'
 
 const SOURCES = import.meta.glob('../src/**/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
