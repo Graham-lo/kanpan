@@ -41,7 +41,9 @@
 //! * 足迹图与秒线（网页版，2026-10-07）：同一批成交按交易所给的时刻记每分钟每个价位桶的主动买卖额（`orderflow_footprint`，
 //!   接口 `GET /v1/market/orderflow/footprint`，见 `footprint.rs`），币安 U 本位永续的再记每秒的开高低收与量（`klines_seconds`，
 //!   接口 `GET /v1/market/klines/seconds`，见 `seconds.rs`）；写库与清理共用 `minutes.rs`，各自的磁盘预算在 `storage_budget.rs`。
-//! * 这五条历史接口不要登录，同一来源地址同时最多 `PER_CLIENT`（24）条在处理，超了 429 `history_client_limit` + `Retry-After: 1`。
+//! * 爆仓分钟聚合（网页版「大单」抽屉，2026-10-08）：另开三路连接收币安 U 本位 / 币本位与 OKX 的强平推送，只记在跟的 base，
+//!   每分钟多空被平的美元额、笔数与最大一笔写进 `orderflow_liq`，接口 `GET /v1/market/orderflow/liq`，见 `liq.rs`。
+//! * 这六条历史接口不要登录，同一来源地址同时最多 `PER_CLIENT`（24）条在处理，超了 429 `history_client_limit` + `Retry-After: 1`。
 //! * 只在带库的 serve 进程里有；备用节点跑的是 metrics（没有库），不挂这条路由。
 mod book;
 mod feeds;
@@ -50,6 +52,7 @@ mod footprint;
 mod heat;
 mod hub;
 mod layers;
+mod liq;
 mod minutes;
 mod model;
 mod resources;
@@ -1311,6 +1314,7 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
  let pool=POOL.get_or_init(||own_pool(&pool)).clone();
  heat::start(pool.clone());
  flow::start(pool.clone());
+ liq::start(pool.clone());
  footprint::start(pool.clone());
  seconds::start(pool.clone());
  tokio::spawn(async move {
@@ -1372,6 +1376,10 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
      match flow::purge(&pool,now_ms()).await {
       Ok(deleted)=>tracing::info!("Orderflow flow: purge deleted {deleted}; table {} bytes",flow::size(&pool).await.unwrap_or(-1)),
       Err(e)=>tracing::warn!("Orderflow flow: purge failed: {e}"),
+     }
+     match liq::purge(&pool,now_ms()).await {
+      Ok(deleted)=>tracing::info!("Orderflow liq: purge deleted {deleted}; table {} bytes",liq::size(&pool).await.unwrap_or(-1)),
+      Err(e)=>tracing::warn!("Orderflow liq: purge failed: {e}"),
      }
      match footprint::purge(&pool,now_ms()).await {
       Ok(deleted)=>tracing::info!("Orderflow footprint: purge deleted {deleted}"),
@@ -1640,11 +1648,12 @@ async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,limit:i64,thr
 
 pub fn routes()->Router<AppState> {
  Router::new().route(PATH,get(history)).route(heat::PATH,get(heat::heat)).route(flow::PATH,get(flow::flow))
+  .route(liq::PATH,get(liq::liq))
   .route(footprint::PATH,get(footprint::footprint)).route(seconds::PATH,get(seconds::seconds))
   .route_layer(axum::middleware::from_fn(per_client))
 }
 
-/// 同一来源地址同时在处理的历史请求（大单 / 热力 / 分钟成交 / 足迹 / 秒线五条合计）最多几条。
+/// 同一来源地址同时在处理的历史请求（大单 / 热力 / 分钟成交 / 足迹 / 秒线 / 爆仓六条合计）最多几条。
 /// 网页十六图一屏全开时一格最多同时要两三条（热力 + 足迹或秒线 + 往前翻页），24 条够一个家庭网络几台设备同时开；
 /// 读库只有 `HISTORY_READS` 两个名额，不限的话一个匿名客户端开几十条并发就把别人全挤在后面排队（2026-10-07 压测：
 /// 一个来源 60 并发打秒线，别人的请求跟着排到 1.4 秒）。
