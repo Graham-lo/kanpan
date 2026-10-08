@@ -6,7 +6,9 @@
  *
  *   深度梯子列  宽  默认 240，160–480
  *   右侧面板    宽  默认 320（自选只剩三列，2026-10-07 收窄），320–640
- *   底部抽屉    高  默认 280，160 到页面高的 60%
+ *   底部抽屉    高  默认 280，160 到页面高的 60%；四块排不下一行折成几排时，
+ *                   至少给到「抽屉头 + 排数 × 240」，此时 60% 上限放开（图表区仍留 240），
+ *                   这是临时托底、不写回存值：回到一排放得下时恢复用户拖的高度
  *   主图 / 副图 高  存比例（占画布高）；主图 ≥ 40%、每个副图 ≥ 80 px
  *   侧栏各块    高  默认分配 + 用户覆盖（像素，按总高按比例铺满）
  *   多图网格    宽 / 高  每种布局各记一组列宽、行高比例
@@ -28,6 +30,8 @@ export const DRAWER_MAX_FRAC = 0.6
 export const CHART_MIN_W = 480
 /** 图表区至少留这么高（抽屉拉高时） */
 export const CHART_MIN_H = 240
+/** 抽屉里四块折行时每排给的高（块本身最矮 220，留 20 给标题与边线） */
+export const DRAWER_ROW_H = 240
 /** 多图网格：一列至少这么宽、一行至少这么高（16 格在 2560×1440 上约 500×300，留足拖动余地） */
 export const TRACK_MIN_W = 240
 export const TRACK_MIN_H = 160
@@ -73,6 +77,25 @@ export function fitWidths(ladder: number | null, panel: number | null, room: num
 export function fitDrawer(drawer: number | undefined, pageH: number): number {
   const max = Math.min(Math.round(pageH * DRAWER_MAX_FRAC), pageH - CHART_MIN_H)
   return clampSize(drawer, REGIONS.drawer, max)
+}
+
+/** 一行宽 width 的 flex-wrap 容器里，依次排外宽为 items 的块要几排（照浏览器的折行：放不下就换一排） */
+export function wrapRows(width: number, items: readonly number[]): number {
+  let rows = 0, used = 0
+  for (const w of items) {
+    if (rows === 0 || used + w > width + 0.5) { rows++; used = w } else used += w
+  }
+  return rows
+}
+/**
+ * 抽屉折成几排时的托底高：need = 抽屉头 + 排数 × DRAWER_ROW_H（一排时传 0）。
+ * 有效高 = max(用户的高, need)，need 可越过 60% 上限，但图表区仍至少留 CHART_MIN_H。
+ */
+export function fitDrawerWrapped(drawer: number | undefined, pageH: number, need: number): number {
+  if (!(need > 0)) return fitDrawer(drawer, pageH)
+  // 折行时 60% 上限一并放开（不然 900 高的窗口托底 512 已顶到 60%，往上再也拖不动），只守住图表区 240
+  const h = clampSize(drawer, REGIONS.drawer, pageH - CHART_MIN_H)
+  return Math.max(h, Math.min(Math.ceil(need), pageH - CHART_MIN_H))
 }
 
 // ------------------------------------------------------------ 多图网格

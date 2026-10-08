@@ -3,12 +3,14 @@
  * 图表页的网格（layoutSlots 排的那张）里三处能拖：
  *   深度梯子列与图表区之间 —— 竖线，改梯子宽（160–480，默认 240）
  *   右侧面板左沿           —— 竖线，改面板宽（320–640，默认 320）
- *   底部抽屉上沿           —— 横线，改抽屉高（160 到页面高的 60%，默认 280）
+ *   底部抽屉上沿           —— 横线，改抽屉高（160 到页面高的 60%，默认 280）；
+ *                             抽屉四块折成几排时托底到「头 + 排数 × 240」，拖的下限也是它，
+ *                             托底不写回存值，回到一排时恢复用户的高
  * 多图网格里每两列之间一条竖线、每两行之间一条横线，按布局各记一组比例。
  * 左侧工具列与顶部工具栏不动。尺寸只存本机（app/sizes.ts），窗口变小时按比例收、变回来复原。
  */
 import { GRID, type Layout } from '../app/store'
-import { sizes, saveSizes, fitWidths, fitDrawer, clampSize, trackFracs, fitTracks, dragTracks, REGIONS, CHART_MIN_W, TRACK_MIN_W, TRACK_MIN_H } from '../app/sizes'
+import { sizes, saveSizes, fitWidths, fitDrawer, fitDrawerWrapped, wrapRows, DRAWER_ROW_H, clampSize, trackFracs, fitTracks, dragTracks, REGIONS, CHART_MIN_W, CHART_MIN_H, TRACK_MIN_W, TRACK_MIN_H } from '../app/sizes'
 import { splitter, type Splitter } from '../ui/splitter'
 
 const px = (el: Element, name: string, def: number): number => {
@@ -28,7 +30,28 @@ export function applyPageSizes(page: HTMLElement, on: SlotsOn): void {
   const s = page.style
   if (w.ladder != null) s.setProperty('--ladder-w', `${w.ladder}px`)
   if (w.panel != null) s.setProperty('--panel-w', `${w.panel}px`)
-  if (on.drawer) s.setProperty('--drawer-h', `${fitDrawer(sizes.drawer, pageBodyH(page))}px`)
+  if (!on.drawer) return
+  drawerNeed = measureDrawerNeed(page)
+  s.setProperty('--drawer-h', `${fitDrawerWrapped(sizes.drawer, pageBodyH(page), drawerNeed)}px`)
+}
+/** 抽屉四块折行时的托底高（一排放得下为 0）；拖抽屉时的下限也用它 */
+let drawerNeed = 0
+/**
+ * 按抽屉现在的宽模拟四块的折行（与高无关，不受滚动条影响），折成 n 排就要「头 + n × DRAWER_ROW_H」。
+ * 宽由上面刚写的 --ladder-w / --panel-w 决定，这里读矩形会触发一次同步排版，只在 layoutSlots 里调。
+ */
+function measureDrawerNeed(page: HTMLElement): number {
+  const slot = page.querySelector<HTMLElement>('#drawerSlot'), grid = slot?.querySelector<HTMLElement>('.of-dr-grid')
+  if (!slot || !grid || slot.hidden) return 0
+  const items = [...grid.querySelectorAll<HTMLElement>('.of-blk')].filter(b => !b.hidden).map(b => {
+    const cs = getComputedStyle(b)
+    const basis = parseFloat(cs.flexBasis) || b.offsetWidth
+    return Math.max(basis, parseFloat(cs.minWidth) || 0) + (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.marginRight) || 0)
+  })
+  const rows = wrapRows(grid.getBoundingClientRect().width, items)
+  if (rows <= 1) return 0
+  const chrome = slot.getBoundingClientRect().height - grid.getBoundingClientRect().height
+  return chrome + rows * DRAWER_ROW_H
 }
 /** 顶栏以下、图表区 + 抽屉那一段的高 */
 function pageBodyH(page: HTMLElement): number {
@@ -61,7 +84,7 @@ export function placePageSplits(page: HTMLElement, on: SlotsOn, relayout: () => 
 
 function makePageSplits(page: HTMLElement, relayout: () => void): { ladder: Splitter; panel: Splitter; drawer: Splitter } {
   const rect = (id: string): DOMRect => (page.querySelector(`#${id}`) as HTMLElement).getBoundingClientRect()
-  let w0 = 0, room = 0
+  let w0 = 0, room = 0, saved0: number | undefined
   const tip = '拖动调整，双击恢复默认'
   const start = (id: string) => () => { w0 = rect(id).width; room = rect('chartArea').width - CHART_MIN_W }
   return {
@@ -81,8 +104,16 @@ function makePageSplits(page: HTMLElement, relayout: () => void): { ladder: Spli
     }),
     drawer: splitter({
       dir: 'y', parent: page, name: 'drawer', tip,
-      onStart: () => { w0 = rect('drawerSlot').height },
-      onMove: d => { sizes.drawer = fitDrawer(w0 - d, pageBodyH(page)); relayout() },
+      onStart: () => { w0 = rect('drawerSlot').height; saved0 = sizes.drawer },
+      // 折行托底时往下拖到托底以下 = 停在托底，存值不动（回到一排时仍是用户原来的高）
+      onMove: d => {
+        const body = pageBodyH(page)
+        const v = drawerNeed > 0 ? clampSize(w0 - d, REGIONS.drawer, body - CHART_MIN_H) : fitDrawer(w0 - d, body)
+        if (v >= drawerNeed) sizes.drawer = v
+        else if (saved0 === undefined) delete sizes.drawer
+        else sizes.drawer = saved0
+        relayout()
+      },
       onEnd: saveSizes,
       onReset: () => { delete sizes.drawer; saveSizes(); relayout() },
     }),

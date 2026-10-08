@@ -1,7 +1,7 @@
 /* 行情页布局与拖动：尺寸夹取、多图布局清单、降级门槛、侧栏拖动分配、行情连接池分配 */
 import { describe, it, expect } from 'vitest'
 import { LAYOUTS, LAYOUT_N, GRID, MAX_CELLS, clampActive, ensureCells, hydrate, FILL_SYMBOLS, type Layout, type CellCfg } from '../src/app/store'
-import { REGIONS, clampSize, fitWidths, fitDrawer, trackFracs, fitTracks, normalizeSizes, dragTracks, CHART_MIN_W, CHART_MIN_H, DRAWER_MAX_FRAC } from '../src/app/sizes'
+import { REGIONS, clampSize, fitWidths, fitDrawer, fitDrawerWrapped, wrapRows, DRAWER_ROW_H, trackFracs, fitTracks, normalizeSizes, dragTracks, CHART_MIN_W, CHART_MIN_H, DRAWER_MAX_FRAC } from '../src/app/sizes'
 import { paneHeights, dragPane, paneRatiosOf, degradeFor, subDefaultH, MAIN_MIN_FRAC, SUB_MIN_H, FULL } from '../src/chart/panes'
 import { planSidebar, dragSidebar, sideCanDrag, PARTS } from '../src/orderflow/sidebar'
 import { assignStreams, PER_CONN, TOTAL } from '../src/market/stream'
@@ -38,6 +38,21 @@ describe('分隔条尺寸：夹取、按比例收、双击回默认', () => {
     expect(fitDrawer(2000, 500)).toBe(500 - CHART_MIN_H)
     expect(fitDrawer(50, 1300)).toBe(160)
     expect(fitDrawer(undefined, 1300)).toBe(280)
+  })
+  it('抽屉四块折行：按 flex-wrap 数排数；托底 = 头 + 排数 × 240，可越过 60% 但图表区仍留 240，不改存值', () => {
+    const blk = [339, 439, 299, 319]          // 340 / 440 / 300 / 320 各减 1 px 的负外边距
+    expect(wrapRows(1400, blk)).toBe(1)
+    expect(wrapRows(1000, blk)).toBe(2)        // 1440 宽时抽屉约 1000：汇总 + 每根一排，价位 + 爆仓一排
+    expect(wrapRows(500, blk)).toBe(4)
+    expect(wrapRows(1000, [])).toBe(0)
+    const need = 32 + 2 * DRAWER_ROW_H
+    expect(fitDrawerWrapped(280, 848, need)).toBe(need)          // 1440×900：默认 280 长到两排
+    expect(fitDrawerWrapped(280, 758, need)).toBe(need)          // 1440×810：越过 60%（455），图表区还剩 246
+    expect(fitDrawerWrapped(600, 848, need)).toBe(600)           // 用户拖得更高就用用户的（折行时 60% 上限放开）
+    expect(fitDrawerWrapped(2000, 848, need)).toBe(848 - CHART_MIN_H)
+    expect(fitDrawerWrapped(280, 600, need)).toBe(600 - CHART_MIN_H) // 太矮的窗口：图表区仍留 240
+    expect(fitDrawerWrapped(280, 848, 0)).toBe(280)              // 一排放得下：回到用户的高
+    expect(fitDrawerWrapped(undefined, 848, 0)).toBe(280)
   })
   it('多图网格：存的比例不对就回平均；拖只在相邻两条之间挪，各不小于下限', () => {
     expect(trackFracs(undefined, 4)).toEqual([0.25, 0.25, 0.25, 0.25])
