@@ -37,7 +37,7 @@
 - 部署后端的两条教训（2026-09-19）：`ops/install.py` 只跑迁移、**不会重启已在跑的服务**，装完必须 `systemctl restart kanpan-api kanpan-worker` 再看 `ExecMainStartTimestamp`；sqlx 的 `after_connect` 里一条 `sqlx::query` 只能放一条语句（多条 SET 会报 `cannot insert multiple commands into a prepared statement` 把整个服务打死），凡是改连接池的都要在本机真的 `serve` 起来 curl 过 `/health` 再部署。部署前的二进制备份在 `/opt/kanpan-api/backup-<日期>-<时分秒>/kanpan-api.bin`，回滚就是拷回去重启。
 - 复盘：`KanpanReview` 接现有图表，记一笔 / 列表 / 待办 / 统计 / 详情 / 逐根重温 / 私有 OHLC 找相似；记录固定行情源；公开相似索引只是首批种子。
 - 网关：`Backend/kanpan-gateway`，`/opt/kanpan-gateway`，REST 8792、共享 WS 8793，服务 `kanpan-gateway`、`kanpan-stream-hub`。线上服务，只读探测，不改 Caddyfile。 2026-09-17 性能轮已按「备份 → 先备节点 → 只读验证 → 主节点」部署过一次（备份在 `/opt/kanpan-gateway/backup-20260917-*`，API 在 `/opt/kanpan-api/backup-20260917`）；Caddy `admin off`，改完要 `systemctl restart caddy`。Release 基准用各包 `PerfBenchmarkTests.swift`（`swift test -c release --filter PerfBenchmark`），验收报告见桌面 `看盘-性能优化-验收-2026-09-17.md`。
-- 原型静态托管：主 VPS `/var/www/kanpan/ui/`（`ssh orderflow-vps`，`install -o caddy -g caddy -m 644`），浏览器地址 `https://kanpan.43-160-232-253.sslip.io/ui/`。
+- 原型静态托管：`/var/www/kanpan/ui/`（`install -o caddy -g caddy -m 644`），浏览器地址 `https://kanpan.43-160-232-253.sslip.io/ui/` **对应的是新加坡主机 `ssh kanpan-sg`（43.160.232.253）**；旧美国主机 `orderflow-vps`（107.174.172.10）装了也不会出现在这个地址上（2026-10-08 核实）。
 
 ## 4. 用户稳定偏好
 

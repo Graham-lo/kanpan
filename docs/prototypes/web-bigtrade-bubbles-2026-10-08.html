@@ -93,6 +93,10 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .bb circle.body{transition:transform .12s var(--ease);transform-box:fill-box;transform-origin:center}
 .bb:hover circle.body{transform:scale(1.1)}
 .bb text{pointer-events:none;font-weight:650;fill:#fff;text-anchor:middle;dominant-baseline:central;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+/* 统一透明泡：一种样子，底色 16%（深色 22%）+ 1.4 描边，字用方向色 */
+:root{--bub-a:.16} [data-theme="dark"]{--bub-a:.22}
+.one circle.body{fill-opacity:var(--bub-a)}
+.one:hover circle.body{fill-opacity:.32}
 /* 右侧说明 */
 .doc{display:grid;gap:14px;align-content:start}
 .card{background:var(--card);border:1px solid var(--card-line);border-radius:12px;padding:14px 16px;box-shadow:inset 0 1px 0 var(--card-hi)}
@@ -110,9 +114,10 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 </style>
 </head>
 <body>
-<div class="pbar"><h1>大单与爆仓 · 气泡原型<span>三端同一套 · 2026-10-08 · 假数据 · 替换图上的签与三角</span></h1>
+<div class="pbar"><h1>大单与爆仓 · 气泡原型<span>三端同一套 · 2026-10-08 二稿 · 大单 + 爆仓并成一枚透明泡 · 假数据</span></h1>
   <div class="segs">
-    <span class="k">画法</span><div class="seg" data-k="mode"><button aria-pressed="true" data-v="bubble">气泡</button><button data-v="tag">现在的签</button></div>
+    <span class="k">画法</span><div class="seg" data-k="mode"><button aria-pressed="true" data-v="one">统一透明泡</button><button data-v="bubble">三档实 / 空心</button><button data-v="tag">现在的签</button></div>
+    <span class="k">多少</span><div class="seg" data-k="many"><button aria-pressed="true" data-v="few">少</button><button data-v="mid">中</button></div>
     <span class="k">疏密</span><div class="seg" data-k="bw"><button data-v="16">疏</button><button aria-pressed="true" data-v="9">中</button><button data-v="4">密</button></div>
     <div class="seg" data-k="theme"><button aria-pressed="true" data-v="light">浅色</button><button data-v="dark">深色</button></div>
   </div>
@@ -120,18 +125,16 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 <div class="wrap">
   <div class="chart" id="chart"><div class="hd"><b>SOLUSDT</b>· 5分 · 币安永续</div><div class="hcard" id="hc"></div></div>
   <aside class="doc">
-    <div class="card"><h3>气泡怎么读</h3>
+    <div class="card"><h3>透明泡怎么读</h3>
       <div class="legend">
-        <div class="sw"><svg width="44" height="44"><circle cx="22" cy="22" r="18" fill="var(--up)"/><circle cx="22" cy="22" r="22" fill="var(--up)" opacity=".16"/><text x="22" y="23" font-size="12" font-weight="650" fill="#fff" text-anchor="middle" dominant-baseline="central">34.1</text></svg></div>
-        <div class="t"><b>大买 · 大气泡带光晕</b>挂在那根 K 线最高点正上方，字是这根的大买合计（M）</div>
-        <div class="sw"><svg width="44" height="44"><circle cx="22" cy="22" r="13" fill="var(--down)"/><text x="22" y="23" font-size="10.5" font-weight="650" fill="#fff" text-anchor="middle" dominant-baseline="central">6.1</text></svg></div>
-        <div class="t"><b>大卖 · 中气泡</b>挂在最低点正下方；气泡大小跟金额走</div>
-        <div class="sw"><svg width="44" height="44"><circle cx="22" cy="22" r="14" fill="var(--down)" fill-opacity=".12" stroke="var(--down)" stroke-width="1.8"/><text x="22" y="23" font-size="10.5" font-weight="650" fill="var(--down)" text-anchor="middle" dominant-baseline="central">31K</text></svg></div>
-        <div class="t"><b>爆仓 · 空心环</b>多爆红环挂低点下、空爆绿环挂高点上，环里写爆仓金额；实心是成交、空心是爆仓，颜色只分红绿</div>
-        <div class="sw"><svg width="44" height="44"><circle cx="22" cy="22" r="3.2" fill="var(--up)"/></svg></div>
-        <div class="t"><b>小圆点</b>过了门槛但不算大，只点一下不写字（替掉原来的三角）</div>
-        <div class="sw"><svg width="44" height="44"><line x1="22" y1="10" x2="22" y2="34" stroke="var(--line-strong)"/><rect x="19" y="16" width="6" height="12" fill="var(--up)"/><line x1="22" y1="10" x2="22" y2="4" stroke="var(--up)" stroke-width="1.2"/><circle cx="22" cy="2" r="2" fill="var(--up)"/></svg></div>
-        <div class="t"><b>圆心永远对着那根</b>挤不下时气泡往外错开一层，一条细柄仍连回那根的高 / 低点</div>
+        <div class="sw"><svg width="44" height="44"><circle cx="22" cy="22" r="16" fill="var(--up)" fill-opacity=".16" stroke="var(--up)" stroke-width="1.4"/><text x="22" y="23" font-size="11" font-weight="650" fill="var(--up)" text-anchor="middle" dominant-baseline="central">34.1</text></svg></div>
+        <div class="t"><b>上方绿泡 · 向上的钱</b>这根的大买 + 空单爆仓合计，挂在最高点正上方；泡越大金额越大</div>
+        <div class="sw"><svg width="44" height="44"><circle cx="22" cy="22" r="13" fill="var(--down)" fill-opacity=".16" stroke="var(--down)" stroke-width="1.4"/><text x="22" y="23" font-size="11" font-weight="650" fill="var(--down)" text-anchor="middle" dominant-baseline="central">6.1</text></svg></div>
+        <div class="t"><b>下方红泡 · 向下的钱</b>大卖 + 多单爆仓合计，挂在最低点正下方；大单和爆仓不再分两种样子，悬停 / 点开的卡里再拆</div>
+        <div class="sw"><svg width="44" height="44"><circle cx="22" cy="22" r="2.6" fill="var(--up)" opacity=".85"/></svg></div>
+        <div class="t"><b>小圆点</b>过了门槛但没进前几名，只点一下、不写字、不响应</div>
+        <div class="sw"><svg width="44" height="44"><line x1="22" y1="10" x2="22" y2="34" stroke="var(--line-strong)"/><rect x="19" y="16" width="6" height="12" fill="var(--up)"/><line x1="22" y1="10" x2="22" y2="5" stroke="var(--up)" stroke-width="1.2" opacity=".6"/><circle cx="22" cy="3" r="2.4" fill="var(--up)" fill-opacity=".16" stroke="var(--up)"/></svg></div>
+        <div class="t"><b>一屏最多 6 枚带字的泡</b>按金额取前几名，其余退成点；圆心对着那根，挤不下往外错一层，细柄连回高 / 低点</div>
       </div></div>
     <div class="card"><h3>和现在的签比</h3>
       <div class="cmp">
@@ -189,7 +192,7 @@ bars.forEach((br, i) => { const b = br.bb, a = br.bs; if (!(a + b)) return
   const add = (s, L, S) => { const br = bars[(toMin(s) - T0)/STEP]; if (br) { br.L += L; br.S += S } }
   add('09:15', 14e3, 0); add('13:30', 0, 22e3); add('13:45', 9e3, 6e3); add('11:00', 0, 8e3); add('07:55', 31e3, 0); add('09:20', 18e3, 0); add('12:10', 6.5e3, 0); add('10:05', 0, 11e3) }
 const LAST = bars[N-1].c
-const P = { mode: 'bubble', bw: 9, sel: toMin('13:10'), hover: null }
+const P = { mode: 'one', many: 'few', bw: 9, sel: toMin('13:10'), hover: null }
 
 /* ---------- 档位：最近 300 根里「大买 / 大卖大的那侧」的分布，P85 / P95 / max(P99, 3×P95)（和真图同一口径） ---------- */
 function tiers(vis){ const v = vis.map(b => Math.max(b.bb, b.bs)).filter(Boolean).sort((a, b) => a - b); if (!v.length) return null
@@ -227,7 +230,7 @@ function draw(){
     g += `<rect x="${(X - cwid/2).toFixed(1)}" y="${top.toFixed(1)}" width="${cwid.toFixed(1)}" height="${bh.toFixed(1)}" fill="${c}"/>`
     const vh = b.v/vmax*(volH - 6)
     g += `<rect x="${(X - cwid/2).toFixed(1)}" y="${(h - tH - vh).toFixed(1)}" width="${cwid.toFixed(1)}" height="${vh.toFixed(1)}" fill="${c}" opacity=".35"/>` })
-  front += P.mode === 'bubble' ? bubbles(vis, x, y, bw, padT, h - tH - volH) : tags(vis, x, y, bw)
+  front += P.mode === 'one' ? one(vis, x, y, bw, padT, h - tH - volH) : P.mode === 'bubble' ? bubbles(vis, x, y, bw, padT, h - tH - volH) : tags(vis, x, y, bw)
   // 现价线、轴线
   g += `<line x1="0" x2="${cw}" y1="${y(LAST).toFixed(1)}" y2="${y(LAST).toFixed(1)}" stroke="var(--up)" stroke-dasharray="1 3"/><rect x="${cw}" y="${(y(LAST) - 9).toFixed(1)}" width="${axW}" height="18" fill="var(--up)"/><text x="${cw + 8}" y="${(y(LAST) + 4).toFixed(1)}" font-size="11" fill="#fff" class="num">${LAST.toFixed(2)}</text>`
   g += `<line x1="${cw}" x2="${cw}" y1="0" y2="${h}" stroke="var(--line)"/><line x1="0" x2="${w}" y1="${h - tH}" y2="${h - tH}" stroke="var(--line)"/>`
@@ -235,7 +238,42 @@ function draw(){
   el.insertAdjacentHTML('afterbegin', svg(w, h, g + front))
 }
 
-/* 气泡：大单 = 实心气泡（买绿在高点上、卖红在低点下），爆仓 = 空心环（空爆绿在上、多爆红在下）；
+/* 二稿 · 统一透明泡（用户 2026-10-08：「大单和爆仓能不能统一一个透明气泡」「气泡太多了分不清而且占空间」）：
+   每根只有两个数——向上的钱 U = 大买 + 空爆、向下的钱 D = 大卖 + 多爆；一种样子（底色 16% + 1.4 描边 + 方向色字），
+   不再分实心 / 空心、不再三档；门槛两级：「少」过 P90 只点一个小点、过 P97 才成泡写字；「中」P85 / P95（= 现在签的一二档线）；
+   一屏带字的泡最多 6 枚（按金额取前几名，其余退成点）；圆心对根、挤不下往外错层、出窗格退成点；点不响应 */
+const CAP = 6
+function one(vis, x, y, bw, top, bottom){
+  const U = vis.map(b => b.bb + b.S), D = vis.map(b => b.bs + b.L)
+  const v = vis.map((b, i) => Math.max(U[i], D[i])).filter(Boolean).sort((a, b) => a - b); if (!v.length) return ''
+  const q = p => v[Math.min(v.length - 1, Math.floor(p*v.length))]
+  const [pd, pb] = P.many === 'few' ? [.90, .97] : [.85, .95]
+  const tD = q(pd), tB = q(pb)
+  const dotR = Math.min(2.8, Math.max(1.5, bw*.4))
+  const cand = []
+  vis.forEach((b, i) => { if (U[i] >= tD) cand.push({ b, i, v: U[i], side: 'b' }); if (D[i] >= tD) cand.push({ b, i, v: D[i], side: 's' }) })
+  cand.sort((p, q) => q.v - p.v)
+  const placed = { b: [], s: [] }; let nb = 0, stems = '', out = ''
+  for (const c of cand){
+    const up = c.side === 'b', col = up ? 'var(--up)' : 'var(--down)', X = x(c.i), anchor = up ? y(c.b.h) : y(c.b.l)
+    let bubble = c.v >= tB && bw >= 4 && nb < CAP, r = dotR, txt = '', fs = 11
+    if (bubble){ txt = short(c.v); r = Math.max(11 + 6*Math.min(1, (c.v - tB)/(tB*2)), textW(txt, fs)/2 + 4) }
+    const stem = bubble ? 4 : 2
+    let cy = up ? anchor - stem - r : anchor + stem + r, guard = 0
+    while (guard++ < 6){ const hit = placed[c.side].find(p => Math.hypot(p.x - X, p.y - cy) < p.r + r + 2); if (!hit) break
+      cy = up ? hit.y - hit.r - r - 2 : hit.y + hit.r + r + 2 }
+    if (bubble && (up ? cy - r < top + 4 : cy + r > bottom - 4)){ bubble = false; r = dotR; txt = ''; cy = up ? anchor - 2 - r : anchor + 2 + r }
+    if (bubble) nb++
+    placed[c.side].push({ x: X, y: cy, r })
+    if (bubble){
+      stems += `<line x1="${X}" x2="${X}" y1="${anchor.toFixed(1)}" y2="${(up ? cy + r : cy - r).toFixed(1)}" stroke="${col}" stroke-width="1.2" opacity=".6"/>`
+      out += `<g class="bb one" data-t="${c.b.t}"><circle class="body" cx="${X}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${col}" stroke="${col}" stroke-width="1.4"/><text x="${X}" y="${cy.toFixed(1)}" font-size="${fs}" style="fill:${col}">${txt}</text></g>`
+    } else out += `<circle cx="${X}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${col}" opacity=".85"/>`
+  }
+  return stems + out
+}
+
+/* 一稿（对照用）气泡：大单 = 实心气泡（买绿在高点上、卖红在低点下），爆仓 = 空心环（空爆绿在上、多爆红在下）；
    大小三档（点 / 中 / 大带光晕），圆心对根、细柄连回高低点；同侧相邻挤不下就往外错一层；大单先占位、爆仓让 */
 function bubbles(vis, x, y, bw, top, bottom){
   const KT = tiers(vis.map(b => ({ bb: b.bb, bs: b.bs }))), KL = tiers(vis.map(b => ({ bb: b.S, bs: b.L })))
@@ -298,6 +336,8 @@ function hoverCard(b){
     <div class="hc-net"><span class="v num ${cls(n)}">${fs(n)}</span><span class="l">净额</span></div>
     <div class="hc-fly"><i style="flex:${b.bs/t};background:linear-gradient(90deg,color-mix(in srgb,var(--down) 60%,transparent),var(--down))"></i><i style="flex:${b.bb/t};background:linear-gradient(90deg,var(--up),color-mix(in srgb,var(--up) 60%,transparent))"></i></div>
     <div class="hc-kv">
+      <span>向上</span><b class="num up">${fm(b.bb + b.S)}</b><em class="num">大买 ${fm(b.bb)}${b.S ? ' · 空爆 ' + liqTxt(b.S) : ''}</em>
+      <span>向下</span><b class="num dn">${fm(b.bs + b.L)}</b><em class="num">大卖 ${fm(b.bs)}${b.L ? ' · 多爆 ' + liqTxt(b.L) : ''}</em>
       <span>大卖</span><b class="num dn">${fm(b.bs)}</b><em class="num">${live ? b.sn + ' 笔' : ''}</em>
       <span>大买</span><b class="num up">${fm(b.bb)}</b><em class="num">${live ? b.bn + ' 笔' : ''}</em>
       ${b.L + b.S ? `<span>爆仓</span><b class="num">${liqTxt(b.L + b.S)}</b><em class="num">${b.L ? '<i class="dn">多 ' + liqTxt(b.L) + '</i>' : ''}${b.L && b.S ? ' · ' : ''}${b.S ? '<i class="up">空 ' + liqTxt(b.S) + '</i>' : ''}</em>` : ''}
@@ -323,7 +363,7 @@ el.addEventListener('mouseleave', () => { P.hover = null; hcEl.classList.remove(
 el.addEventListener('click', e => { const g = e.target.closest('.bb'); if (!g) return; P.sel = +g.dataset.t; draw() })
 document.querySelectorAll('.seg').forEach(s => s.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return
   s.querySelectorAll('button').forEach(q => q.setAttribute('aria-pressed', q === b)); const k = s.dataset.k, v = b.dataset.v
-  if (k === 'theme') document.documentElement.dataset.theme = v; else if (k === 'bw') P.bw = +v; else P.mode = v
+  if (k === 'theme') document.documentElement.dataset.theme = v; else if (k === 'bw') P.bw = +v; else if (k === 'many') P.many = v; else P.mode = v
   draw() }))
 addEventListener('resize', draw)
 draw()
