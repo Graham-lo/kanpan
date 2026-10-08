@@ -1941,3 +1941,19 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   网格点线、窗格分隔 `--chart-sep`、轴上标签不加粗、滚轮锚点）、`chartSettings.ts dashOf`、`styles/app.css` 各皮肤 `--chart-*`。
   测试：`tests/candle-width.test.ts`（TV 实测表）、`wheel-zoom.test.ts`、`chart-settings.test.ts`。
 - **指标**：展示（线色 / 线宽 / 柱色规则 / 带填充 / 参考线 / 轴上末值标签）对齐 TV 默认；默认参数与算法不动（和 iOS / 手机同读数，见 § 53）。
+
+## 61. 10-08：网页版大单签切粗周期「出不来」· 持仓量副图接上 30 天之前的历史（归档）
+
+- **大单签**（`Web/src/orderflow/bigTags.ts TierCache`）：档位（P85 / P95 / max(P99, 3×P95)）原来按每根「大买 + 大卖」合计定线、
+  再拿单边去比（`layer.ts drawTags` / `drawer.ts buildRows` 都按 `max(bb, bs)` 过线）——1 时 / 4 时 / 日线买卖两边相近时合计是单边两倍，
+  一根都过不了线，用户切周期看到签像「卡住」。改成分布也按「买卖里大的那一侧」算（同一口径）。BTC 1 时线改前 5 根过线、改后 11 根过线画 7 枚。
+  测试 `tests/orderflow-bigtags.test.ts`「档位的分布按买卖里大的那一侧算」。
+- **持仓量历史**（`Web/src/market/rest.ts attachOI`）：原来只打币安 `openInterestHist` 一次 500 个点，币安只留 30 天，1 时线之上往左翻全空。
+  现在根按 29.5 天（`OI_LIVE_MS`）分两段：近的向左翻页问币安（一页 500、最多 20 页、翻到最早一根要的桶头为止）；
+  早的问自家归档 `GET /oi/v1/metrics/{symbol}/range?interval=&from=&to=`（`Backend/kanpan-api/src/oi_archive.rs`，data.binance.vision 的 metrics 日文件按桶聚合、
+  2020-09-01 `OI_EPOCH` 起、到昨天；一次最多十年 / 两万桶，客户端自动拆段）。归档只有**张数**、币安给**美元**，网页版沿用美元口径：
+  归档那段乘那根 K 线收盘价换算，接缝处与币安差 0.1%（标记价 vs 收盘价），肉眼看不出；iOS 整条用张数不动。
+  归档没答时币安那段照样落到根上、返回 false 让下次再取；补尾巴（limit < 500）只打币安一页。
+  `pages/chart.ts ensureOI`：缓存出的图只有近 30 天那段有值时整段再问一次（原来看最后一根有值就只刷尾巴，归档永远补不上）；`__cells` 多报 `oi / oiFirst`。
+  归档地址走页面同源（直打线上那台没有跨域头），本机开发 `vite.config.ts` 代理 `/oi`。
+  测试 `tests/oi-live-tail.test.ts`（翻页 / 归档分段 / 张数×收盘 / 2020-09 之前不问 / 归档失败）。线上验：BTC 1 时 1803 根全有，SOL 日线 1800 根有 1773（最早 27 天归档没有该品种的日文件，空着是对的）。
