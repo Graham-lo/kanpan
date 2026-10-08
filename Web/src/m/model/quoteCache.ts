@@ -11,6 +11,7 @@ import { S, on } from '../../market'
 import type { Sym } from '../../market/symbols'
 import { isDefaultVenue, venueOf } from '../../market/identity'
 import { isMacro } from '../../market/macro'
+import { marketOf } from '../../venues'
 import { normKey } from './symKey'
 
 export const QUOTE_CACHE_KEY = 'hkline-m-quotes-v1'
@@ -46,7 +47,8 @@ export function compact(s: Sym): CachedSym {
 
 /** 记下来的一行 → 搜索 / 列表能直接用的 Sym（缺的实时字段一律空） */
 export function expand(r: CachedSym): Sym {
-  return { ...r, venue: r.macro ? 'macro' : venueOf(r.symbol), quote: r.macro ? '' : r.quote ?? 'USDT', fr: null, nextFunding: null }
+  // 计价币没记的（别家的行按注册表那一家的计价：HL 是 USDC、CB 是 USD，不一律当 USDT）
+  return { ...r, venue: r.macro ? 'macro' : venueOf(r.symbol), quote: r.macro ? '' : r.quote ?? marketOf(r.symbol)?.quote ?? 'USDT', fr: null, nextFunding: null }
 }
 
 export function readQuotes(store: KV | null = kv(), now = Date.now()): Stored | null {

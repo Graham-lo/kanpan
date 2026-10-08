@@ -152,6 +152,7 @@ export function sectorsOf(s: Sym): { id: string; cn: string }[] {
   return (SEC.members[wireSymbol(s.symbol).replace(/USDT$|USDC$/, '')] || SEC.members[s.base] || []).map(id => SEC.crypto.find(x => x[0] === id)).filter((x): x is [string, string] => !!x).map(x => ({ id: 'c:' + x[0], cn: x[1] }))
 }
 
+const HAN = /[㐀-䶿一-鿿]/
 /** 搜索打分（越大越靠前，0 = 不命中）：和手机网页 / iOS 同一套归一与分档（market/searchText）——
  *  查询先全角折半角、剥分隔符（BTC/USDT、btc usdt、ＢＴＣ 都认），中文常用叫法与全拼 / 首字母（大饼、longxia、hj）也认；
  *  电脑这边多两条：去掉 1000 前缀的代号（PEPE）按代号算，品种表里的中文名（cn）按别名算 */
@@ -165,7 +166,9 @@ export function matchScore(s: Pick<Sym, 'symbol' | 'code' | 'cn'>, q: string): n
   if (code === Q) better(Tier.exact)
   else if (code.startsWith(Q)) better(Tier.basePrefix)
   else if (code.includes(Q)) better(Tier.baseContains)
-  const cn = s.cn ? normalize(s.cn) : ''
+  // 中文名只认带汉字的查询：品种表里有的「中文名」其实是英文（HYPE 的 Hyperliquid、SOL 的 Solana），
+  // 拿英文查询去包含它，打一个「E」HYPE 就排到所有 E 开头的前面（2026-10-08 搜索交叉测试；手机 / iOS 的中文名也只认汉字）
+  const cn = s.cn && HAN.test(Q) ? normalize(s.cn) : ''
   if (cn) {
     if (cn === Q) better(Tier.exact)
     else if (cn.startsWith(Q)) better(Tier.cnPrefix)
@@ -188,11 +191,11 @@ export interface SearchGroup<T> { venue: string; items: T[]; best: number }
 
 /**
  * 搜索结果按交易所分区（像 TradingView / AICoin：同一个币在不同交易所是不同品种）：
- *   一家一组；组内按现有排序（匹配档 → 空查询时自选在前 → 24h 成交额）；
+ *   一家一组；组内按现有排序（匹配档 → 空查询时自选在前 → 没有价的沉底 → 24h 成交额）；
  *   组序先按组内最好的匹配档、同档按 order（注册表顺序，美元指数这类不在注册表里的排最后）；每组各自封顶 perGroup。
  * venueOf：这一行属于哪一组（默认 Sym.venue）。
  */
-export function groupSearch<T extends Pick<Sym, 'symbol' | 'code' | 'cn' | 'vol'> & { venue?: string }>(list: T[], q: string, order: readonly string[],
+export function groupSearch<T extends Pick<Sym, 'symbol' | 'code' | 'cn' | 'vol'> & { venue?: string; price?: number | null }>(list: T[], q: string, order: readonly string[],
   watched: (k: string) => boolean = () => false, perGroup = 40): SearchGroup<T>[] {
   const blank = !normalize(q)
   const by = new Map<string, { s: T; m: number }[]>()
@@ -206,7 +209,8 @@ export function groupSearch<T extends Pick<Sym, 'symbol' | 'code' | 'cn' | 'vol'
   const rank = (v: string): number => { const i = order.indexOf(v); return i < 0 ? order.length : i }
   const out: SearchGroup<T>[] = []
   for (const [venue, xs] of by) {
-    xs.sort((a, b) => (b.m - a.m) || (blank ? (+watched(b.s.symbol) - +watched(a.s.symbol)) : 0) || ((b.s.vol || 0) - (a.s.vol || 0)))
+    // 同档：空查询时自选在前；没有价的（停牌、行情没到）沉底（同手机 / iOS）；再按成交额
+    xs.sort((a, b) => (b.m - a.m) || (blank ? (+watched(b.s.symbol) - +watched(a.s.symbol)) : 0) || (+(a.s.price === null) - +(b.s.price === null)) || ((b.s.vol || 0) - (a.s.vol || 0)))
     out.push({ venue, items: xs.slice(0, perGroup).map(x => x.s), best: xs[0].m })
   }
   return out.sort((a, b) => (b.best - a.best) || (rank(a.venue) - rank(b.venue)))

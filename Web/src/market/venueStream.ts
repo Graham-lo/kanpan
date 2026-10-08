@@ -11,6 +11,10 @@
  *   - 上行按各家官方的 WS 规矩（和 REST 的限流器分开计）：控制帧默认每 250 ms 一条（Coinbase 每 IP ≤ 8 条 / 秒、
  *     Hyperliquid 每分钟 ≤ 2000 条）；OKX 每条连接订 / 退合计 ≤ 480 条 / 小时（满了排到窗口滚出再发）、新连接按 IP
  *     3 次 / 秒（两条之间隔 400 ms）；Bybit 一帧 ≤ 10 个 args、每 20 秒 ping；Hyperliquid 每 IP ≤ 10 条连接（这里一条）。
+ *   - 订 / 退不按「每变一次排一对帧」，而是排着的期间只记最后要什么、轮到能发时才拿它和已经订着的对账出帧
+ *     （2026-10-08 压测：100 次快速切品种原来排 200 条帧、按 250 ms 一条慢慢发，最后要的那只排在 50 秒之后，
+ *     OKX 一小时 480 条的额度也被作废的帧吃掉一半；现在至多几条，最后要的那只一秒内订上）。
+ *   - 品种表到了（universe 事件）重新对一次账：Hyperliquid 的 topic 用 coin 原名（kPEPE），表没到时只能按大写键订。
  *   - 页面隐藏时只留核心几路（当前格的 K 线与行情、提醒），回到前台补回来。
  * 推来的统一事件（venues/common Push）：
  *   quote → 落进 S.symbols（market/quote.ts，按交易所时间拒旧）并发 ticker / mark 事件；
@@ -20,15 +24,15 @@
  *   用 REST 取当前这根垫底，再拿逐笔往上并。
  */
 import type { Bar } from '../chart/calc'
-import type { MarketWire, Push, StreamSub } from '../venues/common'
+import { AHEAD_MS, type MarketWire, type Push, type StreamSub } from '../venues/common'
 import { intervalPlan, marketKlines, marketOf, venueAdapter } from '../venues'
 import { bucketOf, ratioOf } from '../venues/bars'
-import { S, emit, setWsPart, type Route } from './state'
+import { S, emit, on, setWsPart, type Route } from './state'
 import { emitTrade } from './trades'
 import { applyQuote } from './quote'
 import { gatewayWs } from './origin'
 import { parseKey } from './identity'
-import { ago } from '../util/clock'
+import { CLOCK_SKEW_MS, ago } from '../util/clock'
 
 const FIRST_FRAME_MS = 8000
 const SILENCE_MS = 30_000
@@ -160,11 +164,13 @@ interface Conn {
   url: string
   sock: WebSocket
   want: string[]
+  /** 已经发出去（或已排进 queue）的订 / 退累计下来、对面那边订着的 topic */
   subscribed: Set<string>
   decode: (text: string) => Push[]
   opened: boolean
   gotFrame: boolean
   last: number
+  /** 已经定下来、还没发的帧（hello、一次对账拆出来的几条）；新的订 / 退不进这里，轮到发时才对账 */
   queue: string[]
   /** 这条连接最近一小时发过的控制帧时刻（OKX 每连接每小时 480 条） */
   sentAt: number[]
@@ -198,6 +204,7 @@ export function setVenueStreams(all: readonly string[], core: readonly string[] 
 }
 
 function apply(): void {
+  if (openTimer) { clearTimeout(openTimer); openTimer = null }
   plan = planStreams(hidden() ? coreNames : allNames)
   // 并线 / 逐笔拼的状态：不要了的撤掉，新要的建起来并垫底
   for (const k of [...aggs.keys()]) if (!plan.agg.has(k)) aggs.delete(k)
@@ -219,9 +226,17 @@ function apply(): void {
     openedAt.set(venue, Date.now())
     open(venue, ep, topics)
   }
-  for (const [ck, c] of [...conns]) if (!wanted.has(ck)) { drop(c); conns.delete(ck) }
-  for (const [ck, t] of [...retryTimers]) if (!wanted.has(ck)) { clearTimeout(t); retryTimers.delete(ck); failedAt.delete(ck); retries.delete(ck) }
+  // 不要了的连接：连同它的退避计数、断线记号一起清掉（原来只清了退避中的那几条：一条连着过又断过的连接不要了之后，
+  // 记号留着，下次再要这一家时角标先显示「断开」、第一次断线直接从长退避起）
+  for (const [ck, c] of [...conns]) if (!wanted.has(ck)) { drop(c); conns.delete(ck); failedAt.delete(ck); retries.delete(ck) }
+  for (const [ck, t] of [...retryTimers]) if (!wanted.has(ck)) { clearTimeout(t); retryTimers.delete(ck) }
+  for (const ck of [...failedAt.keys()]) if (!wanted.has(ck)) { failedAt.delete(ck); retries.delete(ck) }
+  stopWatchdog()
   paint()
+}
+/** 一条连接都没有了就停掉看门狗（原来开过一次就一直挂着，每 5 秒空转） */
+function stopWatchdog(): void {
+  if (watchdog && !conns.size) { clearInterval(watchdog); watchdog = null }
 }
 const split = (k: string): [string, string] => { const i = k.lastIndexOf('|'); return [k.slice(0, i), k.slice(i + 1)] }
 
@@ -281,31 +296,54 @@ function open(venue: string, ep: string, topics: string[]): void {
   }, 5000)
 }
 
-/** 控制帧排队，一条连接每 CONTROL_GAP_MS 最多发一条 */
+/** 定下来的帧（hello）排队，一条连接每 CONTROL_GAP_MS 最多发一条 */
 function send(c: Conn, frame: string): void {
   c.queue.push(frame)
   pump(c)
 }
-function pump(c: Conn): void {
-  if (c.sendTimer || !c.queue.length || c.sock.readyState !== WebSocket.OPEN) return
-  const now = Date.now(), cap = c.wire.controlPerHour
-  if (cap) {
-    while (c.sentAt.length && now - c.sentAt[0] >= 3_600_000) c.sentAt.shift()
-    // 这一小时的订 / 退额度用完了：等最早那条滚出窗口再发（不重连、不丢，到点按顺序补发）
-    if (c.sentAt.length >= cap) { c.sendTimer = setTimeout(() => { c.sendTimer = null; pump(c) }, c.sentAt[0] + 3_600_000 - now); return }
-  }
-  c.sock.send(c.queue.shift()!)
-  c.sentAt.push(now)
-  c.sendTimer = setTimeout(() => { c.sendTimer = null; pump(c) }, c.wire.controlGapMs ?? CONTROL_GAP_MS)
+const HOUR = 3_600_000
+/** 这一页一共发过几条控制帧（订 / 退 / hello；压测脚本读） */
+let controlSent = 0
+/** 要的和订着的不一样（还有订 / 退没对账） */
+function dirty(c: Conn): boolean {
+  if (c.want.length !== c.subscribed.size) return true
+  for (const t of c.want) if (!c.subscribed.has(t)) return true
+  return false
 }
-function reconcile(c: Conn): void {
-  if (c.sock.readyState !== WebSocket.OPEN) return
+/** 按「要的」和「订着的」对一次账，拆成帧排进 queue（先退后订：中继按条数封顶，不先超）。只在轮到能发时调 */
+function commit(c: Conn): void {
   const want = new Set(c.want)
   const del = [...c.subscribed].filter(t => !want.has(t))
   const add = c.want.filter(t => !c.subscribed.has(t))
-  if (del.length) { for (const f of c.wire.frames(c.endpoint, del, false)) send(c, f); del.forEach(t => c.subscribed.delete(t)) }
-  if (add.length) { for (const f of c.wire.frames(c.endpoint, add, true)) send(c, f); add.forEach(t => c.subscribed.add(t)) }
+  if (del.length) { c.queue.push(...c.wire.frames(c.endpoint, del, false)); del.forEach(t => c.subscribed.delete(t)) }
+  if (add.length) { c.queue.push(...c.wire.frames(c.endpoint, add, true)); add.forEach(t => c.subscribed.add(t)) }
 }
+/** 一小时的订 / 退额度（OKX 480）还要等多久（0 = 现在能发） */
+function hourWait(c: Conn, now: number): number {
+  const cap = c.wire.controlPerHour
+  if (!cap) return 0
+  // 时钟往回拨过：账上的时刻当作「刚刚」，不然要多等往回拨的那么久
+  if (c.sentAt.length && c.sentAt[c.sentAt.length - 1] - now > CLOCK_SKEW_MS) c.sentAt = c.sentAt.map(t => Math.min(t, now))
+  while (c.sentAt.length && now - c.sentAt[0] >= HOUR) c.sentAt.shift()
+  return c.sentAt.length >= cap ? Math.max(1, c.sentAt[0] + HOUR - now) : 0
+}
+function pump(c: Conn): void {
+  if (c.sendTimer || c.sock.readyState !== WebSocket.OPEN) return
+  if (!c.queue.length && !dirty(c)) return
+  const now = Date.now()
+  // 这一小时的订 / 退额度用完了：等最早那条滚出窗口再发（不重连、不丢；等的期间要的东西再怎么变，到点只按最后那一份对账）
+  const wait = hourWait(c, now)
+  if (wait) { c.sendTimer = setTimeout(() => { c.sendTimer = null; pump(c) }, wait); return }
+  if (!c.queue.length) commit(c)
+  const frame = c.queue.shift()
+  if (frame == null) return
+  c.sock.send(frame)
+  c.sentAt.push(now)
+  controlSent++
+  c.sendTimer = setTimeout(() => { c.sendTimer = null; pump(c) }, c.wire.controlGapMs ?? CONTROL_GAP_MS)
+}
+/** 要的变了：不立刻排帧，交给 pump 在能发的那一刻对账 */
+function reconcile(c: Conn): void { pump(c) }
 
 function drop(c: Conn): void {
   if (c.sendTimer) clearTimeout(c.sendTimer)
@@ -319,6 +357,7 @@ function fail(c: Conn): void {
   const ck = connKey(c.venue, c.endpoint)
   if (conns.get(ck) !== c) return
   drop(c); conns.delete(ck)
+  stopWatchdog()
   const n = retries.get(ck) ?? 0
   retries.set(ck, n + 1)
   failedAt.set(ck, Date.now())
@@ -334,7 +373,7 @@ function paint(): void {
     const eps = [...(plan.topics.get(v)?.entries() ?? [])].filter(([, t]) => t.length).map(([ep]) => connKey(v, ep))
     const st = !eps.length ? 'idle' as const
       : eps.some(k => failedAt.has(k)) ? 'closed' as const
-      : eps.every(k => { const c = conns.get(k); return c && c.sock.readyState === WebSocket.OPEN && (c.gotFrame || !c.subscribed.size) }) ? 'open' as const : 'connecting' as const
+      : eps.every(k => { const c = conns.get(k); return c && c.sock.readyState === WebSocket.OPEN && (c.gotFrame || !c.want.length) }) ? 'open' as const : 'connecting' as const
     setWsPart('venue:' + v, st)
   }
   for (const v of lastPainted) if (!venues.has(v)) setWsPart('venue:' + v, 'idle')
@@ -362,7 +401,10 @@ export function handle(p: Push): void {
       if (bar) emit({ type: 'kline', symbol: p.key, iv: tb.iv, bar })
     }
     const s = S.symbols.get(p.key)
-    if (!s || p.t < (s.pxAt ?? 0)) return
+    if (!s) return
+    // 手里的价格时间是以前一帧写坏的（远在未来）：清掉，不然之后的逐笔全被当成旧的
+    if ((s.pxAt ?? 0) > Date.now() + AHEAD_MS) s.pxAt = 0
+    if (p.t < (s.pxAt ?? 0)) return
     const prev = s.price
     s.pxAt = p.t; s.lastTick = Date.now()
     if (prev === p.price) return
@@ -392,6 +434,9 @@ export function setVenueRoute(): void {
   apply()
 }
 
+// 品种表到了：重新对一次账（Hyperliquid 的 topic 要 coin 原名，kPEPE 这类表没到时只能按大写键订——订了也收不到）
+on(e => { if (e.type === 'universe' && (allNames.length || conns.size)) apply() })
+
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (!hidden()) { for (const t of retryTimers.values()) clearTimeout(t); retryTimers.clear(); retries.clear() }
@@ -399,7 +444,12 @@ if (typeof document !== 'undefined') {
   })
 }
 
-/** 测试与排障用：各条连接订着什么 */
-export function venueStreamDebug(): { conns: { venue: string; endpoint: string; url: string; subscribed: string[] }[]; agg: string[]; fromTrades: string[] } {
-  return { conns: [...conns.values()].map(c => ({ venue: c.venue, endpoint: c.endpoint, url: c.url, subscribed: [...c.subscribed] })), agg: [...plan.agg.keys()], fromTrades: [...plan.fromTrades] }
+/** 测试与排障用：各条连接订着什么、一共发过几条控制帧 */
+export function venueStreamDebug(): { conns: { venue: string; endpoint: string; url: string; subscribed: string[]; queued: number }[]; agg: string[]; fromTrades: string[]; controlSent: number } {
+  return {
+    conns: [...conns.values()].map(c => ({ venue: c.venue, endpoint: c.endpoint, url: c.url, subscribed: [...c.subscribed], queued: c.queue.length })),
+    agg: [...plan.agg.keys()], fromTrades: [...plan.fromTrades], controlSent,
+  }
 }
+// 压测脚本读（scripts/venues-stress.mjs）
+;(globalThis as unknown as { __venueStream?: () => unknown }).__venueStream = venueStreamDebug

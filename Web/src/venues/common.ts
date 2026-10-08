@@ -30,14 +30,20 @@ export type Out = [string, DepthMessage]
 
 export const n = (v: unknown): number => (typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v) : NaN)
 
+/** 一档能不能进簿：价是正的有限数，量是不小于 0 的有限数（0 = 删这一档）。负价、"NaN"、1e400 这种整档丢 */
+export const levelOk = (p: number, q: number): boolean => Number.isFinite(p) && p > 0 && Number.isFinite(q) && q >= 0
+/** 一笔成交能不能用：价、量都是正的有限数 */
+export const tradeOk = (p: number, q: number): boolean => Number.isFinite(p) && p > 0 && Number.isFinite(q) && q > 0
+
 /** [[价, 量], …] → 图上单位的档位 */
 export function levels(raw: unknown, b: DepthBook): BookLevel[] {
   if (!Array.isArray(raw)) return []
   const pf = b.priceFactor, qf = quantityFactor(b)
   const out: BookLevel[] = []
   for (const r of raw as unknown[][]) {
-    const p = n(r?.[0]), q = n(r?.[1])
-    if (Number.isFinite(p) && Number.isFinite(q)) out.push({ price: p * pf, quantity: q * qf })
+    if (!Array.isArray(r)) continue
+    const p = n(r[0]), q = n(r[1])
+    if (levelOk(p, q)) out.push({ price: p * pf, quantity: q * qf })
   }
   return out
 }
@@ -217,20 +223,47 @@ export interface VenueMarket {
   maxKlines: number
   /** 资金费率（整表行情里没有的那几家才给） */
   funding?(key: string, opts?: FetchOpts): Promise<{ fr: number | null; nextFunding: number | null } | null>
+  /** 一期资金费率多长（毫秒）。不给 = 8 小时（币安 / OKX / Bybit 标准档）；Hyperliquid 每小时一期。
+   *  费率帧自己带下一次结算时刻，这个数只用在「刚结算完、下一帧还没到」那几秒的倒计时往后滚 */
+  fundingIntervalMs?: number
   /** 持仓量（币） */
   openInterest?(key: string, opts?: FetchOpts): Promise<number | null>
   /** 推送；币安走 market/stream.ts 自己的连接池（组合流、按路数分池、网关 stream_hub），这里不给 */
   stream?: MarketWire
   intervals: Intervals
 }
-  /** 一期资金费率多长（毫秒）。不给 = 8 小时（币安 / OKX / Bybit 标准档）；Hyperliquid 每小时一期。
-   *  费率帧自己带下一次结算时刻，这个数只用在「刚结算完、下一帧还没到」那几秒的倒计时往后滚 */
-  fundingIntervalMs?: number
 
 /** 解码共用：字符串 / 数 → 有限数，否则 undefined */
 export const num = (v: unknown): number | undefined => { const x = n(v); return Number.isFinite(x) ? x : undefined }
+/** 价这一类（最新价、开盘、高低、标记价、指数价）：正的有限数，否则 undefined（负价、0、"NaN"、1e400 都不要） */
+export const pos = (v: unknown): number | undefined => { const x = n(v); return Number.isFinite(x) && x > 0 ? x : undefined }
+/** 额 / 量 / 持仓量这一类：不小于 0 的有限数，否则 undefined */
+export const nonneg = (v: unknown): number | undefined => { const x = n(v); return Number.isFinite(x) && x >= 0 ? x : undefined }
+/** 交易所时间最多比本机晚多久还算数（本机时钟慢一点的照常用；写坏的、单位错成微秒的不算） */
+export const AHEAD_MS = 86_400_000
+/** 交易所时间（毫秒）：正的有限数、不比本机晚一天以上；否则用 fallback（默认本机现在）。
+ *  一帧写坏的时间戳（远在未来）原来照收：「按交易所时间拒旧」之后这只品种所有正常的行情都比它旧，价格就此冻住（2026-10-08 解码模糊） */
+export function stamp(v: unknown, fallback = Date.now()): number {
+  const x = n(v)
+  return Number.isFinite(x) && x > 0 && x <= Date.now() + AHEAD_MS ? x : fallback
+}
 /** 去掉 undefined 的字段（Quote 里没有的不给） */
 export function compact<T extends object>(o: T): T {
   for (const k of Object.keys(o) as (keyof T)[]) if (o[k] === undefined) delete o[k]
   return o
+}
+const QUOTE_PRICE = ['price', 'open', 'hi', 'lo', 'mark', 'index'] as const
+const QUOTE_FINITE = ['pct', 'chg'] as const
+const QUOTE_AMOUNT = ['vol', 'count', 'oi'] as const
+/** 一份行情出解码器前的最后一道（各家共用）：价类不是正的有限数、额类为负或不是有限数、涨跌不是有限数的字段去掉，
+ *  费率不是有限数的去掉（null = 这家明说没有，留着），at 不像样的换成本机现在；除了键和时间什么都不剩回 null */
+export function cleanQuote(q: Quote): Quote | null {
+  compact(q)
+  for (const k of QUOTE_PRICE) if (q[k] !== undefined && !(Number.isFinite(q[k]) && q[k]! > 0)) delete q[k]
+  for (const k of QUOTE_FINITE) if (q[k] !== undefined && !Number.isFinite(q[k])) delete q[k]
+  for (const k of QUOTE_AMOUNT) if (q[k] !== undefined && !(Number.isFinite(q[k]) && q[k]! >= 0)) delete q[k]
+  if (q.fr != null && !Number.isFinite(q.fr)) delete q.fr
+  if (q.nextFunding != null && !(Number.isFinite(q.nextFunding) && q.nextFunding > 0)) delete q.nextFunding
+  q.at = stamp(q.at)
+  return Object.keys(q).some(k => k !== 'key' && k !== 'at') ? q : null
 }

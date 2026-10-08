@@ -15,7 +15,7 @@ import { BucketScheme } from './bucket'
 import { admit, coolingFor, noteStatus } from '../market/limit'
 import { viaRoute } from '../market/rest'
 import { wireSymbol } from '../market/identity'
-import { D, applyOverride, baseOfSymbol, calibratedThreshold, defaultThresholds, isValidBase, needsCalibration, type Override } from './settings'
+import { D, applyOverride, baseOfSymbol, calibratedThreshold, defaultThresholds, isValidBase, needsCalibration, SCALED_PREFIXES, type Override } from './settings'
 import {
   type ConnSpec, type DepthBook, type Route, connectionSpecs, fallbackBooks, isKnownExchange, isPrimary, makeVenue, PRIMARY, venueAdapter,
 } from '../venues'
@@ -45,6 +45,16 @@ function gwHost(): string {
   if (typeof location !== 'undefined' && /^https:$/.test(location.protocol) && !/^localhost|^127\./.test(location.hostname)) return location.host
   return new URL(API_ORIGIN).host
 }
+/** 参考簿（币安 U 本位，推步长的前一日收盘、保底簿）上这只的代号：图上本来就是 xxxUSDT 的（币安 / OKX / Bybit）原样；
+ *  别家的（Hyperliquid 的 BTC / KPEPE、Coinbase 的 BTC-USD）按 base 与缩放拼回币安的写法（BTCUSDT、1000PEPEUSDT）。
+ *  原来直接拿 BTC、BTC-USD 去要币安的日线：回 400，步长推不出来，还按退避白打 6 次（2026-10-08 四家交叉）；
+ *  保底簿那条也是 PEPEUSDT（币安没有，应是 1000PEPEUSDT） */
+export function primarySymbolOf(wire: string, base: string, scale: number): string {
+  if (/USDT$/.test(wire)) return wire
+  const prefix = scale === 1 ? '' : SCALED_PREFIXES.find(([, s]) => s === scale)?.[0] ?? ''
+  return prefix + base + 'USDT'
+}
+
 /** REST 走同源 /v1（开发时 vite 代理到线上）。 */
 const api = (path: string): string => path
 
@@ -341,7 +351,7 @@ export class OrderFlowFeed {
     if (this.stopped) return
     const books = rows?.length ? booksOf(rows, this.chartScale, now) : []
     this.fromCatalog = books.length > 0
-    this.books = books.length ? books : fallbackBooks(/USDT$/.test(this.symbol) ? this.symbol : this.base + 'USDT', this.base, this.chartScale)
+    this.books = books.length ? books : fallbackBooks(primarySymbolOf(this.symbol, this.base, this.chartScale), this.base, this.chartScale)
     for (const b of this.books) { this.byId.set(b.id, b); this.model.addVenue(b.venue) }
     if (this.calibrating) this.calibrationDeadline = Date.now() + D.calibrationTimeoutMs
     this.connect()
@@ -468,7 +478,7 @@ export class OrderFlowFeed {
   private async referenceClose(day: number): Promise<number> {
     const p = PRIMARY.primary
     if (!p) return NaN
-    const bars = await getJSON(p.referenceCloseUrl(this.symbol, day), 8000)
+    const bars = await getJSON(p.referenceCloseUrl(primarySymbolOf(this.symbol, this.base, this.chartScale), day), 8000)
     return p.parseReferenceClose(bars.body, day)
   }
 

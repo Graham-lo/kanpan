@@ -7,7 +7,7 @@
  */
 import { normalize, matchOne, type Hit } from '../../market/searchText'
 import { parseKey } from '../../market/identity'
-import { VENUE_LIST, venueName } from '../../venues'
+import { MARKET_VENUES, venueName } from '../../venues'
 
 // 命中规则（归一、别名、拼音、分档）挪到 market/searchText，PC 搜索与这里共用一份
 export { Tier, normalize, aliasKey, CRYPTO_NAMES, aliasNames, pinyinOf, matchOne, type Hit } from '../../market/searchText'
@@ -42,8 +42,9 @@ export function rank<T extends Searchable>(list: T[], raw: string, baseOf: (s: T
 
 // ------------------------------------------------------------ 按交易所分组（2026-10-08，照 iOS SymbolSections.searchGroups / previewQuota）
 
-/** 组序：注册表顺序（币安 · OKX · Coinbase · Bybit · Hyperliquid，和电脑版 pages/searchGroups SEARCH_ORDER 同一份），美元指数排最后 */
-export const SEARCH_ORDER: readonly string[] = [...VENUE_LIST.map(v => v.key), 'macro']
+/** 组序：行情交易所的注册表顺序（币安 · OKX · Bybit · Hyperliquid · Coinbase，MARKET_VENUES，和 iOS VenueRegistry.all、
+ *  电脑版 pages/searchGroups SEARCH_ORDER 同一份），美元指数排最后 */
+export const SEARCH_ORDER: readonly string[] = [...MARKET_VENUES.map(v => v.key), 'macro']
 /** 组头：交易所全名；美元指数那一组写「指数」 */
 export const groupTitle = (venue: string): string => venue === 'macro' ? '指数' : venueName(venue)
 

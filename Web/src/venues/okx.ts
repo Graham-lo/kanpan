@@ -24,7 +24,7 @@ import { pathOf, registerGate } from '../market/limit'
 import { apiOrigin } from '../market/origin'
 import { keyOf, parseKey } from '../market/identity'
 import { badgeColor, baseOf, cnOf, decOfTick, type Sym } from '../market/symbols'
-import { chunk, compact, levels, n, num, parseJSON, trade, type DepthBook, type Kline, type Out, type Push, type Quote, type VenueAdapter, type VenueMarket } from './common'
+import { chunk, cleanQuote, levels, n, nonneg, num, parseJSON, pos, stamp, trade, tradeOk, type DepthBook, type Kline, type Out, type Push, type Quote, type VenueAdapter, type VenueMarket } from './common'
 import { rawRewrite, shared, vget } from './http'
 import { sortBars } from './bars'
 import { IV_MS } from '../util/format'
@@ -59,13 +59,14 @@ export function okxInstId(key: string): string {
   const s = parseKey(key).symbol
   return `${s.endsWith('USDT') ? s.slice(0, -4) : s}-USDT-SWAP`
 }
-/** instId → 网页键；不是 USDT 线性永续的回 null */
-export function okxKeyOf(inst: string): string | null {
-  const m = /^([A-Z0-9]+)-USDT-SWAP$/.exec(inst)
-  return m ? keyOf(OKX.id, 'usd_m', m[1] + 'USDT') : null
-}
 /** 服务端 okx::symbol_ok：大写字母数字 5–40、以 USDT 结尾、前面还有底名 */
 export const okxSymbolOk = (s: string): boolean => /^[A-Z0-9]{5,40}$/.test(s) && s.endsWith('USDT') && s.length > 4
+/** instId → 网页键；不是 USDT 线性永续、或代号过不了这一家的规矩（超过 40 位）的回 null——
+ *  原来不查长度：一百多位的 instId 做出来的键 identity 拆不开（代号段封顶 40），被当成币安裸代号 */
+export function okxKeyOf(inst: string): string | null {
+  const m = /^([A-Z0-9]+)-USDT-SWAP$/.exec(inst)
+  return m && okxSymbolOk(m[1] + 'USDT') ? keyOf(OKX.id, 'usd_m', m[1] + 'USDT') : null
+}
 
 /** 网页周期 → OKX bar；6 时以上用 UTC 对齐那一族 */
 export const OKX_BARS: Record<string, string> = { '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1H', '2h': '2H', '4h': '4H', '6h': '6Hutc', '12h': '12Hutc', '1d': '1Dutc', '1w': '1Wutc', '1M': '1Mutc' }
@@ -83,14 +84,15 @@ function dataOf(body: unknown): unknown[] {
 export function decodeOkxInstruments(body: unknown): Sym[] {
   const out: Sym[] = []
   for (const r of dataOf(body) as Record<string, string>[]) {
+    if (!r || typeof r !== 'object' || typeof r.instId !== 'string') continue
     if (r.settleCcy !== 'USDT' || r.ctType !== 'linear' || r.state !== 'live') continue
     const key = okxKeyOf(r.instId)
     if (!key) continue
     const sym = parseKey(key).symbol, base = baseOf(sym)
     out.push({
       symbol: key, venue: OKX.id, quote: 'USDT', raw: r.instId, base, code: base, kind: 'crypto', cn: cnOf(base, 'crypto'),
-      dec: r.tickSz ? decOfTick(r.tickSz) : 4, color: badgeColor(base), price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null,
-      onboard: +r.listTime || undefined,
+      dec: pos(r.tickSz) ? decOfTick(r.tickSz) : 4, color: badgeColor(base), price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null,
+      onboard: pos(r.listTime),
     })
   }
   return out
@@ -99,19 +101,19 @@ export function decodeOkxInstruments(body: unknown): Sym[] {
 /** 一行 ticker（REST market/ticker(s) 与推送 tickers 同形） */
 export function decodeOkxTicker(r: Record<string, unknown>): Quote | null {
   const key = typeof r.instId === 'string' ? okxKeyOf(r.instId) : null
-  const last = num(r.last)
+  const last = pos(r.last)
   if (!key || last == null) return null
-  const open = num(r.open24h), coins = num(r.volCcy24h)
-  return compact<Quote>({
-    key, price: last, open, hi: num(r.high24h), lo: num(r.low24h),
+  const open = pos(r.open24h), coins = nonneg(r.volCcy24h)
+  return cleanQuote({
+    key, price: last, open, hi: pos(r.high24h), lo: pos(r.low24h),
     pct: open ? (last / open - 1) * 100 : undefined, chg: open != null ? last - open : undefined,
     // 没有计价成交额：币数 × 最新价（近似）
     vol: coins != null ? coins * last : undefined,
-    at: num(r.ts) ?? Date.now(),
+    at: stamp(r.ts),
   })
 }
 export function decodeOkxTickers(body: unknown): Quote[] {
-  return (dataOf(body) as Record<string, unknown>[]).map(decodeOkxTicker).filter((q): q is Quote => !!q)
+  return (dataOf(body) as Record<string, unknown>[]).map(r => (r && typeof r === 'object' ? decodeOkxTicker(r) : null)).filter((q): q is Quote => !!q)
 }
 
 /** K 线 [[ts, o, h, l, c, vol(张), volCcy(币), volCcyQuote(计价), confirm]]，新的在前 → 升序 */
@@ -119,7 +121,7 @@ export function decodeOkxCandles(body: unknown): Bar[] {
   const out: Bar[] = []
   for (const r of dataOf(body)) {
     if (!Array.isArray(r)) continue
-    const t = +r[0], o = +r[1], h = +r[2], l = +r[3], c = +r[4], coins = +r[6], q = +r[7]
+    const t = n(r[0]), o = n(r[1]), h = n(r[2]), l = n(r[3]), c = n(r[4]), coins = n(r[6]), q = n(r[7])
     if (!Number.isFinite(t) || !Number.isFinite(c)) continue
     const b: Bar = { t, o, h, l, c, v: Number.isFinite(q) ? q : Number.isFinite(coins) ? coins * c : 0 }
     if (Number.isFinite(coins)) b.bv = coins
@@ -134,26 +136,26 @@ export function decodeOkxPush(text: string): Push[] {
   const r = parseJSON(text)
   if (!r || r.event != null || !Array.isArray(r.data)) return []
   const arg = r.arg as { channel?: string; instId?: string } | undefined
-  const ch = arg?.channel ?? '', key = arg?.instId ? okxKeyOf(arg.instId) : null
+  const ch = typeof arg?.channel === 'string' ? arg.channel : '', key = typeof arg?.instId === 'string' ? okxKeyOf(arg.instId) : null
   if (!key) return []
   const out: Push[] = []
   if (ch === 'tickers') {
-    for (const d of r.data as Record<string, unknown>[]) { const q = decodeOkxTicker(d); if (q) out.push({ type: 'quote', quote: q }) }
+    for (const d of r.data as Record<string, unknown>[]) { const q = d && typeof d === 'object' ? decodeOkxTicker(d) : null; if (q) out.push({ type: 'quote', quote: q }) }
   } else if (ch.startsWith('candle')) {
     const iv = IV_OF_BAR[ch.slice(6)]
     if (iv) for (const b of decodeOkxCandles({ data: r.data })) out.push({ type: 'kline', key, iv, bar: b })
   } else if (ch === 'trades') {
     for (const t of r.data as Record<string, unknown>[]) {
-      const p = num(t.px), q = num(t.sz)
-      if (p == null || q == null) continue
-      out.push({ type: 'trade', key, price: p, qty: q, t: num(t.ts) ?? Date.now(), sell: t.side === 'sell' })
+      const p = n(t?.px), q = n(t?.sz)
+      if (!tradeOk(p, q)) continue
+      out.push({ type: 'trade', key, price: p, qty: q, t: stamp(t.ts), sell: t.side === 'sell' })
     }
   } else if (ch === 'mark-price') {
-    for (const d of r.data as Record<string, unknown>[]) { const m = num(d.markPx); if (m != null) out.push({ type: 'quote', quote: { key, mark: m, at: num(d.ts) ?? Date.now() } }) }
+    for (const d of r.data as Record<string, unknown>[]) { const m = pos(d?.markPx); if (m != null) out.push({ type: 'quote', quote: { key, mark: m, at: stamp(d.ts) } }) }
   } else if (ch === 'funding-rate') {
     for (const d of r.data as Record<string, unknown>[]) {
-      const fr = num(d.fundingRate)
-      if (fr != null) out.push({ type: 'quote', quote: { key, fr, nextFunding: num(d.fundingTime) ?? null, at: num(d.ts) ?? Date.now() } })
+      const fr = num(d?.fundingRate)
+      if (fr != null) out.push({ type: 'quote', quote: { key, fr, nextFunding: pos(d.fundingTime) ?? null, at: stamp(d.ts) } })
     }
   }
   return out
@@ -243,14 +245,15 @@ export function decodeOKX(text: string, byInst: Map<string, DepthBook>): Out[] {
   const out: Out[] = []
   if (arg!.channel === 'trades') {
     for (const t of r.data as Record<string, unknown>[]) {
-      const p = n(t.px), q = n(t.sz), ts = n(t.ts)
-      if (!Number.isFinite(p) || !Number.isFinite(q)) continue
+      const p = n(t?.px), q = n(t?.sz), ts = n(t?.ts)
+      if (!tradeOk(p, q)) continue
       out.push([b.id, trade(b, p, q, t.side === 'buy' ? 'ask' : 'bid', Number.isFinite(ts) ? ts : Date.now())])
     }
     return out
   }
   if (arg!.channel !== 'books') return []
   for (const d of r.data as Record<string, unknown>[]) {
+    if (!d || typeof d !== 'object') continue
     const seq = n(d.seqId), prev = n(d.prevSeqId), ts = n(d.ts)
     if (!Number.isFinite(seq)) continue
     if (r.action === 'snapshot') {

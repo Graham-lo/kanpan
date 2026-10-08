@@ -20,7 +20,7 @@ import { registerGate } from '../market/limit'
 import { apiOrigin } from '../market/origin'
 import { keyOf, parseKey } from '../market/identity'
 import { badgeColor, cnOf, decOfTick, type Sym } from '../market/symbols'
-import { compact, n, num, parseJSON, quantityFactor, trade, type DepthBook, type Kline, type Out, type Push, type Quote, type VenueAdapter, type VenueMarket } from './common'
+import { cleanQuote, levelOk, n, nonneg, num, parseJSON, pos, quantityFactor, stamp, trade, tradeOk, type DepthBook, type Kline, type Out, type Push, type Quote, type VenueAdapter, type VenueMarket } from './common'
 import { rawRewrite, shared, vget } from './http'
 import { sortBars } from './bars'
 import { IV_MS } from '../util/format'
@@ -51,30 +51,34 @@ interface Product {
   quote_currency_id?: string; base_currency_id?: string; base_display_symbol?: string; status?: string; trading_disabled?: boolean; is_disabled?: boolean
   product_type?: string; new_at?: string
 }
-const listed = (p: Product): boolean => typeof p.product_id === 'string' && cbSymbolOk(p.product_id) && (p.product_type ?? 'SPOT') === 'SPOT'
+const listed = (p: Product): boolean => !!p && typeof p === 'object' && typeof p.product_id === 'string' && cbSymbolOk(p.product_id) && (p.product_type ?? 'SPOT') === 'SPOT'
   && p.status === 'online' && !p.trading_disabled && !p.is_disabled
 
 export function decodeCbProducts(body: unknown): Sym[] {
   const out: Sym[] = []
-  for (const p of ((body as { products?: Product[] })?.products ?? [])) {
+  for (const p of productsOf(body)) {
     if (!listed(p)) continue
     const base = p.product_id!.slice(0, -4)
     out.push({
       symbol: keyFor(p.product_id!), venue: CB.id, quote: 'USD', raw: p.product_id!, base, code: base, kind: 'crypto', cn: cnOf(base, 'crypto'),
-      dec: p.quote_increment ? decOfTick(p.quote_increment) : 2, color: badgeColor(base), price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null,
+      dec: pos(p.quote_increment) ? decOfTick(p.quote_increment!) : 2, color: badgeColor(base), price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null,
       onboard: p.new_at ? Date.parse(p.new_at) || undefined : undefined,
     })
   }
   return out
 }
+const productsOf = (body: unknown): Product[] => { const p = (body as { products?: unknown })?.products; return Array.isArray(p) ? p as Product[] : [] }
+/** 24h 涨跌（%）倒推开盘价：跌了 100% 或更多（写坏的）倒推不出来，不给（原来 −100% 推出无穷大的开盘价） */
+const openOf = (price: number, pct: number | undefined): number | undefined => (pct != null && pct > -100 ? price / (1 + pct / 100) : undefined)
 export function decodeCbQuotes(body: unknown, now = Date.now()): Quote[] {
   const out: Quote[] = []
-  for (const p of ((body as { products?: Product[] })?.products ?? [])) {
+  for (const p of productsOf(body)) {
     if (!listed(p)) continue
-    const price = num(p.price), pct = num(p.price_percentage_change_24h), vol = num(p.volume_24h)
+    const price = pos(p.price), pct = num(p.price_percentage_change_24h), vol = nonneg(p.volume_24h)
     if (price == null) continue
-    const open = pct != null ? price / (1 + pct / 100) : undefined
-    out.push(compact<Quote>({ key: keyFor(p.product_id!), price, pct, open, chg: open != null ? price - open : undefined, vol: vol != null ? vol * price : undefined, fr: null, at: now }))
+    const open = openOf(price, pct)
+    const q = cleanQuote({ key: keyFor(p.product_id!), price, pct, open, chg: open != null ? price - open : undefined, vol: vol != null ? vol * price : undefined, fr: null, at: now })
+    if (q) out.push(q)
   }
   return out
 }
@@ -85,7 +89,8 @@ export function decodeCbCandles(body: unknown): Bar[] {
   if (!Array.isArray(d)) return []
   const out: Bar[] = []
   for (const r of d as Record<string, unknown>[]) {
-    const t = (num(r.start) ?? NaN) * 1000, c = num(r.close), v = num(r.volume)
+    if (!r || typeof r !== 'object') continue
+    const t = (num(r.start) ?? NaN) * 1000, c = num(r.close), v = nonneg(r.volume)
     if (!Number.isFinite(t) || c == null) continue
     out.push({ t, o: num(r.open) ?? c, h: num(r.high) ?? c, l: num(r.low) ?? c, c, v: (v ?? 0) * c, ...(v != null ? { bv: v } : {}) })
   }
@@ -97,20 +102,22 @@ export function decodeCbPush(text: string): Push[] {
   const r = parseJSON(text)
   if (!r || !Array.isArray(r.events)) return []
   const out: Push[] = []
-  const at = Date.parse(String(r.timestamp ?? '')) || Date.now()
+  const at = stamp(Date.parse(String(r.timestamp ?? '')))
+  const events = (r.events as unknown[]).filter((e): e is Record<string, unknown> => !!e && typeof e === 'object')
   if (r.channel === 'ticker' || r.channel === 'ticker_batch') {
-    for (const e of r.events as Record<string, unknown>[]) for (const t of (Array.isArray(e.tickers) ? e.tickers : []) as Record<string, unknown>[]) {
-      const id = t.product_id, price = num(t.price)
+    for (const e of events) for (const t of (Array.isArray(e.tickers) ? e.tickers : []) as Record<string, unknown>[]) {
+      const id = t?.product_id, price = pos(t?.price)
       if (typeof id !== 'string' || !cbSymbolOk(id) || price == null) continue
-      const pct = num(t.price_percent_chg_24_h), vol = num(t.volume_24_h)
-      const open = pct != null ? price / (1 + pct / 100) : undefined
-      out.push({ type: 'quote', quote: compact<Quote>({ key: keyFor(id), price, pct, open, chg: open != null ? price - open : undefined, hi: num(t.high_24_h), lo: num(t.low_24_h), vol: vol != null ? vol * price : undefined, at }) })
+      const pct = num(t.price_percent_chg_24_h), vol = nonneg(t.volume_24_h)
+      const open = openOf(price, pct)
+      const quote = cleanQuote({ key: keyFor(id), price, pct, open, chg: open != null ? price - open : undefined, hi: pos(t.high_24_h), lo: pos(t.low_24_h), vol: vol != null ? vol * price : undefined, at })
+      if (quote) out.push({ type: 'quote', quote })
     }
   } else if (r.channel === 'market_trades') {
-    for (const e of r.events as Record<string, unknown>[]) for (const t of (Array.isArray(e.trades) ? e.trades : []) as Record<string, unknown>[]) {
-      const id = t.product_id, p = num(t.price), q = num(t.size)
-      if (typeof id !== 'string' || !cbSymbolOk(id) || p == null || q == null) continue
-      out.push({ type: 'trade', key: keyFor(id), price: p, qty: q, t: Date.parse(String(t.time ?? '')) || at, sell: t.side !== 'BUY' })
+    for (const e of events) for (const t of (Array.isArray(e.trades) ? e.trades : []) as Record<string, unknown>[]) {
+      const id = t?.product_id, p = n(t?.price), q = n(t?.size)
+      if (typeof id !== 'string' || !cbSymbolOk(id) || !tradeOk(p, q)) continue
+      out.push({ type: 'trade', key: keyFor(id), price: p, qty: q, t: stamp(Date.parse(String(t.time ?? '')), at), sell: t.side !== 'BUY' })
     }
   }
   return out
@@ -181,8 +188,8 @@ export function decodeCoinbase(text: string, b: DepthBook): Out[] {
     const split = (list: Record<string, unknown>[]): { bids: BookLevel[]; asks: BookLevel[] } => {
       const bids: BookLevel[] = [], asks: BookLevel[] = []
       for (const e of list) for (const u of (Array.isArray(e.updates) ? e.updates : []) as Record<string, unknown>[]) {
-        const p = n(u.price_level), q = n(u.new_quantity)
-        if (!Number.isFinite(p) || !Number.isFinite(q)) continue
+        const p = n(u?.price_level), q = n(u?.new_quantity)
+        if (!levelOk(p, q)) continue
         const lvl = { price: p * pf, quantity: q * qf }
         if (u.side === 'bid') bids.push(lvl); else if (u.side === 'offer' || u.side === 'ask') asks.push(lvl)
       }
@@ -203,8 +210,8 @@ export function decodeCoinbase(text: string, b: DepthBook): Out[] {
       if (e.type !== 'update') continue
       for (const t of (Array.isArray(e.trades) ? e.trades : []) as Record<string, unknown>[]) {
         if (t.product_id != null && t.product_id !== b.venue.instrument) continue
-        const p = n(t.price), q = n(t.size), ts = Date.parse(String(t.time ?? ''))
-        if (!Number.isFinite(p) || !Number.isFinite(q)) continue
+        const p = n(t?.price), q = n(t?.size), ts = Date.parse(String(t?.time ?? ''))
+        if (!tradeOk(p, q)) continue
         out.push([b.id, trade(b, p, q, t.side === 'BUY' ? 'ask' : 'bid', Number.isFinite(ts) ? ts : Date.now())])
       }
     }

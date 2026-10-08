@@ -99,10 +99,10 @@ describe('搜索按交易所分组', () => {
     sym('hyperliquid/usd_m/BTC', { venue: 'hyperliquid', quote: 'USDC', base: 'BTC', code: 'BTC', vol: 30 }),
   ]
   const search = (q: string) => groupRanked(rank(pool, q, s => pairOf(s.symbol, s).base, s => wireSymbol(s.symbol)))
-  it('一家一组，组头交易所全名；同档按注册表顺序（币安 · OKX · Coinbase · Bybit · Hyperliquid）', () => {
+  it('一家一组，组头交易所全名；同档按注册表顺序（币安 · OKX · Bybit · Hyperliquid · Coinbase，同 iOS VenueRegistry.all）', () => {
     const g = search('btc')
-    expect(g.map(x => x.venue)).toEqual(['binance', 'okx', 'coinbase', 'hyperliquid'])
-    expect(g.map(x => x.title)).toEqual(['币安', 'OKX', 'Coinbase', 'Hyperliquid'])
+    expect(g.map(x => x.venue)).toEqual(['binance', 'okx', 'hyperliquid', 'coinbase'])
+    expect(g.map(x => x.title)).toEqual(['币安', 'OKX', 'Hyperliquid', 'Coinbase'])
     expect(g[0].hits.map(h => h.item.symbol)).toEqual(['BTCUSDT', 'BTCDOMUSDT'])
     // 别家完整键比的是代号那一段：整词命中、高亮落在 BTC 上
     expect(g[1].hits[0].hit.hl).toEqual([0, 3])
@@ -127,7 +127,7 @@ describe('搜索按交易所分组', () => {
   it('品种整页：打了字按交易所分组、组头带命中数；别家归「加密」市场；页头计数分永续与现货', () => {
     const cat: PickerSym[] = pool.map(s => ({ symbol: s.symbol, base: s.base, vol: s.vol, price: 1, venue: s.venue, ut: s.venue === 'binance' ? 'COIN' : undefined }))
     const secs = buildSections(cat, { query: 'btc', favorites: [], recents: [], known: new Set(cat.map(s => s.symbol)) })
-    expect(secs.map(s => [s.title, s.count])).toEqual([['币安', 2], ['OKX', 1], ['Coinbase', 1], ['Hyperliquid', 1]])
+    expect(secs.map(s => [s.title, s.count])).toEqual([['币安', 2], ['OKX', 1], ['Hyperliquid', 1], ['Coinbase', 1]])
     expect(pickerMarket({ base: 'BTC', venue: 'okx' })).toBe('crypto')
     expect(pickerMarket({ base: 'BTC' })).toBe('other')
     expect(countText(cat)).toBe('5 个永续合约 · 1 个现货')

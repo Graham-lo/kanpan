@@ -272,7 +272,8 @@ export interface GateSpec {
 /** 冷却：读不到 Retry-After 时 429 记 10 秒，再犯翻倍、封顶 2 分钟 */
 export const GATE_COOL_MS = 10_000
 const GATE_COOL_CAP_MS = 120_000
-interface Cooling { until: number; strikes: number }
+/** at：记下这次冷却的那一刻（时钟往回拨时据此把 until 一起挪回来，同上面币安那把的 Cool.at） */
+interface Cooling { until: number; strikes: number; at?: number }
 
 /** 一家交易所的限流器：按规则的滚动窗口记账 + 429 冷却；直连与网关各一道（直连花浏览器出口 IP 的额度，
  *  网关花服务端出口的）。同一道上行情与订单流共用。纯逻辑，时刻由调用方给 */
@@ -281,11 +282,26 @@ export class Gate {
   private cool = new Map<string, Cooling>()
   constructor(readonly venue: string, readonly spec: GateSpec) {}
   private lane = (gw: boolean): string => gw ? 'gw' : 'direct'
-  coolingFor(now: number, gw = false): number { const c = this.cool.get(this.lane(gw)); return c && c.until > now ? c.until - now : 0 }
+  /** 系统时钟往回拨过（账上的时刻比现在还晚）：账上那几笔当作「刚刚」记的、冷却整体挪回来——
+   *  不然往回拨多久这一家就要被锁多久（2026-10-08 压测：往回拨一小时，Bybit / OKX / HL / CB 的 REST 整整排一小时队）。
+   *  币安那把（Limiter.rebase）早就这样做，这一把原来没有 */
+  private rebase(now: number): void {
+    for (const list of this.used.values()) {
+      if (!list.length || list[list.length - 1].t - now <= CLOCK_SKEW_MS) continue
+      for (const x of list) if (x.t > now) x.t = now
+    }
+    for (const c of this.cool.values()) {
+      if (c.at == null || c.at - now <= CLOCK_SKEW_MS) continue
+      c.until -= c.at - now
+      c.at = now
+    }
+  }
+  coolingFor(now: number, gw = false): number { this.rebase(now); const c = this.cool.get(this.lane(gw)); return c && c.until > now ? c.until - now : 0 }
   /** 这一次记多少 */
   costOf(url: string, body?: unknown): number { return Math.max(0, this.spec.weight?.(url, body) ?? 1) }
   /** 还要等多久才能发（0 = 现在就发，已经记了账）。share < 1 是后台请求：只许用到各规则上限的这一截 */
   take(now: number, gw = false, share = 1, url = '', cost = 1): number {
+    this.rebase(now)
     const buckets: [string, GateRule][] = []
     for (const [i, r] of this.spec.rules.entries()) {
       const k = r.key ? r.key(url) : ''
@@ -313,12 +329,15 @@ export class Gate {
     const r = this.spec.rules[rule]
     const k = r?.key ? r.key(url) : ''
     if (!r || k == null) return 0
+    this.rebase(now)
     return (this.used.get(`${this.lane(gw)}|${rule}|${k}`) ?? []).filter(x => now - x.t < r.windowMs).reduce((a, x) => a + x.w, 0)
   }
   noteStatus(status: number, retryAfter: string | null | undefined, now: number, gw = false): void {
+    this.rebase(now)
     const k = this.lane(gw)
     const c = this.cool.get(k) ?? { until: 0, strikes: 0 }
     if (status === 429 || status === 418 || status === 403) {
+      c.at = now
       if (c.until <= now) c.strikes++
       const sec = retryAfter != null && retryAfter !== '' ? Number(retryAfter) : NaN
       const ms = Number.isFinite(sec) && sec > 0 ? sec * 1000 : Math.min(GATE_COOL_CAP_MS, GATE_COOL_MS * 2 ** Math.max(0, c.strikes - 1))
@@ -405,12 +424,14 @@ export class Superseded extends Error {
  *  alive：排队中每醒一次问一下还要不要，不要了就抛 Superseded。原来作废的请求照样排着、轮到了照样发、照样记账，
  *  连着换几十次品种之后预算全被作废的 K 线占满，最后要的那只反而排在最后（2026-09-29 A 路压测：300 次高频切换后
  *  16 格里一半是空的或还画着上一只）。
- *  返回这一次记在哪一道（true = 网关），发出去之后 noteStatus 记回同一道。 */
+ *  返回这一次记在哪一道（true = 网关）：调用方要按它定发往哪个地址（排队中换了线路的，发的地址与记账那道一致），
+ *  发出去之后 noteStatus 记回同一道。 */
 export async function admit(url: string, background = false, alive?: () => boolean,
-  onWait?: (ms: number) => void, body?: unknown): Promise<boolean> {
+  onWait?: (ms: number) => void, body?: unknown, route?: boolean): Promise<boolean> {
   for (;;) {
     if (alive && !alive()) throw new Superseded(url)
-    const gw = viaGateway(url), g = gateFor(url)
+    // route：调用方指定了线路（true = 网关）就记在那一道；没指定按此刻用户选的线路（排队中换了线路，醒来按新的那道记）
+    const gw = route ?? viaGateway(url), g = gateFor(url)
     const cool = g ? g.coolingFor(Date.now(), gw) : limiter.coolingFor(url, Date.now(), gw)
     if (cool > 0) throw new RateLimited(url, cool)
     const w = g ? g.take(Date.now(), gw, background ? BACKGROUND_SHARE : 1, url, g.costOf(url, body)) : limiter.take(url, Date.now(), background ? BACKGROUND_SHARE : 1, gw)

@@ -25,9 +25,9 @@ import { registerGate } from '../market/limit'
 import { apiOrigin } from '../market/origin'
 import { keyOf, parseKey } from '../market/identity'
 import { badgeColor, baseOf, cnOf, decOfTick, type Sym } from '../market/symbols'
-import { chunk, compact, levels, n, num, parseJSON, trade, type DepthBook, type Out, type Push, type Quote, type VenueAdapter, type VenueMarket } from './common'
+import { chunk, cleanQuote, levels, n, nonneg, num, parseJSON, pos, stamp, trade, tradeOk, type DepthBook, type Out, type Push, type Quote, type VenueAdapter, type VenueMarket } from './common'
 import { rawRewrite, shared, vget } from './http'
-import { sortBars } from './bars'
+import { cleanBar, sortBars } from './bars'
 
 // ------------------------------------------------------------ 地址表（这一家唯一的一份）
 export const BYBIT = {
@@ -59,12 +59,13 @@ function listOf(body: unknown): unknown[] {
 export function decodeBybitInstruments(body: unknown): Sym[] {
   const out: Sym[] = []
   for (const r of listOf(body) as Record<string, any>[]) {
+    if (!r || typeof r !== 'object' || typeof r.symbol !== 'string') continue
     if (r.quoteCoin !== 'USDT' || r.contractType !== 'LinearPerpetual' || r.status !== 'Trading' || !bybitSymbolOk(r.symbol)) continue
     const base = baseOf(r.symbol)
     out.push({
       symbol: keyFor(r.symbol), venue: BYBIT.id, quote: 'USDT', raw: r.symbol, base, code: base, kind: 'crypto', cn: cnOf(base, 'crypto'),
-      dec: r.priceFilter?.tickSize ? decOfTick(r.priceFilter.tickSize) : 4, color: badgeColor(base),
-      price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null, onboard: +r.launchTime || undefined,
+      dec: pos(r.priceFilter?.tickSize) ? decOfTick(r.priceFilter.tickSize) : 4, color: badgeColor(base),
+      price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null, onboard: pos(r.launchTime),
     })
   }
   return out
@@ -73,17 +74,17 @@ export function decodeBybitInstruments(body: unknown): Sym[] {
 /** 一行行情（REST tickers 与推送 tickers 合并后的快照同形）。price24hPcnt 是小数（0.0123 = 1.23%） */
 export function decodeBybitTicker(r: Record<string, unknown>, at: number): Quote | null {
   if (typeof r.symbol !== 'string' || !bybitSymbolOk(r.symbol)) return null
-  const last = num(r.lastPrice), prev = num(r.prevPrice24h), p = num(r.price24hPcnt), fr = num(r.fundingRate), nf = num(r.nextFundingTime)
-  return compact<Quote>({
-    key: keyFor(r.symbol), price: last, open: prev, hi: num(r.highPrice24h), lo: num(r.lowPrice24h),
+  const last = pos(r.lastPrice), prev = pos(r.prevPrice24h), p = num(r.price24hPcnt), fr = num(r.fundingRate), nf = pos(r.nextFundingTime)
+  return cleanQuote({
+    key: keyFor(r.symbol), price: last, open: prev, hi: pos(r.highPrice24h), lo: pos(r.lowPrice24h),
     pct: p != null ? p * 100 : undefined, chg: last != null && prev != null ? last - prev : undefined,
-    vol: num(r.turnover24h), mark: num(r.markPrice), index: num(r.indexPrice),
-    fr: r.fundingRate === '' ? null : fr, nextFunding: nf ? nf : undefined, oi: num(r.openInterest), at,
+    vol: nonneg(r.turnover24h), mark: pos(r.markPrice), index: pos(r.indexPrice),
+    fr: r.fundingRate === '' ? null : fr, nextFunding: nf, oi: nonneg(r.openInterest), at,
   })
 }
 export function decodeBybitTickers(body: unknown): Quote[] {
-  const at = num((body as Body)?.time) ?? Date.now()
-  return (listOf(body) as Record<string, unknown>[]).map(r => decodeBybitTicker(r, at)).filter((q): q is Quote => !!q)
+  const at = stamp((body as Body)?.time)
+  return (listOf(body) as Record<string, unknown>[]).map(r => (r && typeof r === 'object' ? decodeBybitTicker(r, at) : null)).filter((q): q is Quote => !!q)
 }
 
 /** K 线 result.list [[start, o, h, l, c, volume(币), turnover(计价)]]，新的在前 → 升序 */
@@ -91,30 +92,36 @@ export function decodeBybitKlines(body: unknown): Bar[] {
   const out: Bar[] = []
   for (const r of listOf(body)) {
     if (!Array.isArray(r)) continue
-    const t = +r[0], c = +r[4], v = +r[5], q = +r[6]
+    const t = n(r[0]), c = n(r[4]), v = n(r[5]), q = n(r[6])
     if (!Number.isFinite(t) || !Number.isFinite(c)) continue
-    out.push({ t, o: +r[1], h: +r[2], l: +r[3], c, v: Number.isFinite(q) ? q : (v || 0) * c, ...(Number.isFinite(v) ? { bv: v } : {}) })
+    out.push({ t, o: n(r[1]), h: n(r[2]), l: n(r[3]), c, v: Number.isFinite(q) ? q : (v || 0) * c, ...(Number.isFinite(v) ? { bv: v } : {}) })
   }
   return sortBars(out)
 }
 
-/** 推送解码器（一条连接一个）：tickers 的 delta 只带变了的字段，按品种留一份快照合并后再出行情 */
+/** 推送解码器（一条连接一个）：tickers 的 delta 只带变了的字段，按品种留一份快照合并后再出行情。
+ *  比上一帧旧的（ts 倒退：重订、中继补发时的旧帧）不并进快照——并进去之后，后面一条只带成交额的 delta
+ *  会把那个旧价当成新的带出去（2026-10-08 解码模糊） */
 export function bybitDecoder(): (text: string) => Push[] {
   const snaps = new Map<string, Record<string, unknown>>()
+  const seen = new Map<string, number>()
   return text => {
     const r = parseJSON(text)
     if (!r || typeof r.topic !== 'string') return []   // pong、订阅回执
     const topic = r.topic
     const sym = topic.slice(topic.lastIndexOf('.') + 1)
-    const at = num(r.ts) ?? Date.now()
+    const at = stamp(r.ts)
     if (topic.startsWith('tickers.')) {
       const d = r.data as Record<string, unknown> | undefined
-      if (!d) return []
+      if (!d || typeof d !== 'object' || Array.isArray(d) || !bybitSymbolOk(sym)) return []
+      const last = seen.get(sym)
+      if (last != null && at < last) return []
       const prev = r.type === 'snapshot' ? undefined : snaps.get(sym)
       // delta 先于 snapshot 到（重订的空档）：没有底就不出，等 snapshot
       if (r.type === 'delta' && !prev) return []
       const merged = { ...(prev ?? {}), ...d, symbol: sym }
       snaps.set(sym, merged)
+      seen.set(sym, at)
       const q = decodeBybitTicker(merged, at)
       return q ? [{ type: 'quote', quote: q }] : []
     }
@@ -123,10 +130,12 @@ export function bybitDecoder(): (text: string) => Push[] {
       if (!iv || !bybitSymbolOk(sym)) return []
       const out: Push[] = []
       for (const k of (Array.isArray(r.data) ? r.data : []) as Record<string, unknown>[]) {
+        if (!k || typeof k !== 'object') continue
         const t = num(k.start), c = num(k.close)
         if (t == null || c == null) continue
-        const v = num(k.volume), q = num(k.turnover)
-        out.push({ type: 'kline', key: keyFor(sym), iv, bar: { t, o: num(k.open) ?? c, h: num(k.high) ?? c, l: num(k.low) ?? c, c, v: q ?? (v ?? 0) * c, ...(v != null ? { bv: v } : {}) } })
+        const v = nonneg(k.volume), q = nonneg(k.turnover)
+        const bar = cleanBar({ t, o: num(k.open) ?? c, h: num(k.high) ?? c, l: num(k.low) ?? c, c, v: q ?? (v ?? 0) * c, ...(v != null ? { bv: v } : {}) })
+        if (bar) out.push({ type: 'kline', key: keyFor(sym), iv, bar })
       }
       return out
     }
@@ -134,9 +143,9 @@ export function bybitDecoder(): (text: string) => Push[] {
       if (!bybitSymbolOk(sym)) return []
       const out: Push[] = []
       for (const t of (Array.isArray(r.data) ? r.data : []) as Record<string, unknown>[]) {
-        const p = num(t.p), q = num(t.v)
-        if (p == null || q == null) continue
-        out.push({ type: 'trade', key: keyFor(sym), price: p, qty: q, t: num(t.T) ?? at, sell: t.S === 'Sell' })
+        const p = n(t?.p), q = n(t?.v)
+        if (!tradeOk(p, q)) continue
+        out.push({ type: 'trade', key: keyFor(sym), price: p, qty: q, t: stamp(t.T, at), sell: t.S === 'Sell' })
       }
       return out
     }
@@ -235,8 +244,8 @@ export function decodeBybit(text: string, bySymbol: Map<string, DepthBook>): Out
   if (topic.startsWith('publicTrade.')) {
     const out: Out[] = []
     for (const t of (Array.isArray(r.data) ? r.data : []) as Record<string, unknown>[]) {
-      const p = n(t.p), q = n(t.v), T = n(t.T)
-      if (!Number.isFinite(p) || !Number.isFinite(q)) continue
+      const p = n(t?.p), q = n(t?.v), T = n(t?.T)
+      if (!tradeOk(p, q)) continue
       out.push([b.id, trade(b, p, q, t.S === 'Buy' ? 'ask' : 'bid', Number.isFinite(T) ? T : Date.now())])
     }
     return out

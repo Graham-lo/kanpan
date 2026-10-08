@@ -11,6 +11,7 @@ import { migrateAlert, type Alert } from '../alerts/shape'
 import type { VpvrMode } from '../chart/overlays'
 import type { NoteDraft } from '../notes/draft'
 import { DEFAULT_WATCH, INTERVALS, type Kind } from '../market/symbols'
+import { displayKey } from '../market/identity'
 import { setItemMakingRoom } from '../util/storage'
 import { normalizeOverride, MAX_OVERRIDES, type Override } from '../orderflow/settings'
 import { cleanCompare } from '../sync/codec'
@@ -229,7 +230,8 @@ export function hydrate(saved: Partial<State>): State {
   const watch = rec(saved.watch)
   s.watch = Object.fromEntries(KINDS.map(k => {
     const list = watch[k]
-    return [k, Array.isArray(list) ? [...new Set((list as unknown[]).filter(validSymbol))] : d.watch[k]]
+    // 完整三段写的币安 / 美元指数（binance/usd_m/BTCUSDT）收回裸代号再去重：同一只不在自选里出现两行
+    return [k, Array.isArray(list) ? [...new Set((list as unknown[]).filter(validSymbol).map(displayKey))] : d.watch[k]]
   })) as Record<Kind, string[]>
   const ind = rec(saved.ind)
   s.ind = { ...d.ind }

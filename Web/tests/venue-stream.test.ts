@@ -148,7 +148,9 @@ describe('连接：一家一条（OKX K 线另一条），线路由用户选', (
     const control = () => w.sent.filter(x => x !== 'ping').length   // 保活的 ping 不算订退
     expect(control()).toBe(480)
     for (let k = 0; k < 130; k++) { tick(); vi.advanceTimersByTime(28_000) }   // 连接一直活着，额度滚出窗口后补发
-    expect(control()).toBe(521)
+    // 额度满了等着的期间只记「最后要什么」：到点按最后那一份对账（一退一订），不把作废的几十条帧补发一遍
+    expect(control()).toBeLessThanOrEqual(484)
+    expect(venueStreamDebug().conns[0].subscribed).toEqual(['tickers|C260-USDT-SWAP'])
   })
 
   it('不要了就退订；全不要了关掉连接', () => {

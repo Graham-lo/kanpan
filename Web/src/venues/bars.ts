@@ -49,9 +49,24 @@ export function ratioOf(iv: string, base: string): number {
   return Math.max(1, Math.ceil(ms / IV_MS[base]))
 }
 
-/** 交易所给的行按开盘时间去重、升序 */
+/** 开盘时刻最多比本机晚多久还算数（K 线开盘时刻不会在未来；本机时钟慢一点的照常用） */
+const BAR_AHEAD_MS = 2 * 86_400_000
+/** 一根 K 线能不能用（各家解码共用的最后一道）：开盘时刻是不在遥远未来的非负有限数；开高低收都是正的有限数——
+ *  有一个不像样（缺字段、"NaN"、负价、1e400）整根丢；高低不包住开收的撑开；量 / 额不像样记 0、主动买 / 币量不像样不给。
+ *  原来只看了时刻和收盘：OKX / Bybit 的开高低缺了是 NaN、负价照收，画出来一根竖到天上的针（2026-10-08 解码模糊） */
+export function cleanBar(b: Bar): Bar | null {
+  const { t, o, h, l, c } = b
+  if (!Number.isFinite(t) || t < 0 || t > Date.now() + BAR_AHEAD_MS) return null
+  if (!(o > 0 && h > 0 && l > 0 && c > 0) || !Number.isFinite(o + h + l + c)) return null
+  const x: Bar = { ...b, h: Math.max(h, o, c), l: Math.min(l, o, c), v: Number.isFinite(b.v) && b.v >= 0 ? b.v : 0 }
+  if (x.bv != null && !(Number.isFinite(x.bv) && x.bv >= 0)) delete x.bv
+  if (x.tb != null && !(Number.isFinite(x.tb) && x.tb >= 0)) delete x.tb
+  return x
+}
+
+/** 交易所给的行过 cleanBar、按开盘时间去重、升序 */
 export function sortBars(bars: Bar[]): Bar[] {
   const m = new Map<number, Bar>()
-  for (const b of bars) if (Number.isFinite(b.t) && Number.isFinite(b.c)) m.set(b.t, b)
+  for (const b of bars) { const x = cleanBar(b); if (x) m.set(x.t, x) }
   return [...m.values()].sort((a, b) => a.t - b.t)
 }

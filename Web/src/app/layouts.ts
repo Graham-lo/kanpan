@@ -11,6 +11,7 @@
  * 这个文件不依赖 store：store 要在模块初始化时用它做迁移。
  */
 import { INTERVALS } from '../market/symbols'
+import { displayKey } from '../market/identity'
 import { IV_MS } from '../util/format'
 
 export type Layout = '1' | '2' | '2v' | '3' | '4' | '6' | '8' | '9' | '12' | '16'
@@ -97,7 +98,9 @@ export const cleanLayout = (v: unknown): Layout => {
 /** 一格的规范形：键顺序固定（symbol、iv、footprint、ha、range、其余按字母），比较时不受顺序影响 */
 function cleanCell(c: Record<string, unknown>, iv0: string): CellCfg | undefined {
   if (!validSymbol(c.symbol)) return undefined
-  const out: CellCfg = { symbol: c.symbol, iv: validIv(c.iv) ? c.iv : iv0 }
+  // 完整三段写的币安 / 美元指数（binance/usd_m/BTCUSDT、macro/index/DXY，对比键、通知就是这么写的）收回网页存的规范键：
+  // 原样留着的话这一格拿完整键去要币安的 K 线，本地就被拒（rest.ts guardVenue），格子一直空着
+  const out: CellCfg = { symbol: displayKey(c.symbol), iv: validIv(c.iv) ? c.iv : iv0 }
   for (const f of CELL_FLAGS) if (c[f] === true) out[f] = true
   let n = 0
   for (const k of Object.keys(c).sort()) {

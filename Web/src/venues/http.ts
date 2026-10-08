@@ -24,10 +24,13 @@ export function routeUrl(url: string, route = S.route): string {
 }
 
 async function send<T>(url: string, init: RequestInit, opts: FetchOpts, body?: unknown): Promise<T> {
-  const route = opts.route ?? S.route
-  const target = routeUrl(url, route)
-  // 限流按那一家官方的口径记（body 给 Hyperliquid 按权重算：candleSnapshot 按要的根数加码）
-  const gw = await admit(url, opts.background, opts.alive, opts.onWait, body)
+  // 网关没开这条：排队之前就报错，不白占额度
+  routeUrl(url, opts.route ?? S.route)
+  // 限流按那一家官方的口径记（body 给 Hyperliquid 按权重算：candleSnapshot 按要的根数加码）。
+  // 发往哪里按 admit 放行时记账的那一道定：原来地址在排队之前就算好了，排队中用户切到网关，这一条照旧打直连
+  // （国内直连不通正是要切网关的时候），却又记在网关那一道、直连回的 429 还冷却了网关（2026-10-08 压测）
+  const gw = await admit(url, opts.background, opts.alive, opts.onWait, body, opts.route ? opts.route === 'gateway' : undefined)
+  const target = routeUrl(url, gw ? 'gateway' : 'direct')
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), opts.ms ?? 10_000)
   try {

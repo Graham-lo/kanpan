@@ -25,9 +25,9 @@ import { registerGate } from '../market/limit'
 import { apiOrigin } from '../market/origin'
 import { keyOf, parseKey } from '../market/identity'
 import { badgeColor, cnOf, type Sym } from '../market/symbols'
-import { chunk, compact, n, num, parseJSON, quantityFactor, trade, type DepthBook, type Out, type Push, type Quote, type VenueAdapter, type VenueMarket } from './common'
+import { chunk, cleanQuote, levelOk, n, nonneg, num, parseJSON, pos, quantityFactor, stamp, trade, tradeOk, type DepthBook, type Out, type Push, type Quote, type VenueAdapter, type VenueMarket } from './common'
 import { shared, vpost } from './http'
-import { sortBars } from './bars'
+import { cleanBar, sortBars } from './bars'
 import { IV_MS } from '../util/format'
 
 // ------------------------------------------------------------ 地址表（这一家唯一的一份）
@@ -60,6 +60,8 @@ export const HL_GATE = registerGate(HL.id, {
 export const hlSymbolOk = (s: string): boolean => /^[A-Z0-9]{1,16}$/.test(s)
 /** HL 的 coin 原名 → 网页键（kPEPE → hyperliquid/usd_m/KPEPE） */
 export const hlKeyOf = (coin: string): string => keyOf(HL.id, 'usd_m', coin.toUpperCase())
+/** 推送里的 coin 能不能认（原名只有 ASCII 字母数字，大写后过这一家的代号规则）：😀、超长、带空格的整帧丢 */
+const coinOk = (coin: unknown): coin is string => typeof coin === 'string' && /^[A-Za-z0-9]+$/.test(coin) && hlSymbolOk(coin.toUpperCase())
 /** 大写键代号 → 原名（品种表到了才全；没到时按大写原样，BTC / ETH 这些本来就是大写） */
 const names = new Map<string, string>()
 export function hlCoin(key: string): string { const s = parseKey(key).symbol; return names.get(s) ?? s }
@@ -77,13 +79,14 @@ function baseOfCoin(name: string): string { return /^k[A-Z0-9]/.test(name) ? nam
 export function decodeHlUniverse(body: unknown): Sym[] {
   const meta = Array.isArray(body) ? body[0] as { universe?: Universe[] } : body as { universe?: Universe[] }
   const out: Sym[] = []
-  for (const u of meta?.universe ?? []) {
+  const list = meta?.universe
+  for (const u of Array.isArray(list) ? list : []) {
     if (!u || typeof u.name !== 'string' || u.isDelisted || !/^[A-Za-z0-9]{1,16}$/.test(u.name)) continue
     names.set(u.name.toUpperCase(), u.name)
     const base = baseOfCoin(u.name)
     out.push({
       symbol: hlKeyOf(u.name), venue: HL.id, quote: 'USDC', raw: u.name, title: u.name, base, code: base, kind: 'crypto', cn: cnOf(base, 'crypto'),
-      dec: Math.max(0, Math.min(8, 6 - (u.szDecimals ?? 0))), color: badgeColor(base),
+      dec: Math.max(0, Math.min(8, 6 - (Number.isInteger(u.szDecimals) ? u.szDecimals! : 0))), color: badgeColor(base),
       price: null, chg: 0, pct: null, vol: 0, fr: null, nextFunding: null,
     })
   }
@@ -95,17 +98,18 @@ export const nextHour = (now: number): number => Math.floor(now / 36e5) * 36e5 +
 
 /** 一只的上下文（metaAndAssetCtxs 的一项、推送 activeAssetCtx 的 ctx）→ 行情 */
 export function decodeHlCtx(coin: string, c: Ctx, at: number): Quote | null {
-  const mark = num(c.markPx), mid = num(c.midPx), prev = num(c.prevDayPx)
+  if (!c || typeof c !== 'object' || !coinOk(coin)) return null
+  const mark = pos(c.markPx), mid = pos(c.midPx), prev = pos(c.prevDayPx)
   const price = mid ?? mark
   if (price == null) return null
-  return compact<Quote>({
+  return cleanQuote({
     key: hlKeyOf(coin), price, open: prev, pct: prev ? (price / prev - 1) * 100 : undefined, chg: prev != null ? price - prev : undefined,
-    vol: num(c.dayNtlVlm), mark, index: num(c.oraclePx), fr: num(c.funding) ?? null, nextFunding: nextHour(at), oi: num(c.openInterest), at,
+    vol: nonneg(c.dayNtlVlm), mark, index: pos(c.oraclePx), fr: num(c.funding) ?? null, nextFunding: nextHour(at), oi: nonneg(c.openInterest), at,
   })
 }
 export function decodeHlCtxs(body: unknown, now = Date.now()): Quote[] {
   if (!Array.isArray(body)) return []
-  const uni = (body[0] as { universe?: Universe[] })?.universe ?? [], ctxs = Array.isArray(body[1]) ? body[1] as Ctx[] : []
+  const raw = (body[0] as { universe?: Universe[] })?.universe, uni = Array.isArray(raw) ? raw : [], ctxs = Array.isArray(body[1]) ? body[1] as Ctx[] : []
   const out: Quote[] = []
   uni.forEach((u, i) => { if (u && !u.isDelisted && ctxs[i]) { const q = decodeHlCtx(u.name, ctxs[i], now); if (q) out.push(q) } })
   return out
@@ -113,10 +117,11 @@ export function decodeHlCtxs(body: unknown, now = Date.now()): Quote[] {
 
 /** K 线 [{t, T, s, i, o, h, l, c, v(币), n}] → 升序；额 ≈ 量 × 收盘 */
 export function decodeHlCandle(k: Record<string, unknown>): Bar | null {
+  if (!k || typeof k !== 'object') return null
   const t = num(k.t), c = num(k.c)
   if (t == null || c == null) return null
-  const v = num(k.v) ?? 0
-  return { t, o: num(k.o) ?? c, h: num(k.h) ?? c, l: num(k.l) ?? c, c, v: v * c, bv: v }
+  const v = nonneg(k.v) ?? 0
+  return cleanBar({ t, o: num(k.o) ?? c, h: num(k.h) ?? c, l: num(k.l) ?? c, c, v: v * c, bv: v })
 }
 export function decodeHlCandles(body: unknown): Bar[] {
   return sortBars((Array.isArray(body) ? body as Record<string, unknown>[] : []).map(decodeHlCandle).filter((b): b is Bar => !!b))
@@ -129,22 +134,22 @@ export function decodeHlPush(text: string): Push[] {
   if (r.channel === 'candle') {
     const d = r.data as Record<string, unknown> | undefined
     const b = d ? decodeHlCandle(d) : null
-    if (!b || typeof d!.s !== 'string' || typeof d!.i !== 'string' || !HL_INTERVALS[d!.i as string]) return []
+    if (!b || !coinOk(d!.s) || typeof d!.i !== 'string' || !HL_INTERVALS[d!.i as string]) return []
     return [{ type: 'kline', key: hlKeyOf(d!.s as string), iv: d!.i as string, bar: b }]
   }
   if (r.channel === 'trades') {
     const out: Push[] = []
     for (const x of (Array.isArray(r.data) ? r.data : []) as Record<string, unknown>[]) {
-      const p = num(x.px), q = num(x.sz)
-      if (typeof x.coin !== 'string' || p == null || q == null) continue
-      out.push({ type: 'trade', key: hlKeyOf(x.coin), price: p, qty: q, t: num(x.time) ?? Date.now(), sell: x.side === 'A' })
+      const p = n(x?.px), q = n(x?.sz)
+      if (!coinOk(x.coin) || !tradeOk(p, q)) continue
+      out.push({ type: 'trade', key: hlKeyOf(x.coin), price: p, qty: q, t: stamp(x.time), sell: x.side === 'A' })
     }
     return out
   }
   if (r.channel === 'activeAssetCtx') {
     const d = r.data as { coin?: unknown; ctx?: Ctx } | undefined
-    if (typeof d?.coin !== 'string' || !d.ctx) return []
-    const q = decodeHlCtx(d.coin, d.ctx, Date.now())
+    if (!coinOk(d?.coin) || !d!.ctx) return []
+    const q = decodeHlCtx(d!.coin as string, d!.ctx, Date.now())
     return q ? [{ type: 'quote', quote: q }] : []
   }
   return []
@@ -164,13 +169,13 @@ export const hlMarket: VenueMarket = {
   instruments: async route => decodeHlUniverse(await ctxs(route)),
   tickers: async route => decodeHlCtxs(await ctxs(route)),
   maxKlines: 5000,
+  // 费率每小时一期（ctx.funding 就是一小时的费率，下一次结算 = 下一个整点），不是别家的八小时
+  fundingIntervalMs: 36e5,
   async klines(key, iv, q, opts) {
     const interval = HL_INTERVALS[iv]
     if (!interval) return []
     const ms = IV_MS[iv], limit = Math.min(5000, q.limit)
     const now = Date.now()
-  // 费率每小时一期（ctx.funding 就是一小时的费率，下一次结算 = 下一个整点），不是别家的八小时
-  fundingIntervalMs: 36e5,
     let start: number, end: number
     if (q.start != null) { start = q.start; end = Math.min(now, q.start + limit * ms) }
     else { end = q.end != null ? q.end - 1 : now; start = end - limit * ms }
@@ -219,7 +224,7 @@ function hlLevels(raw: unknown, b: DepthBook): BookLevel[] {
   const out: BookLevel[] = []
   for (const l of raw as Record<string, unknown>[]) {
     const p = n(l?.px), q = n(l?.sz)
-    if (Number.isFinite(p) && Number.isFinite(q)) out.push({ price: p * pf, quantity: q * qf })
+    if (levelOk(p, q)) out.push({ price: p * pf, quantity: q * qf })
   }
   return out
 }
@@ -243,9 +248,9 @@ export function decodeHyperliquid(text: string, byCoin: Map<string, DepthBook>):
   if (r.channel === 'trades') {
     const out: Out[] = []
     for (const x of (Array.isArray(r.data) ? r.data : []) as Record<string, unknown>[]) {
-      const b = typeof x.coin === 'string' ? byCoin.get(x.coin) : undefined
-      const p = n(x.px), q = n(x.sz), t = n(x.time)
-      if (!b || !Number.isFinite(p) || !Number.isFinite(q)) continue
+      const b = typeof x?.coin === 'string' ? byCoin.get(x.coin) : undefined
+      const p = n(x?.px), q = n(x?.sz), t = n(x?.time)
+      if (!b || !tradeOk(p, q)) continue
       out.push([b.id, trade(b, p, q, x.side === 'B' ? 'ask' : 'bid', Number.isFinite(t) ? t : Date.now())])
     }
     return out
