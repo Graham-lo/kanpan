@@ -83,7 +83,7 @@ td:first-child{font-weight:600;white-space:nowrap}
 /* 弹层（琉璃） */
 .sheet{position:absolute;left:0;right:0;bottom:0;border-radius:34px 34px 0 0;overflow:hidden;z-index:9;
   background:var(--sheetBg);box-shadow:0 -1px 0 var(--edge),0 -18px 50px -20px rgba(0,0,0,.35)}
-.sheet.half{height:440px}.sheet.full{height:780px}
+.sheet.full{height:780px}
 .sheet .lobes{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .sheet .lobes i{position:absolute;border-radius:50%;filter:blur(38px);opacity:.75}
 .sheet .grab{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:40px;height:5px;border-radius:3px;background:var(--ink3);opacity:.45}
@@ -174,8 +174,8 @@ td:first-child{font-weight:600;white-space:nowrap}
 <p class="l">下面每一屏都是 iPhone 17 Pro（393 × 852 pt）等比；K 线与均线是示意数据，画法照 AICoin 复刻不动，图上新加的「大单签」与弹层是这次要设计的。页面底部是功能分层表、导航与返回规则、交互细节、尺寸与令牌、数据口径与施工说明。</p>
 
 <!-- ============================================================ 一、主线 -->
-<h2><span class="n">01</span>主线：图上大单签 → 点一下 → 半屏「脉搏」 → 上拉整页</h2>
-<p class="l">没有新 tab、没有新顶级页。大单与爆仓长在行情页上：图上每根 K 线最多一枚签，点签（或从分析面板）拉出半屏弹层，半屏就把「此刻谁在打、多大、有没有爆仓」说完；想细看再上拉整页。</p>
+<h2><span class="n">01</span>主线：图上大单签 → 点一下 → 整页「大单与爆仓」</h2>
+<p class="l">没有新 tab、没有新顶级页。大单与爆仓长在行情页上：图上每根 K 线最多一枚签，点签（或从分析面板）拉出弹层，一开就是整页、每张卡都摆出来，不分半屏 / 上拉两步（2026-10-08 用户试用后定）。</p>
 <div class="row" id="rowMain"></div>
 
 <!-- ============================================================ 二、十字线联动与周期 -->
@@ -197,21 +197,21 @@ td:first-child{font-weight:600;white-space:nowrap}
 <div class="doc">
 <h2><span class="n">05</span>为什么这样设计（给交易员的价值，按优先级）</h2>
 <ol>
-<li><b>一眼知道「此刻谁在打」。</b> 半屏弹层第一块是本根 K 线的买卖对撞条：买从左、卖从右，交汇点就是净方向，交汇点上一颗「净买 +1.2M」药丸。条永远铺满宽度（按买卖占比分），所以不管金额大小，哪边占上风一瞥就有；绝对金额写在两端。电脑网页版用的是按 √ 金额定长度的条，手机上没那个宽度，改成占比条 + 两端数字更快读。</li>
+<li><b>一眼知道「此刻谁在打」。</b> 弹层第一块是本根 K 线的买卖对撞条：买从左、卖从右，交汇点就是净方向，交汇点上一颗「净买 +1.2M」药丸。条永远铺满宽度（按买卖占比分），所以不管金额大小，哪边占上风一瞥就有；绝对金额写在两端。电脑网页版用的是按 √ 金额定长度的条，手机上没那个宽度，改成占比条 + 两端数字更快读。</li>
 <li><b>图上不再「下一根就没了」。</b> 签按根生成，数据来自分钟桶 + 服务端三天历史，刷新 / 后台回来 / 换周期都还在。每根最多一枚、只画主导方向、三档（点 / 三角 / 三角 + 金额签），档位按近 300 根的相对分位定，所以山寨币和 BTC 看起来密度一样。</li>
-<li><b>爆仓只回答一句话：</b>「1 小时多单 / 空单爆仓额、今日最大单笔在哪个价」。半屏里一条多单爆仓 / 空单爆仓对撞条 + 一行「今日最大单笔」；整页里才有 24 小时时间轴。不做热力、排行、推送。</li>
+<li><b>爆仓只回答一句话：</b>「1 小时多单 / 空单爆仓额、今日最大单笔在哪个价」。一条多单爆仓 / 空单爆仓对撞条 + 一行「今日最大单笔」，下面另有 24 小时时间轴。不做热力、排行、推送。</li>
 <li><b>价位要看「钱堆在哪」而不是逐笔。</b> 整页「价位」是现价上下 ±5 档的竖梯：左边买单堆、右边卖单堆、梯子末端挂着现有的挂单墙药丸。手机竖屏天然适合梯子，这是电脑版横条没有的。</li>
-<li><b>少点：</b>签 → 半屏是一下；分析面板 → 「大单与爆仓」也是一下；改门槛沿用现有的编辑页（右上「门槛」药丸）。没有任何新设置项，开关只有一个「图上大单签」（出厂开）。</li>
+<li><b>少点：</b>签 → 整页是一下；分析面板 → 「大单与爆仓」也是一下；改门槛沿用现有的编辑页（右上「门槛」药丸）。没有任何新设置项，开关只有一个「图上大单签」（出厂开）。</li>
 </ol>
 
 <h2><span class="n">06</span>功能分层表</h2>
 <table>
 <tr><th>功能</th><th>使用频次</th><th>从行情页几步</th><th>放在哪一层</th><th>为什么</th></tr>
 <tr><td>图上大单签（每根一枚）</td><td>每次看图都在</td><td>0</td><td>主图图层，出厂开</td><td>和挂单墙同层，不占任何面板；密度由相对分位控住，1 分钟图不会糊成一片</td></tr>
-<tr><td>本根 / 近 1 小时 / 今日 对撞条</td><td>高</td><td>1（点签或分析 › 大单与爆仓）</td><td>半屏弹层第一块</td><td>交易员最先要的三个窗口；半屏不盖住最近的 K 线</td></tr>
-<tr><td>爆仓近 1 小时 + 今日最大</td><td>高</td><td>1</td><td>半屏弹层第二块</td><td>一行说完；现货品种整块不出现</td></tr>
-<tr><td>每根对撞柱（近 40 根）</td><td>中</td><td>2（上拉整页）</td><td>整页第一块</td><td>和十字线双向联动，是「签」的放大镜</td></tr>
-<tr><td>价位竖梯 + 挂单墙</td><td>中</td><td>2</td><td>整页第二块</td><td>要看堆钱的价位时才要，默认不占半屏</td></tr>
+<tr><td>本根 / 近 1 小时 / 今日 对撞条</td><td>高</td><td>1（点签或分析 › 大单与爆仓）</td><td>弹层第一块</td><td>交易员最先要的三个窗口</td></tr>
+<tr><td>爆仓近 1 小时 + 今日最大</td><td>高</td><td>1</td><td>弹层第二块</td><td>一行说完；现货品种整块不出现</td></tr>
+<tr><td>每根对撞柱（近 40 根）</td><td>中</td><td>1</td><td>弹层第三块</td><td>和十字线双向联动，是「签」的放大镜</td></tr>
+<tr><td>价位竖梯 + 挂单墙</td><td>中</td><td>1</td><td>弹层第四块</td><td>要看堆钱的价位时往下看</td></tr>
 <tr><td>爆仓 24 小时时间轴</td><td>低</td><td>2</td><td>整页第三块</td><td>偶尔回看，放最后</td></tr>
 <tr><td>门槛与步长</td><td>很低</td><td>2（弹层右上「门槛」）</td><td>现有编辑页</td><td>沿用，不再做第二套</td></tr>
 <tr><td>图上大单签开关</td><td>极低</td><td>2（分析 › 主力订单流）</td><td>分析面板</td><td>唯一的开关；与挂单墙开关并列、互不牵连</td></tr>
@@ -220,10 +220,9 @@ td:first-child{font-weight:600;white-space:nowrap}
 <h2><span class="n">07</span>导航与返回规则</h2>
 <table>
 <tr><th>页面</th><th>怎么进</th><th>怎么退</th><th>左上</th><th>右上</th><th>底栏</th></tr>
-<tr><td>半屏弹层「大单与爆仓」</td><td>点图上任意一枚签；分析面板 › 主力订单流 › 大单与爆仓</td><td>下拉、点弹层外、左上返回；再点一枚签只是换根不关</td><td>返回 ‹</td><td>「门槛」药丸</td><td>被弹层盖住（和现有分析面板一致）</td></tr>
-<tr><td>整页弹层</td><td>半屏上拉；或半屏里点「每根 / 价位」标题</td><td>下拉回半屏，再下拉关；返回键直接关</td><td>返回 ‹</td><td>「门槛」药丸</td><td>被弹层盖住，和分析面板整页一致</td></tr>
+<tr><td>弹层「大单与爆仓」（整页）</td><td>点图上任意一枚签；分析面板 › 主力订单流 › 大单与爆仓</td><td>下拉关、点压暗处关、左上返回</td><td>返回 ‹</td><td>「门槛」药丸</td><td>被弹层盖住（和现有分析面板一致）</td></tr>
 <tr><td>门槛编辑</td><td>弹层右上「门槛」</td><td>返回回到弹层原来的档位</td><td>返回 ‹</td><td>无</td><td>盖住</td></tr>
-<tr><td>十字线</td><td>长按图</td><td>抬手即退；弹层半屏开着时抬手后保留那一根 3 秒再回「本根」</td><td colspan="3">—</td></tr>
+<tr><td>十字线</td><td>长按图</td><td>抬手即退；弹层里「逐根」点一根时十字线跳过去，弹层读那一根，3 秒后回「本根」</td><td colspan="3">—</td></tr>
 </table>
 
 <h2><span class="n">08</span>交互细节清单（施工项）</h2>
@@ -234,8 +233,8 @@ td:first-child{font-weight:600;white-space:nowrap}
 <li><b>对撞条动画</b>：交汇点位置变化 240 ms ease-in-out；金额数字滚动 200 ms；净药丸换色不动画。</li>
 <li><b>十字线联动</b>：按住图时弹层标题从「本根」变「12:30」，数值随手指实时换，不节流；抬手 3 s 后回到本根（渐变 300 ms）。</li>
 <li><b>逐根条</b>：横向可滚，默认停在最右；点一根 → 图上十字线跳到那根 + 触感 <code>.light</code>；最右那根顶部有一粒呼吸点表示未收线。</li>
-<li><b>弹层档位</b>：半屏 440 pt，整页 780 pt，两档都盖住底栏（和现有分析面板一致）；拖过半屏 + 90 pt 即吸到整页；整页内容可滚，滚到顶继续下拉才收档。</li>
-<li><b>默认值</b>：图上大单签 出厂开；弹层第一次打开落半屏；门槛沿用现有默认（现货 750K / U 本位永续 2.5M …，按品种）。</li>
+<li><b>弹层档位</b>：只有一档，整页 780 pt（屏幕矮时让出顶上安全区），盖住底栏、压暗背后；内容可滚，滚到顶继续下拉过 110 pt 就关，不够就弹回。</li>
+<li><b>默认值</b>：图上大单签 出厂开；弹层一开就是整页；门槛沿用现有默认（现货 750K / U 本位永续 2.5M …，按品种）。</li>
 <li><b>撤销 / 误触</b>：弹层没有破坏性操作；门槛编辑页沿用现有「恢复默认」。</li>
 <li><b>可达性</b>：字 ≥ 11 pt；签颜色之外还有形状（点 / 三角 / 带字签）区分档位；减少动效时全部动画关闭；VoiceOver 朗读「买方大单 1.2M，12:30 这根」。</li>
 <li><b>横屏画线台</b>：签照画，不开弹层（横屏保留给画线）。</li>
@@ -247,7 +246,7 @@ td:first-child{font-weight:600;white-space:nowrap}
 <tr><td>签 · 点</td><td>直径 5 pt，主导方向色 70%；离 K 线高 / 低点 3 pt</td></tr>
 <tr><td>签 · 三角</td><td>宽 8 高 7 pt，实心主导方向色；买在高点上方朝上，卖在低点下方朝下</td></tr>
 <tr><td>签 · 金额签</td><td>胶囊高 16，横向内边距 5，字 <code>caption2Emph</code> 11 pt 白字，底色为方向色；与三角之间 2 pt；进图例带（顶部 24 pt）或出窗格即翻到另一侧，两侧都不行退成三角</td></tr>
-<tr><td>弹层</td><td>圆角 34（continuous），琉璃底；半屏 440 / 整页 780；抓手 40 × 5</td></tr>
+<tr><td>弹层</td><td>圆角 34（continuous），琉璃底；整页 780（一档）；抓手 40 × 5</td></tr>
 <tr><td>弹层标题</td><td><code>title</code> 20/semibold（弹层标题与现有分析面板一致），副标题 <code>caption</code> 12 ink3</td></tr>
 <tr><td>玻璃卡</td><td>圆角 20，内边距 16 / 14，边 0.5 pt <code>edge</code>，卡距 10</td></tr>
 <tr><td>卡标题</td><td><code>caption</code> 12/semibold ink3，字距 .02em</td></tr>
@@ -275,7 +274,7 @@ td:first-child{font-weight:600;white-space:nowrap}
 <h2><span class="n">12</span>施工说明（定板后派 Opus 子代理，iOS 与手机网页各一条）</h2>
 <ol>
 <li><b>iOS · 图层</b>：<code>KanpanChart/OrderFlowGroup.swift</code> 旁新建 <code>BigTradeSigns</code>（纯函数：根 → 档位 / 方向 / 位置，含翻侧与退档），<code>ChartRenderer+OrderFlow</code> 画签；数据从 <code>KanpanData/OrderFlow/OrderFlowFeed</code> 加分钟桶（照网页 <code>tradeFlow.ts</code> 的 <code>Cell</code>），历史接 <code>/flow</code>。签的命中走现有图层手势，回调宿主开弹层。</li>
-<li><b>iOS · 弹层</b>：<code>Kanpan/Kanpan/OrderFlow/BigTradeSheet.swift</code>（半屏 / 整页两档，<code>PanelHost</code> 琉璃底 + <code>PanelCard</code>），四张卡各一个 View，数据模型一个 <code>BigTradeSummary</code>（本根 / 近 1 小时 / 今日 / 每根 / 价位 / 爆仓）；爆仓源 <code>LiquidationFeed</code>（30 s 轮询 <code>/liq</code>）。十字线联动走现有 <code>CrosshairBand</code> 的读数回调。分析面板「主力订单流」分组加「图上大单签」开关（<code>Prefs.bigTradeSigns</code>，出厂开，跟账号同步）与「大单与爆仓」行。</li>
+<li><b>iOS · 弹层</b>：<code>Kanpan/Kanpan/OrderFlow/BigTradeSheet.swift</code>（一档整页，<code>PanelHost</code> 琉璃底 + <code>PanelCard</code>），四张卡各一个 View，数据模型一个 <code>BigTradeSummary</code>（本根 / 近 1 小时 / 今日 / 每根 / 价位 / 爆仓）；爆仓源 <code>LiquidationFeed</code>（30 s 轮询 <code>/liq</code>）。十字线联动走现有 <code>CrosshairBand</code> 的读数回调。分析面板「主力订单流」分组加「图上大单签」开关（<code>Prefs.bigTradeSigns</code>，出厂开，跟账号同步）与「大单与爆仓」行。</li>
 <li><b>手机网页版</b>：照 iOS 复刻（<code>Web/src/m/</code>），分钟桶与档位算法直接复用桌面版 <code>bigTags.ts</code> / <code>tradeFlow.ts</code> 的纯函数，只换画法与弹层。</li>
 <li><b>测试</b>：档位 / 翻侧 / 退档的纯函数测试（照 <code>Web/tests/orderflow-bigtags.test.ts</code> 搬）；弹层三档状态快照；十字线联动 UI 测试；画线交叉（签与画线文字 0 相交）；1 分钟 × 500 根性能（整帧 p95 不比现在多 1 ms）。</li>
 <li><b>验收</b>：模拟器 iPhone 16 Pro / 17 Pro Max 三皮肤深浅 + 上面全部状态截图进 <code>docs/acceptance/</code>；真机在手边才装。</li>
@@ -404,7 +403,7 @@ function analysisPanel(spec,S){
 
 /* ============================================================ 弹层 */
 function sheet(spec,S,bars,T,sel,live){
- const st=spec.state||'';const full=spec.sheet==='full';
+ const st=spec.state||'';const full=true;
  const b=bars[sel];const hour=bars.slice(live-3,live+1);const day=bars.slice(live-40,live+1);
  const sum=a=>a.reduce((x,y)=>x+y,0);const hb=sum(hour.map(z=>z.buy)),hs=sum(hour.map(z=>z.sell)),db=sum(day.map(z=>z.buy)),ds=sum(day.map(z=>z.sell));
  const lobes=S.lobes.length?`<div class="lobes"><i style="width:260px;height:260px;left:-80px;top:-60px;background:${S.lobes[0]}"></i><i style="width:220px;height:220px;right:-60px;top:40px;background:${S.lobes[1]}"></i><i style="width:240px;height:240px;left:90px;bottom:-80px;background:${S.lobes[2]}"></i></div>`:'';
@@ -433,8 +432,7 @@ function sheet(spec,S,bars,T,sel,live){
    <div class="vs s" style="margin:2px 0 4px"><div class="b" style="width:calc(${(sq/(lq+sq)*100).toFixed(1)}% - 1px);background:${S.up}"></div><div class="a" style="width:calc(${(lq/(lq+sq)*100).toFixed(1)}% - 1px);background:${S.down}"></div></div>
    <div class="rows" style="grid-template-columns:1fr"><div class="ends"><b style="color:${S.up}">空单爆仓 ${fmt(sq)}</b><span></span><b style="color:${S.down}">多单爆仓 ${fmt(lq)}</b></div></div>
    <div class="mini"><span>今日最大单笔 <b style="color:${S.down}">多单 1.24M</b> @ 114.66 · 12:31</span>${full?'<span>24 小时 多单 <b>18.3M</b> · 空单 <b>6.1M</b></span>':''}</div></div>`}
-  if(!full){body+=`<div class="hint">展开</div>`}
-  else{
+  {
    // 每根
    const seg=bars.slice(live-39,live+1);const mx=Math.max(...seg.map(z=>Math.max(z.buy,z.sell)))||1;
    let sv=`<svg width="${40*8}" height="96" viewBox="0 0 320 96">`;
@@ -457,9 +455,9 @@ function sheet(spec,S,bars,T,sel,live){
    body+=`<div class="card thin"><div class="thr"><span class="l">门槛</span><span class="v">永续 2.5M · 现货 750K</span><span class="go">›</span></div></div>`;
   }
  }
- return `<div class="sheet ${full?'full':'half'}">${lobes}<div class="grab"></div>
+ return `<div class="sheet full">${lobes}<div class="grab"></div>
   <div class="hdr"><span class="bk">${icon('back')}</span><h4>大单与爆仓<small>${spec.spot?'SOL 现货 · Coinbase · 币安 · OKX 合并':spec.sym?spec.sym+' · 币安 · OKX 合并':'SOL · 币安 · OKX · Coinbase 合并'}</small></h4><span class="pill">门槛</span></div>
-  <div class="body">${body}</div></div>`}
+  <div class="body"><div${spec.scroll?' style="margin-top:-420px"':''}>${body}</div></div></div>`}
 
 /* ============================================================ 场景 */
 function fig(spec,cap){const w=document.createElement('div');w.className='fig';w.appendChild(phone(spec));const c=document.createElement('div');c.className='cap';c.innerHTML=cap;w.appendChild(c);return w}
@@ -467,28 +465,28 @@ function mount(){
  const main=document.getElementById('rowMain');main.innerHTML='';
  main.append(
   fig({seed:7,ann:[{x:30,y:640,t:'每根最多一枚签，只画主导方向；点 / 三角 / 三角+金额 三档，按近 300 根分位',c:''},{x:150,y:300,t:'实时这根：光环呼吸，大单一来就扩散一圈',c:'r'}]},'<b>1 · 行情页 · 图上大单签</b>。买签在高点上方朝上、卖签在低点下方朝下，金额签只给最顶那档；进图例带或出窗格就翻到另一侧。签不盖 K 线、不进副图。'),
-  fig({seed:7,sheet:'half',ann:[{x:24,y:300,t:'本根：买从左、卖从右，交汇点就是净方向；底栏被盖住，和分析面板一样',c:'d'}]},'<b>2 · 点一枚签 → 半屏「脉搏」</b>。三个窗口的买卖对撞条 + 一条爆仓，不盖最近的 K 线，底栏保留。再点别的签只换根不关。'),
-  fig({seed:7,sheet:'full'},'<b>3 · 上拉整页</b>。多出：每根对撞柱（近 40 根，双向联动十字线）、价位竖梯（现价上下五档 + 挂单墙）、24 小时爆仓时间轴与今日最大一笔、门槛一行。内容可滚，到顶再下拉收档。'),
+  fig({seed:7,sheet:'full',ann:[{x:24,y:300,t:'本根：买从左、卖从右，交汇点就是净方向；底栏被盖住，和分析面板一样',c:'d'}]},'<b>2 · 点一枚签 → 整页</b>。三个窗口的买卖对撞条 + 一条爆仓，不盖最近的 K 线，底栏保留。再点别的签只换根不关。'),
+  fig({seed:7,sheet:'full',scroll:true},'<b>3 · 一页摆全</b>。本根与爆仓下面接着：每根对撞柱（近 40 根，点一根十字线跳过去）、价位竖梯（现价上下五档 + 挂单墙）、24 小时爆仓时间轴与今日最大一笔、门槛一行。内容可滚，到顶再下拉就关。'),
   fig({seed:7,panel:true},'<b>4 · 分析面板的入口</b>。「主力订单流」分组里：挂单墙开关、图上大单签开关（唯一的新开关，出厂开）、「大单与爆仓」行（副文字实时显示本根净向）、门槛与步长。两个开关互不牵连。')
  );
  const link=document.getElementById('rowLink');link.innerHTML='';
  link.append(
-  fig({seed:7,crosshair:6,sheet:'half',ann:[{x:30,y:300,t:'标题变「12:30」，数值跟手指实时换',c:'d'}]},'<b>5 · 十字线联动</b>。按住图时弹层改读那一根，抬手 3 秒后回到本根。整页里「每根」条上的高亮也跟着走。'),
+  fig({seed:7,crosshair:6,sheet:'full',ann:[{x:30,y:300,t:'标题变「12:30」，数值跟着换',c:'d'}]},'<b>5 · 看某一根</b>。「逐根」里点一根，十字线跳过去、弹层改读那一根，3 秒后回到本根。'),
   fig({seed:7,interval:'1分'},'<b>6 · 1 分钟图</b>。成交密，但一根一枚 + 相对分位，整屏仍只有几枚点和三角，金额签只给最顶那档。'),
   fig({seed:11,interval:'1日'},'<b>7 · 1 日图</b>。签少，P95 以上就带金额；同样的规则，不另设。')
  );
  const states=document.getElementById('rowStates');states.innerHTML='';
  states.append(
-  fig({seed:7,sheet:'half',state:'loading'},'<b>8 · 第一次打开</b>。骨架 ≤ 1 秒；本机桶先到先画，不等服务端历史。'),
-  fig({seed:23,base:0.0423,sym:'TURBO',coinBg:'linear-gradient(145deg,#F2A93B,#D9611E)',sheet:'half',state:'untracked'},'<b>9 · 服务端没跟踪的品种</b>。本机从打开起照算、照画；只在卡底一行小字说明口径短，不关功能、不弹窗。'),
-  fig({seed:7,sheet:'half',toast:'行情断了，正在重连',toastSub:'刚才'},'<b>10 · 断网重连</b>。提示条沿用全 app 的那一条；弹层数字停在最后一刻变灰，签不消失。'),
+  fig({seed:7,sheet:'full',state:'loading'},'<b>8 · 第一次打开</b>。骨架 ≤ 1 秒；本机桶先到先画，不等服务端历史。'),
+  fig({seed:23,base:0.0423,sym:'TURBO',coinBg:'linear-gradient(145deg,#F2A93B,#D9611E)',sheet:'full',state:'untracked'},'<b>9 · 服务端没跟踪的品种</b>。本机从打开起照算、照画；只在卡底一行小字说明口径短，不关功能、不弹窗。'),
+  fig({seed:7,sheet:'full',toast:'行情断了，正在重连',toastSub:'刚才'},'<b>10 · 断网重连</b>。提示条沿用全 app 的那一条；弹层数字停在最后一刻变灰，签不消失。'),
   fig({seed:7,sheet:'full',state:'spot',spot:true},'<b>11 · 现货品种</b>。没有爆仓这件事，整块不出现，整页少一张卡。'),
-  fig({seed:7,sheet:'half',state:'liqEmpty'},'<b>12 · 今天还没爆仓</b>。一行好看的空态，不画假图。'),
-  fig({seed:7,sheet:'half',state:'stale'},'<b>13 · 数据停了</b>。流 20 秒没新成交且不在休市：数字变灰、标题右边写「数据停于 hh:mm」，不弹提示；恢复后无感回来。')
+  fig({seed:7,sheet:'full',state:'liqEmpty'},'<b>12 · 今天还没爆仓</b>。一行好看的空态，不画假图。'),
+  fig({seed:7,sheet:'full',state:'stale'},'<b>13 · 数据停了</b>。流 20 秒没新成交且不在休市：数字变灰、标题右边写「数据停于 hh:mm」，不弹提示；恢复后无感回来。')
  );
  const skins=document.getElementById('rowSkins');skins.innerHTML='';
  skins.append(
-  fig({seed:7,sheet:'half',skin:'terra',dark:0},'<b>14 · 陶土 · 浅</b>。暖纸纹琉璃，强调色赤陶。'),
+  fig({seed:7,sheet:'full',skin:'terra',dark:0},'<b>14 · 陶土 · 浅</b>。暖纸纹琉璃，强调色赤陶。'),
   fig({seed:7,sheet:'full',skin:'classic',dark:0},'<b>15 · 经典 · 浅</b>。白底无光斑，卡片用 raised2 的浅灰。'),
   fig({seed:7,sheet:'full',skin:'sage',dark:1},'<b>16 · 青苔 · 深</b>。深色不画光斑，玻璃卡 6.5% 白。'),
   fig({seed:7,skin:'terra',dark:1},'<b>17 · 陶土 · 深 · 行情页</b>。签在深底上同样的三档。')

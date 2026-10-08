@@ -59,9 +59,10 @@ const venuesOf = p => p.evaluate(() => (window.__of?.()?.venues || []).map(v => 
   const errs = []
   p.on('pageerror', e => errs.push(e.message))
   await p.goto(PC_URL + '?s=BTCUSDT&i=15m&layout=1&drawer=1#chart')
-  await p.waitForFunction(() => (window.__of?.()?.venues || []).some(v => v.exchange === 'bybit' && v.ready), null, { timeout: 60000 }).catch(() => {})
+  // 三本 Bybit 簿都就绪（1000 档快照先后到）
+  await p.waitForFunction(() => { const b = (window.__of?.()?.venues || []).filter(v => v.exchange === 'bybit'); return b.length >= 3 && b.every(v => v.ready) }, null, { timeout: 60000 }).catch(() => {})
   const vs = await venuesOf(p)
-  ok(vs.filter(v => v.startsWith('bybit:') && v.endsWith(':ready')).length >= 2, `Bybit 簿直连就绪：${vs.filter(v => v.startsWith('bybit') || v.startsWith('hyper')).join('，')}`)
+  ok(vs.filter(v => v.startsWith('bybit:') && v.endsWith(':ready')).length >= 3, `Bybit 簿直连就绪：${vs.filter(v => v.startsWith('bybit') || v.startsWith('hyper')).join('，')}`)
   ok(catalogPatched || vs.some(v => v.startsWith('bybit')), catalogPatched ? '线上目录还没有 Bybit，已在目录这一处补上（WebSocket 未拦）' : '线上目录已带 Bybit')
   // 等大单：线上有服务端历史，再等 Bybit 簿上的墙冒出来
   await p.waitForFunction(() => { const s = window.__of?.(); return s && s.live > 0 }, null, { timeout: 60000 }).catch(() => {})
@@ -136,16 +137,14 @@ const venuesOf = p => p.evaluate(() => (window.__of?.()?.venues || []).map(v => 
   await p.evaluate(() => { location.search = '?open=bigtrade' })
   await p.waitForSelector('.bt-wrap.in', { timeout: 20000 }).catch(() => {})
   await sleep(4000)
-  await p.screenshot({ path: OUT + 'm-2-大单与爆仓-半屏.png' })
+  await p.screenshot({ path: OUT + 'm-2-大单与爆仓.png' })
   const sub = await p.evaluate(() => [...document.querySelectorAll('.bt-sheet *')].map(e => e.childElementCount === 0 ? e.textContent : '').filter(t => /合并|·.*·/.test(t || '') && /币安/.test(t || '')).slice(0, 4))
   console.log('弹层口径：', JSON.stringify(sub))
   ok(sub.some(t => /Bybit/.test(t)), `弹层口径带 Bybit：${sub[0] ?? '没找到'}`)
   const over = await p.evaluate(() => [...document.querySelectorAll('.bt-sheet *')].filter(e => e.childElementCount === 0 && /Bybit/.test(e.textContent || '') && e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflow !== 'visible').map(e => e.className))
   ok(!over.length, `弹层五家名字没被截${over.length ? '：' + over.join(',') : ''}`)
-  await p.click('.bt-more').catch(() => {}); await sleep(1500)
-  await p.screenshot({ path: OUT + 'm-3-大单与爆仓-满屏.png' })
   await p.evaluate(() => { const b = document.querySelector('.bt-body'); if (b) b.scrollTop = b.scrollHeight }); await sleep(500)
-  await p.screenshot({ path: OUT + 'm-4-大单与爆仓-满屏底部.png' })
+  await p.screenshot({ path: OUT + 'm-3-大单与爆仓-底部.png' })
   ok(!errs.length, `手机无页面报错${errs.length ? '：' + errs.slice(0, 3).join('；') : ''}`)
   await ctx.close()
 }

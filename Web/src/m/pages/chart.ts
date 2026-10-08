@@ -288,14 +288,14 @@ export function initChart(root: HTMLElement): PageHandle {
     get onBigTrade() { return isMacroSym(sym()) || isLand() || replay ? undefined : () => bt.open() },
     bigTradeText: () => bt.summaryText(),
   }
-  // 图上大单签 + 「大单与爆仓」弹层（开关 Prefs.bigTradeSigns；点签开半屏，横屏只画签）
+  // 图上大单签 + 「大单与爆仓」弹层（开关 Prefs.bigTradeSigns；点签开整页，横屏只画签）
   const btForce = devForce()
   const bt = new BigTradeController({
     chart, symbol: sym, port: () => port,
     thresholds: () => thresholdsFor(panelCtx, baseOfSymbol(sym()).base).effective,
     isLand: () => isLand() || !!replay, isMacro: () => isMacroSym(sym()),
     openThreshold: back => { openOrderFlowEditor(panelCtx, back) },
-    force: btForce === 'full' ? null : btForce,
+    force: btForce,
   })
   const axisCtx: AxisContext = { mode: () => effectivePriceMode(sym()), category: () => axisCategory(sym()) }
 
@@ -438,7 +438,7 @@ export function initChart(root: HTMLElement): PageHandle {
       else if (v === 'settings') openChartSettings(axisCtx)
       else if (v === 'orderflow') openOrderFlowEditor(panelCtx)
       else if (v === 'land') startDrawing()
-      else if (v === 'bigtrade') bt.open(btForce === 'full' ? 'full' : 'half')
+      else if (v === 'bigtrade') bt.open()
     }, 600)
   }
 

@@ -1,8 +1,8 @@
 // Hkline 手机网页版 · 2026-10-08「图上大单签 + 大单与爆仓」验收（393×852，iPhone 视口）
 //   node scripts/m-bigtrade.mjs [地址]
 //   默认地址 http://localhost:5178/web/m/（npx vite --port 5178，开发构建才认 ?bt=）；截图落在 docs/acceptance/大单与爆仓-手机-2026-10-08/
-// 走一遍：图上有签 → 点签开半屏（那根）→ 展开进满屏 → 逐根点一根（十字线跳过去）→ 门槛（弹层收下去）→ 关门槛回原档 → ‹ 关
-// 再截：三套皮肤 × 浅 / 深的半屏，满屏，骨架 / 现货 / 爆仓空 / 停住 / 不跟。有 ✗ 退出码 1。
+// 走一遍：图上有签 → 点签一开就是整页（那根，每张卡都在）→ 逐根点一根（十字线跳过去）→ 门槛（弹层收下去）→ 关门槛升回来 → 往下拉关 → ‹ 关
+// 再截：三套皮肤 × 浅 / 深的整页（顶 / 底），骨架 / 现货 / 爆仓空 / 停住 / 不跟。有 ✗ 退出码 1。
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -29,12 +29,13 @@ async function page({ skin = 'sage', scheme = 'light', query = '', symbol = 'BTC
   await p.goto(URL_ + query + '#chart')
   return { ctx, p, errs }
 }
-// BT_ONLY=state-stale,sage-light-full-bottom 只重截点名的几张（其余照跑核对、不覆盖）
+// BT_ONLY=state-stale,sage-light-bottom 只重截点名的几张（其余照跑核对、不覆盖）
 const ONLY = process.env.BT_ONLY ? process.env.BT_ONLY.split(',') : null
 const shot = (p, name) => (ONLY && !ONLY.includes(name) ? Promise.resolve() : p.screenshot({ path: OUT + `m-${name}.png` }))
 const hero = p => p.evaluate(() => ({
   title: document.querySelector('.bt-ht')?.textContent, rt: document.querySelector('[data-card="hero"] h5 .rt')?.textContent,
-  full: document.querySelector('.bt-sheet')?.classList.contains('full'), parked: document.querySelector('.bt-wrap')?.classList.contains('parked'),
+  all: !!document.querySelector('.bt-bars svg.bt-cols') && !!document.querySelector('.bt-lad .bt-card') && !!document.querySelector('.bt-thr') && !document.querySelector('.bt-more'),
+  height: Math.round(document.querySelector('.bt-sheet')?.getBoundingClientRect().height ?? 0), parked: document.querySelector('.bt-wrap')?.classList.contains('parked'),
   open: !!document.querySelector('.bt-wrap.in'),
 }))
 
@@ -52,22 +53,12 @@ const hero = p => p.evaluate(() => ({
     await p.waitForSelector('.bt-wrap.in', { timeout: 5000 }).catch(() => {})
     await sleep(900)
     const h = await hero(p)
-    ok(h.open && !h.full, `点签开半屏：${h.title} · ${h.rt}`)
-    await shot(p, 'flow-1-sign-half')
-    // 开着再点另一枚：只换根不关
-    if (signs.length > 1) {
-      const s2 = signs[signs.length - 1]
-      await p.touchscreen.tap(s2.x, s2.y); await sleep(400)
-      const h2 = await hero(p)
-      ok(h2.open && h2.title !== h.title, `开着点另一枚只换根：${h.title} → ${h2.title}`)
-    }
+    ok(h.open && h.all && h.height >= 760, `点签一开就是整页（${h.height}px，每根 / 价位 / 门槛都在、没有「展开」）：${h.title} · ${h.rt}`)
+    await shot(p, 'flow-1-sign-open')
   } else {
     await p.evaluate(() => { location.search = '?open=bigtrade' }); await p.waitForSelector('.bt-wrap.in', { timeout: 8000 })
   }
-  await p.click('.bt-more'); await sleep(600)
-  ok((await hero(p)).full, '展开 → 满屏')
   await sleep(800)
-  await shot(p, 'flow-2-full')
   const col = await p.evaluate(() => { const g = [...document.querySelectorAll('svg.bt-cols g')]; const sv = document.querySelector('svg.bt-cols').getBoundingClientRect(); const i = Math.max(0, g.length - 6); return { t: g[i]?.dataset.t, x: sv.left + (i + 0.5) * sv.width / g.length, y: sv.top + sv.height / 2 } })
   await p.mouse.click(col.x, col.y); await sleep(500)
   const after = await p.evaluate(() => ({ on: document.querySelector('svg.bt-cols g.on')?.dataset.t, title: document.querySelector('.bt-ht')?.textContent }))
@@ -79,7 +70,15 @@ const hero = p => p.evaluate(() => ({
   await shot(p, 'flow-4-threshold')
   await p.evaluate(() => history.back()); await sleep(700)
   const back = await hero(p)
-  ok(back.open && !back.parked && back.full, `关门槛回到原档（${back.full ? '满屏' : '半屏'}）`)
+  ok(back.open && !back.parked && back.all, '关门槛：弹层整页升回来')
+  // 标题行往下拉 60：不够，弹回；再拉 160：关
+  const hd = await p.evaluate(() => { const r = document.querySelector('.bt-hdr h4').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })
+  const drag = async dy => { await p.mouse.move(hd.x, hd.y); await p.mouse.down(); for (let k = 1; k <= 8; k++) { await p.mouse.move(hd.x, hd.y + dy * k / 8); await sleep(40) } await sleep(200); await p.mouse.up(); await sleep(600) }
+  await drag(60)
+  ok((await hero(p)).open, '往下拉一点：弹回，不关')
+  await drag(160)
+  ok(!(await hero(p)).open, '往下拉过 110：关掉')
+  await p.evaluate(() => { location.search = '?open=bigtrade' }); await p.waitForSelector('.bt-wrap.in', { timeout: 20000 }); await sleep(800)
   await p.click('.bt-bk'); await sleep(500)
   ok(!(await hero(p)).open, '‹ 关掉')
   ok(!errs.length, `走一遍无页面报错${errs.length ? '：' + errs.slice(0, 3).join('；') : ''}`)
@@ -92,14 +91,11 @@ for (const skin of ['sage', 'terra', 'classic']) {
     const { ctx, p, errs } = await page({ skin, scheme, query: '?open=bigtrade' })
     await p.waitForSelector('.bt-wrap.in', { timeout: 20000 }).catch(() => {})
     await sleep(3500)
-    await shot(p, `${skin}-${scheme}-half`)
-    ok(!errs.length && (await hero(p)).open, `${skin} ${scheme} 半屏${errs.length ? '：' + errs[0] : ''}`)
-    if (skin === 'sage' || scheme === 'dark') {
-      await p.click('.bt-more'); await sleep(1500)
-      await shot(p, `${skin}-${scheme}-full`)
-      await p.evaluate(() => { const b = document.querySelector('.bt-body'); b.scrollTop = b.scrollHeight }); await sleep(400)
-      await shot(p, `${skin}-${scheme}-full-bottom`)
-    }
+    await shot(p, `${skin}-${scheme}`)
+    const h = await hero(p)
+    ok(!errs.length && h.open && h.all, `${skin} ${scheme} 整页${errs.length ? '：' + errs[0] : ''}`)
+    await p.evaluate(() => { const b = document.querySelector('.bt-body'); b.scrollTop = b.scrollHeight }); await sleep(400)
+    await shot(p, `${skin}-${scheme}-bottom`)
     await ctx.close()
   }
 }

@@ -21,6 +21,8 @@ import '../../styles/bigTrade.css'
 export const SHEET_H = 780
 /** 往下拉过这么多就关 */
 export const CLOSE_PX = 110
+/** 开弹层后吞掉补发 click 的时长（毫秒） */
+const GHOST_MS = 400
 
 const fmt = orderFlowAmount
 const MINUS = '−'
@@ -344,6 +346,10 @@ export class BigTradeSheet {
     q('.bt-pill').addEventListener('click', () => this.hooks.onThreshold())
     this.thrEl.addEventListener('click', () => this.hooks.onThreshold())
     scrim.addEventListener('click', () => this.close())
+    // 点签是在 touchend 上开的：随后浏览器补发的那下 click 会落在刚铺上的遮罩 / 弹层里，把它当场关掉或误点一根。
+    // 开后这一小段把补发的 click 吞掉
+    const born = performance.now()
+    wrap.addEventListener('click', e => { if (performance.now() - born < GHOST_MS) { e.stopPropagation(); e.preventDefault() } }, true)
     this.barsEl.addEventListener('click', e => this.pickBar(e))
     this.wireDrag()
 
