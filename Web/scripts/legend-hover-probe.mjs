@@ -154,7 +154,7 @@ const SCN = {
   ofband: { dom: { target: '#ofPress [data-of="band"][data-v="2"]', box: '#sidePanel' }, panel: 'watch', of: true },
   ofvenue: { dom: { target: '#ofVenues .of-vc', box: '#sidePanel' }, panel: 'watch', of: true },
   ofwall: { dom: { target: '#ofWalls .of-wall', box: '#sidePanel' }, panel: 'watch', of: true },
-  ofdrawer: { dom: { target: '.of-dr-rows .of-dr-row', box: '.of-dr-rows' }, panel: 'watch', of: true, drawer: true },
+  ofdrawer: { dom: { target: '.of-kr-list .of-kr', box: '.of-kr-list' }, panel: 'watch', of: true, drawer: true },
   ofpanel: { dom: { target: '#ofpThr [data-ofp="settings"]', box: '#sidePanel' }, panel: 'flow', of: true },
   sector: { dom: { target: '#secBody tr[data-sec]', box: '#secBody' }, hash: '#sectors', secs: Number(process.env.LH_SECTOR_SECS || 25) },
 }

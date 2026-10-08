@@ -1339,7 +1339,7 @@ async function partLayout() {
   }
 
   // ---- 侧栏块之间（自选 / 盘口 / 详情）
-  // 订单流第一次进侧栏时会把「清算 / 成交额」两块统计摆一次（orderflow/index.ts seedStats，之后尊重用户开合）：这里只量三块，先把那次「已摆过」记上
+  // 侧栏只量三块：把小部件定成三块；seededStats 2026-10-08 起不再读（开订单流不再替用户摆统计块），留着写入无害
   await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('hkline-web-v1')); s.slots.widgets = ['watch', 'book', 'detail']; localStorage.setItem('hkline-web-v1', JSON.stringify(s)); const p = JSON.parse(localStorage.getItem('hkline-web-of-v1') || '{}'); p.seededStats = true; localStorage.setItem('hkline-web-of-v1', JSON.stringify(p)) })
   await page.reload({ waitUntil: 'domcontentloaded' }); await ready(); await wait(1500)
   const hOf = () => page.evaluate(() => [...document.querySelectorAll('#sidePanel [data-w]')].map(e => [e.dataset.w, Math.round(e.getBoundingClientRect().height)]))
