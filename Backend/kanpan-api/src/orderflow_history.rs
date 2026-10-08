@@ -162,7 +162,14 @@ fn has_feed(v:&Venue)->bool {[BINANCE,OKX,COINBASE,BYBIT,HYPERLIQUID].contains(&
 
 /// 这只币此刻要跟的簿（品种表里接好了连接种类的那几家）。
 async fn tracked_venues(base:&str)->Vec<Venue> {tracked(instruments::venues(base).await)}
-fn tracked(rows:Vec<Venue>)->Vec<Venue> {rows.into_iter().filter(has_feed).collect()}
+fn tracked(rows:Vec<Venue>)->Vec<Venue> {tracked_with(rows,*BYBIT_SPOT_SHED.borrow())}
+fn tracked_with(rows:Vec<Venue>,spot_shed:bool)->Vec<Venue> {rows.into_iter().filter(|v|has_feed(v)&&!(spot_shed&&bybit_spot(v))).collect()}
+fn bybit_spot(v:&Venue)->bool {v.exchange==BYBIT&&v.product==Product::Spot}
+
+/// 资源闸门卸的第一层是 Bybit 现货（[`shed_label`] 第 1 档）：同一只币币安 / OKX / Coinbase 的现货都在跟，
+/// 它是五家里最可有可无的一份。卸下时各跟踪任务马上重取品种表（[`refresher`]），把它的簿停掉、挂着的单记失联；
+/// 放回时同样马上重取、重新订上。
+static BYBIT_SPOT_SHED:std::sync::LazyLock<watch::Sender<bool>>=std::sync::LazyLock::new(||watch::channel(false).0);
 
 /// 品种表的一行 → 簿的身份。id 与手机上 `OrderFlowVenue.id` 同一个写法。
 fn info(v:&Venue)->VenueInfo {
@@ -500,6 +507,18 @@ impl Tracker {
   hub::add(fresh,&self.events,&self.control);
  }
 
+ /// 资源闸门卸下 Bybit 现货：停掉它的簿，挂着的单按最后一次看到失联结束。
+ fn drop_bybit_spot(&mut self) {
+  let ids:Vec<String>=self.model.venue_ids().into_iter().filter(|id|id.starts_with("bybit:spot:")).collect();
+  if ids.is_empty() {return}
+  for id in &ids {
+   self.model.remove_venue(id);
+   self.open.remove(id);self.inflight.remove(id);self.retry.remove(id);self.failures.remove(id);self.epochs.remove(id);self.last_trade.remove(id);
+  }
+  tracing::debug!("Orderflow history: {} sheds {}",self.base,ids.join(", "));
+  hub::remove(ids,&self.events);
+ }
+
  fn sync_epoch(&mut self,id:&str) {
   let Some(epoch)=self.model.book_mut(id).map(|b|b.epoch) else {return};
   self.epochs.entry(id.to_string()).or_insert_with(||Arc::new(AtomicU64::new(0))).store(epoch,Ordering::Relaxed);
@@ -647,6 +666,7 @@ impl Tracker {
    }
   }
   self.add_venues(&r.venues);
+  if *BYBIT_SPOT_SHED.borrow() {self.drop_bybit_spot();}
   self.write_ended().await;
   tracing::debug!("Orderflow history: {} {}/{} books ready, {} live",self.model.base,self.model.ready_count(),self.model.venue_ids().len(),self.model.live_count());
  }
@@ -716,8 +736,11 @@ where F:FnMut(bool)->Fut,Fut:std::future::Future<Output=Refreshed> {
  let mut tick=tokio::time::interval_at(tokio::time::Instant::now()+every,every);
  tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
  let (mut resolved_at,mut resolved_day)=(now_ms(),model::reference_day(now_ms()));
+ let mut spot_shed=BYBIT_SPOT_SHED.subscribe();
+ spot_shed.mark_unchanged();
  loop {
-  tokio::select! {_=tx.closed()=>return,_=tick.tick()=>{}}
+  // Bybit 现货卸下 / 放回：不等下一拍，马上重取。
+  tokio::select! {_=tx.closed()=>return,_=tick.tick()=>{},Ok(())=spot_shed.changed()=>{}}
   let now=now_ms();
   let due=now-resolved_at>=THRESHOLDS_EVERY_MS||model::reference_day(now)!=resolved_day;
   let r=tokio::select! {_=tx.closed()=>return,r=fetch(due)=>r};
@@ -934,8 +957,12 @@ impl Layer {
  fn label(self)->&'static str {match self {Layer::Major=>"majors",Layer::OnDemand=>"on-demand",Layer::Fixed=>"fixed",Layer::Alt=>"alts",Layer::Hot=>"hot"}}
 }
 
-/// 资源闸门卸到第几层：0 不卸，1 卸热点，2 再卸山寨，3 再卸固定。主币与按需不卸。
-fn shed_label(level:u8)->&'static str {match level {0=>"nothing",1=>"hot",2=>"hot+alts",_=>"hot+alts+fixed"}}
+/// 资源闸门卸到第几层：0 不卸，1 卸 Bybit 现货（[`BYBIT_SPOT_SHED`]），2 再卸热点，3 再卸山寨，4 再卸固定。主币与按需不卸。
+fn shed_label(level:u8)->&'static str {
+ match level {0=>"nothing",1=>"bybit-spot",2=>"bybit-spot+hot",3=>"bybit-spot+hot+alts",_=>"bybit-spot+hot+alts+fixed"}
+}
+/// 能卸几层：Bybit 现货、热点、山寨、固定。
+const SHED_LEVELS:usize=4;
 
 /// 闸门这一分钟该做什么。
 #[derive(Clone,Copy,Debug,PartialEq)]
@@ -948,9 +975,9 @@ enum Step {Hold,Shed,Floor,Restore(u32)}
 /// 等待回到十分钟。原来只看「这一分钟没超」、固定等十分钟：卸了热点刚好在线下、放回来又超的时候每 13 分钟翻一次，
 /// 6 小时 27 次，每次热点 30 只全部停了重起（拉品种表、收盘、订阅、排快照额度、挂着的单记失联再读回）。
 #[derive(Debug)]
-struct Gate {clear:u32,wait:[u32;3],restored_at:[Option<i64>;3]}
+struct Gate {clear:u32,wait:[u32;SHED_LEVELS],restored_at:[Option<i64>;SHED_LEVELS]}
 
-impl Default for Gate {fn default()->Self {Self{clear:0,wait:[SHED_RECOVER_MINUTES;3],restored_at:[None;3]}}}
+impl Default for Gate {fn default()->Self {Self{clear:0,wait:[SHED_RECOVER_MINUTES;SHED_LEVELS],restored_at:[None;SHED_LEVELS]}}}
 
 impl Gate {
  fn step(&mut self,load:&resources::Load,shed:u8,now:i64)->Step {
@@ -959,7 +986,7 @@ impl Gate {
   }
   if load.over() {
    self.clear=0;
-   if shed>=3 {return Step::Floor}
+   if shed as usize>=SHED_LEVELS {return Step::Floor}
    let layer=shed as usize;
    if self.restored_at[layer].take().is_some_and(|t|now-t<SHED_FLAP_MS) {
     self.wait[layer]=(self.wait[layer]*2).min(SHED_RECOVER_CAP_MINUTES);
@@ -1003,9 +1030,9 @@ impl Entry {
  fn layer(&self,now:i64,shed:u8)->Option<Layer> {
   if self.major {Some(Layer::Major)}
   else if self.on_demand(now) {Some(Layer::OnDemand)}
-  else if self.fixed&&shed<3 {Some(Layer::Fixed)}
-  else if self.alt_until>now&&shed<2 {Some(Layer::Alt)}
-  else if self.hot_until>now&&shed<1 {Some(Layer::Hot)}
+  else if self.fixed&&shed<4 {Some(Layer::Fixed)}
+  else if self.alt_until>now&&shed<3 {Some(Layer::Alt)}
+  else if self.hot_until>now&&shed<2 {Some(Layer::Hot)}
   else {None}
  }
  /// 满了可以踢的：只因为按需或热点在跟的。
@@ -1191,6 +1218,7 @@ impl Registry {
   match gate.step(&load,shed,now) {
    Step::Shed=>{
     self.shed.store(shed+1,Ordering::Relaxed);
+    BYBIT_SPOT_SHED.send_if_modified(|v|!std::mem::replace(v,true));
     tracing::warn!("Orderflow history: resource gate over ({}), shedding {}",load.describe(),shed_label(shed+1));
     let mut entries=self.lock();
     self.settle(&mut entries,now);
@@ -1201,6 +1229,7 @@ impl Registry {
    Step::Floor=>tracing::warn!("Orderflow history: resource gate still over ({}) with only majors and on-demand left",load.describe()),
    Step::Restore(waited)=>{
     self.shed.store(shed-1,Ordering::Relaxed);
+    if shed-1==0 {BYBIT_SPOT_SHED.send_if_modified(|v|std::mem::replace(v,false));}
     tracing::info!("Orderflow history: resource gate clear for {waited} minutes ({}), now shedding {}",load.describe(),shed_label(shed-1));
     let lists=std::mem::take(&mut *self.lists.lock().unwrap_or_else(|e|e.into_inner()));
     self.apply(Layer::Fixed,&lists.fixed,now);
@@ -2013,14 +2042,15 @@ mod tests {
  fn simulate_gate(minutes:i64,base:impl Fn(i64)->u64,hot:u64)->(Vec<i64>,Vec<i64>,u8) {
   let unit=resources::Limits{memory_bytes:Some(1<<30),cpu_percent:Some(200.0)};
   let mut gate=Gate::default();
-  let (mut shed,mut hot_since)=(1u8,None::<i64>);
+  // 第 2 档：Bybit 现货与热点都卸了。
+  let (mut shed,mut hot_since)=(2u8,None::<i64>);
   let (mut restores,mut sheds)=(Vec::new(),Vec::new());
   for m in 1..=minutes {
    let ramp=hot_since.map_or(0,|t|hot*((m-t).min(3) as u64)/3);
    let load=resources::Load{rss_bytes:Some(base(m)+ramp),cpu_percent:Some(40.0),limits:unit};
    match gate.step(&load,shed,m*60_000) {
-    Step::Shed=>{shed+=1;if shed==1 {hot_since=None;}sheds.push(m);},
-    Step::Restore(_)=>{shed-=1;if shed==0 {hot_since=Some(m);}restores.push(m);},
+    Step::Shed=>{shed+=1;if shed==2 {hot_since=None;}sheds.push(m);},
+    Step::Restore(_)=>{shed-=1;if shed==1 {hot_since=Some(m);}restores.push(m);},
     Step::Floor|Step::Hold=>{},
    }
   }
@@ -2039,7 +2069,7 @@ mod tests {
 
   // 放回来不超的层：十分钟放回，之后一直不卸。
   let (restores,sheds,shed)=simulate_gate(6*60,|_|600*mb,100*mb);
-  assert_eq!((restores,sheds,shed),(vec![10],vec![],0));
+  assert_eq!((restores,sheds,shed),(vec![10],vec![],1),"热点十分钟放回；放回后离线不够远，Bybit 现货留着卸");
 
   // 翻过几次之后负载真的降下来了（别的占用走了）：不能永远卸着，最多等一个封顶的间隔就放回并留住。
   let (restores,_,shed)=simulate_gate(8*60,|m|if m<150 {600*mb} else {300*mb},250*mb);
@@ -2049,7 +2079,7 @@ mod tests {
 
   // 贴着线下（没超、但离线不到一成五）不算清：放回来一点就超，不去试。
   let (restores,_,shed)=simulate_gate(6*60,|_|760*mb,50*mb);
-  assert_eq!((restores.len(),shed),(0,1),"离线太近不放回：{restores:?}");
+  assert_eq!((restores.len(),shed),(0,2),"离线太近不放回（Bybit 现货与热点都还卸着）：{restores:?}");
  }
 
  #[tokio::test] async fn a_base_started_again_waits_for_its_previous_tracker() {
@@ -2573,6 +2603,18 @@ mod tests {
   let v=Venue{exchange:COINBASE,product:Product::Spot,instrument:"BTC-USD".into(),margin:None,
    notional:instruments::Notional::Linear{multiplier:1.0},tick:0.01,expiry_ms:None,price_scale:None,listed_base:"BTC".into()};
   assert_eq!(info(&v).id,"coinbase:spot:BTC-USD");
+ }
+
+ #[test] fn bybit_spot_is_the_first_thing_shed() {
+  use crate::venues::orderflow::tests::{NOW,all};
+  let rows=instruments::pick(&all(),"BTC",NOW);
+  let has=|rows:&[Venue]|rows.iter().any(bybit_spot);
+  let full=tracked_with(rows.clone(),false);
+  assert!(has(&full));
+  let shed=tracked_with(rows.clone(),true);
+  assert!(!has(&shed),"卸下时品种表里不再有 Bybit 现货");
+  assert_eq!(shed.len()+full.iter().filter(|v|bybit_spot(v)).count(),full.len(),"别的一本不少");
+  assert_eq!((shed_label(0),shed_label(1),shed_label(2)),("nothing","bybit-spot","bybit-spot+hot"));
  }
 
  #[test] fn btc_is_tracked_on_all_five_exchanges() {

@@ -66,11 +66,13 @@ serve 进程里常驻跟踪各家挂单簿，按默认门槛判出逐单大单�
 - **币安 REST 快照**：U 本位 / 币本位 / 现货三条通道，每条任意 60 秒最多 30 次、两次至少隔 1 秒（IP 权重的四分之一）；429 / 418 按 Retry-After 停（没给就 60 秒 / 5 分钟），打一条 warn；队里按 主币 → 按需 → 固定 → 山寨 → 热点 排先后。
 - **OKX**：新建连接至少隔 400 毫秒（≤ 3 条/秒）；订退攒 1 秒成一批、一批最多 20 本（消息远小于 64 KB），每条连接一小时用到 400 次（上限 480）还要发就整条重连；一条连接 50 本。
 - **Coinbase**：一本一条连接（level2 的序号按整条连接计，一条多本会互相搅乱断档判定），新建至少隔 250 毫秒。
+- **Bybit**（2026-10-08，现货 / U 本位 linear / 币本位 inverse 三种连接）：新建连接至少隔 250 毫秒、5 分钟内最多 100 条（官方同一 IP 5 分钟 500 条的五分之一）；一条连接 50 本，每本订 `orderbook.1000` + `publicTrade` 两个话题，一条订阅消息最多 10 个 args（5 本）；每 20 秒发应用层 `{"op":"ping"}`；主域名 `stream.bybit.com` 连上活不过一分钟，下一次换备用域名 `stream.bytick.com`，两边轮着试。快照在流里（`type:"snapshot"`），不走 REST。
+- **Hyperliquid**（2026-10-08，永续）：不另开连接，挂进 `venues::hyperliquid::hub` 那条全进程共用的上游（行情中继也在用），按「跟踪」那份名额（300 个话题）订 `l2Book` + `trades`；重连重订由那条 hub 自己做，限速沿用它的。`l2Book` 每帧是整本（两侧各最多 20 档），不存在断档。
 - **库**：挂着的单每 15 秒刷一次，只写新出现的、名义 / 成交 / 门槛变了 1% 以上的、以及 60 秒没写过的（刷新 `seen_ms`，重启读回时 2 分钟没见的才算失联）；所有币合起来最多同时占 3 条库连接（池子一共 8 条）。
 
 ### 资源闸门（`resources.rs`）
 
-进程每 15 秒读 `/proc/self/status` 与 `/proc/self/stat`。RSS > 2.5 GB 或最近一分钟 CPU > 300%（100% = 一个核）算「超」，两条线都再压到进程所在 cgroup 上限（单元的 `MemoryMax` / `CPUQuota`）的四分之三以内——`install.py` 装的单元是 1 GB / 200%，实际的线就是约 805 MB / 150%：闸门每分钟看一次，超的那一分钟起停止新增并卸掉热点，下一分钟还超再卸山寨，再下一分钟卸固定；连续 10 分钟不超再一层层加回来；每卸一层 20 秒后调一次 glibc 的 `malloc_trim`，让空出来的内存真的还给系统、RSS 降得下来。主币、按需与行情转发一概不动。本机 macOS 没有 `/proc`，状态行显示 `RSS ?, CPU ?`，一律当没超。
+进程每 15 秒读 `/proc/self/status` 与 `/proc/self/stat`。RSS > 2.5 GB 或最近一分钟 CPU > 300%（100% = 一个核）算「超」，两条线都再压到进程所在 cgroup 上限（单元的 `MemoryMax` / `CPUQuota`）的四分之三以内——`install.py` 装的单元是 1 GB / 200%，实际的线就是约 805 MB / 150%：闸门每分钟看一次，超的那一分钟起停止新增并先卸 Bybit 现货（所有币在 Bybit 现货上那一本，2026-10-08 起；它和币安 / OKX 现货重叠最多、一本 1000 档最占内存），下一分钟还超再卸热点，再下一分钟卸山寨，再下一分钟卸固定；连续 10 分钟不超再一层层加回来；每卸一层 20 秒后调一次 glibc 的 `malloc_trim`，让空出来的内存真的还给系统、RSS 降得下来。主币、按需与行情转发一概不动。本机 macOS 没有 `/proc`，状态行显示 `RSS ?, CPU ?`，一律当没超。
 
 ### 非币门槛标定
 
@@ -84,12 +86,34 @@ T = round125(0.03 × D)，夹在 [5 万, 200 万]，D = 该币各本 U 本位永
 
 serve 缺省 `RUST_LOG=warn`，下面几行是 info，要看就在 `service.env` 里把它设成 `RUST_LOG=warn,kanpan_api::orderflow_history=info`（上线脚本会设）：
 
-- 每分钟 `Orderflow history: tracking N (majors …, on-demand …, fixed …, alts …, hot …), K connections, RSS …, CPU … over the last minute, shedding …`
+- 每分钟 `Orderflow history: tracking N (majors …, on-demand …, fixed …, alts …, hot …), K connections, RSS …, CPU … over the last minute, shedding …`（`shedding` 依次是 `nothing` / `bybit-spot` / `bybit-spot+hot` / `bybit-spot+hot+alts` / `bybit-spot+hot+alts+fixed`）
 - 每分钟 `connections per minute: binance-um-depth a/b conns … books … streams … frames; …`（各种连接的条数、簿数、流数、帧数、丢帧数）
 - 快照队列每分钟一行（各通道本分钟发出、排队、最久等了多久）。
 - 每小时 `Storage budget: market history X/30 GiB (orderflow_heat …/20 GiB, …)` 与每次技术指标提醒触发 `… condition … triggered: …` 两行不管 `RUST_LOG` 怎么设都会出（`main.rs` 固定放行 `kanpan_api::storage_budget`、`kanpan_api::conditions` 的 info）。
 
+Bybit 连接报错（订阅被拒等）warn `Orderflow history: bybit-linear connection N error …`，Hyperliquid 跟踪订阅报错 warn `Orderflow history: hyperliquid tracking error …`。
+
 `journalctl -u kanpan-api | grep -c WARN` 正常应接近 0；`market_meta` 的 `answered with another company's page` 是行情元数据那一侧的旧告警，和订单流无关。
+
+### 线上实测：五家交易所（2026-10-08，kanpan-sg，接入 Bybit 与 Hyperliquid 之后）
+
+原文两行（`journalctl -u kanpan-api`）：
+
+```
+Orderflow history: tracking 158 (majors 3, on-demand 14, fixed 78, alts 36, hot 27), 65 connections, RSS 211 MB (gate 805 MB), CPU 44% (gate 150%) over the last minute, shedding nothing
+Orderflow history: connections per minute: binance-um-depth 1/1 conns 162 books 162 streams 16253 frames; binance-um-trades 1/1 conns 162 books 162 streams 26520 frames; binance-cm 1/1 conns 27 books 54 streams 2514 frames; binance-spot 1/1 conns 54 books 108 streams 7753 frames; okx 4/4 conns 194 books 88194 frames; coinbase 51/51 conns 51 books 34121 frames; bybit-spot 1/1 conns 47 books 13672 frames; bybit-linear 3/3 conns 145 books 51304 frames; bybit-inverse 1/1 conns 21 books 2861 frames; hyperliquid 1/1 conns 45 books 3690 frames
+```
+
+| | 连接 | 簿 | 每分钟帧 |
+| --- | --- | --- | --- |
+| 币安（U 本位深度 / 成交、币本位、现货） | 4 | 405 | ≈ 53,000 |
+| OKX | 4 | 194 | ≈ 88,000 |
+| Coinbase | 51 | 51 | ≈ 34,000 |
+| Bybit（现货 / linear / inverse） | 1 / 3 / 1 | 47 / 145 / 21 | ≈ 68,000 |
+| Hyperliquid（共用 hub） | 1 | 45 | ≈ 3,700 |
+
+- 进程 RSS 约 200–210 MB、CPU 约 40–45% 个核，远在闸门（805 MB / 150%）以内，没卸任何一层。
+- 热力写入从约 5,460 涨到约 6,350 MB/天的行（121 段/秒）。`orderflow_heat` 在接入前就已超出它 20 GiB 的分预算（21.4 GiB），由磁盘预算按 90% 自己修剪，见下「磁盘预算」。
 
 ### 本机实测（2026-09-25，M4 Mac，连真实交易所，隔离库）
 
@@ -162,18 +186,21 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
 
 ### 爆仓分钟聚合（2026-10-08，`liq.rs`、表 `orderflow_liq`，迁移 0052）
 
-另开三路交易所连接收强平推送（不走成交那条跟踪任务）：币安 U 本位 `wss://fstream.binance.com/market/ws/!forceOrder@arr`（旧的 `/ws/` 路径实测 30 秒 0 条）、
-币本位 `wss://dstream.binance.com/ws/!forceOrder@arr`、OKX `wss://ws.okx.com:8443/ws/v5/public` 订 `liquidation-orders` 的 SWAP 与 FUTURES；Coinbase 没有强平。
-只记 `REGISTRY` 在跟的 base；卖出 / OKX `posSide=long` 记「多头被平」，美元额按品种表面值算（U 本位均价 × 已成交量 × 缩放倍数，反向合约张数 × 面值），
-交易所时刻离此刻 10 秒以内才信。一只一分钟一行写进 `orderflow_liq`（没有爆仓的分钟没有行）：多头额、空头额、笔数、这分钟最大一笔的额 / 价 / 哪边（0 多 1 空）/ 哪家（0 币安 1 OKX）。
+另开五路交易所连接收强平推送（不走成交那条跟踪任务）：币安 U 本位 `wss://fstream.binance.com/market/ws/!forceOrder@arr`（旧的 `/ws/` 路径实测 30 秒 0 条）、
+币本位 `wss://dstream.binance.com/ws/!forceOrder@arr`、OKX `wss://ws.okx.com:8443/ws/v5/public` 订 `liquidation-orders` 的 SWAP 与 FUTURES、
+Bybit U 本位 `wss://stream.bybit.com/v5/public/linear` 与币本位 `…/v5/public/inverse` 按合约订 `allLiquidation.{symbol}`（2026-10-08；一条订阅消息 10 个合约，每 30 秒按在跟名单增订 / 退订，备用域名 `stream.bytick.com`）。
+Coinbase（只接现货）没有强平；Bybit 现货没有仓位、没有强平推送（`allLiquidation` 只在 linear / inverse 上有）；Hyperliquid 公开 WS 与 info 接口都没有全市场强平流（只有按地址查自己的），无公开数据源，不接。
+只记 `REGISTRY` 在跟的 base；卖出 / OKX `posSide=long` / Bybit `S=Buy` 记「多头被平」，美元额按品种表面值算（U 本位均价 × 已成交量 × 缩放倍数，反向合约张数 × 面值），
+交易所时刻离此刻 10 秒以内才信。一只一分钟一行写进 `orderflow_liq`（没有爆仓的分钟没有行）：多头额、空头额、笔数、这分钟最大一笔的额 / 价 / 哪边（0 多 1 空）/ 哪家（0 币安 1 OKX 2 Bybit，接口里的 `max_ex`）。
 `GET /v1/market/orderflow/liq?base=&from=&to=` 读，回 `{base,tracked,rows:[[分钟,多头额,空头额,笔数,最大额,最大价,最大边,最大家],…]}`，最长 3 天、两端按分钟取整、不分页。网页版「大单」抽屉用。
 
-- 日志（info）：每小时两行 `Orderflow liq: last 3600s binance-um N seen, K kept, U unmapped, C connects; binance-cm …; okx …`（各路收到、记下、对不上面值、连了几次）、`Orderflow liq: last 3600s wrote N base-minutes; dropped a (queue full), b (write failed)`，加上 `Orderflow liq: purge deleted …; table … bytes`；
-  连接断开 debug、OKX 订阅出错与写失败 warn（写失败一分钟最多一行）。重连照 hub：建连共用限频与币安闸门，1 秒起翻倍到 30 秒、±50% 抖动，活过 60 秒复位。
+- 日志（info）：每小时两行 `Orderflow liq: last 3600s binance-um N seen, K kept, U unmapped, C connects; binance-cm …; okx …; bybit-linear …; bybit-inverse …`（各路收到、记下、对不上面值、连了几次）、`Orderflow liq: last 3600s wrote N base-minutes; dropped a (queue full), b (write failed)`，加上 `Orderflow liq: purge deleted …; table … bytes`；
+  连接断开 debug、OKX / Bybit 订阅出错与写失败 warn（写失败一分钟最多一行）。重连照 hub：建连共用限频与币安闸门，1 秒起翻倍到 30 秒、±50% 抖动，活过 60 秒复位。
 - 体积：比 flow 稀得多（只有爆仓的分钟才有行），上限同 flow 约 95 万行，不设闸门。看写入：`SELECT base,count(*),max(minute_ms) FROM orderflow_liq GROUP BY 1 ORDER BY 2 DESC LIMIT 10`。
 - 同参数 20 秒内只读一次库，答复 `Cache-Control: public, max-age=20`、支持 gzip；和 `/history`、热力、flow 共用两个读名额与每来源并发名额。没在跟的 base 回 `tracked:false`、空 `rows`，不起跟。
 - 关停时把还没写的分钟全交给写库线程（同 flow 的收尾）。
 - 实测（2026-10-08 kanpan-sg）：币安强平推送是快照——同一合约 1 秒内只推最新一笔：15 分钟 U 本位 309 笔、70 只、合计约 32 万美元，同一合约相邻两次推送（`E`）最短正好 1000 ms，239 个间隔里 19 个 ≤ 1.1 秒（这些就是连环爆仓时被吞掉了中间几笔），所以币安一侧的额与笔数是下限、平静行情差得少、连环爆仓时会明显偏低；OKX 同期 60 笔全是 SWAP（FUTURES 0 笔），同一合约间隔最短 61 ms，看不出按秒抽样。dstream 那一路 15 分钟 309 笔与 U 本位逐笔相同、没有一笔 `…USD_PERP`，按家族各认各的之后它眼下不贡献数据，留着等币安把币本位的强平推回来。被吞的那部分到底多大没有可对照的全量来源，没量。
+- 实测（2026-10-08 kanpan-sg，接 Bybit 后）：`/liq` 出现 `哪家=2` 的行，如 `WLD [1791469560000,49,0,1,49,0.5096,0,2]`、`AVNT [1791469500000,0,811,1,811,0.13953,1,2]`；没有 Bybit 订阅报错。
 - 删表回退：只给这一个抽屉用，回滚二进制即可；`TRUNCATE orderflow_liq` 不影响别的。
 
 ### 足迹图与秒线历史（2026-10-07，`footprint.rs`、`seconds.rs`、`minutes.rs`，表 `orderflow_footprint`、`klines_seconds`，迁移 0051）

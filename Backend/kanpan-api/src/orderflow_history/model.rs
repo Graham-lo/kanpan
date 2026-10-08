@@ -290,6 +290,11 @@ impl Model {
   let track=self.tracks.entry(venue.id.clone()).or_default();
   if track.book.is_none() {track.book=Some(VenueBook::new(venue));}
  }
+ /// 不再跟这本簿（资源闸门卸下 Bybit 现货）：挂着的单按最后一次看到失联结束。
+ pub fn remove_venue(&mut self,id:&str) {
+  let Some(mut track)=self.tracks.remove(id) else {return};
+  for (_,l) in track.live.drain() {self.ended.push(end_lost(l.order,l.sighted));}
+ }
  pub fn book_mut(&mut self,id:&str)->Option<&mut VenueBook> {self.tracks.get_mut(id).and_then(|t|t.book.as_mut())}
  pub fn venue_ids(&self)->Vec<String> {self.tracks.iter().filter(|(_,t)|t.book.is_some()).map(|(id,_)|id.clone()).collect()}
  pub fn ready_count(&self)->usize {self.tracks.values().filter(|t|t.book.as_ref().is_some_and(VenueBook::is_ready)).count()}
@@ -629,6 +634,19 @@ mod tests {
   let o=&r.m.ended[0];
   assert_eq!((o.status,o.end_ms),(Status::Lost,Some(1_000)));
   assert!(r.live().is_empty());
+ }
+
+ #[test] fn a_removed_book_ends_its_live_walls_lost_at_their_last_sight() {
+  let mut r=Rig::new();
+  edge_wall(&mut r);
+  let (b,a)=edge(60_100.0,1.2*T);
+  r.book("a",&b,&a,1_000);r.m.evaluate(1_000);
+  assert!(r.m.ended.is_empty()&&!r.live().is_empty());
+  r.m.remove_venue("a");
+  assert!(r.live().is_empty(),"簿停了，挂着的单不再挂着");
+  assert_eq!(r.m.ended.iter().map(|o|(o.status,o.end_ms)).collect::<Vec<_>>(),vec![(Status::Lost,Some(1_000))],"按最后一次看到失联");
+  assert!(r.m.venue_ids().is_empty());
+  r.m.remove_venue("a");
  }
 
  #[test] fn a_wall_pulled_between_the_scan_and_exit_radius_is_cancelled() {
