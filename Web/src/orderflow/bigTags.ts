@@ -16,7 +16,8 @@
  *   · 一根只画一枚签：买卖里大的那一侧（买挂高点上、卖挂低点下）；另一侧只有自己也过 P95 才另画一枚描边签。
  *     悬停卡两侧都写。
  *   · 签夹在主图窗格里（成交量垫在主图底部 16% 时也让开那一截）、不越过价格轴；不压 K 线（按签横跨的那几根的最高 / 最低让开），
- *     和图例文字、画线文字、别的签相交就退化成三角，三角也放不下就不画——不往外挪（挪远了就看不出是哪根的）。
+ *     本侧放不下（极值那根的高 / 低点贴着窗格边或掉进成交量那截、压到字）先翻到 K 线另一侧，颜色与三角朝向不变；
+ *     两侧都和图例文字、画线文字、别的签相交就退化成三角（同样先本侧后另一侧），三角也放不下就不画——不往外挪（挪远了就看不出是哪根的）。
  *   · 缓存：每张图一份「根 → 合计」；服务端历史有新行时整份作废，最近 3 分钟内的根在有新大单或每 5 秒重算，其余的根算过就不再算。
  *     多图时非活动格子没有实时桶，拖动缩放只是查表。
  * 只聚合、门槛过滤、展示，不做判定。
@@ -240,7 +241,9 @@ export function planTags(list: TagIn[], env: PlanEnv): Tag[] {
   const inside = (r: Rect): boolean => r.y >= env.top && r.y + r.h <= env.bottom && r.x >= 0 && r.x + r.w <= env.plotW
   const free = (r: Rect): boolean => inside(r) && !env.avoid.some(a => hit(a, r)) && !placed.some(a => hit(a, r))
   for (const c of cands) {
-    const up = c.side === 'buy', x = c.b.x
+    // 买方默认在最高价上方、卖方在最低价下方；那一侧放不下（顶到窗格边、掉进成交量那一截、压到字）就翻到 K 线另一侧，
+    // 颜色与三角朝向仍按买卖方（买＝涨色、尖朝上），一眼还是指着这根
+    const pref = c.side === 'buy', x = c.b.x
     let kind: Tag['kind'] = c.tier === 3 ? 'big' : c.tier === 2 ? 'tag' : 'tri'
     if (env.spacing < TEXT_MIN_SPACING) kind = 'tri'
     let done: Tag | null = null
@@ -248,17 +251,17 @@ export function planTags(list: TagIn[], env: PlanEnv): Tag[] {
       const text = env.text(c.usd), big = kind === 'big'
       const w = Math.ceil(env.measure(text, big)) + (big ? 12 : 10), h = big ? BIG_H : TAG_H
       const sp = env.span(x - w / 2, x + w / 2)
-      if (sp) {
+      if (sp) for (const up of [pref, !pref]) {
         const r = { x: x - w / 2, y: up ? sp.hiY - GAP - h : sp.loY + GAP, w, h }
-        if (free(r)) done = { i: c.b.i, t: c.b.t, side: c.side, kind, filled: c.filled, text, usd: c.usd, ...r, cx: x }
+        if (free(r)) { done = { i: c.b.i, t: c.b.t, side: c.side, kind, filled: c.filled, text, usd: c.usd, ...r, cx: x }; break }
       }
     }
     if (!done) {
       const sp = env.span(x - TRI_W / 2, x + TRI_W / 2)
-      if (sp) {
+      if (sp) for (const up of [pref, !pref]) {
         const r = { x: x - TRI_W / 2, y: up ? sp.hiY - GAP - TRI_H : sp.loY + GAP, w: TRI_W, h: TRI_H }
         // 三角之间不比（挨着的两根各一枚，宽 7 px 在密的周期会擦边，不算撞）
-        if (inside(r) && !env.avoid.some(a => hit(a, r)) && !placed.some(a => a.h > TRI_H && hit(a, r))) done = { i: c.b.i, t: c.b.t, side: c.side, kind: 'tri', filled: c.filled, text: '', usd: c.usd, ...r, cx: x }
+        if (inside(r) && !env.avoid.some(a => hit(a, r)) && !placed.some(a => a.h > TRI_H && hit(a, r))) { done = { i: c.b.i, t: c.b.t, side: c.side, kind: 'tri', filled: c.filled, text: '', usd: c.usd, ...r, cx: x }; break }
       }
     }
     if (done) { out.push(done); placed.push(done) }
