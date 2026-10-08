@@ -589,8 +589,8 @@ final class StressRegression1005UITests: KanpanUICase {
     app.descendants(matching: .any).matching(identifier: Ids.indicatorSwitch("MA")).firstMatch.tap()
     app.buttons[Ids.panelDone].tap()
     dwell(0.6)
-    XCTAssertTrue(waitUntil(timeout: Self.short) { self.overlays == ["BOLL"] }, "换成布林带图上不对：\(overlays)")
-    shot("走查22-主图换成布林带")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.overlays == ["BOLL"] }, "换成 BOLL 图上不对：\(overlays)")
+    shot("走查22-主图换成BOLL")
     reportHangs("走查三·眼睛与主图侧栏", since: hStage); hStage = hangs()
 
     // 捏合。

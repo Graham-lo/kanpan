@@ -153,7 +153,7 @@ final class TermMarkPagesUITests: KanpanUICase {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据：\(chartInfo())")
     XCTAssertTrue(app.openIndicatorPage(), "「分析」面板没开出来")
     let header = app.staticTexts[Ids.panelHeader]
-    // 指标名改短了：长的那版不许回来；均线 / 成交量 / 持仓量一看就懂，不挂问号。
+    // 指标名改短了：长的那版不许回来；MA / 成交量 / 持仓量一看就懂，不挂问号。
     for old in ["主动买卖比", "累计成交量差", "当日均价线", "抛物线转向", "添加对比品种", "在图上显示"] {
       XCTAssertFalse(app.staticTexts[old].exists, "旧字面「\(old)」还在分析面板上")
     }
@@ -162,13 +162,13 @@ final class TermMarkPagesUITests: KanpanUICase {
       XCTAssertFalse(any(none).exists, "\(none) 不该挂问号")
     }
     shot("分析面板-青苔浅")
-    checkTerm("vwap", titleContains: "均价线", stillThere: header)
+    checkTerm("vwap", titleContains: "VWAP", stillThere: header)
     let cvd = app.buttons[Ids.indicatorSwitch("CVD")]
     let cvdBefore = "\(String(describing: cvd.value))|\(cvd.isSelected)"
-    checkTerm("cvd", titleContains: "量差", stillThere: header, shotName: "分析面板-术语卡-量差-青苔浅")
+    checkTerm("cvd", titleContains: "累计量差", stillThere: header, shotName: "分析面板-术语卡-累计量差-青苔浅")
     // 问号那一下没把开关顺带拨了。
-    XCTAssertEqual("\(String(describing: cvd.value))|\(cvd.isSelected)", cvdBefore, "点量差的问号把开关也拨了")
-    XCTAssertTrue(labeled("量差").firstMatch.exists, "副图里没有改名后的「量差」")
+    XCTAssertEqual("\(String(describing: cvd.value))|\(cvd.isSelected)", cvdBefore, "点累计量差的问号把开关也拨了")
+    XCTAssertTrue(labeled("累计量差").firstMatch.exists, "副图里没有改名后的「累计量差」")
     checkTerm("takerRatio", titleContains: "买卖比", stillThere: header)
 
     // 门槛那一行整行是按钮：问号叠在按钮外面，点问号只开卡、不进表；点行的别处照旧进表。

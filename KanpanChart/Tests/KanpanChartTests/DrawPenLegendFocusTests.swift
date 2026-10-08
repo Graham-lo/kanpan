@@ -76,16 +76,16 @@ struct DrawPenLegendFocusTests {
   @Test("放得下用全称，放不下换短称，再放不下收「+N」")
   func legendFit() {
     let measure = { (s: String) in Double(s.count) * 10 }
-    let items = [LegendItem("均线5 100", short: "均线 100", color: "#000000"),
-                 LegendItem("均线10 101", short: "101", color: "#000000"),
-                 LegendItem("均线20 102", short: "102", color: "#000000"),
-                 LegendItem("均线30 --", short: "--", color: "#000000")]
+    let items = [LegendItem("MA5 100", short: "MA 100", color: "#000000"),
+                 LegendItem("MA10 101", short: "101", color: "#000000"),
+                 LegendItem("MA20 102", short: "102", color: "#000000"),
+                 LegendItem("MA30 --", short: "--", color: "#000000")]
     let full = LegendFit.fit(items, width: 1000, measure: measure)
-    #expect(full.more == 0 && full.texts.map(\.0) == ["均线5 100", "均线10 101", "均线20 102"], "读不出数的段要剔掉")
+    #expect(full.more == 0 && full.texts.map(\.0) == ["MA5 100", "MA10 101", "MA20 102"], "读不出数的段要剔掉")
     let short = LegendFit.fit(items, width: 160, measure: measure)
-    #expect(short.more == 0 && short.texts.map(\.0) == ["均线 100", "101", "102"])
+    #expect(short.more == 0 && short.texts.map(\.0) == ["MA 100", "101", "102"])
     let tight = LegendFit.fit(items, width: 120, measure: measure)
-    #expect(tight.texts.map(\.0) == ["均线 100"] && tight.more == 2)
+    #expect(tight.texts.map(\.0) == ["MA 100"] && tight.more == 2)
     let total = tight.texts.reduce(0.0) { $0 + measure($1.0) + LegendFit.gap } + measure(LegendFit.moreText(tight.more))
     #expect(total <= 120)
   }
@@ -109,16 +109,16 @@ struct DrawPenLegendFocusTests {
     #expect(rc.mainLegendItems().count == items.count)
   }
 
-  @Test("短称去参数、留读数：均线第一段留名，后面只剩数")
+  @Test("短称去参数、留读数：MA 第一段留名，后面只剩数")
   func shortForms() {
     var st = Self.state(overlays: [.ma], subs: [.macd, .vol])
     st.params[.ma] = [5, 10]
     let r = ChartRenderer(state: st)
     let main = r.mainLegendItems()
-    #expect(main[0].full.hasPrefix("均线5 ") && main[0].short.hasPrefix("均线 "))
-    #expect(main[1].full.hasPrefix("均线10 ") && !main[1].short.contains("均线"))
+    #expect(main[0].full.hasPrefix("MA5 ") && main[0].short.hasPrefix("MA "))
+    #expect(main[1].full.hasPrefix("MA10 ") && !main[1].short.contains("MA"))
     let macd = r.subLegendItems(.macd)
-    #expect(macd[0].full.hasPrefix("平滑异同(") && macd[0].short == "平滑异同")
+    #expect(macd[0].full.hasPrefix("\(IndicatorID.macd.name)(") && macd[0].short == IndicatorID.macd.name)
     let vol = r.subLegendItems(.vol)
     #expect(vol[0].full.hasPrefix("成交量 ") && vol[0].short.hasPrefix("量 "))
   }

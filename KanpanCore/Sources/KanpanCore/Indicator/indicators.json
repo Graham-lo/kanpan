@@ -1,0 +1,21 @@
+{
+  "MA": { "name": "MA", "params": [10, 30, 120, 256] },
+  "EMA": { "name": "EMA", "params": [12, 144, 169, 200] },
+  "BOLL": { "name": "BOLL", "params": [20, 2] },
+  "VWAP": { "name": "VWAP", "params": [] },
+  "ST": { "name": "超级趋势", "params": [10, 3] },
+  "SAR": { "name": "抛物线", "params": [] },
+  "ORDERFLOW": { "name": "主力订单流", "params": [] },
+  "VOL": { "name": "成交量", "params": [5, 10, 30, 60, 120] },
+  "MACD": { "name": "MACD", "params": [10, 30, 9] },
+  "RSI": { "name": "RSI", "params": [14] },
+  "KDJ": { "name": "KDJ", "params": [9, 3, 3] },
+  "SRSI": { "name": "随机强弱", "params": [14, 14, 3, 3] },
+  "ATR": { "name": "真实波幅", "params": [14] },
+  "OI": { "name": "持仓量", "params": [] },
+  "LSR": { "name": "多空比", "params": [] },
+  "TAKER": { "name": "买卖比", "params": [] },
+  "BASIS": { "name": "基差", "params": [] },
+  "DMI": { "name": "动向指标", "params": [14] },
+  "CVD": { "name": "累计量差", "params": [] }
+}

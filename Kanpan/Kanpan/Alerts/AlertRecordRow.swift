@@ -289,7 +289,7 @@ enum AlertRecordText {
     switch rule {
     case .funding: "资金费率"
     case .openInterestChange: "持仓量"
-    case .maCross: "均线"
+    case .maCross: "MA"
     case .orderflowWall: "大单墙"
     default: "条件提醒"
     }

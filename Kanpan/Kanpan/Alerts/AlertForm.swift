@@ -57,7 +57,7 @@ enum AlertFormKind: String, Hashable, CaseIterable {
     case .close: KanpanCore.Alert.Condition.close.title
     case .funding: "资金费率"
     case .openInterest: "持仓量变化"
-    case .ma: "均线"
+    case .ma: "MA"
     case .wall: "大单挂单墙"
     }
   }
@@ -489,9 +489,9 @@ struct AlertForm: View {
       .accessibilityIdentifier("alerts.new.interval")
     }
     AlertCardDivider()
-    paramRow("均线") {
+    paramRow("周期") {
       inputWell(text: $maLengthText, placeholder: "20", keyboard: .numberPad,
-                id: "alerts.new.length", title: "均线", prefix: "MA")
+                id: "alerts.new.length", title: "MA 周期", prefix: "MA")
     }
     AlertCardDivider()
     paramRow("收盘") {

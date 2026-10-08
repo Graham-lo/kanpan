@@ -32,7 +32,7 @@ struct InstrumentSurfacesTests {
     #expect(InstrumentSurfaces.showsHeaderStats(capabilities: fundingOnly, asset: .index))
   }
 
-  @Test("副图：没有成交量的品种跳过成交量（连均量）与量差，其余顺序原样")
+  @Test("副图：没有成交量的品种跳过成交量（连均量）与累计量差，其余顺序原样")
   func subsWithoutVolume() {
     let layout: [IndicatorID] = [.vol, .macd, .oi, .cvd, .rsi, .lsr]
     #expect(InstrumentSurfaces.subs(layout, capabilities: dxy) == [.macd, .rsi])
@@ -43,7 +43,7 @@ struct InstrumentSurfacesTests {
     #expect(InstrumentSurfaces.subs([.vol], capabilities: dxy).isEmpty)
   }
 
-  @Test("主图叠加：没有成交量时均价线不画，均线、布林照旧")
+  @Test("主图叠加：没有成交量时 VWAP 不画，MA、BOLL 照旧")
   func overlaysWithoutVolume() {
     let layout: [IndicatorID] = [.ma, .vwap, .boll]
     #expect(InstrumentSurfaces.overlays(layout, capabilities: dxy) == [.ma, .boll])
@@ -51,7 +51,7 @@ struct InstrumentSurfacesTests {
     #expect(InstrumentSurfaces.overlays(layout, capabilities: spot) == layout)
   }
 
-  @Test("要成交量的只有成交量、量差、均价线三把")
+  @Test("要成交量的只有成交量、累计量差、VWAP 三把")
   func needsVolume() {
     #expect(IndicatorID.allCases.filter(\.needsVolume) == [.vwap, .vol, .cvd])
   }

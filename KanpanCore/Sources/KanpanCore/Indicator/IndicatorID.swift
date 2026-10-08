@@ -29,29 +29,38 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     }
   }
 
-  public var name: String {
-    switch self {
-    case .ma: "均线"
-    case .ema: "指数均线"
-    case .boll: "布林带"
-    case .vol: "成交量"
-    case .macd: "平滑异同"
-    case .rsi: "相对强弱"
-    case .kdj: "随机指标"
-    case .srsi: "随机强弱"
-    case .atr: "真实波幅"
-    case .oi: "持仓量"
-    case .lsr: "多空比"
-    case .taker: "买卖比"
-    case .basis: "基差"
-    case .vwap: "均价线"
-    case .supertrend: "超级趋势"
-    case .sar: "抛物线"
-    case .orderFlow: "主力订单流"
-    case .dmi: "动向指标"
-    case .cvd: "量差"
-    }
+  /// 界面上的名字。**唯一一份在 `Indicator/indicators.json`**（三端共读：iOS 这里、
+  /// 手机网页 `Web/src/m/indicator/ids.ts`、电脑网页 `Web/src/chart/sharedIndicators.ts`），
+  /// 改名只改那一个文件。
+  public var name: String { Self.catalog[self]?.name ?? rawValue }
+
+  /// `indicators.json` 里的一项。
+  struct CatalogEntry: Decodable, Sendable {
+    let name: String
+    let params: [Int]
   }
+
+  /// 包里那份 `indicators.json`。
+  static var catalogURL: URL? { Bundle.module.url(forResource: "indicators", withExtension: "json") }
+
+  /// 解一次、常驻。资源缺了或坏了是打包事故：调试包当场断言，发布包退回 rawValue / 空参数，不崩。
+  static let catalog: [IndicatorID: CatalogEntry] = {
+    guard let url = catalogURL,
+          let data = try? Data(contentsOf: url),
+          let raw = try? JSONDecoder().decode([String: CatalogEntry].self, from: data)
+    else {
+      assertionFailure("KanpanCore 资源 indicators.json 缺失或解不出来")
+      return [:]
+    }
+    var out: [IndicatorID: CatalogEntry] = [:]
+    for (key, entry) in raw {
+      guard let id = IndicatorID(rawValue: key) else {
+        assertionFailure("indicators.json 里有未知指标 \(key)"); continue
+      }
+      out[id] = entry
+    }
+    return out
+  }()
 
   // ---------------------------------------------------------------- 面板清单
   //
@@ -118,26 +127,18 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   /// 图表状态又是第三份（没有指数均线）——同一个用户，新装时看到的是 AICoin 值，
   /// 一条参数坏了被修补时却掉回 7/25/99。现在只有 AICoin 手机端这一套
   /// （`kanpan-single-aicoin-candle-style`：图表底座照 AICoin 还原）。
-  public var defaultParams: [Int] {
+  ///
+  /// 值本身写在 `Indicator/indicators.json`（三端共读，改出厂参数只改那一个文件）。
+  /// 当日VWAP、抛物线、累计量差、主力订单流和外部四把（持仓量、多空比、买卖比、基差）
+  /// 是空数组：口径由代码定死，不摆给用户拨（`kanpan-sector-page-no-basis-picker`）。
+  public var defaultParams: [Int] { Self.catalog[self]?.params ?? [] }
+
+  /// 条数由用户定的那几把（均线、指数均线、强弱、均量）：参数是一串周期，一个周期一条线，
+  /// 编辑页能加能删。其余的参数个数是算法定死的。
+  public var hasVariablePeriods: Bool {
     switch self {
-    case .ma: [10, 30, 120, 256]
-    case .ema: [12, 144, 169, 200]
-    case .boll: [20, 2]
-    case .vol: [5, 10, 30, 60, 120]
-    case .macd: [10, 30, 9]
-    case .rsi: [6, 12, 24]
-    case .kdj: [9, 3, 3]
-    case .srsi: [14, 14, 3, 3]
-    case .atr: [14]
-    case .supertrend: [10, 3]
-    case .dmi: [14]
-    // 当日VWAP 的起点是当日零点，抛物线转向的加速步长是定死的 0.02/0.20：
-    // 两把都没有该让用户去拨的参数
-    // （`kanpan-sector-page-no-basis-picker`：口径这种东西我来定，不摆出来给他选）。
-    // 累计成交量差是逐根净额的累加，没有窗口长度这回事；归零的锚和当日VWAP 一样
-    // 是定死的（日内按 UTC 零点），同样不摆给用户拨。
-    // 主力订单流的桶宽、门槛、条数、颜色都由代码定死，没有参数。
-    case .vwap, .sar, .orderFlow, .cvd, .oi, .lsr, .taker, .basis: []
+    case .ma, .ema, .rsi, .vol: true
+    default: false
     }
   }
 
@@ -156,24 +157,19 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   /// （见 `IndicatorEdgeTests`、`degenerateParamsAtIndexZero`）。
   func normalizedParams(_ params: [Int]?) -> [Int] {
     guard let params else { return defaultParams }
-    switch self {
-    case .ma, .ema, .rsi, .vol:
-      return params
-    default:
-      return defaultParams.indices.map { i in i < params.count ? params[i] : defaultParams[i] }
-    }
+    if hasVariablePeriods { return params }
+    return defaultParams.indices.map { i in i < params.count ? params[i] : defaultParams[i] }
   }
 
   public var paramLabels: [String] {
     switch self {
-    // 均线、指数均线、均量是按列表画的，条数随用户；面板上按「周期1、周期2…」排，
+    // 均线、指数均线、强弱、均量是按列表画的，条数随用户；面板上按「周期1、周期2…」排，
     // 这里给出厂那几条的名字，个数跟着 `defaultParams` 走。
-    case .ma, .ema, .vol: defaultParams.indices.map { "周期\($0 + 1)" }
+    case .ma, .ema, .rsi, .vol: defaultParams.indices.map { "周期\($0 + 1)" }
     case .boll: ["周期", "倍数"]
     case .macd: ["快", "慢", "信号"]
-    case .rsi: ["①", "②", "③"]
     case .kdj: ["周期", "快线", "慢线"]
-    case .srsi: ["相对强弱", "随机周期", "快线", "慢线"]
+    case .srsi: ["\(IndicatorID.rsi.name)周期", "随机周期", "快线", "慢线"]
     case .atr: ["周期"]
     case .supertrend: ["周期", "倍数"]
     case .dmi: ["周期"]
@@ -184,27 +180,26 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   /// 每条线的名字，图例里用。
   public func lineNames(params: [Int]) -> [String] {
     switch self {
-    case .ma, .ema: params.map { "\(name)\($0)" }
+    case .ma, .ema, .rsi: params.map { "\(name)\($0)" }
     case .boll: ["中轨", "上轨", "下轨"]
     case .vol: params.map { "均量\($0)" }
     case .macd: ["差值", "信号"]
-    case .rsi: params.map { "强弱\($0)" }
     case .kdj: ["快线", "慢线", "敏感线"]
     case .srsi: ["快线", "慢线"]
-    case .atr: ["真实波幅"]
-    case .oi: ["持仓量"]
-    case .lsr: ["多空比"]
-    case .taker: ["买卖比"]
+    case .atr: [name]
+    case .oi: [name]
+    case .lsr: [name]
+    case .taker: [name]
     case .basis: ["基差率"]
     // 超级趋势与抛物线转向都只有一条线，多空靠 `IndicatorResult.dir` 换色，
     // 不拆成「多头 / 空头」两条——拆了图例上永远有一条是「--」。
-    case .vwap: ["当日均价"]
-    case .supertrend: ["超级趋势"]
+    case .vwap: [name]
+    case .supertrend: [name]
     case .sar: ["转向点"]
     // 图例那一行的名字（ChartRenderer+OrderFlow 画「主力 买 … · 卖 …」）。
     case .orderFlow: ["主力"]
     case .dmi: ["多头动向", "空头动向", "趋势强度"]
-    case .cvd: ["量差"]
+    case .cvd: [name]
     }
   }
 

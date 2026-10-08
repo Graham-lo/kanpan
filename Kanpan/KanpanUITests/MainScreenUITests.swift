@@ -557,10 +557,10 @@ final class MainScreenUITests: KanpanUICase {
     expectExists(boll, Self.short, "第二次点「主图˅」没开出侧栏")
     boll.tap()
     closePanel()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { overlays() == ["BOLL"] }, "开了布林带，图上没画：\(overlays())")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { overlays() == ["BOLL"] }, "开了 BOLL，图上没画：\(overlays())")
     expectExists(eye, Self.short, "开了一个主图指标，眼睛胶囊没出来")
     XCTAssertEqual(eye.value as? String, "开")
-    shot("横屏画线台-主图换成布林带")
+    shot("横屏画线台-主图换成BOLL")
 
     // 眼睛关着时从侧栏再开 MA：眼睛跟着睁开，两条都画。
     eye.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()

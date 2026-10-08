@@ -10,7 +10,9 @@ let package = Package(
   targets: [
     .target(
       name: "KanpanCore",
-      path: "Sources/KanpanCore"
+      path: "Sources/KanpanCore",
+      // 指标名与出厂参数的唯一一份（iOS / 手机网页 / 电脑网页三端共读），见 `IndicatorID.catalog`。
+      resources: [.process("Indicator/indicators.json")]
     ),
     .testTarget(
       name: "KanpanCoreTests",

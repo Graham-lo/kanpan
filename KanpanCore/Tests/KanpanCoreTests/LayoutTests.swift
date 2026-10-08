@@ -80,7 +80,7 @@ struct IndicatorMetaTests {
     #expect(IndicatorID.boll.defaultParams == [20, 2])
     #expect(IndicatorID.vol.defaultParams == [5, 10, 30, 60, 120])
     #expect(IndicatorID.macd.defaultParams == [10, 30, 9])
-    #expect(IndicatorID.rsi.defaultParams == [6, 12, 24])
+    #expect(IndicatorID.rsi.defaultParams == [14])
     #expect(IndicatorID.kdj.defaultParams == [9, 3, 3])
     #expect(IndicatorID.srsi.defaultParams == [14, 14, 3, 3])
     #expect(IndicatorID.atr.defaultParams == [14])
@@ -122,8 +122,8 @@ struct IndicatorMetaTests {
 
   @Test("线名跟着参数走")
   func lineNamesFollowParams() {
-    #expect(IndicatorID.ma.lineNames(params: [5, 10]) == ["均线5", "均线10"])
-    #expect(IndicatorID.ema.lineNames(params: [8]) == ["指数均线8"])
+    #expect(IndicatorID.ma.lineNames(params: [5, 10]) == ["MA5", "MA10"])
+    #expect(IndicatorID.ema.lineNames(params: [8]) == ["EMA8"])
     #expect(IndicatorID.vol.lineNames(params: [5, 10]) == ["均量5", "均量10"])
     #expect(IndicatorID.boll.lineNames(params: [20, 2]) == ["中轨", "上轨", "下轨"])
     #expect(IndicatorID.kdj.lineNames(params: [9, 3, 3]) == ["快线", "慢线", "敏感线"])

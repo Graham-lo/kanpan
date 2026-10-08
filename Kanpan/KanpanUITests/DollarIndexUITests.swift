@@ -245,7 +245,7 @@ final class DollarIndexUITests: KanpanUICase {
     let panes = (chartInfo()["panes"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String }
     XCTAssertFalse(panes.contains("VOL"), "\(step)：副图格子里还有成交量：\(panes)")
     let overlays = chartInfo()["overlays"] as? [String] ?? []
-    XCTAssertFalse(overlays.contains("VWAP"), "\(step)：美元指数不该画均价线：\(overlays)")
+    XCTAssertFalse(overlays.contains("VWAP"), "\(step)：美元指数不该画 VWAP：\(overlays)")
   }
 
   /// 顶栏放大镜 → 搜 `query` → 点 `key` 那一行进图。

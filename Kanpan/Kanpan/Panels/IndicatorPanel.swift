@@ -514,7 +514,7 @@ private struct IndicatorEditor: View {
   }
 
   private func parameterLabel(_ index: Int) -> String {
-    if [.ma, .ema, .vol].contains(draft.id) { return "周期\(index + 1)" }
+    if draft.id.hasVariablePeriods { return "周期\(index + 1)" }
     return draft.id.paramLabels[index]
   }
 
@@ -586,7 +586,7 @@ private struct IndicatorEditor: View {
   }
 
   /// 均线这类「几条线」由用户定；MACD、KDJ 那种参数个数是算法定死的，不能加也不能删。
-  private var variablePeriods: Bool { [.ma, .ema, .vol].contains(draft.id) }
+  private var variablePeriods: Bool { draft.id.hasVariablePeriods }
 
   private func addPeriod() {
     commitAll(); focus = nil

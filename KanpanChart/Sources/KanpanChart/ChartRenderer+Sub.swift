@@ -302,7 +302,7 @@ extension ChartRenderer {
       guard let v = displayed(id) else { continue }
       switch id {
       case .ma, .ema:
-        group(id == .ma ? "均线" : "指数", params(id).enumerated().compactMap { k, n -> (full: String, value: String, color: Hex)? in
+        group(id.name, params(id).enumerated().compactMap { k, n -> (full: String, value: String, color: Hex)? in
           guard k < v.lines.count, outputVisible(id, k) else { return nil }
           let value = indicatorNumber(reading(v.lines[k]), decimals: p)
           return ("\(id.name)\(n) " + value, value, indicatorColor(id, k))
@@ -312,11 +312,11 @@ extension ChartRenderer {
         // 裸下标会直接越界崩溃。读不到就是 NaN，`LegendItem.readable` 会把它剔掉。
         guard v.lines.count >= 3 else { break }
         let at = { (k: Int) -> String in fmtNum(v.lines[k].indices.contains(i) ? v.lines[k][i] : .nan, p) }
-        group("布林", [("上轨 " + at(1), at(1), t.band), ("中轨 " + at(0), at(0), t.amber), ("下轨 " + at(2), at(2), t.band)])
+        group(IndicatorID.boll.name, [("上轨 " + at(1), at(1), t.band), ("中轨 " + at(0), at(0), t.amber), ("下轨 " + at(2), at(2), t.band)])
       case .vwap:
         guard let a = v.lines.first, outputVisible(id, 0) else { break }
         let value = indicatorNumber(reading(a), decimals: p)
-        items.append(LegendItem("当日均价 " + value, short: "均价 " + value, color: indicatorColor(id, 0)))
+        items.append(LegendItem(id.name + " " + value, short: id.name + " " + value, color: indicatorColor(id, 0)))
       case .supertrend, .sar:
         // 这两把的图例跟着它当前的多空走同一套涨跌色，和线上/点上看到的颜色对得上。
         guard let a = v.lines.first, outputVisible(id, 0) else { break }
@@ -380,7 +380,7 @@ extension ChartRenderer {
     case .vol:
       if outputVisible(.vol, v?.lines.count ?? 0), state.series.volume.indices.contains(i) {
         let x = amountNumber(state.series.volume[i])
-        put("成交量 " + x, "量 " + x, t.text)
+        put("\(IndicatorID.vol.name) " + x, "量 " + x, t.text)
       }
       if let v {
         for (k, n) in params(.vol).enumerated() where k < v.lines.count {
@@ -389,7 +389,7 @@ extension ChartRenderer {
         }
       }
     case .macd:
-      put("平滑异同" + args(.macd), "平滑异同", t.dim)
+      put(IndicatorID.macd.name + args(.macd), IndicatorID.macd.name, t.dim)
       guard let v, let hist = v.histogram, v.lines.count >= 2 else { break }
       // MACD 三个值都是价差，量级跟着价格走：0.0033 的币种上它们在 1e-5 附近，
       // 按固定 2 位小数印出来全是 0.00。跟着品种的价格精度走才读得出东西。
@@ -401,21 +401,21 @@ extension ChartRenderer {
       let hs = indicatorNumber(h, decimals: state.decimals)
       put("柱值 " + hs, hs, h >= 0 ? t.up : t.down)
     case .rsi:
-      put("强弱(\(Int(state.rsiUpper))/\(Int(state.rsiLower)))", "强弱", t.dim)
+      put("\(IndicatorID.rsi.name)(\(Int(state.rsiUpper))/\(Int(state.rsiLower)))", IndicatorID.rsi.name, t.dim)
       guard let v else { break }
       for (k, n) in params(.rsi).enumerated() where k < v.lines.count {
         let x = indicatorNumber(at(v.lines[k]), decimals: 1)
         put("\(n) " + x, x, pal[k % pal.count])
       }
     case .kdj:
-      put("随机" + args(.kdj), "随机", t.dim)
+      put(IndicatorID.kdj.name + args(.kdj), IndicatorID.kdj.name, t.dim)
       guard let v, v.lines.count >= 3 else { break }
       for (k, name) in ["快线", "慢线", "敏感线"].enumerated() {
         let x = indicatorNumber(at(v.lines[k]), decimals: 1)
         put(name + " " + x, x, pal[k])
       }
     case .srsi:
-      put("随机强弱", nil, t.dim)
+      put(IndicatorID.srsi.name, nil, t.dim)
       guard let v, v.lines.count >= 2 else { break }
       for (k, name) in ["快线", "慢线"].enumerated() {
         let x = indicatorNumber(at(v.lines[k]), decimals: 1)
@@ -424,14 +424,14 @@ extension ChartRenderer {
     case .atr:
       guard let v, let a = v.lines.first else { break }
       let x = fmtNum(at(a), state.decimals)
-      put("真实波幅\(params(.atr)[0]) " + x, "波幅 " + x, pal[0])
+      put("\(IndicatorID.atr.name)\(params(.atr)[0]) " + x, "波幅 " + x, pal[0])
     case .lsr, .taker, .basis:
       put(key.name, nil, t.dim)
       if let values = v?.lines.first, reading(values).isFinite {
         put(subValueText(reading(values), indicator: key), nil, indicatorColor(key, 0))
       }
     case .dmi:
-      put("动向" + args(.dmi), "动向", t.dim)
+      put(IndicatorID.dmi.name + args(.dmi), IndicatorID.dmi.name, t.dim)
       guard let v, v.lines.count >= 3 else { break }
       for (k, name) in ["多头动向", "空头动向", "趋势强度"].enumerated() {
         let x = indicatorNumber(at(v.lines[k]), decimals: 1)
@@ -445,7 +445,7 @@ extension ChartRenderer {
       }
     case .oi:
       let x0 = (v?.lines.first).map { at($0) }.flatMap { $0.isFinite ? amountNumber($0) : nil } ?? "--"
-      put("持仓量 " + x0, "持仓 " + x0, t.oi)
+      put("\(IndicatorID.oi.name) " + x0, "持仓 " + x0, t.oi)
 
     default: break
     }
