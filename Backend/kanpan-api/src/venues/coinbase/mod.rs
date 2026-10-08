@@ -187,8 +187,9 @@ const CLIENT_QUEUE:usize=4096;
 const UPSTREAM_SILENCE:Duration=Duration::from_secs(30);
 /// 最后一个客户端走了之后，上游连接再留多久（切页面、切线路时不必重连）。
 const IDLE_GRACE:Duration=Duration::from_secs(60);
-/// 两条上游控制帧之间隔多久（Coinbase 对入站消息有频率上限）。
-const CONTROL_GAP:Duration=Duration::from_millis(120);
+/// 两条上游控制帧之间隔多久。官方（Advanced Trade WebSocket rate limits）：未鉴权连接每 IP 上行 ≤ 8 条 / 秒，
+/// 这台机器只有一个出口 IP，150 ms（≈ 6.7 条 / 秒）才在线下；原来的 120 ms 是 8.3 条 / 秒，贴着线上。
+const CONTROL_GAP:Duration=Duration::from_millis(150);
 
 type Key=(String,String);
 

@@ -35,16 +35,17 @@ pub const HOSTS:&[&str]=&["api.hyperliquid.xyz"];
 // ------------------------------------------------------------------ 出站节拍
 
 /// 官方文档（Rate limits and user limits）：REST 每 IP 每分钟合计权重 1200；`allMids` / `l2Book` 这类权重 2，
-/// 其余 `info` 请求权重 20，`candleSnapshot` 每回 60 根再加 1。节拍一格 = 权重 2，按每分钟 1100 留余量：
-/// 一格 110 ms，`meta` 这类占 10 格（1.1 秒）。
-pub static PACER:Pacer=Pacer::new(Duration::from_millis(110),Duration::from_secs(12),&[]);
+/// 其余 `info` 请求权重 20，`candleSnapshot` 每回 60 根再加 1。节拍一格 = 权重 2，按每分钟 1000 留余量
+/// （这台机器一个出口 IP 给所有用户的透传、提醒补缺、订单流品种表共用，再留两成给偶发的重试）：
+/// 一格 120 ms，`meta` 这类占 10 格（1.2 秒）。
+pub static PACER:Pacer=Pacer::new(Duration::from_millis(120),Duration::from_secs(12),&[]);
 
 /// 一条 `info` 请求占几格节拍（见 [`PACER`]）。
 pub fn cost_of(body:Option<&Value>)->u32 {
  match body.and_then(|b|b["type"].as_str()) {
   Some("allMids"|"l2Book")=>1,
-  // 一次补缺最多一两百根，按 +2 格算。
-  Some("candleSnapshot")=>12,
+  // 一次最多 300 根（20 + 300 / 60 = 25 权重），按 13 格算。
+  Some("candleSnapshot")=>13,
   _=>10,
  }
 }
