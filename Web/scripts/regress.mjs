@@ -1584,6 +1584,9 @@ async function partFlow() {
     const sideOf = () => page.evaluate(() => { const e = document.querySelector('#sidePanel'); return { w: e.clientWidth, ch: e.clientHeight, sh: e.scrollHeight, two: !!document.querySelector('#detail.two'), hs: Object.fromEntries([...e.querySelectorAll(':scope > [data-w]')].map(x => [x.dataset.w, Math.round(x.getBoundingClientRect().height)])) } })
     const cutCells = () => page.evaluate(() => [...document.querySelectorAll('#detail .stats.inline > div')].filter(d => { const v = d.querySelector('.v'); return v.scrollWidth > v.clientWidth + 0.5 }).map(d => d.innerText.replace(/\s+/g, ' ')))
     const sideRows = h => ({ watch: Math.floor((h.watch - 1 - 36 - 24) / 32), tape: Math.floor((h.tape - 1 - 32 - 4) / 20), walls: Math.floor((h.walls - 1 - 32 - 4) / 24) })
+    // 10-07 起右侧面板出厂 320（ebcad081，自选只剩三列）：下面两条是按 400 宽（详情三列）定的，先把面板拖到 400 再量；最窄 320 另有一条
+    await page.evaluate(() => localStorage.setItem('hkline-web-sizes-v1', JSON.stringify({ panel: 400 })))
+    await page.reload({ waitUntil: 'domcontentloaded' }); await ready(); await wait(2500)
     let sd = await sideOf()
     ok('八块全开：侧栏一屏放下不出滚动条，成交流 ≥ 8 行、自选 ≥ 6 行、大单 ≥ 3 行', sd.sh <= sd.ch + 1 && sideRows(sd.hs).tape >= 8 && sideRows(sd.hs).watch >= 6 && sideRows(sd.hs).walls >= 3, `${sd.sh}/${sd.ch} ${JSON.stringify(sideRows(sd.hs))} ${JSON.stringify(sd.hs)}`)
     const cut400 = await cutCells()
