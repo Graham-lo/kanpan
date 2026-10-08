@@ -1,0 +1,1275 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hkline 电脑网页视觉提案</title>
+<style>
+:root{
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{color-scheme:light}
+html.dark{color-scheme:dark}
+body{margin:0;background:var(--frame);color:var(--t1);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.num,.mock,.tbl{font-variant-numeric:tabular-nums}
+
+/* ---------- 控制条 ---------- */
+.ctl{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;padding:10px 24px;
+  background:color-mix(in srgb,var(--frame) 86%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);
+  border-bottom:1px solid var(--fline)}
+.ctl .ttl{font-weight:650;font-size:15px;margin-right:6px;display:flex;align-items:center;gap:8px}
+.ctl .ttl small{font-weight:400;color:var(--t3);font-size:12px}
+.seg{display:inline-flex;align-items:center;background:color-mix(in srgb,var(--t1) 6%,transparent);border-radius:8px;padding:2px;gap:2px}
+.seg button{height:28px;padding:0 12px;border-radius:6px;color:var(--t2);font-size:13px;white-space:nowrap}
+.seg button:hover{color:var(--t1)}
+.seg button[aria-pressed=true]{background:var(--surface);color:var(--t1);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 .5px rgba(0,0,0,.04)}
+.ctl .lab{font-size:12px;color:var(--t3);margin-right:-10px}
+.ctl nav{margin-left:auto;display:flex;gap:2px;flex-wrap:wrap}
+.ctl nav a{color:var(--t2);text-decoration:none;font-size:13px;padding:4px 10px;border-radius:6px}
+.ctl nav a:hover{background:var(--fh);color:var(--t1)}
+
+main{max-width:2560px;margin:0 auto;padding:28px 24px 80px}
+section{margin:0 0 72px;scroll-margin-top:72px}
+h2{font-size:20px;line-height:28px;font-weight:650;margin:0 0 2px}
+h3{font-size:14px;font-weight:600;margin:28px 0 10px;color:var(--t1)}
+.lede{color:var(--t2);margin:0 0 16px;font-size:13px;max-width:980px}
+.lede b{color:var(--t1);font-weight:600}
+.stage{position:relative;width:100%}
+.stage>.scaler{transform-origin:0 0}
+
+/* ---------- 图表页 mock：共用 ---------- */
+.mock{position:relative;display:grid;background:var(--frame);color:var(--t1);font:13px/1.4 var(--sans);overflow:hidden;border-radius:12px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.06),0 24px 64px -24px rgba(0,0,0,.35);-webkit-font-smoothing:antialiased;user-select:none}
+.mock svg{display:block;flex:none}
+.m-hd{grid-column:1/-1;grid-row:1;display:flex;align-items:center;gap:20px;padding:0 12px 0 14px;min-width:0}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;letter-spacing:.2px}
+.brand svg{width:24px;height:24px}
+.m-nav{display:flex;gap:4px;align-self:stretch}
+.m-nav a{display:flex;align-items:center;padding:0 10px;color:var(--t2);font-size:14px;position:relative}
+.m-nav a.on{color:var(--t1);font-weight:600}
+.m-srch{display:flex;align-items:center;gap:8px;height:32px;border-radius:8px;padding:0 10px;color:var(--t3);font-size:13px}
+.m-srch kbd{margin-left:auto;font:11px/16px var(--sans);padding:0 5px;border-radius:4px;color:var(--t3);box-shadow:inset 0 0 0 1px var(--line)}
+.hd-r{margin-left:auto;display:flex;align-items:center;gap:4px}
+.ib{position:relative;display:grid;place-items:center;border-radius:6px}
+.ib .dot{position:absolute;right:5px;top:5px;min-width:14px;height:14px;border-radius:7px;background:var(--accent);color:#fff;font-size:10px;line-height:14px;font-weight:600;text-align:center;padding:0 3px}
+.avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;display:grid;place-items:center;font-size:12px;font-weight:600;margin-left:6px}
+.m-tb{grid-column:1/3;grid-row:2;display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden;white-space:nowrap}
+.m-db{grid-column:1;grid-row:3;display:flex;flex-direction:column;align-items:center;min-height:0}
+.m-rail{grid-column:3;grid-row:2/4;display:flex;flex-direction:column;align-items:center;min-height:0}
+.m-main{grid-column:2;grid-row:3;display:grid;grid-template-rows:minmax(0,1fr) 266px;gap:4px;min-width:0;min-height:0}
+.m-cells{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px;min-height:0}
+.cell{position:relative;display:flex;flex-direction:column;background:var(--surface);border-radius:8px;overflow:hidden;min-width:0;min-height:0;box-shadow:inset 0 0 0 1px var(--edge)}
+.cell.act::after{content:"";position:absolute;inset:0;border-radius:8px;box-shadow:inset 0 0 0 2px var(--accent);pointer-events:none;z-index:4}
+.cv{position:relative;flex:1;min-height:0}
+.cv canvas{position:absolute;inset:0;width:100%;height:100%}
+.legend{position:absolute;left:10px;top:6px;z-index:2;line-height:24px;pointer-events:none;white-space:nowrap}
+.lrow{display:flex;align-items:baseline;gap:0 8px}
+.pleg{position:absolute;left:10px;z-index:2;white-space:nowrap;line-height:20px}
+.foot{height:28px;flex:none;display:flex;align-items:center;gap:2px;padding:0 6px;font-size:12px;color:var(--t2)}
+.foot span{padding:0 6px;height:20px;line-height:20px;border-radius:4px}
+.foot .r{margin-left:auto;display:flex;align-items:center;gap:2px}
+.foot .on{color:var(--atext)}
+
+/* ---------- 现在 ---------- */
+.mock.cur{grid-template-columns:48px minmax(0,1fr) 48px;grid-template-rows:48px 40px minmax(0,1fr);gap:4px;padding:0 4px 4px}
+.cur .m-hd{margin:0 -4px;background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 5%,var(--surface)),var(--surface));box-shadow:inset 0 -1px 0 var(--line)}
+.cur .m-nav a.on{color:var(--atext)}
+.cur .m-nav a.on::after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:2px;background:var(--accent);border-radius:2px 2px 0 0}
+.cur .m-srch{width:320px;background:var(--s2);box-shadow:inset 0 0 0 1px var(--line)}
+.cur .ib{width:36px;height:36px;color:var(--t2)}
+.cur .ib svg{width:20px;height:20px}
+.cur .m-tb,.cur .m-db,.cur .m-rail{background:var(--surface);border-radius:8px;box-shadow:inset 0 0 0 1px var(--edge)}
+.cur .m-tb{padding:0 6px;gap:2px}
+.cur .sym{display:flex;align-items:center;gap:4px;font-weight:600;font-size:14px;padding:0 8px;height:28px}
+.cur .sym .pk{font-weight:400;color:var(--t2);font-size:13px}
+.cur .sym svg{width:16px;height:16px;color:var(--t2)}
+.cur .ivs{display:flex;gap:2px;margin:0 6px}
+.cur .ivs button{height:28px;min-width:36px;padding:0 6px;border-radius:6px;color:var(--t2);font-size:13px;display:flex;align-items:center;justify-content:center;gap:2px}
+.cur .ivs button.on{color:var(--atext);background:var(--soft);font-weight:600}
+.cur .ivs svg{width:14px;height:14px}
+.cur .tbt{height:28px;display:flex;align-items:center;gap:4px;padding:0 8px;border-radius:6px;font-size:13px;color:var(--t1)}
+.cur .tbt svg{width:20px;height:20px;color:var(--t2)}
+.cur .tsep{width:1px;height:20px;background:var(--line);margin:0 4px}
+.cur .tbi{width:28px;height:28px;display:grid;place-items:center;border-radius:6px;color:var(--t2)}
+.cur .tbi svg{width:20px;height:20px}
+.cur .m-db{padding:8px 0;gap:2px}
+.cur .db-c{position:relative;width:48px;height:36px;display:flex;justify-content:center}
+.cur .db-b{width:36px;height:36px;display:grid;place-items:center;border-radius:6px;color:var(--t2)}
+.cur .db-b svg{width:20px;height:20px}
+.cur .db-c.on .db-b{background:var(--soft);color:var(--atext)}
+.cur .db-c.hov .db-b{background:var(--s3);color:var(--t1)}
+.cur .db-f{position:absolute;right:0;top:0;width:8px;height:36px;display:grid;place-items:center;color:var(--t2);opacity:.55}
+.cur .db-f svg{width:4px;height:6px}
+.cur .sticky{position:absolute;right:10px;bottom:4px;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 1.5px var(--surface)}
+.cur .db-sep{width:24px;height:1px;background:var(--line);margin:4px 0}
+.cur .m-rail{padding:8px 0;gap:4px}
+.cur .rl-b{position:relative;width:36px;height:36px;display:grid;place-items:center;border-radius:6px;color:var(--t2)}
+.cur .rl-b svg{width:20px;height:20px}
+.cur .rl-b.on{background:var(--soft);color:var(--atext)}
+.cur .rl-b.on::before{content:"";position:absolute;left:-6px;top:8px;bottom:8px;width:2px;border-radius:0 2px 2px 0;background:var(--accent)}
+.cur .cv{background:var(--canvas)}
+.cur .foot{box-shadow:inset 0 1px 0 var(--line)}
+.cur .legend .tt{font-size:14px;font-weight:600;color:var(--t1)}
+.cur .legend .tt i{font-style:normal;font-weight:400;color:var(--t2);font-size:13px}
+.cur .legend .lb{color:var(--t2);font-size:13px;margin-right:-6px}
+.cur .legend .v{font-size:13px}
+.cur .legend .nm{color:var(--t1);font-size:13px}
+.cur .legend .pm{color:var(--t2);font-size:13px}
+.cur .pleg{font-size:12px;color:var(--t2)}
+.cur .pleg b{font-weight:400;color:#2962FF}
+
+/* ---------- 提案 ---------- */
+.mock.new{grid-template-columns:52px minmax(0,1fr) 48px;grid-template-rows:48px 38px minmax(0,1fr)}
+.new .m-main{padding-bottom:4px}
+.new .m-nav a:hover{color:var(--t1)}
+.new .m-srch{width:360px;background:var(--surface);color:var(--t3)}
+.new .m-srch svg{width:16px;height:16px;color:var(--t2)}
+.new .ib{width:32px;height:32px;color:var(--t1)}
+.new .ib svg{width:20px;height:20px}
+.new .m-tb{padding:0 8px 0 10px;gap:2px}
+.new .sym{display:flex;align-items:center;gap:6px;height:32px;padding:0 8px 0 4px;border-radius:6px}
+.new .sym .coin{width:20px;height:20px;border-radius:50%;background:#F7931A;color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;line-height:1}
+.new .sym .coin.eth{background:#627EEA}
+.new .sym b{font-size:16px;font-weight:650;letter-spacing:.1px}
+.new .sym .pk{font-size:12px;color:var(--t2)}
+.new .sym svg{width:14px;height:14px;color:var(--t2)}
+.new .ivs{display:flex;align-items:center;gap:0;background:color-mix(in srgb,var(--t1) 5%,transparent);border-radius:8px;padding:2px;margin:0 8px 0 6px}
+.new .ivs button{height:28px;min-width:38px;padding:0 7px;border-radius:6px;color:var(--t2);font-size:13px;display:flex;align-items:center;justify-content:center;gap:2px}
+.new .ivs button.on{background:var(--softF);color:var(--atext);font-weight:600}
+.new .ivs svg{width:14px;height:14px}
+.new .tbt{height:32px;display:flex;align-items:center;gap:5px;padding:0 9px 0 7px;border-radius:6px;font-size:13px}
+.new .tbt svg{width:20px;height:20px}
+.new .tbt.t2{color:var(--t1);font-weight:500}
+.new .tbt.t3{color:var(--t2)}
+.new .tbt.hov{background:var(--fh)}
+.new .tsep{width:1px;height:18px;background:var(--fline);margin:0 6px}
+.new .tbi{width:32px;height:32px;display:grid;place-items:center;border-radius:6px;color:var(--t2)}
+.new .tbi svg{width:20px;height:20px}
+.new .m-db{padding:4px 0 6px}
+.new .db-c{position:relative;width:52px;height:38px;display:flex;align-items:center;padding-left:1px}
+.new .db-b{width:40px;height:34px;display:grid;place-items:center;border-radius:6px;color:var(--t1)}
+.new .db-b svg{width:28px;height:28px}
+.new .db-c.on .db-b{background:var(--softF);color:var(--atext)}
+.new .db-c.hov .db-b{background:var(--fh)}
+.new .db-f{width:11px;height:34px;display:grid;place-items:center;color:var(--t3);border-radius:4px}
+.new .db-f svg{width:4px;height:7px}
+.new .sticky{position:absolute;left:34px;bottom:5px;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 1.5px var(--softF)}
+.new .db-sep{height:13px}
+.new .m-rail{padding:4px 0 6px;gap:4px}
+.new .rl-b{position:relative;width:40px;height:40px;display:grid;place-items:center;border-radius:8px;color:var(--t1)}
+.new .rl-b svg{width:24px;height:24px}
+.new .rl-b.on{background:var(--softF);color:var(--atext)}
+.new .rl-b.on::before{content:"";position:absolute;left:-4px;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0;background:var(--accent)}
+.new .rl-b .dot{right:3px;top:3px}
+.new .foot{box-shadow:inset 0 1px 0 var(--line)}
+.new .foot .clock{color:var(--t2)}
+.new .legend .tt{font-size:14px;font-weight:650;color:var(--t1)}
+.new .legend .tt i{font-style:normal;font-weight:400;color:var(--t2);font-size:12px;margin-left:2px}
+.new .legend .lb{color:var(--t3);font-size:11px;margin-right:-5px}
+.new .legend .v{font-size:13px;font-weight:500;color:var(--t1)}
+.new .legend .chg{font-size:13px;font-weight:600}
+.new .legend .nm{color:var(--t2);font-size:12px}
+.new .legend .pm{color:var(--t3);font-size:11px}
+.new .legend .mv{font-size:12px;font-weight:500}
+.new .pleg{font-size:11px;color:var(--t3)}
+.new .pleg b{font-size:12px;font-weight:500;color:var(--t1);margin-left:4px}
+
+/* ---------- 抽屉：提案 ---------- */
+.dw{display:flex;flex-direction:column;background:var(--surface);border-radius:8px;overflow:hidden;min-height:0;min-width:0;box-shadow:inset 0 0 0 1px var(--edge)}
+.dw-hd{height:36px;flex:none;display:flex;align-items:center;gap:10px;padding:0 6px 0 14px;box-shadow:inset 0 -1px 0 var(--line)}
+.dw-hd .ti{font-size:13px;font-weight:600;color:var(--t1)}
+.dw-hd .cx{font-size:12px;color:var(--t2)}
+.dw-hd .sp{flex:1}
+.dw-hd .ib{width:28px;height:28px;color:var(--t2)}
+.dw-hd .ib svg{width:16px;height:16px}
+.dw-bd{flex:1;display:grid;grid-template-columns:288px minmax(0,1fr) 236px 224px;min-height:0}
+.blk{padding:8px 14px 8px;min-width:0;min-height:0;overflow:hidden;box-shadow:inset 1px 0 0 var(--line)}
+.blk:first-child{box-shadow:none}
+.bt{height:22px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--t3);letter-spacing:.4px}
+.bt .x{letter-spacing:0}
+.lb3{font-size:11px;color:var(--t3)}
+.hero{display:flex;align-items:flex-end;gap:16px;height:40px;margin-bottom:4px}
+.hero .big{font-size:26px;line-height:30px;font-weight:600;letter-spacing:-.2px}
+.hero .sb{display:grid;grid-template-columns:auto auto;gap:0 8px;align-items:baseline;line-height:17px;margin-bottom:1px}
+.hero .sb b{font-size:13px;font-weight:500;color:var(--t1);text-align:right}
+table.dt{width:100%;border-collapse:collapse;table-layout:fixed}
+.dt th{font-size:11px;font-weight:400;color:var(--t3);text-align:right;height:20px;padding:0 6px}
+.dt th:first-child,.dt td:first-child{text-align:left}
+.dt td{height:24px;padding:0 6px;text-align:right;font-size:13px;font-weight:500;color:var(--t1);white-space:nowrap}
+.dt td.l{font-size:12px;font-weight:400;color:var(--t2)}
+.dt td.k{font-weight:600}
+.dt.r28 td{height:28px}
+.dt tr.sel td{background:var(--soft)}
+.dt tr.hov td{background:var(--s3)}
+.dt tr td:first-child{border-radius:4px 0 0 4px}
+.dt tr td:last-child{border-radius:0 4px 4px 0}
+.dt td.bar{position:relative}
+.dt td.bar i{position:absolute;top:4px;bottom:4px;right:6px;border-radius:3px}
+.dt td.bar span{position:relative}
+.dt.r28 td.bar i{top:5px;bottom:5px}
+.vbar{display:flex;height:6px;border-radius:3px;overflow:hidden;gap:1px;margin:8px 0 6px}
+.vleg{display:flex;flex-wrap:wrap;gap:0 10px;font-size:11px;color:var(--t2);line-height:16px}
+.vleg i{display:inline-block;width:6px;height:6px;border-radius:2px;margin-right:4px;vertical-align:1px}
+.vleg b{font-weight:500;color:var(--t1);margin-left:3px}
+.lad{display:grid;grid-template-columns:auto 1fr 22px;align-items:center;column-gap:8px}
+.lad>div{height:24px;display:flex;align-items:center}
+.lad .p{font-size:13px;font-weight:500;color:var(--t1);justify-content:flex-start}
+.lad .a{position:relative;justify-content:flex-end;font-size:13px;font-weight:500;color:var(--t1)}
+.lad .a i{position:absolute;right:0;top:5px;bottom:5px;border-radius:3px}
+.lad .a span{position:relative;padding-right:6px}
+.wall{font-size:10px;font-weight:600;color:var(--atext);background:var(--soft);border-radius:4px;height:16px;line-height:16px;padding:0 3px;justify-content:center}
+.lad .last{grid-column:1/-1;display:flex;align-items:center;gap:8px;height:28px;margin:2px 0;padding:0 6px;border-radius:6px;background:var(--s2)}
+.lad .last .lb3{flex:none}
+.lad .last b{font-size:15px;font-weight:600}
+.lad .last .sp{flex:1}
+.liq-s{display:grid;grid-template-columns:auto 1fr;gap:0 10px;align-items:baseline;line-height:20px}
+.liq-s b{font-size:13px;font-weight:500;color:var(--t1);text-align:right}
+.liq-s b.k{font-size:14px;font-weight:600}
+.liqc{display:flex;align-items:center;gap:2px;height:84px;margin:6px 0 2px;position:relative}
+.liqc .col{flex:1;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1px}
+.liqc .col i{display:block;border-radius:1.5px}
+.liqc .ax{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
+.liqt{display:flex;justify-content:space-between;font-size:10px;color:var(--t3);line-height:14px}
+.dw.cmp .dw-bd{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto auto}
+.dw.cmp .blk{box-shadow:inset 1px 0 0 var(--line)}
+.dw.cmp .blk:nth-child(odd){box-shadow:none}
+.dw.cmp .blk:nth-child(n+3){box-shadow:inset 0 1px 0 var(--line)}
+.dw.cmp .blk:nth-child(4){box-shadow:inset 1px 0 0 var(--line),inset 0 1px 0 var(--line)}
+.dw.cmp .col-x{display:none}
+
+/* ---------- 抽屉：现在 ---------- */
+.cdw{display:flex;flex-direction:column;background:var(--surface);border-radius:8px;overflow:hidden;min-height:0;min-width:0;box-shadow:inset 0 0 0 1px var(--edge)}
+.cdw-hd{height:32px;flex:none;display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;box-shadow:inset 0 -1px 0 var(--line)}
+.cdw-hd .ti{font-size:13px;font-weight:650}
+.cdw-hd .cx{font-size:12px;color:var(--t3)}
+.cdw-hd .sp{flex:1}
+.cdw-hd .ib{width:28px;height:28px;color:var(--t2)}
+.cdw-hd .ib svg{width:16px;height:16px}
+.cdw-bd{flex:1;display:grid;grid-template-columns:248px minmax(0,1fr) 178px 170px;gap:8px;padding:8px;min-height:0}
+.ob{border-radius:10px;padding:8px 10px;min-width:0;min-height:0;overflow:hidden;background:linear-gradient(180deg,var(--s2),var(--surface));box-shadow:inset 0 0 0 1px var(--line),inset 0 1px 0 rgba(255,255,255,.5)}
+.dark-m .ob{box-shadow:inset 0 0 0 1px var(--line),inset 0 1px 0 rgba(255,255,255,.04)}
+.ob .ot{font-size:12px;font-weight:600;color:var(--t1);margin-bottom:4px;display:flex;justify-content:space-between}
+.ob .ot span{font-weight:400;color:var(--t3)}
+.ob .hero2{font-size:22px;font-weight:700;line-height:28px}
+.ob .hl{font-size:11px;color:var(--t2)}
+.crow{display:grid;align-items:center;height:21px;font-size:12px;gap:4px}
+.crow .t{color:var(--t2)}
+.crow .hb{position:relative;height:15px;display:flex;align-items:center;font-weight:500;font-size:11.5px}
+.crow .hb i{position:absolute;top:0;bottom:0;border-radius:2px}
+.crow .hb span{position:relative;padding:0 4px}
+.crow .hb.l{justify-content:flex-end}
+.crow .hb.l i{right:0}
+.crow .hb.r i{left:0}
+.crow.sel{background:var(--soft);border-radius:4px}
+.crow.hov{background:var(--s3);border-radius:4px}
+.crow .n{font-weight:700;text-align:right}
+.crow .m{color:var(--t2);text-align:right}
+.cvb{display:flex;height:8px;border-radius:4px;overflow:hidden;margin:6px 0 4px}
+.cvl{display:flex;flex-wrap:wrap;gap:0 8px;font-size:10.5px;color:var(--t3);line-height:15px}
+.cvl i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:3px}
+.cmp.cdw .cdw-bd{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto auto}
+.cmp .col-x{display:none}
+
+/* ---------- 第 2 节：图标 ---------- */
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:1100px){.two{grid-template-columns:minmax(0,1fr)}}
+.pan{border-radius:12px;padding:16px 18px 18px;background:var(--frame);color:var(--t1);box-shadow:0 0 0 1px var(--fline);min-width:0}
+.pan .ph{display:flex;align-items:baseline;gap:10px;margin-bottom:6px;font-size:13px;font-weight:600}
+.pan .ph small{font-weight:400;color:var(--t3);font-size:12px}
+.colh{display:flex;gap:6px;font-size:10.5px;color:var(--t3);margin:0 0 2px;height:16px;align-items:center}
+.colh div{flex:none;text-align:center}
+.colh div:first-child{text-align:left}
+.igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(318px,1fr));gap:6px 14px}
+.igrp{grid-column:1/-1;font-size:11px;color:var(--t3);letter-spacing:.4px;margin:10px 0 0;padding-bottom:4px;box-shadow:inset 0 -1px 0 var(--fline)}
+.icard{display:flex;align-items:center;gap:6px;min-width:0}
+.icard .nm{width:84px;flex:none;font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icard .c36{width:36px;height:36px;border-radius:6px;display:grid;place-items:center;color:var(--ct2);background:var(--csurf)}
+.icard .c36 svg{width:20px;height:20px}
+.icard .c40{width:40px;height:38px;border-radius:6px;display:grid;place-items:center;color:var(--ct2);background:var(--csurf)}
+.icard .c40 svg{width:28px;height:28px}
+.icard .arrow{color:var(--t3);font-size:11px;width:10px;text-align:center}
+.icard .n52{width:44px;height:38px;display:grid;place-items:center;border-radius:6px;color:var(--t1)}
+.icard .n52 svg{width:28px;height:28px}
+.icard .n52.h{background:var(--fh)}
+.icard .n52.s{background:var(--softF);color:var(--atext)}
+.icard .n20{width:24px;height:24px;display:grid;place-items:center;color:var(--t1)}
+.icard .n20 svg{width:20px;height:20px}
+.legendrow{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--t3);margin:2px 0 8px}
+.legendrow b{font-weight:500;color:var(--t2)}
+
+.flys{display:flex;flex-wrap:wrap;gap:20px 28px;align-items:flex-start}
+.flypair{display:flex;gap:14px;align-items:flex-start}
+.flycap{font-size:11px;color:var(--t3);margin:0 0 6px}
+.fly{border-radius:10px;background:var(--overlay);box-shadow:0 0 0 1px var(--fline),0 12px 32px -8px rgba(0,0,0,.28);padding:6px}
+.fly.c{width:232px;border-radius:8px;padding:4px}
+.fly.c .r{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:6px;font-size:13px;color:var(--t1)}
+.fly.c .r svg{width:20px;height:20px;color:var(--t2)}
+.fly.c .r.on{background:var(--soft);color:var(--atext)}
+.fly.c .r.on svg{color:var(--atext)}
+.fly.c .r kbd{margin-left:auto;font:11px var(--sans);color:var(--t3)}
+.fly.c .gt{font-size:12px;color:var(--t3);padding:4px 8px 2px}
+.fly.n{width:285px}
+.fly.n .gt{font-size:11px;letter-spacing:.4px;color:var(--t3);padding:6px 10px 4px}
+.fly.n .r{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px 0 6px;border-radius:6px;font-size:14px;color:var(--t1)}
+.fly.n .r svg{width:28px;height:28px}
+.fly.n .r.h{background:color-mix(in srgb,var(--t1) 6%,var(--overlay))}
+.fly.n .r.on{background:var(--soft);color:var(--atext);font-weight:500}
+.fly.n .r kbd{margin-left:auto;font:12px var(--sans);color:var(--t3)}
+.fly.n .r .pin{margin-left:auto;color:var(--t3)}
+
+.mag{display:flex;flex-wrap:wrap;gap:18px}
+.mag figure{margin:0}
+.mag .gbox{width:196px;height:196px;border-radius:8px;position:relative;color:var(--t1);background-color:var(--surface);
+  background-image:linear-gradient(to right,color-mix(in srgb,var(--t1) 9%,transparent) 1px,transparent 1px),linear-gradient(to bottom,color-mix(in srgb,var(--t1) 9%,transparent) 1px,transparent 1px);background-size:7px 7px;box-shadow:0 0 0 1px var(--fline)}
+.mag .gbox svg{position:absolute;inset:0;width:196px;height:196px}
+.mag figcaption{font-size:12px;color:var(--t2);margin-top:6px;display:flex;justify-content:space-between}
+.mag figcaption span{color:var(--t3)}
+.mag .act{display:flex;gap:8px;align-items:center;margin-top:6px}
+.mag .act div{width:44px;height:38px;border-radius:6px;display:grid;place-items:center}
+.mag .act svg{width:28px;height:28px}
+
+.uigrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px 18px}
+.ucard{display:flex;align-items:center;gap:6px;height:40px}
+.ucard .nm{width:58px;font-size:12px;color:var(--t2)}
+.ucard .grp{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:8px}
+.ucard .grp.c{background:var(--csurf);color:var(--ct2)}
+.ucard .grp.n{color:var(--t1)}
+.ucard .arrow{color:var(--t3);font-size:11px}
+.i24{width:24px;height:24px}.i20{width:20px;height:20px}.i16{width:16px;height:16px}
+.i16 .u{display:none}
+.u{opacity:.45}
+
+/* ---------- 第 3 节：材料与颜色 ---------- */
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px}
+.pcard{border-radius:12px;padding:14px 16px 16px;background:var(--frame);color:var(--t1);box-shadow:0 0 0 1px var(--fline);min-width:0}
+.pcard h4{margin:0 0 10px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.pcard h4 small{font-weight:400;color:var(--t3);font-size:12px}
+.strip{display:flex;height:44px;border-radius:8px;overflow:hidden;margin-bottom:4px;box-shadow:0 0 0 1px var(--fline)}
+.strip div{flex:1;display:flex;align-items:flex-end;padding:4px 6px;font:10px/1.2 var(--mono)}
+.stripcap{font-size:11px;color:var(--t3);margin:0 0 10px}
+.layers{border-radius:8px;padding:8px;background:var(--frame);box-shadow:inset 0 0 0 1px var(--fline);display:grid;grid-template-columns:1fr 1.4fr;gap:6px;margin-bottom:10px}
+.layers .card{background:var(--surface);border-radius:6px;padding:8px 10px;min-height:76px;box-shadow:inset 0 0 0 1px var(--edge)}
+.layers .card .s2{background:var(--s2);border-radius:4px;padding:2px 6px;font-size:11px;margin-top:4px;color:var(--t2)}
+.layers .card .s3{background:var(--s3);border-radius:4px;padding:2px 6px;font-size:11px;margin-top:3px;color:var(--t1)}
+.layers .fr{padding:4px 2px;font-size:11px;color:var(--t1);display:flex;flex-direction:column;gap:4px}
+.layers .fr .h{background:var(--fh);border-radius:4px;padding:2px 6px}
+.layers .fr .sel{background:var(--softF);color:var(--atext);border-radius:4px;padding:2px 6px;font-weight:600}
+.layers .ov{background:var(--overlay);border-radius:6px;padding:4px 8px;font-size:11px;box-shadow:0 6px 16px -4px rgba(0,0,0,.3);margin-top:6px}
+.sw{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-bottom:12px}
+.sw div{border-radius:6px;height:46px;padding:4px 6px;display:flex;flex-direction:column;justify-content:flex-end;font-size:10px;line-height:13px;box-shadow:inset 0 0 0 1px rgba(127,127,127,.18)}
+.sw div code{font:10px var(--mono);opacity:.85}
+table.cr{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px}
+.cr th{font-weight:400;color:var(--t3);text-align:center;height:22px;padding:0 2px;font-size:11px}
+.cr th:first-child{text-align:left}
+.cr td{height:26px;text-align:center;padding:2px}
+.cr td:first-child{text-align:left;color:var(--t2);white-space:nowrap;padding-right:6px}
+.cr td .chip{display:block;border-radius:5px;height:24px;line-height:24px;font-weight:500;position:relative}
+.cr td .chip em{font-style:normal;position:absolute;right:4px;top:-1px;font-size:9px;font-weight:600}
+.cr td .chip.bad{box-shadow:inset 0 0 0 1.5px #E5484D}
+.cr td .chip.bad em{color:#E5484D}
+.cr tr.was td{opacity:.78}
+.cr tr.was td:first-child{color:var(--t3)}
+.cr .sub{font-size:10px;color:var(--t3)}
+.cat{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:1100px){.cat{grid-template-columns:minmax(0,1fr)}}
+.catp{border-radius:12px;padding:14px 16px;background:var(--surface);color:var(--t1);box-shadow:0 0 0 1px var(--fline)}
+.catp h4{margin:0 0 8px;font-size:13px;font-weight:600}
+.catrow{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-bottom:10px;font-size:12px}
+.catrow .k{width:56px;color:var(--t3);font-size:11px}
+.catrow span{display:inline-flex;align-items:center;gap:5px}
+.catrow i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.catrow code{font:10px var(--mono);color:var(--t3)}
+.bands{position:relative;height:96px;border-radius:8px;overflow:hidden;background:var(--surface);margin-top:4px;box-shadow:inset 0 0 0 1px var(--line)}
+.bands .b{position:absolute;left:0;right:0}
+.bands .b i{position:absolute;left:0;top:0;bottom:0;width:2px}
+.bands .b span{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:600;padding:0 6px;border-radius:4px;line-height:18px}
+.sum{border-radius:10px;padding:12px 16px;background:var(--surface);box-shadow:0 0 0 1px var(--fline);font-size:13px;margin-top:16px}
+.sum b{font-weight:600}
+.sum .bad{color:#E5484D}
+
+/* ---------- 第 4 节 ---------- */
+.cu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.cuw{color:var(--t1);border-radius:12px;overflow:hidden;background:var(--frame);padding:4px;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:4px;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.cuw .cdw,.cuw .dw{min-height:300px}
+.cuw .cuh{display:flex;align-items:center;gap:8px;padding:6px 8px 2px;font-size:12px;color:var(--t2)}
+.cuw .cuh b{color:var(--t1);font-weight:600;font-size:13px}
+.cuw .cell{height:440px}
+.notes{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px 24px;margin-top:14px;font-size:12.5px;color:var(--t2)}
+.notes div b{color:var(--t1);font-weight:600;display:block;font-size:13px;margin-bottom:2px}
+</style>
+</head>
+<body>
+<div class="ctl" id="ctl">
+  <div class="ttl">电脑网页视觉提案 <small>10-08</small></div>
+  <div class="seg" data-k="mode"><button data-v="cur">现在</button><button data-v="new">提案</button></div>
+  <div class="seg" data-k="theme"><button data-v="light">浅色</button><button data-v="dark">深色</button></div>
+  <span class="lab">皮肤</span>
+  <div class="seg" data-k="skin"><button data-v="sage">青苔</button><button data-v="classic">经典</button><button data-v="terra">陶土</button></div>
+  <nav><a href="#s1">图表页</a><a href="#s2">画线图标</a><a href="#s3">材料与颜色</a><a href="#s4">订单流特写</a></nav>
+</div>
+
+<main>
+<section id="s1">
+  <h2>1 · 图表页</h2>
+  <p class="lede" id="s1lede"></p>
+  <div class="stage" id="stage1"></div>
+</section>
+
+<section id="s2">
+  <h2>2 · 画线图标</h2>
+  <p class="lede">41 种画线，现在 vs 提案。提案：28 格、1.5 描边、坐标落在半像素上、锚点实心 r 2.5、多点形态的中间点 r 1.75、面 18% 透明、辅助线 50%、虚线续段 = 无限延伸。框架上静止就是主文字色。</p>
+  <div class="legendrow"><span><b>现在</b> 20 图标 · 36 格（左）和放到 28（右），卡片底 · 次要字色</span><span><b>提案</b> 静止 · 悬停 · 选中，框架底 · 52 列里 40×34 的按钮 · 再加 20 小号</span></div>
+  <div class="two" id="s2a"></div>
+  <h3>工具组展开</h3>
+  <div class="flys" id="s2b"></div>
+  <h3>像素格放大（28 格 × 7）</h3>
+  <div class="mag" id="s2c"></div>
+  <h3>界面图标 · 16 个</h3>
+  <div class="legendrow"><span>每行：<b>现在</b> 24 · 20 · 16 → <b>提案</b> 24 · 20 · 16（16 以下去掉衬底，只留单色主体）</span></div>
+  <div class="two" id="s2d"></div>
+</section>
+
+<section id="s3">
+  <h2>3 · 材料与颜色</h2>
+  <p class="lede">每套皮肤深浅各一张：上面是现在的三层（底 / 卡片 / K 线画布各一种颜色），下面是提案的两层材料和实测对比度。数字是页面里实时算的 WCAG 对比度。</p>
+  <div class="pgrid" id="s3a"></div>
+  <h3>分类色与方向色</h3>
+  <div class="cat" id="s3b"></div>
+  <div class="sum" id="s3sum"></div>
+</section>
+
+<section id="s4">
+  <h2>4 · 订单流特写 · 深色</h2>
+  <p class="lede">同一段行情放大：挂单带、大单气泡和大单列表，左边现在、右边提案。皮肤跟着上面的切换走。</p>
+  <div class="cu" id="s4a"></div>
+  <div class="notes" id="s4n"></div>
+</section>
+</main>
+
+<script>
+/* ============================================================ 现在的图标（构建时从 Web/src/ui/icons.ts 原样注入，只去掉类型标注） */
+const CUR = (() => {
+const D = 'opacity=".3"'
+/** 多图布局记号：cols × rows 个圆角格，第一格实填、其余衬底（和四图、八图同一画法） */
+function gridIcon(cols, rows) {
+  const g = cols > 3 || rows > 3 ? 0.9 : 1, x0 = 2, y0 = 3, W = 20, H = 18
+  const w = (W - g * (cols - 1)) / cols, h = (H - g * (rows - 1)) / rows, r = Math.min(1.5, w / 3, h / 3)
+  let out = ''
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const x = +(x0 + i * (w + g)).toFixed(2), y = +(y0 + j * (h + g)).toFixed(2)
+    out += `<rect x="${x}" y="${y}" width="${+w.toFixed(2)}" height="${+h.toFixed(2)}" rx="${+r.toFixed(2)}" fill="currentColor"${i || j ? ' ' + D : ''}/>`
+  }
+  return out
+}
+/** 描边占位：1.6 细线、圆头（新画线工具占位用） */
+const S = (d, extra = '', w = 1.6) => `<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" ${extra}/>`
+/** 锚点：实心小圆 */
+const O = (x, y) => `<circle cx="${x}" cy="${y}" r="1.9" fill="currentColor"/>`
+const P = {
+  logo: `<rect x="2" y="2" width="20" height="20" rx="6" fill="var(--accent)"/><path d="M7 16.5V9.2M12 15V6.5M17 13.5v-5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M7 7.2v1M12 16.9v.8M17 15.6v.8M17 6.4v.8" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".55"/>`,
+  search: `<circle cx="10.5" cy="10.5" r="6.5" fill="currentColor" ${D}/><path d="M10.5 3a7.5 7.5 0 1 0 4.55 13.46l4.24 4.25a1.25 1.25 0 0 0 1.77-1.77l-4.25-4.24A7.5 7.5 0 0 0 10.5 3Zm0 2.5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z" fill="currentColor"/>`,
+  bell: `<path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6Z" fill="currentColor"/><path d="M9.5 18.5a2.5 2.5 0 0 0 5 0" fill="currentColor" ${D}/>`,
+  bellPlus: `<path d="M11 3.1A6 6 0 0 0 6 9v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6v-.9A5 5 0 0 1 11 3.1Z" fill="currentColor"/><path d="M9.5 18.5a2.5 2.5 0 0 0 5 0" fill="currentColor" ${D}/><path d="M17 2.5a1 1 0 0 1 1 1V5h1.5a1 1 0 1 1 0 2H18v1.5a1 1 0 1 1-2 0V7h-1.5a1 1 0 1 1 0-2H16V3.5a1 1 0 0 1 1-1Z" fill="currentColor"/>`,
+  sun: `<circle cx="12" cy="12" r="7.5" fill="currentColor" ${D}/><circle cx="12" cy="12" r="4.5" fill="currentColor"/>`,
+  moon: `<circle cx="12" cy="12" r="8.5" fill="currentColor" ${D}/><path d="M13.5 4.2a7.5 7.5 0 1 0 6.3 10.9A6 6 0 0 1 13.5 4.2Z" fill="currentColor"/>`,
+  chevronDown: `<path d="M7.3 9.3a1 1 0 0 1 1.4 0L12 12.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4Z" fill="currentColor"/>`,
+  candles: `<rect x="4" y="6" width="5" height="10" rx="1.5" fill="currentColor"/><rect x="15" y="9" width="5" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="5.75" y="3" width="1.5" height="17" rx=".75" fill="currentColor"/><rect x="16.75" y="5" width="1.5" height="15" rx=".75" fill="currentColor" ${D}/>`,
+  indicators: `<rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" ${D}/><path d="M6.5 15.5l3.2-4 3 2.5 4.8-6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  // 对比：两条走势叠在一起（主线实、对比线衬底色），端点实心圆点
+  compare: `<path d="M3.5 17.5l5-5.5 4 3 7.5-8" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 9.5l5 4 4-5 7.5 5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" ${D}/><circle cx="20" cy="7" r="2.2" fill="currentColor"/>`,
+  layout: `<rect x="3" y="3" width="8" height="18" rx="2.5" fill="currentColor"/><rect x="13" y="3" width="8" height="8" rx="2.5" fill="currentColor" ${D}/><rect x="13" y="13" width="8" height="8" rx="2.5" fill="currentColor" ${D}/>`,
+  layout1: `<rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor"/>`,
+  layout2: `<rect x="3" y="4" width="8.5" height="16" rx="2.5" fill="currentColor"/><rect x="12.5" y="4" width="8.5" height="16" rx="2.5" fill="currentColor" ${D}/>`,
+  layout2v: `<rect x="3" y="3.5" width="18" height="8" rx="2.5" fill="currentColor"/><rect x="3" y="12.5" width="18" height="8" rx="2.5" fill="currentColor" ${D}/>`,
+  layout6: `<rect x="2.5" y="3.5" width="5.6" height="8" rx="1.8" fill="currentColor"/><rect x="9.2" y="3.5" width="5.6" height="8" rx="1.8" fill="currentColor" ${D}/><rect x="15.9" y="3.5" width="5.6" height="8" rx="1.8" fill="currentColor" ${D}/><rect x="2.5" y="12.5" width="5.6" height="8" rx="1.8" fill="currentColor" ${D}/><rect x="9.2" y="12.5" width="5.6" height="8" rx="1.8" fill="currentColor" ${D}/><rect x="15.9" y="12.5" width="5.6" height="8" rx="1.8" fill="currentColor" ${D}/>`,
+  layout8: `<rect x="2" y="3.5" width="4.2" height="8" rx="1.5" fill="currentColor"/><rect x="7.1" y="3.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="12.2" y="3.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="17.3" y="3.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="2" y="12.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="7.1" y="12.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="12.2" y="12.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/><rect x="17.3" y="12.5" width="4.2" height="8" rx="1.5" fill="currentColor" ${D}/>`,
+  layout3: `<rect x="3" y="4" width="8.5" height="16" rx="2.5" fill="currentColor"/><rect x="12.5" y="4" width="8.5" height="7.5" rx="2.5" fill="currentColor" ${D}/><rect x="12.5" y="12.5" width="8.5" height="7.5" rx="2.5" fill="currentColor" ${D}/>`,
+  layout9: gridIcon(3, 3),
+  layout12: gridIcon(4, 3),
+  layout16: gridIcon(4, 4),
+  layout4: `<rect x="3" y="3.5" width="8.5" height="8" rx="2.5" fill="currentColor"/><rect x="12.5" y="3.5" width="8.5" height="8" rx="2.5" fill="currentColor" ${D}/><rect x="3" y="12.5" width="8.5" height="8" rx="2.5" fill="currentColor" ${D}/><rect x="12.5" y="12.5" width="8.5" height="8" rx="2.5" fill="currentColor" ${D}/>`,
+  note: `<path d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="currentColor" ${D}/><path d="M6 3h3v18H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm5.5 5h4.5a1 1 0 1 1 0 2h-4.5a1 1 0 1 1 0-2Zm0 4h3a1 1 0 1 1 0 2h-3a1 1 0 1 1 0-2Z" fill="currentColor"/>`,
+  share: `<circle cx="17.5" cy="5.5" r="3" fill="currentColor"/><circle cx="6.5" cy="12" r="3" fill="currentColor"/><circle cx="17.5" cy="18.5" r="3" fill="currentColor"/><path d="M8.2 11l7.6-4.4M8.2 13l7.6 4.4" stroke="currentColor" stroke-width="2.2" ${D}/>`,
+  camera: `<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h1.2l1.1-1.5A1.5 1.5 0 0 1 10 3h4a1.5 1.5 0 0 1 1.2.5L16.3 5h1.2A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z" fill="currentColor" ${D}/><circle cx="12" cy="12" r="3.8" fill="currentColor"/>`,
+  undo: `<path d="M9.7 4.3a1 1 0 0 1 0 1.4L7.4 8H14a6 6 0 0 1 0 12h-3a1 1 0 1 1 0-2h3a4 4 0 0 0 0-8H7.4l2.3 2.3a1 1 0 1 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0Z" fill="currentColor"/>`,
+  redo: `<path d="M14.3 4.3a1 1 0 0 0 0 1.4L16.6 8H10a6 6 0 0 0 0 12h3a1 1 0 1 0 0-2h-3a4 4 0 0 1 0-8h6.6l-2.3 2.3a1 1 0 1 0 1.4 1.4l4-4a1 1 0 0 0 0-1.4l-4-4a1 1 0 0 0-1.4 0Z" fill="currentColor"/>`,
+  refresh: `<path d="M12 5a7 7 0 0 1 6.3 4H16a1 1 0 1 0 0 2h4.5a1 1 0 0 0 1-1V5.5a1 1 0 1 0-2 0v1.8A9 9 0 1 0 21 13a1 1 0 1 0-2-.2A7 7 0 1 1 12 5Z" fill="currentColor"/>`,
+  fullscreen: `<path d="M4 9V6a2 2 0 0 1 2-2h3M15 4h3a2 2 0 0 1 2 2v3M20 15v3a2 2 0 0 1-2 2h-3M9 20H6a2 2 0 0 1-2-2v-3" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/><rect x="8" y="8" width="8" height="8" rx="2" fill="currentColor" ${D}/>`,
+  gear: `<path d="M10.3 2.6a1 1 0 0 1 1-.6h1.4a1 1 0 0 1 1 .6l.6 1.7 1.7.7 1.6-.8a1 1 0 0 1 1.2.2l1 1a1 1 0 0 1 .2 1.2l-.8 1.6.7 1.7 1.7.6a1 1 0 0 1 .6 1v1.4a1 1 0 0 1-.6 1l-1.7.6-.7 1.7.8 1.6a1 1 0 0 1-.2 1.2l-1 1a1 1 0 0 1-1.2.2l-1.6-.8-1.7.7-.6 1.7a1 1 0 0 1-1 .6h-1.4a1 1 0 0 1-1-.6l-.6-1.7-1.7-.7-1.6.8a1 1 0 0 1-1.2-.2l-1-1a1 1 0 0 1-.2-1.2l.8-1.6-.7-1.7-1.7-.6a1 1 0 0 1-.6-1v-1.4a1 1 0 0 1 .6-1l1.7-.6.7-1.7-.8-1.6a1 1 0 0 1 .2-1.2l1-1a1 1 0 0 1 1.2-.2l1.6.8 1.7-.7.6-1.7Z" fill="currentColor" ${D}/><circle cx="12" cy="12" r="3.5" fill="currentColor"/>`,
+  star: `<path d="M12 2.8l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 16.8l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 2.8Z" fill="currentColor"/>`,
+  starLine: `<path d="M12 3.6l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 16l-4.8 2.5.9-5.4-3.9-3.8 5.4-.8L12 3.6Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`,
+  starOff: `<path d="M12 2.8l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 16.8l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 2.8Z" fill="currentColor" opacity=".22"/>`,
+  list: `<rect x="3" y="4" width="18" height="16" rx="4" fill="currentColor" ${D}/><path d="M7.2 8.2l.9 1.8 2 .3-1.4 1.4.3 2-1.8-1-1.8 1 .3-2L4.3 10.3l2-.3.9-1.8Z" fill="currentColor"/><rect x="12" y="8.5" width="6" height="2" rx="1" fill="currentColor"/><rect x="12" y="13.5" width="4" height="2" rx="1" fill="currentColor"/>`,
+  layers: `<path d="M12 3.2l8.4 4.3a.8.8 0 0 1 0 1.4L12 13.2 3.6 8.9a.8.8 0 0 1 0-1.4L12 3.2Z" fill="currentColor"/><path d="M4.6 12.3L12 16.1l7.4-3.8 1 .5a.8.8 0 0 1 0 1.4L12 18.5l-8.4-4.3a.8.8 0 0 1 0-1.4l1-.5Z" fill="currentColor" ${D}/>`,
+  trades: `<rect x="3" y="3" width="18" height="18" rx="5" fill="currentColor" ${D}/><path d="M8 7v10M8 7l-2.2 2.2M8 7l2.2 2.2M16 17V7m0 10l-2.2-2.2M16 17l2.2-2.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`,
+  info: `<circle cx="12" cy="12" r="9" fill="currentColor" ${D}/><rect x="10.8" y="10.5" width="2.4" height="7" rx="1.2" fill="currentColor"/><circle cx="12" cy="7.5" r="1.5" fill="currentColor"/>`,
+  plus: `<path d="M12 4.5a1.2 1.2 0 0 1 1.2 1.2v5.1h5.1a1.2 1.2 0 1 1 0 2.4h-5.1v5.1a1.2 1.2 0 1 1-2.4 0v-5.1H5.7a1.2 1.2 0 1 1 0-2.4h5.1V5.7A1.2 1.2 0 0 1 12 4.5Z" fill="currentColor"/>`,
+  close: `<path d="M6.3 6.3a1.1 1.1 0 0 1 1.6 0L12 10.4l4.1-4.1a1.1 1.1 0 1 1 1.6 1.6L13.6 12l4.1 4.1a1.1 1.1 0 1 1-1.6 1.6L12 13.6l-4.1 4.1a1.1 1.1 0 1 1-1.6-1.6l4.1-4.1-4.1-4.1a1.1 1.1 0 0 1 0-1.6Z" fill="currentColor"/>`,
+  check: `<path d="M19.2 6.3a1.1 1.1 0 0 1 0 1.6l-9 9a1.1 1.1 0 0 1-1.6 0l-4-4a1.1 1.1 0 1 1 1.6-1.6l3.2 3.2 8.2-8.2a1.1 1.1 0 0 1 1.6 0Z" fill="currentColor"/>`,
+  eye: `<path d="M12 5C7 5 3.3 8.4 2 12c1.3 3.6 5 7 10 7s8.7-3.4 10-7c-1.3-3.6-5-7-10-7Z" fill="currentColor" ${D}/><path d="M12 5.9C7.6 5.9 4.3 8.8 3 12c1.3 3.2 4.6 6.1 9 6.1s7.7-2.9 9-6.1c-1.3-3.2-4.6-6.1-9-6.1Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/>`,
+  eyeOff: `<path d="M12 5C7 5 3.3 8.4 2 12c1.3 3.6 5 7 10 7s8.7-3.4 10-7c-1.3-3.6-5-7-10-7Z" fill="currentColor" ${D}/><path d="M12 5.9C7.6 5.9 4.3 8.8 3 12c1.3 3.2 4.6 6.1 9 6.1s7.7-2.9 9-6.1c-1.3-3.2-4.6-6.1-9-6.1Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M4.3 4.3a1 1 0 0 1 1.4 0l14 14a1 1 0 0 1-1.4 1.4l-14-14a1 1 0 0 1 0-1.4Z" fill="currentColor"/>`,
+  pencil: `<path d="M15.6 4.2a2 2 0 0 1 2.8 0l1.4 1.4a2 2 0 0 1 0 2.8L9.3 18.9a2 2 0 0 1-.9.5l-3.6 1a.8.8 0 0 1-1-1l1-3.6c.1-.3.3-.6.5-.9L15.6 4.2Z" fill="currentColor"/>`,
+  download: `<path d="M12 3.5a1.2 1.2 0 0 1 1.2 1.2v8.4l2.9-2.9a1.2 1.2 0 1 1 1.7 1.7l-4.95 4.95a1.2 1.2 0 0 1-1.7 0L6.2 11.9a1.2 1.2 0 1 1 1.7-1.7l2.9 2.9V4.7A1.2 1.2 0 0 1 12 3.5ZM5 17.3a1.2 1.2 0 0 1 1.2 1.2v.3h11.6v-.3a1.2 1.2 0 1 1 2.4 0v.5a2.2 2.2 0 0 1-2.2 2.2H6a2.2 2.2 0 0 1-2.2-2.2v-.5A1.2 1.2 0 0 1 5 17.3Z" fill="currentColor"/>`,
+  trash: `<path d="M6 7h12l-.8 12.1A2 2 0 0 1 15.2 21H8.8a2 2 0 0 1-2-1.9L6 7Z" fill="currentColor" ${D}/><path d="M9.5 3.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V5H19a1 1 0 1 1 0 2H5a1 1 0 1 1 0-2h4.5V3.5ZM10 10a1 1 0 0 1 1 1v6a1 1 0 1 1-2 0v-6a1 1 0 0 1 1-1Zm4 0a1 1 0 0 1 1 1v6a1 1 0 1 1-2 0v-6a1 1 0 0 1 1-1Z" fill="currentColor"/>`,
+  lock: `<rect x="4.5" y="10" width="15" height="11" rx="3" fill="currentColor"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10" stroke="currentColor" stroke-width="2.2" fill="none" ${D}/>`,
+  magnet: `<path d="M5 4h4v8a3 3 0 0 0 6 0V4h4v8a7 7 0 0 1-14 0V4Z" fill="currentColor" ${D}/><rect x="5" y="4" width="4" height="4" rx="1" fill="currentColor"/><rect x="15" y="4" width="4" height="4" rx="1" fill="currentColor"/>`,
+  drag: `<circle cx="9" cy="7" r="1.5" fill="currentColor"/><circle cx="15" cy="7" r="1.5" fill="currentColor"/><circle cx="9" cy="12" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/><circle cx="9" cy="17" r="1.5" fill="currentColor"/><circle cx="15" cy="17" r="1.5" fill="currentColor"/>`,
+  more: `<circle cx="6" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="18" cy="12" r="1.8" fill="currentColor"/>`,
+  play: `<path d="M8 5.2v13.6a1 1 0 0 0 1.5.9l10.6-6.8a1 1 0 0 0 0-1.8L9.5 4.3A1 1 0 0 0 8 5.2Z" fill="currentColor"/>`,
+  pause: `<rect x="6.5" y="5" width="4" height="14" rx="1.5" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.5" fill="currentColor"/>`,
+  user: `<circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 19.5C4 16 7.6 14 12 14s8 2 8 5.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z" fill="currentColor" ${D}/>`,
+  key: `<circle cx="8" cy="12" r="5" fill="currentColor"/><path d="M12 11h9v3h-2v2.5h-3V14h-4v-3Z" fill="currentColor" ${D}/><circle cx="8" cy="12" r="1.8" fill="var(--surface)"/>`,
+  device: `<rect x="2.5" y="5" width="14" height="10.5" rx="2" fill="currentColor" ${D}/><rect x="15" y="8" width="6.5" height="12" rx="1.8" fill="currentColor"/><rect x="6" y="17.5" width="7" height="2" rx="1" fill="currentColor" ${D}/>`,
+  palette: `<path d="M12 3a9 9 0 0 0 0 18c1.2 0 1.8-.9 1.4-1.9-.5-1.2.3-2.6 1.6-2.6H17a4 4 0 0 0 4-4c0-5.3-4-9.5-9-9.5Z" fill="currentColor" ${D}/><circle cx="7.5" cy="11" r="1.6" fill="currentColor"/><circle cx="10" cy="7" r="1.6" fill="currentColor"/><circle cx="15" cy="7.5" r="1.6" fill="currentColor"/>`,
+  link: `<path d="M10.6 13.4a3.5 3.5 0 0 0 5 0l3.2-3.2a3.5 3.5 0 0 0-5-5l-1 1" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M13.4 10.6a3.5 3.5 0 0 0-5 0l-3.2 3.2a3.5 3.5 0 0 0 5 5l1-1" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" ${D}/>`,
+  logout: `<path d="M5 4h7v16H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" fill="currentColor" ${D}/><path d="M15.3 7.3a1 1 0 0 1 1.4 0l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 1 1-1.4-1.4l2.3-2.3H10a1 1 0 1 1 0-2h7.6l-2.3-2.3a1 1 0 0 1 0-1.4Z" fill="currentColor"/>`,
+  spec: `<rect x="3" y="3" width="8" height="8" rx="2.5" fill="currentColor"/><circle cx="17" cy="7" r="4" fill="currentColor" ${D}/><path d="M7 13.5l4 7H3l4-7Z" fill="currentColor" ${D}/><rect x="13" y="13" width="8" height="8" rx="4" fill="currentColor"/>`,
+  wifiOff: `<path d="M12 18.5a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6Z" fill="currentColor"/><path d="M3 9.5a13 13 0 0 1 18 0M6.5 13a8 8 0 0 1 11 0" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" ${D}/><path d="M4 4l16 16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`,
+
+  // ---- 画线工具（线保留线形，端点实心）
+  cursor: `<path d="M12 3v6M12 15v6M3 12h6M15 12h6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/>`,
+  trend: `<path d="M5.5 18.5l13-13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="5.5" cy="18.5" r="2.6" fill="currentColor"/><circle cx="18.5" cy="5.5" r="2.6" fill="currentColor"/>`,
+  ray: `<path d="M5.5 18.5L21 3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="5.5" cy="18.5" r="2.6" fill="currentColor"/><circle cx="12" cy="12" r="2.2" fill="currentColor" ${D}/>`,
+  hline: `<path d="M3 12h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/>`,
+  vline: `<path d="M12 3v18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/>`,
+  rect: `<rect x="5" y="6" width="14" height="12" rx="1.5" fill="currentColor" ${D}/><rect x="5" y="6" width="14" height="12" rx="1.5" stroke="currentColor" stroke-width="2.2" fill="none"/><circle cx="5" cy="6" r="2.2" fill="currentColor"/><circle cx="19" cy="18" r="2.2" fill="currentColor"/>`,
+  fib: `<path d="M3 5h18M3 9.5h18M3 13.5h18M3 19h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ${D}/><path d="M5 19L19 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="2 3"/><circle cx="5" cy="19" r="2.4" fill="currentColor"/><circle cx="19" cy="5" r="2.4" fill="currentColor"/>`,
+  measure: `<rect x="3" y="7" width="18" height="10" rx="2.5" fill="currentColor" ${D}/><path d="M7 7v4M11 7v3M15 7v4M19 7v3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`,
+  // 锚定 VWAP：锚点一颗实心点，从它起一条线
+  avwap: `<path d="M5 16.5C9 15 12 11 20 9.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M5 5v14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ${D}/><circle cx="5" cy="16.5" r="2.6" fill="currentColor"/>`,
+  // 固定区间成交量分布：两条边界竖线夹着横向柱，最长那根是控制点
+  fvp: `<path d="M4 4v16M20 4v16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ${D}/><rect x="4" y="5.5" width="6" height="2.6" rx="1.3" fill="currentColor" ${D}/><rect x="4" y="9.3" width="10" height="2.6" rx="1.3" fill="currentColor" ${D}/><rect x="4" y="13.1" width="14" height="2.6" rx="1.3" fill="currentColor"/><rect x="4" y="16.9" width="8" height="2.6" rx="1.3" fill="currentColor" ${D}/>`,
+  // 多空持仓：上面止盈（实）、下面止损（淡），中间开仓线
+  position: `<rect x="4" y="4" width="16" height="8" rx="2" fill="currentColor"/><rect x="4" y="12" width="16" height="7" rx="2" fill="currentColor" ${D}/><path d="M3 12h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`,
+  channel: `<path d="M4 15L15 4M9 20L20 9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M4 15l5 5 11-11-5-5z" fill="currentColor" ${D}/><circle cx="4" cy="15" r="2.2" fill="currentColor"/><circle cx="15" cy="4" r="2.2" fill="currentColor"/>`,
+  // K 线回放：两个往回的三角（后一个淡）；跳到起点：一道竖杠挡着一个往回的三角
+  replay: `<path d="M11 6.2v11.6a1 1 0 0 1-1.6.8l-7-5.8a1 1 0 0 1 0-1.6l7-5.8a1 1 0 0 1 1.6.8Z" fill="currentColor"/><path d="M21 6.2v11.6a1 1 0 0 1-1.6.8l-7-5.8a1 1 0 0 1 0-1.6l7-5.8a1 1 0 0 1 1.6.8Z" fill="currentColor" ${D}/>`,
+  toStart: `<rect x="4.5" y="5" width="3" height="14" rx="1.5" fill="currentColor"/><path d="M19 6.2v11.6a1 1 0 0 1-1.6.8l-7.4-5.8a1 1 0 0 1 0-1.6l7.4-5.8a1 1 0 0 1 1.6.8Z" fill="currentColor"/>`,
+  // ---- 2026-10-08 补全的画线工具：先用简单描边占位（整套图标重画定版后一并换掉，键名 = 画线种类不变）
+  hray: S('M4 12h17') + O(4, 12),
+  extended: S('M2 19L22 5') + O(8, 14.8) + O(16, 9.2),
+  crossLine: S('M3 12h18M12 3v18') + O(12, 12),
+  arrowLine: S('M5 19L19 5M12 5h7v7') + O(5, 19),
+  regression: S('M3 16L21 6M3 20L21 10M3 12L21 2') + O(3, 16) + O(21, 6),
+  pitchfork: S('M4 14l7-8M11 6l9 3M11 6l2 13M11 6l6 11') + O(4, 14) + O(11, 6),
+  gannBox: S('M4 5h16v14H4zM4 5l16 14M4 19L20 5M12 5v14M4 12h16', '', 1.3),
+  gannFan: S('M4 20L20 4M4 20l16-8M4 20l8-16M4 20h16M4 20V4', '', 1.4) + O(4, 20),
+  fibExtension: S('M3 6h18M3 11h18M3 16h18', 'opacity=".55"') + S('M4 19l5-10 5 6') + O(4, 19) + O(9, 9) + O(14, 15),
+  fibChannel: S('M3 15L15 3M6 18L18 6M9 21L21 9') + O(3, 15),
+  fibTimeZone: S('M4 3v18M7 3v18M10 3v18M15 3v18M21 3v18'),
+  fibFan: S('M4 20L20 4M4 20l16-6M4 20l16-11M4 20L14 4') + O(4, 20),
+  xabcd: S('M3 17l4-11 5 8 4-9 5 12M3 17l9-3M7 6l9 0', 'stroke-linejoin="round"') + O(3, 17) + O(21, 17),
+  abcd: S('M3 18l6-12 5 7 7-9', 'stroke-linejoin="round"') + O(3, 18) + O(21, 4),
+  headShoulders: S('M2 17l3-6 3 5 4-11 4 11 3-5 3 6M3 16h18', 'stroke-linejoin="round"'),
+  triangle: S('M12 4l9 16H3z', 'stroke-linejoin="round"') + O(12, 4) + O(3, 20) + O(21, 20),
+  elliottImpulse: S('M2 19l4-8 3 4 5-11 3 6 5-6', 'stroke-linejoin="round"') + O(2, 19) + O(22, 4),
+  elliottCorrection: S('M3 5l6 11 5-6 7 10', 'stroke-linejoin="round"') + O(3, 5) + O(21, 20),
+  ptMeasure: S('M5 5v14M19 5v14M5 12h14M16 9l3 3-3 3M8 9l-3 3 3 3'),
+  priceRange: S('M4 5h16M4 19h16M12 6v12M9 9l3-3 3 3M9 15l3 3 3-3'),
+  dateRange: S('M5 4v16M19 4v16M6 12h12M9 9l-3 3 3 3M15 9l3 3-3 3'),
+  datePriceRange: S('M4 4h16v16H4z', 'opacity=".55"', 1.3) + S('M7 17L17 7M13 7h4v4'),
+  ellipse: `<ellipse cx="12" cy="12" rx="9" ry="6" fill="none" stroke="currentColor" stroke-width="1.6"/>` + O(3, 12) + O(21, 12),
+  curve: S('M3 18C7 4 14 4 21 16') + O(3, 18) + O(21, 16),
+  callout: S('M4 4h16v10H11l-4 5v-5H4z', 'stroke-linejoin="round"') + S('M8 8h8M8 11h5'),
+  priceLabel: S('M3 8h12l5 4-5 4H3z', 'stroke-linejoin="round"') + O(18, 12),
+  flag: S('M6 21V3M6 4h12l-3 4 3 4H6', 'stroke-linejoin="round"'),
+  markerUp: S('M12 4l7 9h-4v7H9v-7H5z', 'stroke-linejoin="round"'),
+  markerDown: S('M12 20l7-9h-4V4H9v7H5z', 'stroke-linejoin="round"'),
+  anchoredVolumeProfile: S('M5 3v18', 'opacity=".55"') + S('M5 6h5M5 10h9M5 14h13M5 18h7') + O(5, 12),
+}
+return P })();
+
+/* ============================================================ 颜色工具 */
+const H2R = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const R2H = a => '#' + a.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
+const rgba = (h, a) => { const [r, g, b] = H2R(h); return `rgba(${r},${g},${b},${a})`; };
+const mix = (a, b, t) => { const A = H2R(a), B = H2R(b); return R2H(A.map((v, i) => v + (B[i] - v) * t)); };
+const lum = h => { const [r, g, b] = H2R(h).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+const cr = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+function oklch(L, C, h) {
+  const hr = h * Math.PI / 180, a = C * Math.cos(hr), b = C * Math.sin(hr);
+  const l_ = L + .3963377774 * a + .2158037573 * b, m_ = L - .1055613458 * a - .0638541728 * b, s_ = L - .0894841775 * a - 1.2914855480 * b;
+  const l = l_ ** 3, m = m_ ** 3, s = s_ ** 3;
+  const lin = [4.0767416621 * l - 3.3077115913 * m + .2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - .3413193965 * s, -.0041960863 * l - .7034186147 * m + 1.7076147010 * s];
+  return R2H(lin.map(v => { v = Math.max(0, Math.min(1, v)); return 255 * (v <= .0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - .055); }));
+}
+function hex2hsl(hex) {
+  let [r, g, b] = H2R(hex).map(v => v / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b); let h = 0, s = 0; const l = (mx + mn) / 2;
+  if (mx !== mn) { const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; }
+  return [h, s, l];
+}
+function hsl2hex(h, s, l) {
+  const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return R2H([f(0) * 255, f(8) * 255, f(4) * 255]);
+}
+const CAT = (h, dark) => dark ? oklch(.76, .10, h) : oklch(.60, .12, h);
+
+/* ============================================================ 材料：现在（10-08 视觉调整前的线上值）与提案 */
+const ACC = {
+  sage: { light: ['#2E7D6B', '#DCEEE8', '#256859', '#4FA58F'], dark: ['#4FB69C', '#16302A', '#7CD2BC', '#2E7D6B'] },
+  classic: { light: ['#2B63F0', '#E7EEFF', '#1F52D6', '#5B7CFA'], dark: ['#4C7DFF', '#1B2747', '#7FA2FF', '#7FA2FF'] },
+  terra: { light: ['#B25735', '#F6E1D6', '#9E4A2B', '#D98A62'], dark: ['#E2874F', '#3A2517', '#F0A574', '#B25735'] },
+};
+const CURT = {
+  sage: { light: ['#CFDFD6', '#F4F8F5', '#E9F1EC', '#DEE9E2', '#14211B', '#4E6158', '#5D6C64', '#D6E3DA', '#B9CCC0'],
+          dark: ['#050807', '#0E1512', '#151E1A', '#1C2823', '#E9F2EC', '#A5B8AE', '#869790', '#1F2B26', '#33413A'] },
+  classic: { light: ['#E9ECF1', '#FFFFFF', '#F6F7F9', '#EEF0F3', '#131722', '#545B6A', '#666B77', '#E1E4EA', '#CDD2DB'],
+          dark: ['#07090D', '#11141B', '#181C25', '#202532', '#E3E6EC', '#A1A7B3', '#8A909B', '#232834', '#353B49'] },
+  terra: { light: ['#DFD0C0', '#FBF6F0', '#F2E8DE', '#EADFD2', '#241A13', '#6E5C4D', '#726356', '#E7DACB', '#CDB9A5'],
+          dark: ['#0A0704', '#161009', '#211812', '#2A1F17', '#F7EFE6', '#C2AC98', '#9E8E7F', '#2E2219', '#46362A'] },
+};
+const CUR_KL = { sage: { light: ['#7057B8', '#2F6F8F'], dark: ['#9A88F0', '#4AA3C4'] }, classic: { light: ['#6D5BD0', '#0E7C86'], dark: ['#8B7BF0', '#2AA3AE'] }, terra: { light: ['#8A4F7D', '#3E6E80'], dark: ['#C47BB3', '#5F9FB3'] } };
+//                frame      surface    s2         s3         frame-hov  line       frame-line t1         t2         t3         overlay
+const PROP = {
+  sage: { light: ['#E4EAE6', '#F8FAF8', '#F0F4F1', '#E8EEEA', '#D9E1DC', '#E0E7E2', '#CFD9D3', '#17201B', '#4A5A52', '#5D6B64', '#FFFFFF'],
+          dark: ['#090D0B', '#121815', '#182019', '#1F2823', '#151C18', '#212B26', '#19211D', '#E6ECE8', '#A3B2AA', '#88968F', '#1A221E'] },
+  classic: { light: ['#E7EAEE', '#F8F9FA', '#F0F2F4', '#E8EBEF', '#DCE0E6', '#E2E5EA', '#D3D8DF', '#161A22', '#4D5462', '#626876', '#FFFFFF'],
+          dark: ['#0A0C10', '#14171D', '#1B1F27', '#222732', '#151920', '#242A35', '#1D222B', '#E4E7ED', '#A2A8B4', '#8A909C', '#1D2129'] },
+  terra: { light: ['#ECE4DA', '#FBF8F4', '#F4EEE7', '#EDE5DB', '#E2D8CC', '#E9DFD3', '#DDD2C5', '#231A13', '#67574A', '#726357', '#FFFFFF'],
+          dark: ['#0C0805', '#18120C', '#201811', '#291F16', '#17110B', '#2C2118', '#221912', '#F2EAE1', '#BFAB98', '#9E8F81', '#221A13'] },
+};
+const UP = '#089981', DN = '#F23645';
+function T(mode, theme, skin) {
+  const d = theme === 'dark', [accent, soft, atext0, accent2] = ACC[skin][theme];
+  if (mode === 'new') {
+    const [frame, surface, s2, s3, fh, line, fline, t1, t2, t3, overlay] = PROP[skin][theme];
+    const atext = skin === 'terra' && !d ? '#8C4327' : atext0; // 陶土浅：框架上的选中底更深，强调字跟着加深
+    return { mode, theme, skin, frame, surface, s2, s3, fh, line, fline, t1, t2, t3, overlay, accent, soft, atext, accent2,
+      softF: mix(frame, accent, d ? .18 : .12), canvas: surface, edge: d ? line : 'transparent',
+      up: UP, down: DN, upT: d ? '#34C5A4' : '#007360', downT: d ? '#FF6874' : '#C32336', tagInk: d ? '#0B0F0D' : '#FFFFFF',
+      wall: accent, grid: d ? 'rgba(255,255,255,.045)' : 'rgba(20,30,25,.055)', axisT: t2, sep: line,
+      kl: [CAT(280, d), CAT(190, d)],
+      venue: { bn: CAT(88, d), okx: t3, cb: CAT(255, d), bybit: CAT(45, d), hl: CAT(330, d) },
+      prod: { spot: CAT(190, d), usdtPerp: CAT(280, d), coinPerp: CAT(88, d), delivery: CAT(330, d) } };
+  }
+  const [app, surface, s2, s3, t1, t2, t3, line, lineS] = CURT[skin][theme];
+  return { mode, theme, skin, frame: app, surface, s2, s3, fh: s3, line, fline: line, lineS, t1, t2, t3, overlay: d ? s2 : '#FFFFFF',
+    accent, soft, atext: atext0, accent2, softF: soft, canvas: d ? '#0F0F0F' : '#FFFFFF', edge: d ? line : 'transparent',
+    up: UP, down: DN, upT: d ? '#2DBF9F' : '#067866', downT: d ? '#FF5E6B' : '#CC2839', tagInk: '#FFFFFF',
+    wall: d ? '#9C90FF' : '#7B6CF0', grid: d ? 'rgba(255,255,255,.06)' : 'rgba(15,15,15,.06)', axisT: d ? '#B8B8B8' : '#0F0F0F', sep: d ? '#2E2E2E' : '#EBEBEB',
+    kl: CUR_KL[skin][theme],
+    venue: { bn: '#E8A800', okx: d ? '#9AA3B5' : '#7C8596', cb: '#2EA3F2', bybit: '#EE7A2C', hl: d ? '#D07AC6' : '#B957AE' },
+    prod: null };
+}
+function setVars(el, t) {
+  const m = { frame: t.frame, surface: t.surface, s2: t.s2, s3: t.s3, fh: t.fh, line: t.line, fline: t.fline, t1: t.t1, t2: t.t2, t3: t.t3,
+    overlay: t.overlay, accent: t.accent, soft: t.soft, softF: t.softF, atext: t.atext, accent2: t.accent2, canvas: t.canvas, edge: t.edge,
+    upT: t.upT, downT: t.downT, up: t.up, down: t.down };
+  for (const k in m) el.style.setProperty('--' + k, m[k]);
+  el.classList.toggle('dark-m', t.theme === 'dark');
+}
+/* 现在的挂单带配色（chart/orderflow 里的那套：品类色 ± 色相，深色降饱和提亮） */
+const PRODUCT_HEX = { spot: '#06B6D4', usdtPerp: '#8B5CF6', coinPerp: '#F59E0B', delivery: '#EC4899' };
+function curBand(prod, side, dark) { let [h, s, l] = hex2hsl(PRODUCT_HEX[prod]); h = (h + (side === 'bid' ? -12 : 12) + 360) % 360; if (dark) { s *= .78; l = Math.min(.74, l + .14); } return hsl2hex(h, s, l); }
+function curInk(prod, side, dark) { const [h, s, l] = hex2hsl(curBand(prod, side, dark)); return hsl2hex(h, s, dark ? .8 : Math.max(.3, l - .14)); }
+
+/* ============================================================ 提案的画线图标：28 格 */
+const ln = (d, x = '') => `<path d="${d}"${x}/>`;
+const gd = d => `<path d="${d}" opacity=".5"/>`;
+const ds = d => `<path d="${d}" stroke-dasharray="2 3.5"/>`;
+const an = (x, y, r = 2.5) => `<circle cx="${x}" cy="${y}" r="${r}" fill="currentColor" stroke="none"/>`;
+const fl = (d, o = .18) => `<path d="${d}" fill="currentColor" fill-opacity="${o}" stroke="none"/>`;
+const ar = d => fl(d) + ln(d);
+const NI = {
+  cursor: ln('M14 4.5V10.5M14 17.5V23.5M4.5 14H10.5M17.5 14H23.5') + an(14, 14, 1.75),
+  trend: ln('M6.5 21.5L21.5 6.5') + an(6.5, 21.5) + an(21.5, 6.5),
+  ray: ln('M6.5 21.5L14.5 13.5') + ds('M17.5 10.5L24.5 3.5') + an(6.5, 21.5) + an(14.5, 13.5),
+  extended: ds('M3.5 24.5L7.5 20.5') + ln('M10.5 17.5L17.5 10.5') + ds('M20.5 7.5L24.5 3.5') + an(10.5, 17.5) + an(17.5, 10.5),
+  hline: ln('M3.5 14.5H24.5') + an(14.5, 14.5),
+  hray: ln('M6.5 14.5H24.5') + an(6.5, 14.5),
+  vline: ln('M14.5 3.5V24.5') + an(14.5, 14.5),
+  crossLine: ln('M3.5 14.5H24.5M14.5 3.5V24.5') + an(14.5, 14.5),
+  arrowLine: ln('M5.5 22.5L18.5 9.5') + '<path d="M23.5 4.5L21.02 11.92L16.08 6.98Z" fill="currentColor" stroke-width="1"/>' + an(5.5, 22.5),
+  channel: fl('M4.5 15.5L23.5 5.5L23.5 12.5L4.5 22.5Z') + ln('M4.5 15.5L23.5 5.5M4.5 22.5L23.5 12.5') + an(4.5, 15.5) + an(23.5, 5.5) + an(14, 17.5),
+  regression: fl('M4.5 13.5L23.5 4.5V14.5L4.5 23.5Z', .1) + ds('M4.5 13.5L23.5 4.5') + ds('M4.5 23.5L23.5 14.5') + ln('M4.5 18.5L23.5 9.5') + an(4.5, 18.5) + an(23.5, 9.5),
+  pitchfork: fl('M12.5 8.5L24.5 4.14L24.5 17.59L16.5 20.5Z') + ln('M3.5 18.5L24.5 10.86M12.5 8.5L24.5 4.14M16.5 20.5L24.5 17.59') + gd('M12.5 8.5L16.5 20.5') + an(3.5, 18.5) + an(12.5, 8.5) + an(16.5, 20.5),
+  gannBox: ln('M4.5 4.5H23.5V23.5H4.5Z') + gd('M10.5 4.5V23.5M17.5 4.5V23.5M4.5 10.5H23.5M4.5 17.5H23.5') + ln('M4.5 23.5L23.5 4.5') + an(4.5, 23.5) + an(23.5, 4.5),
+  gannFan: gd('M4.5 4.5V23.5H23.5') + gd('M4.5 23.5L23.5 13.5M4.5 23.5L14.5 4.5M4.5 23.5L23.5 18.5M4.5 23.5L9.5 4.5') + ln('M4.5 23.5L23.5 4.5') + an(4.5, 23.5),
+  fib: fl('M3.5 12.5H24.5V16.5H3.5Z', .14) + ln('M3.5 5.5H24.5M3.5 22.5H24.5') + gd('M3.5 12.5H24.5M3.5 16.5H24.5') + ds('M6.5 22.5L21.5 5.5') + an(6.5, 22.5) + an(21.5, 5.5),
+  fibExtension: gd('M15.5 10.5H24.5') + ln('M15.5 5.5H24.5M15.5 16.5H24.5') + ln('M4.5 22.5L10.5 9.5L15.5 16.5') + an(4.5, 22.5) + an(10.5, 9.5) + an(15.5, 16.5),
+  fibChannel: fl('M4.5 13.5L13.5 4.5H18.5L4.5 18.5Z', .14) + ln('M4.5 13.5L13.5 4.5') + gd('M4.5 18.5L18.5 4.5') + ln('M8.5 23.5L23.5 8.5') + an(4.5, 13.5) + an(13.5, 4.5) + an(16, 16),
+  fibTimeZone: ln('M4.5 4.5V23.5M23.5 4.5V23.5') + gd('M7.5 4.5V23.5M10.5 4.5V23.5M15.5 4.5V23.5') + an(4.5, 23.5),
+  fibFan: gd('M23.5 4.5V23.5') + gd('M4.5 23.5L23.5 11.5M4.5 23.5L23.5 16.5') + ln('M4.5 23.5L23.5 4.5') + an(4.5, 23.5) + an(23.5, 4.5),
+  xabcd: fl('M3.5 21.5L8.5 6.5L13.5 15.5Z') + fl('M13.5 15.5L18.5 8.5L24.5 22.5Z') + gd('M3.5 21.5L13.5 15.5L24.5 22.5') + ln('M3.5 21.5L8.5 6.5L13.5 15.5L18.5 8.5L24.5 22.5') + an(3.5, 21.5) + an(8.5, 6.5, 1.75) + an(13.5, 15.5, 1.75) + an(18.5, 8.5, 1.75) + an(24.5, 22.5),
+  abcd: gd('M4.5 22.5L16.5 15.5M10.5 6.5L23.5 4.5') + ln('M4.5 22.5L10.5 6.5L16.5 15.5L23.5 4.5') + an(4.5, 22.5) + an(10.5, 6.5, 1.75) + an(16.5, 15.5, 1.75) + an(23.5, 4.5),
+  headShoulders: fl('M10.5 17.5L14.5 5.5L18.5 17.5Z') + gd('M3.5 17.5H24.5') + ln('M3.5 21.5L7.5 12.5L10.5 17.5L14.5 5.5L18.5 17.5L21.5 12.5L24.5 21.5') + an(3.5, 21.5) + an(7.5, 12.5, 1.75) + an(14.5, 5.5, 1.75) + an(21.5, 12.5, 1.75) + an(24.5, 21.5),
+  elliottImpulse: ln('M3.5 23.5L7.5 14.5L11.5 19.5L17.5 5.5L20.5 10.5L24.5 4.5') + an(3.5, 23.5) + an(7.5, 14.5, 1.75) + an(11.5, 19.5, 1.75) + an(17.5, 5.5, 1.75) + an(20.5, 10.5, 1.75) + an(24.5, 4.5),
+  elliottCorrection: ln('M3.5 4.5L10.5 18.5L15.5 11.5L24.5 23.5') + an(3.5, 4.5) + an(10.5, 18.5, 1.75) + an(15.5, 11.5, 1.75) + an(24.5, 23.5),
+  position: ar('M4.5 5.5H23.5V14.5H4.5Z') + gd('M4.5 14.5V22.5H23.5V14.5') + fl('M4.5 14.5H23.5V22.5H4.5Z', .06) + an(4.5, 14.5),
+  ptMeasure: '<g transform="rotate(-45 14 14)"><rect x="1.5" y="10" width="25" height="8" rx="1.5" fill="currentColor" fill-opacity=".18"/><rect x="1.5" y="10" width="25" height="8" rx="1.5"/>' + ln('M6.5 10V13M10.5 10V14.5M14.5 10V13M18.5 10V14.5M22.5 10V13') + '</g>',
+  priceRange: fl('M4.5 5.5H23.5V22.5H4.5Z', .12) + ln('M4.5 5.5H23.5M4.5 22.5H23.5') + ln('M14.5 9V19.5M11.5 11.5L14.5 8.5L17.5 11.5M11.5 16.5L14.5 19.5L17.5 16.5'),
+  dateRange: fl('M5.5 4.5H22.5V23.5H5.5Z', .12) + ln('M5.5 4.5V23.5M22.5 4.5V23.5') + ln('M9 14.5H19.5M11.5 11.5L8.5 14.5L11.5 17.5M16.5 11.5L19.5 14.5L16.5 17.5'),
+  datePriceRange: ar('M4.5 4.5H23.5V23.5H4.5Z') + ln('M8.5 19.5L19.5 8.5M13.5 8.5H19.5V14.5'),
+  rect: ar('M5.5 7.5H22.5V20.5H5.5Z') + an(5.5, 7.5) + an(22.5, 20.5),
+  ellipse: '<ellipse cx="14.5" cy="14.5" rx="10" ry="7" fill="currentColor" fill-opacity=".18" stroke="none"/><ellipse cx="14.5" cy="14.5" rx="10" ry="7"/>' + an(4.5, 14.5) + an(24.5, 14.5),
+  triangle: ar('M14.5 5.5L23.5 21.5H5.5Z') + an(14.5, 5.5) + an(23.5, 21.5) + an(5.5, 21.5),
+  curve: gd('M4.5 21.5L13.5 5.5L23.5 18.5') + ln('M4.5 21.5Q13.5 5.5 23.5 18.5') + an(4.5, 21.5) + an(23.5, 18.5) + an(13.5, 5.5, 1.75),
+  note: '<path d="M7.5 9V6.5H21.5V9M14.5 6.5V22.5M11.5 22.5H17.5" stroke-width="1.75"/>',
+  callout: ar('M6.5 4.5H21.5A3 3 0 0 1 24.5 7.5V15.5A3 3 0 0 1 21.5 18.5H12.5L7.5 23.5V18.5H6.5A3 3 0 0 1 3.5 15.5V7.5A3 3 0 0 1 6.5 4.5Z') + ln('M8.5 9.5H19.5M8.5 13.5H15.5'),
+  priceLabel: ar('M3.5 14.5L9.5 8.5H22.5A2 2 0 0 1 24.5 10.5V18.5A2 2 0 0 1 22.5 20.5H9.5Z') + ln('M12.5 14.5H20.5') + an(3.5, 14.5),
+  flag: ar('M7.5 5.5H21.5L18.5 9.5L21.5 13.5H7.5Z') + ln('M7.5 4.5V23.5') + an(7.5, 23.5),
+  markerUp: ar('M14.5 4.5L22.5 13.5H17.5V22.5H11.5V13.5H6.5Z'),
+  markerDown: ar('M14.5 23.5L22.5 14.5H17.5V5.5H11.5V14.5H6.5Z'),
+  avwap: gd('M5.5 3.5V24.5') + ln('M5.5 19.5C11.5 19.5 13.5 9.5 23.5 8.5') + an(5.5, 19.5),
+  fvp: gd('M4.5 4.5V23.5M23.5 4.5V23.5') + '<path d="M4.5 8H13M4.5 12H17M4.5 20H11" stroke-width="2" stroke-linecap="butt" opacity=".5"/><path d="M4.5 16H21" stroke-width="2" stroke-linecap="butt"/>',
+  anchoredVolumeProfile: ln('M4.5 4.5V23.5') + '<path d="M4.5 8H13M4.5 12H17M4.5 20H11" stroke-width="2" stroke-linecap="butt" opacity=".5"/><path d="M4.5 16H21" stroke-width="2" stroke-linecap="butt"/>' + an(4.5, 23.5),
+  magnet: ar('M6.5 5.5H11.5V14.5A3 3 0 0 0 17.5 14.5V5.5H22.5V14.5A8 8 0 0 1 6.5 14.5Z') + ln('M6.5 9.5H11.5M17.5 9.5H22.5'),
+  lock: '<rect x="7.5" y="12.5" width="14" height="11" rx="2" fill="currentColor" fill-opacity=".18" stroke="none"/><rect x="7.5" y="12.5" width="14" height="11" rx="2"/>' + ln('M10.5 12.5V9.5A4 4 0 0 1 18.5 9.5V12.5') + an(14.5, 18, 1.5),
+  eye: fl('M3.5 14.5C6.5 9 10 7 14.5 7S22.5 9 25.5 14.5C22.5 20 19 22 14.5 22S6.5 20 3.5 14.5Z') + ln('M3.5 14.5C6.5 9 10 7 14.5 7S22.5 9 25.5 14.5C22.5 20 19 22 14.5 22S6.5 20 3.5 14.5Z') + an(14.5, 14.5, 3.25),
+  trash: ar('M7.5 8.5L8.5 23.5H20.5L21.5 8.5Z') + ln('M5.5 8.5H23.5M11.5 8.5V6.5A1 1 0 0 1 12.5 5.5H16.5A1 1 0 0 1 17.5 6.5V8.5M12.5 12.5V19.5M16.5 12.5V19.5'),
+};
+const svgN = (k, cls = '') => `<svg class="${cls}" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${NI[k] || ''}</svg>`;
+const svgC = (k, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24">${CUR[k] || ''}</svg>`;
+
+/* ============================================================ 提案的界面图标：24 格，实心为主，衬底 45%，16 以下只留主体 */
+let MID = 0;
+function gearPath() {
+  const n = 8, ro = 9.6, ri = 7.1, st = 2 * Math.PI / n; let d = '';
+  const P = (r, a) => `${(12 + r * Math.cos(a)).toFixed(2)} ${(12 + r * Math.sin(a)).toFixed(2)}`;
+  for (let i = 0; i < n; i++) {
+    const a = i * st - Math.PI / 2;
+    d += (i ? 'L' : 'M') + P(ri, a - .3) + 'L' + P(ro, a - .17) + 'L' + P(ro, a + .17) + 'L' + P(ri, a + .3) + `A${ri} ${ri} 0 0 1 ` + P(ri, a + st - .3);
+  }
+  return d + 'ZM15.2 12A3.2 3.2 0 1 0 8.8 12A3.2 3.2 0 1 0 15.2 12Z';
+}
+function starPath(cx, cy, ro, ri) { let d = ''; for (let i = 0; i < 10; i++) { const r = i % 2 ? ri : ro, a = -Math.PI / 2 + i * Math.PI / 5; d += (i ? 'L' : 'M') + (cx + r * Math.cos(a)).toFixed(2) + ' ' + (cy + r * Math.sin(a)).toFixed(2); } return d + 'Z'; }
+const SK = 'fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"';
+const EYE = 'M12 5C7 5 3.5 9 2 12c1.5 3 5 7 10 7s8.5-4 10-7c-1.5-3-5-7-10-7Z';
+const NU = {
+  search: () => `<circle class="u" cx="10.5" cy="10.5" r="5.5"/><circle cx="10.5" cy="10.5" r="6.5" ${SK} stroke-width="2"/><path d="M15.6 15.6L20 20" ${SK} stroke-width="2.5"/>`,
+  bell: () => `<path d="M12 2.8c.6 0 1 .4 1 1v.4a6 6 0 0 1 5 5.9v3.3l1.6 2.5a1 1 0 0 1-.8 1.6H5.2a1 1 0 0 1-.8-1.6L6 13.4v-3.3a6 6 0 0 1 5-5.9v-.4c0-.6.4-1 1-1Z"/><path d="M9.3 19h5.4a2.7 2.7 0 0 1-5.4 0Z"/>`,
+  indicators: () => `<rect class="u" x="3" y="4" width="18" height="16" rx="3"/><path d="M6.5 15.5l3.5-4 3 2.5 4.5-5.5" ${SK} stroke-width="2"/>`,
+  compare: () => `<path class="u" d="M3.5 12.5l4.5 2 4-4.5 7.5 3" ${SK} stroke-width="2"/><path d="M3.5 17.5l4.5-5 4 3 6-7.5" ${SK} stroke-width="2"/><circle cx="19" cy="7" r="2.25"/>`,
+  note: () => `<rect class="u" x="3.5" y="3" width="13" height="18" rx="2.5"/><path d="M7 8h6M7 12h4" ${SK} stroke-width="2"/><path d="M18.4 9.6a1.3 1.3 0 0 1 1.8 0l.7.7a1.3 1.3 0 0 1 0 1.8L14 19l-3.3.9.9-3.3Z"/>`,
+  heat: () => { const o = [1, 0, 0, 1, 1, 0, 0, 1, 1]; let s = ''; for (let i = 0; i < 9; i++) s += `<rect ${o[i] ? '' : 'class="u" '}x="${3 + (i % 3) * 6.5}" y="${3 + Math.floor(i / 3) * 6.5}" width="5" height="5" rx="1.25"/>`; return s; },
+  layout: () => `<rect class="u" x="4" y="5" width="7" height="14" rx="1"/><rect x="3" y="4" width="18" height="16" rx="2.5" ${SK} stroke-width="2"/><path d="M12 4v16M12 12h9" ${SK} stroke-width="2"/>`,
+  camera: () => `<path fill-rule="evenodd" d="M9.2 4.5h5.6a1 1 0 0 1 .86.49L16.7 7H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2.3l1.04-2.01a1 1 0 0 1 .86-.49ZM12 9a4.25 4.25 0 1 0 0 8.5A4.25 4.25 0 0 0 12 9Z"/><circle class="u" cx="12" cy="13.25" r="2.5"/>`,
+  fullscreen: () => `<rect class="u" x="8" y="8" width="8" height="8" rx="1.5"/><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" ${SK} stroke-width="2"/>`,
+  undo: () => `<path d="M3.6 9.3l5-4.3v8.6Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8 9.3h6.5a5 5 0 0 1 0 10H9" ${SK} stroke-width="2"/>`,
+  redo: () => `<g transform="matrix(-1 0 0 1 24 0)"><path d="M3.6 9.3l5-4.3v8.6Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8 9.3h6.5a5 5 0 0 1 0 10H9" ${SK} stroke-width="2"/></g>`,
+  settings: () => `<path fill-rule="evenodd" d="${gearPath()}" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>`,
+  eye: () => `<path fill-rule="evenodd" d="${EYE}M12 8.25a3.75 3.75 0 1 1 0 7.5 3.75 3.75 0 0 1 0-7.5Z"/><circle cx="12" cy="12" r="1.75"/>`,
+  eyeOff: () => { const id = 'eo' + (++MID); return `<mask id="${id}"><rect width="24" height="24" fill="#fff"/><path d="M3 2.5L21.5 21" stroke="#000" stroke-width="4.5" stroke-linecap="round"/></mask><g mask="url(#${id})"><path fill-rule="evenodd" d="${EYE}M12 8.25a3.75 3.75 0 1 1 0 7.5 3.75 3.75 0 0 1 0-7.5Z"/><circle cx="12" cy="12" r="1.75"/></g><path d="M4 3.5L20.5 20" ${SK} stroke-width="2"/>`; },
+  star: () => `<path d="${starPath(12, 12.6, 9.2, 4.3)}" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`,
+  list: () => `<rect class="u" x="3" y="4" width="18" height="16" rx="3"/><path d="${starPath(7.6, 9.2, 2.6, 1.15)}" stroke="currentColor" stroke-width=".8" stroke-linejoin="round"/><path d="M11.5 9.2h6M11.5 13h6M11.5 16.8h6" ${SK} stroke-width="2"/><circle cx="7.6" cy="13" r="1.2"/><circle cx="7.6" cy="16.8" r="1.2"/>`,
+  trades: () => `<rect class="u" x="3" y="3" width="18" height="18" rx="4"/><path d="M8.5 17V7.8M5.8 10.2l2.7-2.9 2.7 2.9M15.5 7v9.2M12.8 13.8l2.7 2.9 2.7-2.9" ${SK} stroke-width="2"/>`,
+  info: () => `<circle class="u" cx="12" cy="12" r="9"/><rect x="10.85" y="10.3" width="2.3" height="7" rx="1.15"/><circle cx="12" cy="7.3" r="1.45"/>`,
+  close: () => `<path d="M6.5 6.5l11 11M17.5 6.5l-11 11" ${SK} stroke-width="2"/>`,
+  chev: () => `<path d="M7 10l5 5 5-5" ${SK} stroke-width="2"/>`,
+  sun: () => `<circle class="u" cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.5"/>`,
+  moon: () => `<path d="M13.6 3.6a8.4 8.4 0 1 0 6.8 11.8A6.6 6.6 0 0 1 13.6 3.6Z"/>`,
+};
+const svgU = (k, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24" fill="currentColor">${NU[k] ? NU[k]() : ''}</svg>`;
+const FLYCH = '<svg viewBox="0 0 4 7"><path d="M.75 .75L3.25 3.5L.75 6.25" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const FLYCH_C = '<svg viewBox="0 0 4 6"><path d="M.8 .8L3.2 3L.8 5.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+
+/* ============================================================ 画线分组（与 Web/src/chart/drawTools.ts 的 TOOL_GROUPS 一致） */
+const GROUPS = [
+  ['线', [['trend', '趋势线', 'Alt T'], ['ray', '射线', 'Alt J'], ['extended', '延长线'], ['hline', '水平线', 'Alt H'], ['hray', '水平射线'], ['vline', '垂直线', 'Alt V'], ['crossLine', '十字线', 'Alt C'], ['arrowLine', '箭头']]],
+  ['通道', [['channel', '平行通道'], ['regression', '回归通道']]],
+  ['叉子与江恩', [['pitchfork', '安德鲁斯分叉'], ['gannBox', '江恩箱'], ['gannFan', '江恩扇形']]],
+  ['斐波那契', [['fib', '斐波那契回撤', 'Alt F'], ['fibExtension', '斐波那契扩展'], ['fibChannel', '斐波那契通道'], ['fibTimeZone', '斐波那契时区'], ['fibFan', '斐波那契扇形']]],
+  ['形态', [['xabcd', 'XABCD 形态'], ['abcd', 'ABCD 形态'], ['headShoulders', '头肩形态'], ['elliottImpulse', '艾略特推动浪'], ['elliottCorrection', '艾略特调整浪']]],
+  ['预测与测量', [['position', '多空持仓框'], ['ptMeasure', '价时测量'], ['priceRange', '价格区间'], ['dateRange', '日期区间'], ['datePriceRange', '日期价格区间']]],
+  ['形状', [['rect', '矩形', 'Alt ⇧ R'], ['ellipse', '椭圆'], ['triangle', '三角形'], ['curve', '曲线']]],
+  ['注释', [['note', '文字标注'], ['callout', '气泡标注'], ['priceLabel', '价格标签'], ['flag', '旗标'], ['markerUp', '向上箭头'], ['markerDown', '向下箭头']]],
+  ['成交量', [['avwap', '锚定均价线'], ['fvp', '区间成交量分布'], ['anchoredVolumeProfile', '锚定成交量分布']]],
+];
+
+/* ============================================================ 行情（确定性） */
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function series(sym) {
+  const R = mulberry32(sym === 'BTC' ? 11 : 29), n = 240, k = sym === 'BTC' ? 1 : .0405;
+  const kp = sym === 'BTC'
+    ? [[0, 79600], [40, 80900], [80, 80150], [120, 81200], [138, 82650], [154, 83520], [164, 83050], [178, 81900], [194, 80480], [208, 81350], [220, 82800], [230, 82380], [239, 82410]]
+    : [[0, 3150], [40, 3230], [80, 3170], [120, 3240], [142, 3384], [164, 3296], [190, 3446], [214, 3205], [230, 3290], [239, 3341]];
+  const base = i => { for (let j = 1; j < kp.length; j++) if (i <= kp[j][0]) { const [a, pa] = kp[j - 1], [b, pb] = kp[j], t = (i - a) / (b - a), s = t * t * (3 - 2 * t); return pa + (pb - pa) * s; } return kp[kp.length - 1][1]; };
+  const out = []; let prev = base(0), oi = sym === 'BTC' ? 108400 : 1.86e6;
+  for (let i = 0; i < n; i++) {
+    const o = prev; let c = base(i) + (R() - .5) * 300 * k;
+    const h = Math.max(o, c) + (R() * R() * 260 + 18) * k, l = Math.min(o, c) - (R() * R() * 260 + 18) * k;
+    const v = (.22 + R() * .78) * (1 + Math.abs(c - o) / (140 * k)) * (R() < .06 ? 2.2 : 1);
+    oi += (R() - .47) * (sym === 'BTC' ? 260 : 5200);
+    out.push({ o, h, l, c, v, oi }); prev = c;
+  }
+  const L = out[n - 1], P = out[n - 2];
+  if (sym === 'BTC') { Object.assign(L, { o: 82410.0, h: 82560.5, l: 81980.0, c: 82214.5 }); }
+  else { Object.assign(L, { o: 3341.08, h: 3352.90, l: 3318.25, c: 3327.42 }); }
+  P.c = L.o; P.h = Math.max(P.h, P.c, P.o); P.l = Math.min(P.l, P.c, P.o);
+  return out;
+}
+const SER = { BTC: series('BTC'), ETH: series('ETH') };
+function ma(arr, p) { const r = []; let s = 0; for (let i = 0; i < arr.length; i++) { s += arr[i].c; if (i >= p) s -= arr[i - p].c; r.push(i >= p - 1 ? s / p : null); } return r; }
+const MAS = { BTC: [7, 25, 99].map(p => ma(SER.BTC, p)), ETH: [7, 25, 99].map(p => ma(SER.ETH, p)) };
+const MA_C = ['#E8A33D', '#C552D8', '#2E8BEF'];
+const fmt = (p, d = 1) => p.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const MINUS = '−';
+
+/* 主力订单流（只在 BTC 格子）：idx 是可见窗口里的根序号 */
+const BANDS = [
+  { side: 'ask', p: 83450, amt: 210e6, lab: '210M', prod: 'usdtPerp', s: 30, e: 46 },
+  { side: 'bid', p: 80700, amt: 160e6, lab: '160M', prod: 'spot', s: 66, e: 80 },
+  { side: 'ask', p: 83000, amt: 72.1e6, lab: '72.1M', prod: 'usdtPerp', s: 102 },
+  { side: 'ask', p: 82700, amt: 130e6, lab: '130M', prod: 'spot', s: 96, wall: 1 },
+  { side: 'bid', p: 81800, amt: 129e6, lab: '129M', prod: 'coinPerp', s: 92, wall: 1 },
+  { side: 'bid', p: 81300, amt: 974e6, lab: '974M', prod: 'usdtPerp', s: 78, wall: 1 },
+];
+const BUBBLES = [
+  { i: 31, dir: 'dn', amt: 995e6, lab: '995M' }, { i: 43, dir: 'dn', amt: 706e6, lab: '706M' }, { i: 99, dir: 'dn', amt: 418e6, lab: '418M' },
+  { i: 70, dir: 'up', amt: 1.0e9, lab: '1.0B' }, { i: 82, dir: 'up', amt: 925e6, lab: '925M' }, { i: 56, dir: 'up', amt: 712e6, lab: '712M' },
+];
+const DOTS = [{ i: 20, dir: 'dn' }, { i: 52, dir: 'dn' }, { i: 61, dir: 'up' }, { i: 90, dir: 'up' }, { i: 113, dir: 'dn' }];
+
+/* ============================================================ K 线画布 */
+function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function drawChart(cv, o) {
+  const wrap = cv.parentElement, W = wrap.clientWidth, H = wrap.clientHeight; if (!W || !H) return null;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const t = o.t, N = t.mode === 'new', D = t.theme === 'dark';
+  const FF = '-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif';
+  g.fillStyle = t.canvas; g.fillRect(0, 0, W, H);
+  const AX = 66, TH = 22, pw = W - AX, ph = H - TH, mainH = Math.round(ph * .78), subT = mainH + 1, subH = ph - subT;
+  const all = SER[o.sym], n = o.vis, off = all.length - n, data = all.slice(off), mas = MAS[o.sym].map(a => a.slice(off));
+  const io = o.io || 0, rp = o.rp || 64, sp = (pw - rp) / n, cx = i => Math.round(sp * i + sp / 2);
+  let lo = Infinity, hi = -Infinity; for (const b of data) { lo = Math.min(lo, b.l); hi = Math.max(hi, b.h); }
+  if (o.bands) for (const b of BANDS) { lo = Math.min(lo, b.p); hi = Math.max(hi, b.p); }
+  const pad = (hi - lo) * .05; lo -= pad; hi += pad;
+  const yT = o.legendH + (o.bubbles ? 34 : 0), yB = mainH - (o.bubbles ? 46 : 12), Y = p => yT + (hi - p) / (hi - lo) * (yB - yT);
+  const dec = o.sym === 'BTC' ? 1 : 2;
+  // 刻度
+  const steps = [1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000], pxPer = (yB - yT) / (hi - lo);
+  const step = steps.find(s => s * pxPer >= 46) || 1000;
+  const ticks = []; for (let p = Math.ceil(lo / step) * step; p <= hi; p += step) ticks.push(p);
+  // 时间刻度
+  const dur = o.dur || 1, base = Date.UTC(2026, 9, 8, 13), lab = [];
+  const Lh = [6, 12, 24, 48, 72, 96].find(L => (L / dur) * sp >= 84) || 168;
+  for (let i = 0; i < n; i++) {
+    const ts = base - (n - 1 - i) * dur * 3600e3, d8 = new Date(ts + 8 * 3600e3), hr = d8.getUTCHours(), day = d8.getUTCDate();
+    if (Lh <= 24 ? hr % Lh === 0 : (hr === 0 && day % (Lh / 24) === 0)) lab.push([i, hr === 0 ? day + '日' : String(hr).padStart(2, '0') + ':00']);
+  }
+  // 网格
+  g.strokeStyle = t.grid; g.lineWidth = 1; g.beginPath();
+  for (const p of ticks) { const y = Math.round(Y(p)) + .5; g.moveTo(0, y); g.lineTo(pw, y); }
+  for (const [i] of lab) { const x = cx(i) + .5; g.moveTo(x, 0); g.lineTo(x, ph); }
+  g.stroke();
+  // 挂单带（在 K 线下面）
+  const maxA = 974e6;
+  if (o.bands) for (const b of BANDS) {
+    if (b.e != null && b.e - io < 0) continue; const y = Y(b.p), x0 = Math.round(sp * Math.max(0, b.s - io)), x1 = b.e != null ? Math.round(sp * (b.e - io + 1)) : pw, q = Math.sqrt(b.amt / maxA), h = Math.round(6 + 9 * q);
+    if (N) {
+      const col = b.side === 'bid' ? t.up : t.down;
+      if (b.e != null) { g.fillStyle = rgba(col, .45); g.fillRect(x0, Math.round(y), x1 - x0, 1); continue; }
+      g.fillStyle = rgba(col, D ? .16 : .10); g.fillRect(x0, Math.round(y - h / 2), x1 - x0, h);
+      g.fillStyle = t.prod[b.prod]; g.fillRect(x0, Math.round(y - h / 2), 2, h);
+    } else {
+      const col = curBand(b.prod, b.side, D);
+      if (b.e != null) { g.fillStyle = rgba(col, D ? .5 : .55); g.fillRect(x0, Math.round(y), x1 - x0, 1); continue; }
+      g.fillStyle = rgba(col, D ? .12 + .06 * q : .14 + .06 * q); g.fillRect(x0, Math.round(y - h / 2), x1 - x0, h);
+      if (b.wall) { g.fillStyle = rgba(t.wall, .8); g.fillRect(x0, Math.round(y - h / 2), x1 - x0, 1); g.fillRect(x0, Math.round(y + h / 2) - 1, x1 - x0, 1); }
+    }
+  }
+  // 成交量
+  let vmax = 0; for (const b of data) vmax = Math.max(vmax, b.v);
+  const vH = mainH * .16, bw = Math.max(1, Math.round(sp * .68) | 1);
+  for (let i = 0; i < n; i++) { const b = data[i], up = b.c >= b.o, h = Math.max(1, b.v / vmax * vH), x = cx(i) - (bw >> 1);
+    g.fillStyle = rgba(up ? t.up : t.down, N ? (D ? .30 : .24) : .5); g.fillRect(x, Math.round(mainH - h), bw, Math.ceil(h)); }
+  // 关键位与画线（ETH 格子）
+  if (o.kl) {
+    const kls = [[3301.6, '日开', t.kl[0]], [3252.0, '周开', t.kl[1]]];
+    for (const [p, nm, col] of kls) {
+      const y = Math.round(Y(p)) + .5; g.save(); g.strokeStyle = col; g.globalAlpha = N ? .9 : 1; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(0, y); g.lineTo(pw, y); g.stroke(); g.restore();
+      g.font = `${N ? 500 : 400} 11px ${FF}`; const s = nm + ' ' + fmt(p, 1), w = g.measureText(s).width + 10;
+      g.fillStyle = rgba(t.canvas, .85); rr(g, 8, y - 9, w, 18, 4); g.fill(); g.fillStyle = col; g.textBaseline = 'middle'; g.fillText(s, 13, y + .5);
+    }
+  }
+  // K 线
+  for (let i = 0; i < n; i++) {
+    const b = data[i], up = b.c >= b.o, col = up ? t.up : t.down, x = cx(i), xl = x - (bw >> 1);
+    g.fillStyle = col; g.fillRect(x, Math.round(Y(b.h)), 1, Math.max(1, Math.round(Y(b.l)) - Math.round(Y(b.h))));
+    const yo = Math.round(Y(b.o)), yc = Math.round(Y(b.c)); g.fillRect(xl, Math.min(yo, yc), bw, Math.max(1, Math.abs(yo - yc)));
+  }
+  // 均线
+  g.lineWidth = 1.25; g.lineJoin = 'round';
+  mas.forEach((a, k) => { g.strokeStyle = MA_C[k]; g.beginPath(); let st = false; for (let i = 0; i < n; i++) { if (a[i] == null) continue; const x = cx(i) + .5, y = Y(a[i]); st ? g.lineTo(x, y) : g.moveTo(x, y); st = true; } g.stroke(); });
+  if (o.draw) {
+    g.strokeStyle = '#2962FF'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx(14), Y(3196)); g.lineTo(cx(100), Y(3330)); g.stroke();
+    if (N) { for (const [i, p] of [[14, 3196], [100, 3330]]) { g.beginPath(); g.arc(cx(14) === cx(i) ? cx(14) : cx(100), Y(p), 4.5, 0, 7); g.fillStyle = t.canvas; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#2962FF'; g.stroke(); } }
+    const yh = Math.round(Y(3412)) + .5; g.strokeStyle = '#2962FF'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0, yh); g.lineTo(pw, yh); g.stroke();
+    const ya = Math.round(Y(3450)) + .5; g.save(); g.strokeStyle = '#F59E0B'; g.lineWidth = 1; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(0, ya); g.lineTo(pw, ya); g.stroke(); g.restore();
+  }
+  // 小点（P90）
+  for (const d0 of (o.bubbles ? DOTS : [])) {
+    const d = { i: d0.i - io, dir: d0.dir }; if (d.i < 0 || d.i >= n) continue; const b = data[d.i], up = d.dir === 'up', y = up ? Y(b.l) + 7 : Y(b.h) - 7;
+    g.beginPath(); g.arc(cx(d.i) + .5, y, 2.5, 0, 7); g.fillStyle = up ? t.up : t.down; g.globalAlpha = N ? .9 : .8; g.fill(); g.globalAlpha = 1;
+  }
+  // 气泡（P97）
+  if (o.bubbles) for (const b0 of BUBBLES) {
+    const bb = Object.assign({}, b0, { i: b0.i - io }); if (bb.i < 3 || bb.i >= n) continue; const b = data[bb.i], up = bb.dir === 'up', col = up ? t.up : t.down, x = cx(bb.i) + .5;
+    g.font = N ? `600 11px ${FF}` : `650 11px ${FF}`; const tw = g.measureText(bb.lab).width;
+    const r = Math.max(11 + 5 * Math.sqrt(bb.amt / 1e9), tw / 2 + 5);
+    const y0 = up ? Y(b.l) + 3 : Y(b.h) - 3, cy = up ? Y(b.l) + 10 + r : Y(b.h) - 10 - r;
+    g.strokeStyle = rgba(col, N ? .5 : .6); g.lineWidth = N ? 1 : 1.2; g.beginPath(); g.moveTo(x, y0); g.lineTo(x, up ? cy - r : cy + r); g.stroke();
+    g.beginPath(); g.arc(x, cy, r, 0, 7); g.fillStyle = rgba(col, N ? (D ? .20 : .14) : (D ? .22 : .16)); g.fill();
+    g.lineWidth = N ? 1.5 : 1.4; g.strokeStyle = col; g.stroke();
+    g.fillStyle = N ? t.t1 : (up ? t.upT : t.downT); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(bb.lab, x, cy + .5); g.textAlign = 'left';
+  }
+  // 挂单带金额
+  if (o.bands) for (const b of BANDS) {
+    if (b.e != null) continue; const y = Math.round(Y(b.p));
+    if (N) {
+      g.font = `600 12px ${FF}`; const tw = g.measureText(b.lab).width, w = tw + 12, x = pw - 8 - w;
+      g.fillStyle = rgba(t.surface, .72); rr(g, x, y - 9, w, 18, 4); g.fill();
+      g.fillStyle = b.side === 'bid' ? t.upT : t.downT; g.textBaseline = 'middle'; g.fillText(b.lab, x + 6, y + .5);
+      if (b.wall) { g.font = `600 10px ${FF}`; const ww = g.measureText('墙').width + 8, xw = x - ww - 3; g.fillStyle = t.soft; rr(g, xw, y - 8, ww, 16, 4); g.fill(); g.fillStyle = t.atext; g.fillText('墙', xw + 4, y + .5); }
+    } else {
+      const col = curBand(b.prod, b.side, D);
+      g.font = `600 11px ${FF}`; const tw = g.measureText(b.lab).width, w = tw + 10, x = pw - 8 - w;
+      g.fillStyle = rgba(t.canvas, D ? .55 : .6); rr(g, x, y - 8, w, 16, 3); g.fill();
+      g.fillStyle = rgba(col, D ? .24 : .16); rr(g, x, y - 8, w, 16, 3); g.fill();
+      g.fillStyle = curInk(b.prod, b.side, D); g.textBaseline = 'middle'; g.fillText(b.lab, x + 5, y + .5);
+    }
+  }
+  // 价格轴
+  g.font = `${N ? 400 : 400} 11px ${FF}`; g.textBaseline = 'middle'; g.fillStyle = t.axisT;
+  for (const p of ticks) { const y = Y(p); if (y < 8 || y > mainH - 8) continue; g.fillText(fmt(p, step < 1 ? 2 : (o.sym === 'BTC' ? 1 : 2)), pw + 8, y); }
+  // 轴上标签：画线 / 提醒 / 最新价
+  const tag = (p, fill, ink, s, bold) => { const y = Math.round(Y(p)); g.fillStyle = fill; rr(g, pw + 1, y - 10, AX - 3, 20, 3); g.fill(); g.fillStyle = ink; g.font = `${bold} ${N ? 12 : 11}px ${FF}`; g.fillText(s, pw + 7, y + .5); };
+  if (o.draw) { tag(3412, '#2962FF', '#fff', fmt(3412, 2), 500); tag(3450, '#F59E0B', N ? '#1A1206' : '#fff', fmt(3450, 2), 500); }
+  const L = data[n - 1], lup = L.c >= L.o, yl = Math.round(Y(L.c)) + .5;
+  g.save(); g.strokeStyle = lup ? t.up : t.down; g.globalAlpha = .9; g.setLineDash(N ? [2, 3] : [1, 2]); g.beginPath(); g.moveTo(0, yl); g.lineTo(pw, yl); g.stroke(); g.restore();
+  if (N) tag(L.c, lup ? t.upT : t.downT, t.tagInk, fmt(L.c, dec), 600);
+  else tag(L.c, lup ? t.up : t.down, '#fff', fmt(L.c, dec), 500);
+  // 副图：持仓量
+  g.fillStyle = t.sep; g.fillRect(0, mainH, W, 1);
+  let omin = Infinity, omax = -Infinity; for (const b of data) { omin = Math.min(omin, b.oi); omax = Math.max(omax, b.oi); }
+  const op = (omax - omin) * .15, oY = v => subT + 24 + (omax + op - v) / (omax - omin + 2 * op) * (subH - 30);
+  g.beginPath(); for (let i = 0; i < n; i++) { const x = cx(i) + .5, y = oY(data[i].oi); i ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.lineWidth = 1.25; g.strokeStyle = '#2962FF'; g.stroke();
+  g.lineTo(cx(n - 1) + .5, ph); g.lineTo(cx(0) + .5, ph); g.closePath();
+  const gr = g.createLinearGradient(0, subT, 0, ph); gr.addColorStop(0, rgba('#2962FF', D ? .16 : .10)); gr.addColorStop(1, rgba('#2962FF', 0)); g.fillStyle = gr; g.fill();
+  g.fillStyle = t.axisT; g.font = `400 11px ${FF}`;
+  const fo = v => o.sym === 'BTC' ? (v / 1000).toFixed(1) + 'K' : (v / 1e6).toFixed(2) + 'M';
+  for (const v of [omin + (omax - omin) * .2, omin + (omax - omin) * .8]) g.fillText(fo(v), pw + 8, oY(v));
+  // 时间轴
+  g.fillStyle = t.sep; g.fillRect(0, ph, W, 1);
+  g.fillStyle = t.axisT; g.textAlign = 'center';
+  for (const [i, s] of lab) g.fillText(s, cx(i), ph + TH / 2 + 1);
+  g.textAlign = 'left';
+  return { mainH, subT, last: L, oi: data[n - 1].oi, fo, mas: mas.map(a => a[n - 1]) };
+}
+
+/* ============================================================ 图表页 mock */
+const IV = ['1分', '5分', '15分', '1时', '4时', '日', '周'];
+function ic(t, k, cls = '') { // 按模式取图标
+  if (t.mode === 'new') return NU[k] ? svgU(k, cls) : NI[k] ? svgN(k, cls) : svgC(k, cls);
+  const map = { heat: 'layers', settings: 'gear', chev: 'chevronDown' }; return svgC(map[k] || k, cls);
+}
+function di(t, k) { return t.mode === 'new' ? svgN(k) : svgC(k); }
+function legendHTML(t, sym, r) {
+  const L = r.last, up = L.c >= L.o, d = sym === 'BTC' ? 1 : 2, ch = L.c - L.o, pct = ch / L.o * 100;
+  const sg = v => (v >= 0 ? '+' : MINUS) + fmt(Math.abs(v), d), sp = v => (v >= 0 ? '+' : MINUS) + Math.abs(v).toFixed(2) + '%';
+  const title = sym === 'BTC' ? ['BTCUSDT 永续', '1时 · 币安'] : ['ETHUSDT 永续', '4时 · 币安'];
+  const N = t.mode === 'new', dc = up ? 'var(--upT)' : 'var(--downT)';
+  const ohlc = [['开', L.o], ['高', L.h], ['低', L.l], ['收', L.c]].map(([k, v]) => `<span class="lb">${k}</span><span class="v" style="${N ? '' : 'color:' + dc}">${fmt(v, d)}</span>`).join('');
+  const chg = N ? `<span class="chg" style="color:${dc}">${sg(ch)}　${sp(pct)}</span>` : `<span class="v" style="color:${dc}">${sg(ch)} (${sp(pct)})</span>`;
+  const mav = r.mas.map((v, k) => `<span class="mv v" style="color:${MA_C[k]}">${fmt(v, d)}</span>`).join('');
+  let h = `<div class="lrow"><span class="tt">${title[0]}<i>${N ? '' : '· '}${title[1]}</i></span>${ohlc}${chg}</div>
+    <div class="lrow"><span class="nm">MA</span><span class="pm">7 25 99</span>${mav}</div>`;
+  if (sym === 'BTC') h += `<div class="lrow"><span class="nm">主力订单流</span><span class="pm">全部交易所 · ≥ 50M</span></div>`;
+  else h += `<div class="lrow"><span class="nm">关键位</span><span class="pm">日 · 周</span></div>`;
+  return h;
+}
+function cellHTML(t, id, act) {
+  return `<div class="cell${act ? ' act' : ''}"><div class="cv"><canvas id="${id}"></canvas><div class="legend" id="${id}-lg"></div><div class="pleg" id="${id}-pl"></div></div>
+    <div class="foot"><span>1天</span><span>5天</span><span>1月</span><span>3月</span><span>6月</span><span>1年</span><span>全部</span>
+    <div class="r"><span class="clock">21:14:08 (UTC+8)</span><span>%</span><span>对</span><span class="on">自</span></div></div></div>`;
+}
+function headerHTML(t) {
+  const N = t.mode === 'new';
+  return `<div class="m-hd"><div class="brand">${svgC('logo')}<span>Hkline</span></div>
+    <div class="m-nav"><a class="on">图表</a><a>板块</a><a>复盘</a></div>
+    <div style="flex:1"></div>
+    <div class="m-srch">${ic(t, 'search')}<span>搜索品种</span><kbd>/</kbd></div>
+    <div style="flex:1"></div>
+    <div class="hd-r"><div class="ib">${ic(t, 'bell')}<span class="dot">2</span></div><div class="ib">${ic(t, t.theme === 'dark' ? 'moon' : 'sun')}</div><div class="avatar">G</div></div></div>`;
+}
+function toolbarHTML(t) {
+  const N = t.mode === 'new', ivs = IV.map(s => `<button class="${s === '1时' ? 'on' : ''}">${s}</button>`).join('') + `<button>更多${ic(t, 'chev')}</button>`;
+  if (N) return `<div class="m-tb"><div class="sym"><span class="coin">₿</span><b>BTCUSDT</b><span class="pk">永续</span>${svgU('chev')}</div>
+    <div class="ivs">${ivs}</div>
+    <button class="tbt t2">${svgU('indicators')}指标</button><button class="tbt t2">${svgU('bell')}提醒</button>
+    <span class="tsep"></span>
+    <button class="tbt t3">${svgU('compare')}对比</button><button class="tbt t3">${svgU('note')}记一笔</button><button class="tbt t3">${svgU('heat')}热力</button>
+    <div style="flex:1"></div>
+    <div class="tbi">${svgU('undo')}</div><div class="tbi">${svgU('redo')}</div><span class="tsep"></span>
+    <div class="tbi">${svgU('layout')}</div><div class="tbi">${svgU('camera')}</div><div class="tbi">${svgU('fullscreen')}</div><div class="tbi">${svgU('settings')}</div></div>`;
+  return `<div class="m-tb"><div class="sym">BTCUSDT <span class="pk">永续</span>${svgC('chevronDown')}</div><span class="tsep"></span>
+    <div class="ivs">${ivs}</div><span class="tsep"></span>
+    <button class="tbt">${svgC('indicators')}指标</button><button class="tbt">${svgC('compare')}对比</button><button class="tbt">${svgC('bell')}提醒</button><button class="tbt">${svgC('note')}记一笔</button><button class="tbt">${svgC('layers')}热力</button>
+    <div style="flex:1"></div>
+    <div class="tbi">${svgC('undo')}</div><div class="tbi">${svgC('redo')}</div><span class="tsep"></span>
+    <div class="tbi">${svgC('layout')}</div><div class="tbi">${svgC('camera')}</div><div class="tbi">${svgC('fullscreen')}</div><div class="tbi">${svgC('gear')}</div></div>`;
+}
+function drawbarHTML(t) {
+  const N = t.mode === 'new', ch = N ? FLYCH : FLYCH_C;
+  const cell = (k, fly, cls = '') => `<div class="db-c ${cls}"><div class="db-b">${di(t, k)}</div>${fly ? `<div class="db-f">${ch}</div>` : ''}${cls.includes('stk') ? '<span class="sticky"></span>' : ''}</div>`;
+  const top = cell('cursor', 0) + (N ? '' : '<div class="db-sep"></div>') +
+    cell('trend', 1, 'on stk') + cell('channel', 1) + cell('pitchfork', 1) + cell('fib', 1, 'hov') + cell('xabcd', 1) + cell('position', 1) + cell('rect', 1) + cell('note', 1) + cell('avwap', 1);
+  const bot = cell('magnet', 0) + cell('lock', 0) + cell('eye', 0) + (N ? '<div class="db-sep"></div>' : '<div class="db-sep"></div>') + cell('trash', 0);
+  return `<div class="m-db">${top}<div class="db-sep"></div>${bot}</div>`;
+}
+function railHTML(t) {
+  const b = (k, cls = '', dot = '') => `<div class="rl-b ${cls}">${ic(t, k)}${dot ? `<span class="dot">${dot}</span>` : ''}</div>`;
+  return `<div class="m-rail">${b('list')}${b('bell', '', '2')}${b('trades', 'on')}${b('note')}${b('heat')}<div style="flex:1"></div>${b('info')}</div>`;
+}
+
+/* ---------- 大单列表数据 ---------- */
+const WIN = [['本根', 41.2e6, 18.6e6, -22.6e6], ['1小时', 182e6, 96.4e6, -85.6e6], ['今日', 2.32e9, 1.61e9, -705e6]];
+const BARS = [['21:00', 182e6, 96.4e6, 412, '12.4M'], ['20:00', 519e6, 293e6, 1284, '31.0M'], ['19:00', 88.2e6, 141e6, 356, '9.8M'], ['18:00', 204e6, 176e6, 702, '14.2M'], ['17:00', 96.1e6, 64.3e6, 318, '6.6M']];
+const LADDER = [[83000, 72.1e6, 'ask'], [82700, 130e6, 'ask', 1], [82400, 22.8e6, 'ask'], null, [81800, 129e6, 'bid', 1], [81300, 974e6, 'bid', 1], [80900, 36.5e6, 'bid']];
+const VEN = [['bn', '币安', 58], ['okx', 'OKX', 17], ['cb', 'Coinbase', 11], ['bybit', 'Bybit', 9], ['hl', 'HL', 5]];
+const LIQ = (() => { const R = mulberry32(5), a = []; for (let i = 0; i < 24; i++) a.push([R() ** 2 * (i === 17 ? 3 : 1), R() ** 2.4 * .7]); a[23] = [.55, .06]; return a; })();
+const M = v => { const a = Math.abs(v); return a >= 1e9 ? (a / 1e9).toFixed(2).replace(/0$/, '') + 'B' : a >= 1e8 ? Math.round(a / 1e6) + 'M' : (a / 1e6).toFixed(1) + 'M'; };
+const SG = v => (v >= 0 ? '+' : MINUS) + M(v);
+
+function drawerNew(t, cmp) {
+  const dT = v => v >= 0 ? 'var(--upT)' : 'var(--downT)';
+  const win = WIN.map(([k, s, b, nt]) => `<tr><td class="l">${k}</td><td>${M(s)}</td><td>${M(b)}</td><td class="k" style="color:${dT(nt)}">${SG(nt)}</td></tr>`).join('');
+  const vmax = 519e6, bar = (v, col) => `<i style="width:calc(${(v / vmax * 100).toFixed(1)}% - 12px);min-width:4px;background:linear-gradient(90deg,${rgba(col, .06)},${rgba(col, .28)})"></i>`;
+  const rows = BARS.map(([tm, s, b, c, mx], i) => `<tr class="${i === 0 ? 'sel' : i === 2 ? 'hov' : ''}"><td class="l">${tm}</td><td class="bar">${bar(s, t.down)}<span>${M(s)}</span></td><td class="bar">${bar(b, t.up)}<span>${M(b)}</span></td><td class="k" style="color:${dT(b - s)}">${SG(b - s)}</td><td class="col-x">${c.toLocaleString('en-US')}</td><td class="col-x">${mx}</td></tr>`).join('');
+  const lmax = 974e6;
+  const lad = LADDER.map(r => {
+    if (!r) return `<div class="last"><span class="lb3">最新</span><b style="color:var(--downT)">82,214.5</b><span class="sp"></span><span class="lb3">${MINUS}0.24%</span></div>`;
+    const [p, a, sd, w] = r, col = sd === 'bid' ? t.up : t.down;
+    return `<div class="p">${fmt(p, 0)}</div><div class="a"><i style="width:${Math.max(6, a / lmax * 100).toFixed(1)}%;background:${rgba(col, w ? .26 : .16)}"></i><span>${M(a)}</span></div><div>${w ? '<span class="wall">墙</span>' : ''}</div>`;
+  }).join('');
+  const vb = VEN.map(([k, , p]) => `<i style="flex:${p};background:${t.venue[k]}"></i>`).join('');
+  const vl = VEN.map(([k, nm, p]) => `<span><i style="background:${t.venue[k]}"></i>${nm}<b>${p}%</b></span>`).join('');
+  const liq = LIQ.map(([a, b]) => `<div class="col"><div style="flex:1;display:flex;align-items:flex-end"><i style="width:100%;height:${(a * 100).toFixed(0)}%;background:${rgba(t.down, .85)}"></i></div><div style="flex:1;display:flex;align-items:flex-start"><i style="width:100%;height:${(b * 100).toFixed(0)}%;background:${rgba(t.up, .85)}"></i></div></div>`).join('');
+  return `<div class="dw${cmp ? ' cmp' : ''}"><div class="dw-hd"><span class="ti">大单列表</span><span class="cx">BTCUSDT 永续 · 1时 · 全部交易所</span><span class="sp"></span><div class="ib">${svgU('settings')}</div><div class="ib">${svgU('close')}</div></div>
+  <div class="dw-bd">
+   <div class="blk"><div class="bt">汇总<span class="x">${cmp ? '' : '≥ 1M'}</span></div>
+     <div class="hero"><div><div class="lb3">净额 · 今日</div><div class="big" style="color:var(--downT)">${MINUS}705M</div></div>
+       <div class="sb"><span class="lb3">卖出</span><b>2.32B</b><span class="lb3">买入</span><b>1.61B</b></div></div>
+     <table class="dt"><colgroup><col style="width:58px"><col><col><col></colgroup><tr><th></th><th>卖出</th><th>买入</th><th>净额</th></tr>${win}</table>
+     <div class="vbar">${vb}</div><div class="vleg">${vl}</div></div>
+   <div class="blk"><div class="bt">逐根<span class="x">1时</span></div>
+     <table class="dt r28"><colgroup><col style="width:54px"><col><col><col style="width:84px"><col class="col-x" style="width:62px"><col class="col-x" style="width:76px"></colgroup><tr><th>时间</th><th>卖出</th><th>买入</th><th>净额</th><th class="col-x">笔数</th><th class="col-x">最大单笔</th></tr>${rows}</table></div>
+   <div class="blk"><div class="bt">价位<span class="x">挂单</span></div><div class="lad">${lad}</div></div>
+   <div class="blk"><div class="bt">爆仓<span class="x">24 时</span></div>
+     <div class="liq-s"><span class="lb3">多单爆仓 · 本根</span><b class="k" style="color:var(--downT)">3.3M</b><span class="lb3">空单爆仓 · 本根</span><b>261K</b></div>
+     <div class="liqc"><span class="ax"></span>${liq}</div><div class="liqt"><span>昨 22:00</span><span>今 10:00</span><span>21:00</span></div>
+     <div class="liq-s" style="margin-top:4px"><span class="lb3">今日最大单笔</span><b>6.1M <span class="lb3">多单 · 币安</span></b></div></div>
+  </div></div>`;
+}
+function drawerCur(t, cmp) {
+  const dT = v => v >= 0 ? t.upT : t.downT, D = t.theme === 'dark', a1 = D ? .18 : .12, a2 = D ? .42 : .30;
+  const vmax = 519e6;
+  const win = WIN.map(([k, s, b, nt]) => `<div class="crow" style="grid-template-columns:44px 1fr 1fr 64px"><span class="t">${k}</span><span class="hb l"><i style="width:${Math.min(100, s / 2.32e9 * 100 + 30)}%;background:${rgba(t.down, a2)}"></i><span style="color:${t.downT}">${M(s)}</span></span><span class="hb r"><i style="width:${Math.min(100, b / 2.32e9 * 100 + 30)}%;background:${rgba(t.up, a2)}"></i><span style="color:${t.upT}">${M(b)}</span></span><span class="n" style="color:${dT(nt)}">${SG(nt)}</span></div>`).join('');
+  const rows = BARS.map(([tm, s, b, c, mx], i) => `<div class="crow ${i === 0 ? 'sel' : i === 2 ? 'hov' : ''}" style="grid-template-columns:42px 1fr 1fr 68px ${cmp ? '' : '50px 62px'}"><span class="t">${tm}</span><span class="hb l"><i style="width:${(s / vmax * 100).toFixed(0)}%;background:${rgba(t.down, a2)}"></i><span style="color:${t.downT}">${M(s)}</span></span><span class="hb r"><i style="width:${(b / vmax * 100).toFixed(0)}%;background:${rgba(t.up, a2)}"></i><span style="color:${t.upT}">${M(b)}</span></span><span class="n" style="color:${dT(b - s)}">${SG(b - s)}</span>${cmp ? '' : `<span class="m">${c.toLocaleString('en-US')}</span><span class="m">${mx}</span>`}</div>`).join('');
+  const lad = LADDER.map(r => {
+    if (!r) return `<div class="crow" style="grid-template-columns:1fr auto;background:${rgba(t.accent, a1)};border-radius:4px;padding:0 4px"><span style="font-weight:600">最新 82,214.5</span><span style="color:${t.downT}">${MINUS}0.24%</span></div>`;
+    const [p, a, sd, w] = r, col = w ? t.wall : sd === 'bid' ? t.up : t.down;
+    return `<div class="crow" style="grid-template-columns:50px 1fr"><span style="color:${sd === 'bid' ? t.upT : t.downT};font-weight:500">${fmt(p, 0)}</span><span class="hb r"><i style="width:${Math.max(8, a / 974e6 * 100).toFixed(0)}%;background:${rgba(col, w ? .55 : a2)}"></i><span style="color:${w ? '#fff' : (sd === 'bid' ? t.upT : t.downT)}">${M(a)}${w ? ' 墙' : ''}</span></span></div>`;
+  }).join('');
+  const vb = VEN.map(([k, , p]) => `<i style="flex:${p};background:${t.venue[k]}"></i>`).join('');
+  const vl = VEN.map(([k, nm, p]) => `<span><i style="background:${t.venue[k]}"></i>${nm} ${p}%</span>`).join('');
+  const liq = LIQ.map(([a, b]) => `<div class="col"><div style="flex:1;display:flex;align-items:flex-end"><i style="width:100%;height:${(a * 100).toFixed(0)}%;background:${rgba(t.down, .55)}"></i></div><div style="flex:1;display:flex;align-items:flex-start"><i style="width:100%;height:${(b * 100).toFixed(0)}%;background:${rgba(t.up, .55)}"></i></div></div>`).join('');
+  return `<div class="cdw${cmp ? ' cmp' : ''}"><div class="cdw-hd"><span class="ti">大单列表</span><span class="cx">BTCUSDT 永续 · 1时</span><span class="sp"></span><div class="ib">${svgC('gear')}</div><div class="ib">${svgC('close')}</div></div>
+  <div class="cdw-bd">
+   <div class="ob"><div class="ot">汇总<span>今日</span></div><div class="hl">净额</div><div class="hero2" style="color:${t.downT}">${MINUS}705M</div>${win}<div class="cvb">${vb}</div><div class="cvl">${vl}</div></div>
+   <div class="ob"><div class="ot">逐根<span>1时</span></div>${rows}</div>
+   <div class="ob"><div class="ot">价位<span>挂单</span></div>${lad}</div>
+   <div class="ob"><div class="ot">爆仓<span>24 时</span></div><div class="crow" style="grid-template-columns:1fr auto"><span class="t">多单 本根</span><span style="color:${t.downT};font-weight:600">3.3M</span></div><div class="crow" style="grid-template-columns:1fr auto"><span class="t">空单 本根</span><span style="color:${t.upT};font-weight:600">261K</span></div>
+     <div class="liqc" style="height:70px"><span class="ax"></span>${liq}</div><div class="crow" style="grid-template-columns:1fr auto"><span class="t">最大单笔</span><span style="color:${t.downT}">6.1M 多 · 币安</span></div></div>
+  </div></div>`;
+}
+const drawerHTML = (t, cmp) => t.mode === 'new' ? drawerNew(t, cmp) : drawerCur(t, cmp);
+
+function paintCell(id, t, sym, opt) {
+  const cv = document.getElementById(id); if (!cv) return;
+  const r = drawChart(cv, Object.assign({ t, sym }, opt)); if (!r) return;
+  document.getElementById(id + '-lg').innerHTML = legendHTML(t, sym, r);
+  const pl = document.getElementById(id + '-pl'); pl.style.top = (r.subT + 3) + 'px';
+  pl.innerHTML = t.mode === 'new' ? `持仓量<b>${r.fo(r.oi)} ${sym}</b>` : `持仓量 <b>${r.fo(r.oi)}</b> ${sym}`;
+}
+function buildMock() {
+  const stage = document.getElementById('stage1'), sw = stage.clientWidth;
+  const W = Math.max(1280, Math.min(sw, 2560)), k = sw < 1280 ? sw / 1280 : 1, H = Math.max(860, Math.min(1440, Math.round(W * .5625)));
+  const t = T(ST.mode, ST.theme, ST.skin);
+  stage.style.height = Math.round(H * k) + 'px';
+  stage.innerHTML = `<div class="scaler" style="transform:scale(${k});width:${W}px"><div class="mock ${t.mode}" id="mock" style="width:${W}px;height:${H}px">
+    ${headerHTML(t)}${toolbarHTML(t)}${drawbarHTML(t)}
+    <div class="m-main"><div class="m-cells">${cellHTML(t, 'c1', 1)}${cellHTML(t, 'c2', 0)}</div>${drawerHTML(t, false)}</div>
+    ${railHTML(t)}</div></div>`;
+  const m = document.getElementById('mock'); setVars(m, t);
+  const vis = W >= 2000 ? 120 : 120;
+  paintCell('c1', t, 'BTC', { vis, bands: 1, bubbles: 1, legendH: 84, rp: 70 });
+  paintCell('c2', t, 'ETH', { vis, kl: 1, draw: 1, legendH: 84, dur: 4, rp: 40 });
+  document.getElementById('s1lede').innerHTML = ST.mode === 'new'
+    ? '<b>提案</b>：框架（顶栏 · 工具条 · 左右栏 · 缝）是一整块低饱和底，图表格子和抽屉是亮一级的卡片，K 线画布与卡片同底。关键数字（最新价、净额、挂单金额）600 字重大一阶，其余数字主文字色 500，标签退成第三级小字。'
+    : '<b>现在</b>：10-08 视觉调整之前的线上样子——底、卡片、K 线画布三种颜色，左右栏图标次要字色加 30% 衬底，工具条按钮同一分量，抽屉里数字全用方向色压在彩条上。';
+}
+
+/* ============================================================ 第 2 节 */
+function iconPanels() {
+  const host = document.getElementById('s2a'); host.innerHTML = '';
+  for (const th of ['light', 'dark']) {
+    const n = T('new', th, ST.skin), c = T('cur', th, ST.skin);
+    const el = document.createElement('div'); el.className = 'pan'; setVars(el, n);
+    el.style.setProperty('--csurf', c.surface); el.style.setProperty('--ct2', c.t2);
+    let h = `<div class="ph">${th === 'light' ? '浅色' : '深色'}<small>提案框架底 ${n.frame} · 现在卡片底 ${c.surface}</small></div>
+      <div class="colh"><div style="width:84px">名称</div><div style="width:36px">现在</div><div style="width:40px">28</div><div style="width:10px"></div><div style="width:44px">静止</div><div style="width:44px">悬停</div><div style="width:44px">选中</div><div>20</div></div><div class="igrid">`;
+    for (const [g, tools] of GROUPS) {
+      h += `<div class="igrp">${g}</div>`;
+      for (const [k, nm] of tools) h += `<div class="icard"><span class="nm" title="${nm}">${nm}</span><span class="c36">${svgC(k)}</span><span class="c40">${svgC(k)}</span><span class="arrow">→</span><span class="n52">${svgN(k)}</span><span class="n52 h">${svgN(k)}</span><span class="n52 s">${svgN(k)}</span><span class="n20">${svgN(k)}</span></div>`;
+    }
+    h += `<div class="igrp">工具栏其他</div>`;
+    for (const [k, nm] of [['cursor', '十字光标'], ['magnet', '磁吸'], ['lock', '锁定画线'], ['eye', '隐藏画线'], ['trash', '删除画线']])
+      h += `<div class="icard"><span class="nm">${nm}</span><span class="c36">${svgC(k)}</span><span class="c40">${svgC(k)}</span><span class="arrow">→</span><span class="n52">${svgN(k)}</span><span class="n52 h">${svgN(k)}</span><span class="n52 s">${svgN(k)}</span><span class="n20">${svgN(k)}</span></div>`;
+    el.innerHTML = h + '</div>'; host.appendChild(el);
+  }
+  // 展开菜单
+  const fh = document.getElementById('s2b'); fh.innerHTML = '';
+  const n = T('new', ST.theme, ST.skin), c = T('cur', ST.theme, ST.skin);
+  for (const gi of [0, 3, 7]) {
+    const [g, tools] = GROUPS[gi];
+    const cur = `<div><div class="flycap">现在</div><div class="fly c"><div class="gt">${g}</div>${tools.map(([k, nm, kb], i) => `<div class="r ${i === 0 ? 'on' : ''}">${svgC(k)}${nm}${kb ? `<kbd>${kb}</kbd>` : ''}</div>`).join('')}</div></div>`;
+    const nw = `<div><div class="flycap">提案</div><div class="fly n"><div class="gt">${g}</div>${tools.map(([k, nm, kb], i) => `<div class="r ${i === 0 ? 'on' : i === 2 ? 'h' : ''}">${svgN(k)}${nm}${kb ? `<kbd>${kb}</kbd>` : ''}</div>`).join('')}</div></div>`;
+    const p = document.createElement('div'); p.className = 'flypair';
+    p.innerHTML = `<div class="flywrap c">${cur}</div><div class="flywrap n">${nw}</div>`;
+    setVars(p.children[0], c); setVars(p.children[1], n); p.children[0].style.background = 'transparent'; fh.appendChild(p);
+  }
+  // 放大
+  const mg = document.getElementById('s2c'); mg.innerHTML = ''; setVars(mg, n);
+  for (const [k, nm] of [['trend', '趋势线'], ['fib', '斐波那契回撤'], ['pitchfork', '安德鲁斯分叉'], ['xabcd', 'XABCD 形态'], ['position', '多空持仓框'], ['callout', '气泡标注']]) {
+    const f = document.createElement('figure');
+    f.innerHTML = `<div class="gbox">${svgN(k)}</div><figcaption>${nm}<span>28 × 7</span></figcaption>
+      <div class="act"><div style="color:var(--t1)">${svgN(k)}</div><div style="background:var(--fh);color:var(--t1)">${svgN(k)}</div><div style="background:var(--softF);color:var(--atext)">${svgN(k)}</div></div>`;
+    mg.appendChild(f);
+  }
+  // 界面图标
+  const ud = document.getElementById('s2d'); ud.innerHTML = '';
+  const UI = [['search', '搜索', 'search'], ['bell', '提醒', 'bell'], ['indicators', '指标', 'indicators'], ['compare', '对比', 'compare'], ['note', '记一笔', 'note'], ['heat', '热力', 'layers'], ['layout', '布局', 'layout'], ['camera', '截图', 'camera'], ['fullscreen', '全屏', 'fullscreen'], ['undo', '撤销', 'undo'], ['redo', '重做', 'redo'], ['settings', '设置', 'gear'], ['eye', '显示', 'eye'], ['eyeOff', '隐藏', 'eyeOff'], ['star', '自选', 'star'], ['list', '列表', 'list']];
+  for (const th of ['light', 'dark']) {
+    const n2 = T('new', th, ST.skin), c2 = T('cur', th, ST.skin), el = document.createElement('div'); el.className = 'pan'; setVars(el, n2);
+    el.style.setProperty('--csurf', c2.surface); el.style.setProperty('--ct2', c2.t2);
+    el.innerHTML = `<div class="ph">${th === 'light' ? '浅色' : '深色'}<small>现在：卡片底 · 次要字色　提案：框架底 · 主文字色</small></div><div class="uigrid">` +
+      UI.map(([k, nm, ck]) => `<div class="ucard"><span class="nm">${nm}</span><span class="grp c">${svgC(ck, 'i24')}${svgC(ck, 'i20')}${svgC(ck, 'i16')}</span><span class="arrow">→</span><span class="grp n">${svgU(k, 'i24')}${svgU(k, 'i20')}${svgU(k, 'i16')}</span></div>`).join('') + '</div>';
+    ud.appendChild(el);
+  }
+}
+
+/* ============================================================ 第 3 节 */
+let CHECKS = [];
+function chip(fg, bg, min = 4.5, extra = '') {
+  const r = cr(fg, bg), ok = r >= min - 1e-9;
+  CHECKS.push({ r, ok, min, extra });
+  return `<span class="chip${ok ? '' : ' bad'}" style="background:${bg};color:${fg}" title="${fg} / ${bg}">${r.toFixed(2)}${ok ? '' : '<em>×</em>'}</span>`;
+}
+function palette() {
+  CHECKS = [];
+  const host = document.getElementById('s3a'); host.innerHTML = '';
+  const NM = { sage: '青苔', classic: '经典', terra: '陶土' };
+  for (const sk of ['sage', 'classic', 'terra']) for (const th of ['light', 'dark']) {
+    const n = T('new', th, sk), c = T('cur', th, sk), el = document.createElement('div'); el.className = 'pcard'; setVars(el, n);
+    const ctx = `${NM[sk]}${th === 'light' ? '浅' : '深'}`;
+    const sw = [['框架', n.frame], ['卡片 · 画布', n.surface], ['次级', n.s2], ['悬停行', n.s3], ['框架悬停', n.fh], ['分隔', n.line], ['框架分隔', n.fline], ['浮层', n.overlay], ['强调软底', n.soft], ['框架选中', n.softF]]
+      .map(([k, v]) => `<div style="background:${v};color:${cr(n.t1, v) > cr('#FFFFFF', v) ? n.t1 : '#fff'}">${k}<code>${v}</code></div>`).join('');
+    const tx = [['主文字', n.t1], ['次要', n.t2], ['标签', n.t3]].map(([k, v]) => `<tr><td>${k} <span class="sub">${v}</span></td><td>${chip(v, n.frame, 4.5, ctx)}</td><td>${chip(v, n.surface, 4.5, ctx)}</td><td>${chip(v, n.s2, 4.5, ctx)}</td><td>${chip(v, n.s3, 4.5, ctx)}</td></tr>`).join('');
+    const dirRow = (t, k, v, was) => `<tr class="${was ? 'was' : ''}"><td>${was ? '现在 ' : ''}${k} <span class="sub">${v}</span></td><td>${was ? `<span class="chip" style="background:${t.surface};color:${v}">${cr(v, t.surface).toFixed(2)}</span>` : chip(v, t.surface, 5.0, ctx + ' 关键')}</td><td>${was ? `<span class="chip" style="background:${t.s2};color:${v}">${cr(v, t.s2).toFixed(2)}</span>` : chip(v, t.s2, 4.5, ctx)}</td><td>${was ? `<span class="chip${cr(v, t.s3) < 4.5 ? ' bad' : ''}" style="background:${t.s3};color:${v}">${cr(v, t.s3).toFixed(2)}${cr(v, t.s3) < 4.5 ? '<em>×</em>' : ''}</span>` : chip(v, t.s3, 4.5, ctx)}</td><td>${was ? `<span class="chip${cr(v, t.soft) < 4.5 ? ' bad' : ''}" style="background:${t.soft};color:${v}">${cr(v, t.soft).toFixed(2)}${cr(v, t.soft) < 4.5 ? '<em>×</em>' : ''}</span>` : chip(v, t.soft, 4.5, ctx)}</td></tr>`;
+    const dr = dirRow(n, '涨', n.upT) + dirRow(n, '跌', n.downT) + dirRow(c, '涨', c.upT, 1) + dirRow(c, '跌', c.downT, 1);
+    const tagRow = `<tr><td>最新价标签</td><td colspan="2">${chip(n.tagInk, n.upT, 4.5, ctx)}</td><td colspan="2">${chip(n.tagInk, n.downT, 4.5, ctx)}</td></tr>`;
+    const acc = `<tr><td>强调字 <span class="sub">${n.atext}</span></td><td>${chip(n.atext, n.soft, 4.5, ctx)}</td><td>${chip(n.atext, n.softF, 4.5, ctx)}</td><td colspan="2"></td></tr>`;
+    el.innerHTML = `<h4>${NM[sk]} · ${th === 'light' ? '浅色' : '深色'}<small>现在三层 → 提案两层</small></h4>
+      <div class="strip"><div style="background:${c.frame};color:${c.t2}">底 ${c.frame}</div><div style="background:${c.surface};color:${c.t2}">卡片 ${c.surface}</div><div style="background:${c.canvas};color:${th === 'dark' ? '#B8B8B8' : '#555'}">K 线画布 ${c.canvas}</div></div>
+      <div class="stripcap">现在：底、卡片、画布三种颜色，画布是 TradingView 的纯白 / 纯黑灰，跟皮肤无关</div>
+      <div class="layers"><div class="fr"><span>框架</span><span class="h">悬停</span><span class="sel">选中</span><span style="color:var(--t2)">次要</span><span style="color:var(--t3)">标签</span></div>
+        <div class="card"><div style="font-weight:600;font-size:13px">卡片 = K 线画布</div><div class="s2">次级底 · 表头</div><div class="s3">悬停行</div><div class="ov">浮层</div></div></div>
+      <div class="sw">${sw}</div>
+      <table class="cr"><tr><th></th><th>框架</th><th>卡片</th><th>次级</th><th>悬停行</th></tr>${tx}</table>
+      <table class="cr"><tr><th>方向字</th><th>卡片 ≥5.0</th><th>次级</th><th>悬停行</th><th>选中行</th></tr>${dr}${tagRow}</table>
+      <table class="cr"><tr><th></th><th>强调软底</th><th>框架选中</th><th colspan="2"></th></tr>${acc}</table>`;
+    host.appendChild(el);
+  }
+  // 分类色
+  const cat = document.getElementById('s3b'); cat.innerHTML = '';
+  for (const th of ['light', 'dark']) {
+    const n = T('new', th, ST.skin), c = T('cur', th, ST.skin), d = th === 'dark', el = document.createElement('div'); el.className = 'catp'; setVars(el, n);
+    const row = (k, arr) => `<div class="catrow"><span class="k">${k}</span>${arr.map(([nm, v]) => `<span><i style="background:${v}"></i>${nm} <code>${v}</code></span>`).join('')}</div>`;
+    const bandRow = (cls, items) => items.map(([y, h, col, lab, side, prod, ink, fillA, under]) => `<div class="b" style="top:${y}px;height:${h}px;background:${rgba(col, fillA)}">${prod ? `<i style="background:${prod}"></i>` : ''}<span style="color:${ink};background:${under}">${lab}</span></div>`).join('');
+    const curB = [[10, 12, curBand('usdtPerp', 'ask', d), '72.1M', 'ask', null, curInk('usdtPerp', 'ask', d), d ? .14 : .16, rgba(curBand('usdtPerp', 'ask', d), d ? .24 : .16)],
+      [30, 10, curBand('spot', 'ask', d), '130M', 'ask', null, curInk('spot', 'ask', d), d ? .14 : .16, rgba(curBand('spot', 'ask', d), d ? .24 : .16)],
+      [52, 10, curBand('coinPerp', 'bid', d), '129M', 'bid', null, curInk('coinPerp', 'bid', d), d ? .14 : .16, rgba(curBand('coinPerp', 'bid', d), d ? .24 : .16)],
+      [70, 16, curBand('usdtPerp', 'bid', d), '974M', 'bid', null, curInk('usdtPerp', 'bid', d), d ? .18 : .20, rgba(curBand('usdtPerp', 'bid', d), d ? .24 : .16)]];
+    const newB = [[10, 12, n.down, '72.1M', 'ask', n.prod.usdtPerp, n.downT, d ? .16 : .10, rgba(n.surface, .72)],
+      [30, 10, n.down, '130M', 'ask', n.prod.spot, n.downT, d ? .16 : .10, rgba(n.surface, .72)],
+      [52, 10, n.up, '129M', 'bid', n.prod.coinPerp, n.upT, d ? .16 : .10, rgba(n.surface, .72)],
+      [70, 16, n.up, '974M', 'bid', n.prod.usdtPerp, n.upT, d ? .16 : .10, rgba(n.surface, .72)]];
+    el.innerHTML = `<h4>${th === 'light' ? '浅色' : '深色'} · 同明度分类色（oklch ${d ? '0.76 0.10' : '0.60 0.12'} h）</h4>
+      ${row('交易所', [['币安', n.venue.bn], ['Coinbase', n.venue.cb], ['Bybit', n.venue.bybit], ['Hyperliquid', n.venue.hl], ['OKX', n.venue.okx]])}
+      ${row('品类', [['现货', n.prod.spot], ['U 本位永续', n.prod.usdtPerp], ['币本位永续', n.prod.coinPerp], ['交割', n.prod.delivery]])}
+      ${row('关键位', [['日', n.kl[0]], ['周', n.kl[1]]])}
+      ${row('方向', [['阳线', n.up], ['阴线', n.down], ['涨字', n.upT], ['跌字', n.downT]])}
+      ${row('现在品类', [['现货', PRODUCT_HEX.spot], ['U 本位', PRODUCT_HEX.usdtPerp], ['币本位', PRODUCT_HEX.coinPerp], ['交割', PRODUCT_HEX.delivery]])}
+      <div class="two" style="gap:10px"><div><div class="flycap">现在：挂单带按品类着色</div><div class="bands" style="background:${c.canvas}">${bandRow('c', curB)}</div></div>
+      <div><div class="flycap">提案：按方向着色，品类退成左缘 2px</div><div class="bands">${bandRow('n', newB)}</div></div></div>`;
+    cat.appendChild(el);
+  }
+  const bad = CHECKS.filter(c => !c.ok);
+  document.getElementById('s3sum').innerHTML = bad.length
+    ? `<b class="bad">${bad.length} 项不达标</b>：` + bad.map(b => `${b.extra} ${b.r.toFixed(2)}`).join('，')
+    : `提案共 <b>${CHECKS.length}</b> 项对比度检查全部达标：正文与方向字 ≥ 4.5，卡片上的方向字（关键数据）≥ 5.0。最低一项 <b>${Math.min(...CHECKS.map(c => c.r)).toFixed(2)}</b>。`;
+}
+
+/* ============================================================ 第 4 节 */
+function closeup() {
+  const host = document.getElementById('s4a'); host.innerHTML = '';
+  for (const mode of ['cur', 'new']) {
+    const t = T(mode, 'dark', ST.skin), w = document.createElement('div'); w.className = 'cuw ' + mode + ' mock-lite';
+    w.innerHTML = `<div class="cuh"><b>${mode === 'new' ? '提案' : '现在'}</b>BTCUSDT 永续 · 1时</div><div class="${mode}" style="display:contents">${cellHTML(t, 'cu-' + mode, 0)}${drawerHTML(t, true)}</div>`;
+    setVars(w, t); host.appendChild(w);
+    w.querySelector('.foot').remove();
+  }
+  for (const mode of ['cur', 'new']) {
+    const t = T(mode, 'dark', ST.skin);
+    paintCell('cu-' + mode, t, 'BTC', { vis: 64, io: 56, bands: 1, bubbles: 1, legendH: 84, rp: 70 });
+  }
+  // 特写：气泡按 64 根窗口重排
+  document.getElementById('s4n').innerHTML = `
+    <div><b>挂单带</b>现在是紫 / 青 / 琥珀按品类上色，深色下提亮后像荧光贴纸；提案按方向着色（买绿卖红），深色填充 16%，品类只剩左缘 2px 细条。</div>
+    <div><b>金额标签</b>现在 11 号字、品类墨色压在半透明彩底上；提案 12/600 方向色字，垫 72% 卡片底，墙用强调色小签。</div>
+    <div><b>大单列表</b>现在数字全是方向色、压在 30–42% 的彩条上；提案数字一律主文字色，条形 ≤ 28%，只有净额一列用方向色 600。</div>`;
+}
+
+/* ============================================================ 状态 */
+const ST = { mode: 'new', theme: 'light', skin: 'sage' };
+try { Object.assign(ST, JSON.parse(localStorage.getItem('hk-visual-1008') || '{}')); } catch (e) {}
+function save() { try { localStorage.setItem('hk-visual-1008', JSON.stringify(ST)); } catch (e) {} }
+function chrome() {
+  const t = T('new', ST.theme, ST.skin); setVars(document.documentElement, t);
+  document.documentElement.classList.toggle('dark', ST.theme === 'dark');
+  document.querySelectorAll('.ctl .seg').forEach(s => s.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(ST[s.dataset.k] === b.dataset.v))));
+}
+function renderAll(what) {
+  chrome();
+  if (!what || what === 'mock') buildMock();
+  if (!what) { iconPanels(); palette(); closeup(); }
+}
+document.getElementById('ctl').addEventListener('click', e => {
+  const b = e.target.closest('.seg button'); if (!b) return;
+  const k = b.parentElement.dataset.k; if (ST[k] === b.dataset.v) return;
+  ST[k] = b.dataset.v; save();
+  if (k === 'mode') renderAll('mock'); else renderAll();
+});
+let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { buildMock(); closeup(); }, 120); });
+renderAll();
+</script>
+</body>
+</html>
