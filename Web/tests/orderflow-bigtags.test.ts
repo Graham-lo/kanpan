@@ -1,11 +1,13 @@
 /* Hkline Web · 主力订单流 2026-10-08：图上「大单签」、底部抽屉四块摘要、爆仓数据、四个开关互不牵连
- * 签：档位（门槛 ÷ 5 的 1 / 3 / 10 倍）、上下摆放与实心侧、让开 K 线与文字；数据：分钟桶并根、服务端历史接缝；
- * 抽屉：北京时间零点、三窗口、现货 / 合约与三家占比、价位桶、最近的墙；爆仓：解析、合计、30 秒轮询与失败重试、只留 16 只。 */
+ * 签：相对档位（最近 300 根的 P85 / P95 / max(P99, 3×P95)，垫绝对下限，数据不变不重算）、一根一枚、另一侧过 P95 才描边、
+ *     夹在主图里（让开成交量）、撞图例 / 画线文字退成三角、三角也放不下不画；数据：分钟桶并根、服务端历史接缝；
+ * 抽屉：北京时间零点、三窗口、现货 / 合约与三家占比、价位（浏览器真实价 + 服务端行 × 1 分钟典型价）、最近的墙、
+ *     开方比例尺、占比条至少两段、十字线所在根；爆仓：解析、合计、30 秒轮询与失败重试、只留 16 只。 */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flowOf, recordTrade, beat, resetFlows } from '../src/chart/tradeFlow'
 import type { TradeEvent } from '../src/orderflow/feed'
-import { barBig, BigBarCache, planTags, tierOf, unitFor, ivName, type PlanEnv, type TagIn, type BarBig } from '../src/orderflow/bigTags'
-import { dayStart8, windows, liveShares, priceLevels, nearestWalls, HOUR } from '../src/orderflow/summary'
+import { barBig, BigBarCache, TierCache, planTags, tierOf, tiersFrom, quantile, unitFor, ivName, TIER_BARS, type PlanEnv, type TagIn, type BarBig, type Tiers } from '../src/orderflow/bigTags'
+import { dayStart8, windows, liveShares, priceLevels, nearestWalls, HOUR, PX_MINUTES } from '../src/orderflow/summary'
 import { parseLiq, sumLiq, LiqStore, LIQ_POLL_MS, LIQ_MAX_SYMBOLS, LIQ_KEEP_MS, type LiqRow } from '../src/orderflow/liquidation'
 import type { BigOrder } from '../src/orderflow/types'
 
@@ -24,13 +26,52 @@ function trade(sym: string, t: number, usd: number, buy: boolean, o: { ex?: stri
 function cover(sym: string, a: number, b: number): void { for (let t = a; t <= b; t += 500) beat(sym, t, true) }
 
 describe('档位', () => {
-  it('门槛 ÷ 5 为单位：不到 1 倍不画、1 倍三角、3 倍金额签、10 倍大签', () => {
-    expect(tierOf(99_999, 100_000)).toBe(0)
-    expect(tierOf(100_000, 100_000)).toBe(1)
-    expect(tierOf(299_999, 100_000)).toBe(1)
-    expect(tierOf(300_000, 100_000)).toBe(2)
-    expect(tierOf(1_000_000, 100_000)).toBe(3)
-    expect(tierOf(5, 0)).toBe(0)
+  it('三档的线：不到 t1 不画、t1 三角、t2 金额签、t3 大签；没有档位一律不画', () => {
+    const k: Tiers = { t1: 100_000, t2: 300_000, t3: 1_000_000 }
+    expect(tierOf(99_999, k)).toBe(0)
+    expect(tierOf(100_000, k)).toBe(1)
+    expect(tierOf(299_999, k)).toBe(1)
+    expect(tierOf(300_000, k)).toBe(2)
+    expect(tierOf(1_000_000, k)).toBe(3)
+    expect(tierOf(5, null)).toBe(0)
+    expect(tierOf(0, k)).toBe(0)
+  })
+  it('分位数线性插值（同 numpy 默认）', () => {
+    expect(quantile([1, 2, 3, 4, 5], 0.5)).toBe(3)
+    expect(quantile([0, 10], 0.85)).toBeCloseTo(8.5)
+    expect(quantile([7], 0.99)).toBe(7)
+    expect(quantile([], 0.5)).toBe(0)
+  })
+  it('相对档位：P85 / P95 / max(P99, 3×P95)，只看非零的根；绝对下限垫底', () => {
+    const vals = Array.from({ length: 100 }, (_, i) => (i + 1) * 1000).concat([0, 0, 0])   // 1K..100K + 三根没大单
+    const k = tiersFrom(vals, 0)!
+    expect(k.t1).toBeCloseTo(85_150); expect(k.t2).toBeCloseTo(95_050)
+    expect(k.t3).toBeCloseTo(3 * 95_050)   // 3 × P95 比 P99 大
+    // 一屏 100 根里够得上三角的约 15 根
+    expect(vals.filter(v => v >= k.t1).length).toBe(15)
+    const floored = tiersFrom(vals, 200_000)!
+    expect(floored).toEqual({ t1: 200_000, t2: 200_000, t3: 3 * 95_050 })
+    expect(tiersFrom([0, 0], 1)).toBeNull()
+  })
+  it('档位缓存：取最近 300 根；数据版本（缓存代数 / 最后一根）不变就不重算', () => {
+    const s = 'SOLUSDT', f = flowOf(s), c = new BigBarCache(), tc = new TierCache()
+    const N = 400, now = T0 + N * 60_000
+    cover(s, T0, now)
+    for (let k = 0; k < N; k++) trade(s, T0 + k * 60_000 + 5, 100_000 + (k < N - TIER_BARS ? 9e7 : k * 1000), true)
+    const bars = Array.from({ length: N }, (_, k) => ({ t: T0 + k * 60_000 }))
+    const ch = { bars, timeAt: (i: number) => T0 + i * 60_000 }
+    c.begin(f, 'SOLUSDT|60000', now)
+    const k1 = tc.get(c, f, ch, now, 0)!
+    expect(tc.computed).toBe(1)
+    // 最早那 100 根（9 千万）不在最近 300 根里，不进分布
+    expect(k1.t3).toBeLessThan(9e7)
+    expect(tc.get(c, f, ch, now, 0)).toBe(k1)
+    expect(tc.computed).toBe(1)
+    f.srv.ver++; c.begin(f, 'SOLUSDT|60000', now)
+    tc.get(c, f, ch, now, 0)
+    expect(tc.computed).toBe(2)
+    tc.get(c, f, ch, now, 500_000)   // 下限变了也重算
+    expect(tc.computed).toBe(3)
   })
   it('单位：这只的大单线 × 10（= 门槛 ÷ 5），不知道就用活动那只的', () => {
     const f = flowOf('SOLUSDT')
@@ -51,21 +92,28 @@ describe('档位', () => {
 describe('摆放', () => {
   const big = (bb: number, bs: number): BarBig => ({ t: 0, t1: 1, bb, bs, bn: null, sn: null, bmax: null, smax: null, spot: null, ex: null, exact: false })
   const env = (o: Partial<PlanEnv> = {}): PlanEnv => ({
-    unit: 100_000, spacing: 8, top: 0, bottom: 400, plotW: 800,
+    tiers: { t1: 100_000, t2: 300_000, t3: 1_000_000 }, spacing: 8, top: 0, bottom: 400, plotW: 800,
     span: () => ({ hiY: 100, loY: 200 }),
     measure: t => t.length * 6, text: u => `${Math.round(u / 1000)}K`, avoid: [], ...o,
   })
-  it('买挂最高价上方、卖挂最低价下方；两侧都够格时大的那侧实心、另一侧描边', () => {
+  it('一根一枚：买卖里大的那一侧（买挂最高价上方、卖挂最低价下方）；另一侧没过 P95 不画', () => {
     const tags = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 150_000) }], env())
-    const buy = tags.find(t => t.side === 'buy')!, sell = tags.find(t => t.side === 'sell')!
-    expect(buy.kind).toBe('tag'); expect(sell.kind).toBe('tri')
-    expect(buy.y + buy.h).toBeLessThanOrEqual(100)
-    expect(sell.y).toBeGreaterThanOrEqual(200)
-    expect(buy.filled).toBe(true); expect(sell.filled).toBe(false)
-    const only = planTags([{ i: 0, t: 0, x: 100, data: big(0, 2_000_000) }], env())
-    expect(only).toHaveLength(1); expect(only[0].kind).toBe('big'); expect(only[0].filled).toBe(true)
+    expect(tags).toHaveLength(1)
+    expect(tags[0]).toMatchObject({ side: 'buy', kind: 'tag', filled: true })
+    expect(tags[0].y + tags[0].h).toBeLessThanOrEqual(100)
+    const sell = planTags([{ i: 0, t: 0, x: 100, data: big(120_000, 2_000_000) }], env())
+    expect(sell).toHaveLength(1)
+    expect(sell[0]).toMatchObject({ side: 'sell', kind: 'big', filled: true })
+    expect(sell[0].y).toBeGreaterThanOrEqual(200)
   })
-  it('一根太窄就退回三角；签与签不叠，撞上图例往外挪', () => {
+  it('另一侧自己也过 P95：另画一枚描边签', () => {
+    const tags = planTags([{ i: 0, t: 0, x: 100, data: big(1_500_000, 400_000) }], env())
+    expect(tags).toHaveLength(2)
+    const buy = tags.find(t => t.side === 'buy')!, sell = tags.find(t => t.side === 'sell')!
+    expect(buy).toMatchObject({ kind: 'big', filled: true })
+    expect(sell).toMatchObject({ kind: 'tag', filled: false })
+  })
+  it('一根太窄就退回三角；签与签不叠', () => {
     const narrow = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ spacing: 2 }))
     expect(narrow[0].kind).toBe('tri')
     const list: TagIn[] = [0, 1, 2].map(i => ({ i, t: i, x: 100 + i * 8, data: big(400_000 + i, 0) }))
@@ -75,13 +123,25 @@ describe('摆放', () => {
       if (p.kind === 'tri' && q.kind === 'tri') continue
       expect(p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h).toBe(false)
     }
-    const legend = { x: 0, y: 70, w: 300, h: 20 }
-    const moved = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ avoid: [legend] }))
-    expect(moved[0].y + moved[0].h).toBeLessThanOrEqual(legend.y)
   })
-  it('放不进图（顶上没地方）就不画，不压出图外', () => {
-    const tags = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ span: () => ({ hiY: 3, loY: 200 }) }))
-    expect(tags).toHaveLength(0)
+  it('撞上图例 / 画线文字：退成三角，不往外挪；三角也撞就不画', () => {
+    const legend = { x: 0, y: 70, w: 300, h: 20 }   // 盖住签的位置（80–96），三角的位置（90–96）露出来一截以下
+    const t = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ avoid: [{ x: 0, y: 70, w: 300, h: 19 }] }))
+    expect(t).toHaveLength(1); expect(t[0].kind).toBe('tri'); expect(t[0].y + t[0].h).toBe(96)
+    const none = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ avoid: [{ ...legend, h: 30 }] }))
+    expect(none).toHaveLength(0)
+  })
+  it('夹在主图里：顶上没地方不画；卖签掉进成交量那一截（bottom 以下）也不画', () => {
+    expect(planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ span: () => ({ hiY: 3, loY: 200 }) }))).toHaveLength(0)
+    const low = planTags([{ i: 0, t: 0, x: 100, data: big(0, 500_000) }], env({ span: () => ({ hiY: 100, loY: 330 }), bottom: 336 }))
+    expect(low).toHaveLength(0)
+    // 金额签放不下、三角放得下：退成三角
+    const tri = planTags([{ i: 0, t: 0, x: 100, data: big(0, 500_000) }], env({ span: () => ({ hiY: 100, loY: 320 }), bottom: 336 }))
+    expect(tri).toHaveLength(1); expect(tri[0].kind).toBe('tri'); expect(tri[0].y + tri[0].h).toBeLessThanOrEqual(336)
+  })
+  it('不越过价格轴：右沿出界的签退成三角', () => {
+    const t = planTags([{ i: 0, t: 0, x: 796, data: big(500_000, 0) }], env())
+    expect(t).toHaveLength(1); expect(t[0].kind).toBe('tri'); expect(t[0].x + t[0].w).toBeLessThanOrEqual(800)
   })
 })
 
@@ -167,18 +227,40 @@ describe('抽屉 · 汇总', () => {
 })
 
 describe('抽屉 · 价位', () => {
-  it('近 1 小时的大单按步长桶并，买卖各取金额最大的 3 档', () => {
+  it('浏览器在记的分钟：逐笔真实价按步长桶并，买卖各取金额最大的 3 档', () => {
     const s = 'SOLUSDT', now = T0 + HOUR
+    cover(s, now - HOUR, now)
     trade(s, now - 2 * HOUR, 9e6, true, { price: 150 })
     const px = [100.1, 100.4, 101.2, 102.9, 103, 104, 99]
     px.forEach((p, i) => trade(s, now - 1000 * (i + 1), 100_000 * (i + 1), true, { price: p }))
     trade(s, now - 500, 50_000, false, { price: 98.7 })
-    const { buy, sell } = priceLevels(flowOf(s), 1, now)
+    const { buy, sell } = priceLevels(flowOf(s), 1, now, null)
     expect(buy.map(l => l.price)).toEqual([99, 104, 103])
     expect(buy).toHaveLength(3)
     expect(sell).toEqual([{ price: 98, usd: 50_000, n: 1 }])
-    const both = priceLevels(flowOf(s), 1, now, 10).buy.find(l => l.price === 100)!
+    const both = priceLevels(flowOf(s), 1, now, null, 10).buy.find(l => l.price === 100)!
     expect(both.usd).toBe(300_000); expect(both.n).toBe(2)
+  })
+  it('浏览器没在记的分钟：服务端的大买 / 大卖记在那分钟 1 分钟 K 线的典型价上；取不到 K 线就不算', () => {
+    const s = 'BTCUSDT', f = flowOf(s), now = T0 + HOUR + 30_000
+    const cur = Math.floor(now / 60_000) * 60_000, oldest = cur - (PX_MINUTES - 1) * 60_000
+    f.srv.tracked = true; f.srv.lo = oldest - 10 * 60_000; f.srv.hi = cur - 5 * 60_000
+    f.srv.rows.set(oldest - 60_000, [9e6, 0, 0, 0])           // 窗口外
+    f.srv.rows.set(oldest, [400_000, 100_000, 0, 0])
+    f.srv.rows.set(cur - 20 * 60_000, [300_000, 0, 0, 0])
+    f.srv.rows.set(cur - 10 * 60_000, [0, 700_000, 0, 0])
+    f.srv.rows.set(cur - 6 * 60_000, [5e6, 0, 0, 0])            // 这分钟浏览器也在记：用浏览器的
+    cover(s, cur - 6 * 60_000, now)
+    trade(s, cur - 6 * 60_000 + 10, 200_000, true, { price: 207.4 })
+    trade(s, cur - 60_000 + 10, 250_000, false, { price: 199.2 })
+    const typ = new Map([[oldest, 200.6], [cur - 20 * 60_000, 205.2], [cur - 10 * 60_000, 198.9]])
+    const r = priceLevels(f, 1, now, m => typ.get(m) ?? null)
+    expect(r.buy).toEqual([{ price: 200, usd: 400_000, n: 0 }, { price: 205, usd: 300_000, n: 0 }, { price: 207, usd: 200_000, n: 1 }])
+    expect(r.sell).toEqual([{ price: 198, usd: 700_000, n: 0 }, { price: 199, usd: 250_000, n: 1 }, { price: 200, usd: 100_000, n: 0 }])
+    // 没有 1 分钟 K 线：服务端那几分钟没有价，不进价位（不瞎猜）
+    const bare = priceLevels(f, 1, now, null)
+    expect(bare.buy).toEqual([{ price: 207, usd: 200_000, n: 1 }])
+    expect(bare.sell).toEqual([{ price: 199, usd: 250_000, n: 1 }])
   })
   it('最近的墙：只看还挂着的，现价上方最近的卖墙、下方最近的买墙，同一价位桶几家合计', () => {
     const o = (side: 'bid' | 'ask', price: number, notional: number, bucket: number, status = 'live', first = 1): BigOrder =>
@@ -190,6 +272,38 @@ describe('抽屉 · 价位', () => {
     expect(w.ask).toMatchObject({ price: 102, usd: 3e6, n: 2, since: 0 })
     expect(w.bid).toMatchObject({ price: 98, usd: 1e6 })
     expect(nearestWalls([], 100)).toEqual({ ask: null, bid: null })
+  })
+})
+
+describe('抽屉 · 画法', () => {
+  it('开方比例尺：今日是本根的 100 倍时本根还有十分之一长；超出比例按满算', async () => {
+    const { sqrtLen } = await import('../src/orderflow/drawer')
+    expect(sqrtLen(100, 10_000, 80)).toBeCloseTo(8)
+    expect(sqrtLen(10_000, 10_000, 80)).toBe(80)
+    expect(sqrtLen(20_000, 10_000, 80)).toBe(80)
+    expect(sqrtLen(0, 10_000, 80)).toBe(0)
+  })
+  it('占比条至少两段才画（100% 一段什么也没说）', async () => {
+    const { splitWorth } = await import('../src/orderflow/drawer')
+    expect(splitWorth([{ v: 5 }, { v: 0 }])).toBe(false)
+    expect(splitWorth([{ v: 5 }, { v: 1 }, { v: 0 }])).toBe(true)
+    expect(splitWorth([])).toBe(false)
+  })
+  it('深色判断按主文字亮度：#rgb / #rrggbb / rgb()', async () => {
+    const { lum } = await import('../src/orderflow/drawer')
+    expect(lum('#131722')).toBeLessThan(0.2)
+    expect(lum('#fff')).toBeCloseTo(1)
+    expect(lum('rgb(209, 212, 220)')).toBeGreaterThan(0.5)
+    expect(lum('rgba(19, 23, 34, 1)')).toBeLessThan(0.2)
+  })
+  it('十字线所在根：自己的十字线按横坐标取根，别的格子同步来的按时间取根；出了数据两头为 null', async () => {
+    const { crossTime } = await import('../src/orderflow/drawer')
+    const bars = [{ t: 0 }, { t: 300 }, { t: 600 }]
+    const ch = { cross: null as null | { x: number }, extCross: null as number | null, bars, xToIndex: (x: number) => x / 10, indexAt: (t: number) => t / 300 }
+    expect(crossTime(ch as never)).toBeNull()
+    ch.cross = { x: 14 }; expect(crossTime(ch as never)).toBe(300)
+    ch.cross = { x: 60 }; expect(crossTime(ch as never)).toBeNull()
+    ch.cross = null; ch.extCross = 610; expect(crossTime(ch as never)).toBe(600)
   })
 })
 
