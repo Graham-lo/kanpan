@@ -58,9 +58,17 @@ describe('价位 · 竖轴', () => {
     expect(r.hits).toHaveLength(2)
     expect(r.hits[0].ask).toBe(true)
     expect(r.svg).toContain('30分')
+    // 窄卡逐级让位：先省「N分」只留圆环，再把金额收成整数，再省「卖墙」两字（墙在现价上方自明），字不压到圆环底下
+    const mid = levelsSvg({ ...base, w: 130, ask: { price: 102, usd: 5e6, age: 30 * MIN }, bid: null, tw })
+    expect(mid.svg).not.toContain('30分')
+    expect(mid.svg).toContain('卖墙 5.0M')
+    const tight = levelsSvg({ ...base, w: 120, ask: { price: 102, usd: 15.2e6, age: 30 * MIN }, bid: null, tw })
+    expect(tight.svg).toContain('卖墙 15M')
+    expect(tight.svg).not.toContain('15.2M')
     const narrow = levelsSvg({ ...base, w: 120, ask: { price: 102, usd: 5e6, age: 30 * MIN }, bid: null, tw })
     expect(narrow.svg).not.toContain('30分')
-    expect(narrow.svg).toContain('卖墙')
+    expect(narrow.svg).not.toContain('卖墙')
+    expect(narrow.svg).toContain('>5.0M<')
   })
 })
 
