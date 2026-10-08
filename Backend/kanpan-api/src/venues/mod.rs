@@ -70,8 +70,9 @@ pub trait Venue:Sync {
  fn review(&self)->bool {false}
  /// 通知标题里的品种名：缩写 + 空格 + 代号（「币安 BTCUSDT」「OKX BTCUSDT」）。
  fn display(&self,symbol:&str)->String {labeled(self.short_name(),symbol)}
- /// Webhook 的 `{品种}`：缩写 + 空格 + 短名（「币安 BTC」）。
- fn webhook_name(&self,symbol:&str)->String {self.display(symbol)}
+ /// Webhook 的 `{品种}` 与载荷里的 `name`：**不带**交易所缩写（「BTC」「BTC/USD」）。这段文本客户端
+ /// `AlertMessage.swift` 前台也渲染一遍、两边要一字不差，而 KanpanCore 拿不到缩写表；Webhook 载荷又是对外接口。
+ fn webhook_name(&self,symbol:&str)->String {symbol.to_owned()}
  /// 深链里写裸代号（只有币安：老客户端只认那种）；别家写完整的 `venue/market/symbol`。
  fn bare_link(&self)->bool {false}
  /// `/v1/market/meta` 怎么查这只的供应量：给出那张表认得的代号（币安合约形状 `BTCUSDT`，

@@ -134,6 +134,7 @@ impl super::Venue for Macro {
  /// 只收这一个代号，不开放成「任意大写」：服务端只采得到这一只的价，别的收下了也永远判不响。
  fn symbol_ok(&self,symbol:&str)->bool {symbol==SYMBOL}
  fn display(&self,_symbol:&str)->String {NAME.to_string()}
+ fn webhook_name(&self,_symbol:&str)->String {NAME.to_string()}
  fn meta_symbol(&self,_symbol:&str)->Option<String> {None}
  fn raw<'a>(&'a self,path:&'a str,query:&'a [(String,String)])->super::Fut<'a,Response> {Box::pin(raw(path,query))}
  fn stream(&self,ws:axum::extract::ws::WebSocketUpgrade,query:&[(String,String)])->Option<Response> {

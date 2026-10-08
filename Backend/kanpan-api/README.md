@@ -71,9 +71,10 @@ registry `venues::venues()` — Binance, OKX, Bybit, Hyperliquid, Coinbase, the
 dollar index. `/v1/market/{raw,stream,funding,open-interest/history}` and
 `/v1/market/open-interest` dispatch on `source=` by that table only; sync
 validation (`(venue, market)` and symbol shape), the alert `market` whitelist,
-alert deep links / titles / webhook names (venue short name + symbol:
+alert deep links / push titles (venue short name + symbol:
 `币安 BTCUSDT`, `OKX BTCUSDT`, `Bybit …`, `HL …`, `CB BTC/USD`; the dollar index
-is just `美元指数`), the history-search venue list (only
+is just `美元指数`) / webhook names (no short name: `BTC`, `BTC/USD`, as the
+client renders the same text), the history-search venue list (only
 venues flagged `review`: Binance, Coinbase) and the meta fold all ask it.
 Instrument identity is `venue/market/symbol`; perpetuals are `usd_m`
 (Hyperliquid's USDC-margined ones too). OKX keys are Binance-shaped

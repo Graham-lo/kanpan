@@ -259,8 +259,8 @@ impl super::Venue for Binance {
  fn symbol_ok(&self,symbol:&str)->bool {symbol_ok(symbol)}
  fn review(&self)->bool {true}
  fn bare_link(&self)->bool {true}
- /// `BTCUSDT` → `币安 BTC`（没有这个尾巴就原样）。
- fn webhook_name(&self,symbol:&str)->String {super::labeled(self.short_name(),super::without_usdt(symbol))}
+ /// `BTCUSDT` → `BTC`（没有这个尾巴就原样）。
+ fn webhook_name(&self,symbol:&str)->String {super::without_usdt(symbol).to_owned()}
  fn raw<'a>(&'a self,path:&'a str,query:&'a [(String,String)])->super::Fut<'a,Response> {Box::pin(raw(path,query))}
  fn candles<'a>(&'a self,symbol:&'a str,step:i64,start:i64,end:i64)->super::Fut<'a,Result<Vec<super::Bar>,super::Upstream>> {
   Box::pin(async move {

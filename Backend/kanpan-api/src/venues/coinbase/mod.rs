@@ -493,6 +493,7 @@ impl super::Venue for Coinbase {
  fn review(&self)->bool {true}
  /// 和界面上一样写 `BTC/USD`：「CB BTC/USD」。
  fn display(&self,symbol:&str)->String {super::labeled(self.short_name(),&symbol.replace('-',"/"))}
+ fn webhook_name(&self,symbol:&str)->String {symbol.replace('-',"/")}
  fn pacer(&self)->Option<&'static Pacer> {Some(&PACER)}
  fn hosts(&self)->&'static [&'static str] {HOSTS}
  fn raw<'a>(&'a self,path:&'a str,query:&'a [(String,String)])->super::Fut<'a,Response> {Box::pin(raw(path,query))}

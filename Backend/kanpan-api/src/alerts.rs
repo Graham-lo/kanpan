@@ -625,8 +625,8 @@ pub struct WebhookFill<'a> {
  pub target:Option<f64>,pub price:f64,pub at:i64,pub note:&'a str,
 }
 
-/// `{品种}`：交易所缩写 + 短名（三端统一的展示规则，见 `Venue::short_name`）——U 本位永续去掉尾巴上的
-/// `USDT`（`币安 BTC`、`OKX BTC`），Coinbase 把 `-` 换成 `/`（`CB BTC/USD`），美元指数写「美元指数」。
+/// `{品种}`：**不带**交易所缩写（客户端前台渲染同一段文本，一字不差）——U 本位永续去掉尾巴上的
+/// `USDT`（`BTCUSDT` → `BTC`），Coinbase 把 `-` 换成 `/`（`BTC/USD`），美元指数写「美元指数」。
 /// 按注册表问（[`crate::venues::Venue::webhook_name`]）。
 pub fn webhook_name(market:&str,symbol:&str)->String {
  crate::venues::by_market_key(market).map_or_else(||symbol.replace('-',"/"),|v|v.webhook_name(symbol))
@@ -1796,7 +1796,7 @@ mod tests {
   w.webhook=Some("https://hooks.example.com/x".into());
   let body=webhook_body(&w,64_010.0,3_600_000);
   assert_eq!(body["target"],json!(64_000.0));
-  assert_eq!(body["text"],json!("币安 BTC 价格达到 64,000，现价 64,010"));
+  assert_eq!(body["text"],json!("BTC 价格达到 64,000，现价 64,010"));
  }
 
  fn line(points:&[(f64,f64)],left:bool,right:bool)->Line {
@@ -2297,26 +2297,26 @@ mod tests {
  /// 模板渲染逐字对：契约里那一句默认文案。
  #[test] fn the_default_webhook_text_reads_exactly_like_the_contract() {
   let f=WebhookFill{market:BINANCE,symbol:"BTCUSDT",condition:Condition::Touch,target:Some(84_662.2),price:84_670.5,at:1_758_732_240_000,note:""};
-  assert_eq!(render_webhook_text(None,&f),"币安 BTC 价格达到 84,662.2，现价 84,670.5");
-  assert_eq!(render_webhook_text(Some(""),&f),"币安 BTC 价格达到 84,662.2，现价 84,670.5","空模板用默认");
-  assert_eq!(render_webhook_text(Some("  "),&f),"币安 BTC 价格达到 84,662.2，现价 84,670.5","全是空白也算空");
+  assert_eq!(render_webhook_text(None,&f),"BTC 价格达到 84,662.2，现价 84,670.5");
+  assert_eq!(render_webhook_text(Some(""),&f),"BTC 价格达到 84,662.2，现价 84,670.5","空模板用默认");
+  assert_eq!(render_webhook_text(Some("  "),&f),"BTC 价格达到 84,662.2，现价 84,670.5","全是空白也算空");
  }
  /// 每一个占位符都换得对；认不得的、没合上的原样留着；备注里的占位符不会被二次替换。
  #[test] fn every_webhook_placeholder_is_filled_once() {
   let f=WebhookFill{market:BINANCE,symbol:"BTCUSDT",condition:Condition::Close,target:Some(84_662.2),price:84_670.5,at:1_758_732_240_000,note:"看{价格}"};
   assert_eq!(render_webhook_text(Some("{品种}|{代号}|{价格}|{目标价}|{条件}|{时间}|{备注}"),&f),
-   "币安 BTC|BTCUSDT|84,670.5|84,662.2|收盘穿过|2025-09-24T16:44:00Z|看{价格}");
-  assert_eq!(render_webhook_text(Some("{不认识} {{品种}} {价格"),&f),"{不认识} {币安 BTC} {价格");
+   "BTC|BTCUSDT|84,670.5|84,662.2|收盘穿过|2025-09-24T16:44:00Z|看{价格}");
+  assert_eq!(render_webhook_text(Some("{不认识} {{品种}} {价格"),&f),"{不认识} {BTC} {价格");
   let coinbase=WebhookFill{market:COINBASE,symbol:"BTC-USD",target:None,note:"",..f};
-  assert_eq!(render_webhook_text(Some("{品种} {代号} [{目标价}] [{备注}]"),&coinbase),"CB BTC/USD BTC-USD [] []");
+  assert_eq!(render_webhook_text(Some("{品种} {代号} [{目标价}] [{备注}]"),&coinbase),"BTC/USD BTC-USD [] []");
  }
  #[test] fn the_webhook_name_drops_usdt_only_on_binance() {
-  assert_eq!(webhook_name(BINANCE,"BTCUSDT"),"币安 BTC");
-  assert_eq!(webhook_name(BINANCE,"BTCUSDC"),"币安 BTCUSDC","没有 USDT 尾巴就原样");
-  assert_eq!(webhook_name(BINANCE,"USDT"),"币安 USDT");
-  assert_eq!(webhook_name(COINBASE,"BTC-USD"),"CB BTC/USD");
-  // 三端统一的缩写：OKX / Bybit / HL 也是缩写 + 短名。
-  assert_eq!(webhook_name("okx/usd_m","BTCUSDT"),"OKX BTC");assert_eq!(webhook_name("hyperliquid/usd_m","KPEPE"),"HL KPEPE");
+  assert_eq!(webhook_name(BINANCE,"BTCUSDT"),"BTC");
+  assert_eq!(webhook_name(BINANCE,"BTCUSDC"),"BTCUSDC","没有 USDT 尾巴就原样");
+  assert_eq!(webhook_name(BINANCE,"USDT"),"USDT");
+  assert_eq!(webhook_name(COINBASE,"BTC-USD"),"BTC/USD");
+  // Webhook 不带交易所缩写（客户端前台同一段文本）；推送标题才带。
+  assert_eq!(webhook_name("okx/usd_m","BTCUSDT"),"BTC");assert_eq!(webhook_name("hyperliquid/usd_m","KPEPE"),"KPEPE");
   assert_eq!(display_symbol("bybit/usd_m","BTCUSDT"),"Bybit BTCUSDT");assert_eq!(display_symbol(BINANCE,"BTCUSDT"),"币安 BTCUSDT");
  }
  /// Webhook 的价：千分位 + 原样小数，不按量级截。
@@ -2342,12 +2342,12 @@ mod tests {
  #[test] fn the_webhook_body_carries_every_contract_key() {
   let at=1_758_732_240_000;
   assert_eq!(webhook_body(&hooked(None),84_670.5,at),json!({
-   "event":"alert","alertId":"binance/usd_m/BTCUSDT/a1","symbol":"BTCUSDT","market":"binance/usd_m","name":"币安 BTC",
+   "event":"alert","alertId":"binance/usd_m/BTCUSDT/a1","symbol":"BTCUSDT","market":"binance/usd_m","name":"BTC",
    "title":"BTC 涨到 84,662.2","condition":"touch","once":true,"target":84_662.2,"price":84_670.5,"firedAt":at,
-   "time":"2025-09-24T16:44:00Z","note":"","text":"币安 BTC 价格达到 84,662.2，现价 84,670.5"}));
+   "time":"2025-09-24T16:44:00Z","note":"","text":"BTC 价格达到 84,662.2，现价 84,670.5"}));
   let mut w=hooked(Some("突破加仓"));w.webhook_text=Some("{品种} {备注}".into());w.title=String::new();
   let body=webhook_body(&w,84_670.5,at);
-  assert_eq!(body["note"],json!("突破加仓"));assert_eq!(body["text"],json!("币安 BTC 突破加仓"));
+  assert_eq!(body["note"],json!("突破加仓"));assert_eq!(body["text"],json!("BTC 突破加仓"));
   assert_eq!(body["title"],json!("币安 BTCUSDT 触到你画的线"),"没有标题时和推送标题同一个兜底");
  }
  /// APNs 正文：有备注接在现价后面，没有就照旧。
@@ -2411,7 +2411,7 @@ mod tests {
    assert_eq!(header(&head,"user-agent"),Some("Hkline-Alerts/1"),"不是共享客户端的浏览器 UA");
    let sent:Value=serde_json::from_slice(&bytes).unwrap();
    assert_eq!(sent,body);
-   assert_eq!(sent["text"],json!("币安 BTC 价格达到 84,662.2，现价 84,670.5"));
+   assert_eq!(sent["text"],json!("BTC 价格达到 84,662.2，现价 84,670.5"));
   }
   assert!(rx.try_recv().is_err(),"成了就不再发");
  }

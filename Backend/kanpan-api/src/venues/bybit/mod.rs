@@ -201,7 +201,7 @@ impl super::Venue for Bybit {
  fn market(&self)->&'static str {"usd_m"}
  fn market_key(&self)->&'static str {"bybit/usd_m"}
  fn symbol_ok(&self,symbol:&str)->bool {symbol_ok(symbol)}
- fn webhook_name(&self,symbol:&str)->String {super::labeled(self.short_name(),super::without_usdt(symbol))}
+ fn webhook_name(&self,symbol:&str)->String {super::without_usdt(symbol).to_owned()}
  fn pacer(&self)->Option<&'static Pacer> {Some(&PACER)}
  fn hosts(&self)->&'static [&'static str] {HOSTS}
  fn raw<'a>(&'a self,path:&'a str,query:&'a [(String,String)])->Fut<'a,Response> {Box::pin(raw(path,query))}
