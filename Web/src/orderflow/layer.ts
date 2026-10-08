@@ -25,6 +25,8 @@ import { BigBarCache, TierCache, planTags, unitFor, type Tag, type TagIn, type R
 import { hoverCardHtml, ivShort } from './drawerView'
 import { drawerChartDrawn } from './drawer'
 
+/** 读数卡最多列几本簿（再多并成「其余 N 本」一行） */
+export const CARD_BOOKS = 8
 interface BandHit { x0: number; x1: number; y0: number; y1: number; v: Vis }
 /** 一道要画的带：一堵墙（w）+ 它的代表单（o：最大那本簿的最新一单，定颜色和记号）+ 读数卡的分簿行 */
 interface Vis { o: BigOrder; w: OrderFlowGroup; rows: BookRow[]; id: string; live: boolean; x0: number; x1: number; y0: number; h: number; mid: number; pk: number }
@@ -366,17 +368,20 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     const kind = w.contract ? '合约' : '现货'
     const head = `<div class="hc-h"><i class="sw" style="background:${bandColor(b.v.o.product, w.side, 1)}"></i><b>${kind} · <span class="${buy ? 'up' : 'dn'}">${buy ? '买单' : '卖单'}</span></b>· <span class="num">${px(lo, d)} – ${px(hi, d)}</span></div>`
     const net = `<div class="hc-net"><span class="v num ${buy ? 'up' : 'dn'}">${amt(b.v.pk)}</span><span class="l">${w.isLive ? '挂着' : '已结束'}</span></div>`
-    const bookKv = rows.map(r => {
+    // 簿多了只列前 CARD_BOOKS 本，其余并成一行「其余 N 本」，卡片不拖成长条
+    const shown = rows.length > CARD_BOOKS + 1 ? rows.slice(0, CARD_BOOKS) : rows
+    const rest = rows.slice(shown.length)
+    const bookKv = shown.map(r => {
       const bk = r.book
       const name = `${exName(bk.exchange)} ${PRODUCT_SHORT[bk.product]}`
       const em = w.isRange ? px(bk.bucket * st0, d) : bk.orders > 1 ? `${bk.orders} 单` : ''
       return `<span>${esc(name)}</span><b class="num">${amt(r.usd)}</b><em class="num">${em}</em>`
-    }).join('')
+    }).join('') + (rest.length ? `<span>其余 ${rest.length} 本</span><b class="num">${amt(wallPeak(rest))}</b><em></em>` : '')
     const one = w.members.length === 1 ? w.members[0] : null
     const fill = w.filledNotional > 0 ? `${amt(w.filledNotional)}` : '—'
     const meta: [string, string, string][] = [
       ['首见', mdhm(w.firstSeenMs), ''],
-      ['结束', w.endMs == null ? `已 ${durShort(now - w.firstSeenMs)}` : mdhm(w.endMs), w.endMs == null ? '' : durShort(w.endMs - w.firstSeenMs)],
+      w.endMs == null ? ['已挂', durShort(now - w.firstSeenMs), ''] : ['结束', mdhm(w.endMs), durShort(w.endMs - w.firstSeenMs)],
       ['累计成交', fill, w.filledNotional > 0 ? `${Math.round(w.fillRatio * 100)}%` : ''],
     ]
     if (one && !w.isLive) meta.push(['结局', outcomeText(one), ''])
