@@ -3,8 +3,9 @@
  * 三把「算出来的」工具（形状由锚点圈住的 K 线算，不由锚点本身定）：
  *   · 锚定 VWAP（avwap，一点）：从锚点那根起累计 典型价 × 成交量，只画一条线（与 iOS、手机网页版一致，不画 σ 带）；
  *     算法与主图 VWAP 一致（indicators.vwap：典型价 (高+低+收)/3，按成交量（币）加权）。
- *   · 固定区间成交量分布（fvp，两点）：两点圈一段时间，复用 overlays.vpvr 与主图 VPVR 的三种看法，画法照 TradingView
- *     （volumeProfile.ts，与主图共用）；行数按这段价格区间的像素高自动定（每行 ≥ 4 px），控制点与七成价值区上下沿都是实线。
+ *   · 固定区间成交量分布（fvp，两点）：两点圈一段时间，复用 overlays.vpvr 的统计，画法照 TradingView FRVP
+ *     （volumeProfile.ts，与主图 VPVR 共用）；输入（行数 24 / 每行跳数、买卖分开 / 合计 / 净差、价值区 70%、向右延伸）
+ *     与外观都从 d.style 读（drawStyle.ts），没设的取 TV 出厂值。
  *   · 多空持仓（position，三点：入场、目标、止损）：目标在入场上方就是多、下方就是空（照手机 DrawGeometry）；
  *     只标止盈 / 止损相对入场的百分比与盈亏比 R，不算仓位。
  * 复盘回放时 lastIndex() 是放到的那根，这里一律只算到它为止——不会拿「未来」的 K 线画。
@@ -13,8 +14,9 @@
  */
 import { fmt, hexA } from '../util/format'
 import type { Bar } from './calc'
-import { vpvr, type Vpvr } from './overlays'
-import { drawProfile, profileRows } from './volumeProfile'
+import { developingProfile, vpvr, type Developing, type Vpvr } from './overlays'
+import { drawProfile, isDarkBg, profileRows, splitAlpha } from './volumeProfile'
+import { profileInputs, profileLookOf, type ProfileInputs } from './drawStyle'
 import { vwapWeight } from './indicators'
 import type { DrawPoint, Drawing, DrawingType, Pane, PriceRange, TVChart } from './chart'
 import { DRAWING_TEXT_LIMIT, DrawKind, type DrawingKind } from '../m/chart/draw/drawing'
@@ -228,28 +230,52 @@ export function vwapOf(ch: TVChart, d: Drawing, i0: number, end: number): Avwap 
 // ------------------------------------------------------------ 固定区间成交量分布
 /** 行数：这段价格区间在屏上的像素高 ÷ 4（每行至少 4 px），1–240 行 */
 export function fvpRows(pxH: number): number { return profileRows(pxH) }
-export interface FvpShape { v: Vpvr; i0: number; i1: number; x0: number; x1: number }
+export interface FvpShape { v: Vpvr; i0: number; i1: number; x0: number; x1: number; key: string }
 const fvpCache = new WeakMap<Drawing, { key: string; v: Vpvr | null }>()
+const devCache = new WeakMap<Drawing, { key: string; d: Developing }>()
 /** 区间成交量分布一族：固定区间两点圈一段；锚定成交量分布一点，从锚点一直统计到最新一根（照 iOS anchoredVolumeProfile） */
 export const isProfile = (t: DrawingType): boolean => t === 'fvp' || t === 'anchoredVolumeProfile'
-export function fvpShape(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): FvpShape | null {
+/** 圈住的 K 线（下标）；圈的范围里还没有 K 线返回 null */
+export function fvpSpan(ch: TVChart, d: Drawing): { i0: number; i1: number } | null {
   const anchored = d.type === 'anchoredVolumeProfile'
   if (d.pts.length < (anchored ? 1 : 2)) return null
   const last = ch.lastIndex()
-  const a = Math.round(ch.indexAt(d.pts[0].t)), b = anchored ? last : Math.round(ch.indexAt(d.pts[1].t))
+  // 输入页「向右延伸」：区间一直延到最新一根（照 TV extendToRight）
+  const toLast = anchored || profileInputs(d.style).extendRight
+  const ia = Math.round(ch.indexAt(d.pts[0].t)), ib = anchored ? ia : Math.round(ch.indexAt(d.pts[1].t))
+  const a = Math.min(ia, ib), b = toLast ? last : Math.max(ia, ib)
   const i0 = Math.max(0, Math.min(a, b)), i1 = Math.min(last, Math.max(a, b))
-  if (i1 < i0) return null
+  return i1 < i0 ? null : { i0, i1 }
+}
+/** 行数（输入页「行布局」，出厂「行数 24」照 TV）：行数 = 填的数；每行跳数 = 区间高 ÷（跳数 × 最小变动价位）；1–1000 行 */
+export function fvpRowCount(inp: ProfileInputs, lo: number, hi: number, dec: number): number {
+  if (inp.rowsLayout === 'rows') return Math.max(1, Math.min(1000, inp.rowSize))
+  const tick = Math.pow(10, -Math.max(0, Math.min(12, dec || 0)))
+  return Math.max(1, Math.min(1000, Math.ceil((hi - lo) / (inp.rowSize * tick) - 1e-9)))
+}
+export function fvpShape(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): FvpShape | null {
+  const sp = fvpSpan(ch, d); if (!sp) return null
+  const { i0, i1 } = sp
   let lo = Infinity, hi = -Infinity
   for (let i = i0; i <= i1; i++) { const k = ch.bars[i]; if (!k) continue; if (k.l < lo) lo = k.l; if (k.h > hi) hi = k.h }
   if (!isFinite(lo)) return null
-  const rows = fvpRows(ch.priceToY(lo, p, r) - ch.priceToY(hi, p, r))
+  const inp = profileInputs(d.style)
+  const rows = fvpRowCount(inp, lo, hi, ch.meta.dec)
   const lb = ch.bars[i1]
-  const key = `${i0}:${i1}:${rows}:${ch.bars.length}:${ch.bars[0]?.t}:${lb?.c}:${lb?.v}`
+  const key = `${i0}:${i1}:${rows}:${inp.vaPct}:${ch.bars.length}:${ch.bars[0]?.t}:${lb?.c}:${lb?.v}`
   let hit = fvpCache.get(d)
-  if (!hit || hit.key !== key) { hit = { key, v: vpvr(ch.bars as Bar[], i0, i1, rows) }; fvpCache.set(d, hit) }
+  if (!hit || hit.key !== key) { hit = { key, v: vpvr(ch.bars as Bar[], i0, i1, rows, inp.vaPct / 100) }; fvpCache.set(d, hit) }
   if (!hit.v) return null
   const half = ch.spacing / 2
-  return { v: hit.v, i0, i1, x0: ch.indexToX(i0) - half, x1: ch.indexToX(i1) + half }
+  return { v: hit.v, i0, i1, x0: ch.indexToX(i0) - half, x1: ch.indexToX(i1) + half, key }
+}
+/** 发展中的控制点 / 价值区（只在打开时算；和分布同一个缓存键） */
+export function fvpDeveloping(ch: TVChart, d: Drawing, s: FvpShape): Developing {
+  const hit = devCache.get(d)
+  if (hit && hit.key === s.key) return hit.d
+  const dv = developingProfile(ch.bars, s.i0, s.i1, s.v, profileInputs(d.style).vaPct / 100)
+  devCache.set(d, { key: s.key, d: dv })
+  return dv
 }
 
 // ------------------------------------------------------------ 多空持仓
@@ -342,7 +368,7 @@ export function drawComputed(ch: TVChart, d: Drawing, p: Pane, r: PriceRange, se
   c.save()
   c.lineCap = 'round'; c.lineJoin = 'round'
   if (d.type === 'avwap') drawAvwap(ch, c, d, p, r, col)
-  else if (isProfile(d.type)) drawFvp(ch, c, d, p, r, col, sel)
+  else if (isProfile(d.type)) drawFvp(ch, c, d, p, r)
   else drawPosition(ch, c, d, p, r, col)
   c.restore()
   if (sel) {
@@ -378,27 +404,25 @@ function drawAvwap(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col:
   }
 }
 
-function drawFvp(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col: string, sel: boolean): void {
+function drawFvp(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange): void {
+  const look = profileLookOf(d.style, isDarkBg(ch.colors.bg))
   const s = fvpShape(ch, d, p, r)
   if (!s || !s.v.total) {
-    // 圈的范围里还没有 K 线：只画两条边界
-    const xs = d.pts.map(q => ch.indexToX(ch.indexAt(q.t)))
-    c.strokeStyle = hexA(col, 0.5); c.lineWidth = 1; c.setLineDash([4, 4]); c.beginPath()
-    for (const x of xs) { c.moveTo(Math.round(x) + .5, p.y); c.lineTo(Math.round(x) + .5, p.y + p.h) }
-    c.stroke(); c.setLineDash([]); return
+    // 圈的范围里还没有 K 线：只铺一层极淡的底色标出范围（不画边界线）
+    const xs = d.type === 'fvp' ? d.pts.map(q => ch.indexToX(ch.indexAt(q.t))) : [ch.indexToX(ch.indexAt(d.pts[0].t)), ch.plotW()]
+    const [bc, ba] = splitAlpha(look.bg.color)
+    if (xs.length >= 2 && look.bg.on && ba > 0) { c.globalAlpha = ba; c.fillStyle = bc; c.fillRect(Math.min(...xs), p.y, Math.abs(xs[1] - xs[0]), p.h); c.globalAlpha = 1 }
+    return
   }
-  // 照 TradingView 固定区间成交量分布：底板、从左沿往右长的实色柱、价值区上下沿实线、控制点橙线（画法见 volumeProfile.ts）
-  const C = ch.colors
+  // 照 TradingView 固定区间成交量分布：极淡底色、四色柱、价值区上下沿浅粉线、（可选）控制点 / 发展中控制点与价值区，不画边框
+  const inp = profileInputs(d.style)
+  const on = look.devPoc.on || look.devVa.on
+  const dev = on ? { ...fvpDeveloping(ch, d, s), xs: Array.from({ length: s.i1 - s.i0 + 1 }, (_, k) => ch.indexToX(s.i0 + k)) } : undefined
   drawProfile(c, {
-    x0: s.x0, x1: s.x1, v: s.v, mode: ch.vpvrMode, base: true,
-    colors: { up: C.up || '#089981', down: C.down || '#F23645', line: col },
+    x0: s.x0, x1: s.x1, v: s.v, mode: inp.volume, look, dev, pr: ch.pr,
+    extendTo: ch.plotW(),
     priceToY: price => ch.priceToY(price, p, r), clipY: [p.y, p.y + p.h],
-  })
-  if (sel) {
-    const yHi = ch.priceToY(s.v.hi, p, r), yLo = ch.priceToY(s.v.lo, p, r)
-    c.strokeStyle = hexA(col, 0.6); c.lineWidth = 1
-    c.strokeRect(Math.round(s.x0) + .5, Math.round(yHi) + .5, Math.round(s.x1 - s.x0), Math.round(yLo - yHi))
-  }
+  }, ch.font.split('px ')[1] || 'sans-serif')
 }
 
 function drawPosition(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col: string): void {
@@ -445,7 +469,13 @@ export function hitComputed(ch: TVChart, d: Drawing, x: number, y: number, p: Pa
     return best
   }
   if (isProfile(d.type)) {
-    const s = fvpShape(ch, d, p, r); if (!s) return Infinity
+    const s = fvpShape(ch, d, p, r)
+    if (!s) {
+      // 范围里还没有 K 线：点在淡底色那一竖条里算点中（不然画上去就再也选不中）
+      if (!d.pts.length) return Infinity
+      const xa = ch.indexToX(ch.indexAt(d.pts[0].t)), xb = d.type === 'fvp' && d.pts[1] ? ch.indexToX(ch.indexAt(d.pts[1].t)) : ch.plotW()
+      return x >= Math.min(xa, xb) - 3 && x <= Math.max(xa, xb) + 3 && y >= p.y && y <= p.y + p.h ? 0 : Infinity
+    }
     const yHi = ch.priceToY(s.v.hi, p, r), yLo = ch.priceToY(s.v.lo, p, r)
     return x >= s.x0 - 3 && x <= s.x1 + 3 && y >= yHi - 3 && y <= yLo + 3 ? 0 : Infinity
   }

@@ -13,7 +13,7 @@ import type { Bar, Series } from './calc'
 import { EXTRA_CATALOG, barInterval, vwapAnchor } from './indicators'
 import type { Pane, PriceRange, TVChart } from './chart'
 import { fineSplit } from './fineVolume'
-import { drawProfile, profileRows } from './volumeProfile'
+import { drawProfile, isDarkBg, profileDefaults, profileRows, type ProfileLook } from './volumeProfile'
 
 export type VpvrMode = 'split' | 'delta' | 'total'
 export const VPVR_MODES: { id: VpvrMode; label: string }[] = [
@@ -48,35 +48,63 @@ export function vpvr(bars: Bar[], from: number, to: number, rowCount: number, va
   if (hi <= lo) hi = lo + Math.max(Math.abs(lo) * 1e-6, 1e-12)
   const step = (hi - lo) / n
   const rows: VpvrRow[] = Array.from({ length: n }, () => ({ buy: 0, sell: 0 }))
-  const rowOf = (p: number) => Math.min(n - 1, Math.max(0, Math.floor((p - lo) / step)))
-  const spread = (b: Bar) => {
-    const v = b.v
-    // 坏量、坏价不摊：一根 Infinity 会让每一行和总量都变 Infinity，整张分布图画不出来
-    if (!(v > 0) || !Number.isFinite(v) || !Number.isFinite(b.l) || !Number.isFinite(b.h)) return
-    const buy = b.tb != null && isFinite(b.tb) ? Math.min(v, Math.max(0, b.tb)) : v / 2, sell = v - buy
-    const r0 = rowOf(b.l), r1 = rowOf(b.h), span = b.h - b.l
-    if (r0 === r1 || span <= 0) { rows[r0].buy += buy; rows[r0].sell += sell; return }
-    for (let r = r0; r <= r1; r++) {
-      const a = Math.max(b.l, lo + r * step), z = Math.min(b.h, lo + (r + 1) * step)
-      const f = Math.max(0, z - a) / span
-      rows[r].buy += buy * f; rows[r].sell += sell * f
-    }
-  }
+  const spread = (b: Bar) => spreadBar(rows, lo, step, b)
   // 粗 K 线被细 K 线盖住时用细 K 线各自的高低去摊（4 小时及以上，见 fineVolume.ts）
   for (let i = from; i <= to; i++) {
     const sub = split?.(i)
     if (sub) for (const x of sub) spread(x)
     else spread(bars[i])
   }
+  const { total, poc, vaLo, vaHi } = valueArea(rows, vaShare)
+  return { lo, hi, step, rows, poc, vaLo, vaHi, total }
+}
+
+/** 把一根 K 线的成交额按它的高低区间摊到覆盖的各行（按重叠长度分）；主动买入 = tb，主动卖出 = 总额 − tb（没有 tb 时对半） */
+export function spreadBar(rows: VpvrRow[], lo: number, step: number, b: Bar): void {
+  const v = b.v, n = rows.length
+  // 坏量、坏价不摊：一根 Infinity 会让每一行和总量都变 Infinity，整张分布图画不出来
+  if (!(v > 0) || !Number.isFinite(v) || !Number.isFinite(b.l) || !Number.isFinite(b.h)) return
+  const rowOf = (p: number) => Math.min(n - 1, Math.max(0, Math.floor((p - lo) / step)))
+  const buy = b.tb != null && isFinite(b.tb) ? Math.min(v, Math.max(0, b.tb)) : v / 2, sell = v - buy
+  const r0 = rowOf(b.l), r1 = rowOf(b.h), span = b.h - b.l
+  if (r0 === r1 || span <= 0) { rows[r0].buy += buy; rows[r0].sell += sell; return }
+  for (let r = r0; r <= r1; r++) {
+    const a = Math.max(b.l, lo + r * step), z = Math.min(b.h, lo + (r + 1) * step)
+    const f = Math.max(0, z - a) / span
+    rows[r].buy += buy * f; rows[r].sell += sell * f
+  }
+}
+
+/** 控制点与价值区：合计最大的一行，再从它往两边扩，每次并进较大的一侧，直到 ≥ vaShare */
+export function valueArea(rows: readonly VpvrRow[], vaShare: number): { total: number; poc: number; vaLo: number; vaHi: number } {
+  const n = rows.length
   let total = 0, poc = 0, best = -1
-  rows.forEach((r, k) => { const t = r.buy + r.sell; total += t; if (t > best) { best = t; poc = k } })
+  for (let k = 0; k < n; k++) { const t = rows[k].buy + rows[k].sell; total += t; if (t > best) { best = t; poc = k } }
   let vaLo = poc, vaHi = poc, acc = best
   const tot = (k: number) => rows[k].buy + rows[k].sell
   while (acc < total * vaShare && (vaLo > 0 || vaHi < n - 1)) {
     const up = vaHi < n - 1 ? tot(vaHi + 1) : -1, dn = vaLo > 0 ? tot(vaLo - 1) : -1
     if (up >= dn) { vaHi++; acc += up } else { vaLo--; acc += dn }
   }
-  return { lo, hi, step, rows, poc, vaLo, vaHi, total }
+  return { total, poc, vaLo, vaHi }
+}
+
+/** 发展中的控制点 / 价值区（照 TradingView Developing POC / VA）：在最终分布的同一套行上，从 from 根起逐根累加，
+ *  每根收完时的控制点价、价值区上下沿价；下标 k 对应第 from + k 根。还没有量的根给 NaN（画的时候断开） */
+export interface Developing { poc: number[]; vah: number[]; val: number[] }
+export function developingProfile(bars: readonly Bar[], from: number, to: number, v: Pick<Vpvr, 'lo' | 'step' | 'rows'>, vaShare = 0.7): Developing {
+  const n = v.rows.length, out: Developing = { poc: [], vah: [], val: [] }
+  if (!n || !(v.step > 0)) return out
+  const rows: VpvrRow[] = Array.from({ length: n }, () => ({ buy: 0, sell: 0 }))
+  for (let i = Math.max(0, from); i <= Math.min(to, bars.length - 1); i++) {
+    spreadBar(rows, v.lo, v.step, bars[i])
+    const a = valueArea(rows, vaShare)
+    if (!(a.total > 0)) { out.poc.push(NaN); out.vah.push(NaN); out.val.push(NaN); continue }
+    out.poc.push(v.lo + (a.poc + 0.5) * v.step)
+    out.vah.push(v.lo + (a.vaHi + 1) * v.step)
+    out.val.push(v.lo + a.vaLo * v.step)
+  }
+  return out
 }
 
 // ------------------------------------------------------------ 画
@@ -162,15 +190,14 @@ function drawVpvr(ch: TVChart, p: Pane, r: PriceRange, from: number, to: number)
   const v = vpvr(bars, from, to, rows, 0.7, split)
   if (!v || !v.total) return
   ch.vpvrLast = v
-  const C = ch.colors
+  // 与固定区间那把画线同一套 TradingView 配色（四色柱、浅粉价值区线、紫控制点）；贴右沿往左长、不铺底色、控制点常显
+  const d = profileDefaults(isDarkBg(ch.colors.bg))
+  const look: ProfileLook = { ...d, placement: 'right', bg: { ...d.bg, on: false }, poc: { ...d.poc, on: true, width: 1.5 } }
   drawProfile(ch.ctx, {
-    x0: 0, x1: ch.plotW(), v, mode: ch.vpvrMode, alignRight: true,
-    colors: { up: C.up || '#089981', down: C.down || '#F23645', line: VPVR_VA_LINE },
+    x0: 0, x1: ch.plotW(), v, mode: ch.vpvrMode, look, pr: ch.pr,
     priceToY: price => ch.priceToY(price, p, r), clipY: [p.y, p.y + p.h],
   })
 }
-/** 可见区间成交量分布的价值区上下沿线色（固定区间那把用画线自己的工具色，默认也是这个蓝） */
-const VPVR_VA_LINE = '#2962FF'
 
 /** 副图上参考线之外的附加画法（累计量差的分界）；横向参考线统一由 chart.ts 照 subLevelLines 画 */
 export function drawSubLevels(ch: TVChart, p: Pane, _r: PriceRange, id: string): void {

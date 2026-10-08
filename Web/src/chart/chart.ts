@@ -28,6 +28,7 @@ import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } fr
 import { AXIS_H, FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
 import { COMPUTED, SNAP_LINE, bbox, dashPattern, drawComputed, fitRegression, handlePixels, hitComputed, levelsOf, moveHandle, placeCount, setDraftEnd, snap45, usesText, widenPosition } from './drawTools'
 import { GEOM, drawGeom, geomHandles, geomOf, hitGeom } from './drawGeom'
+import type { DrawStyle } from './drawStyle'
 import { drawKeyLevels, drawKeyAxis } from './keyLevels'
 import { detachFlows } from './tradeFlow'
 import { linePriceAt } from '../alerts/shape'
@@ -99,6 +100,8 @@ export interface Drawing {
   levels?: number[]
   /** 能填色的形状关掉底色时为 false；没有 = 填 */
   filled?: boolean
+  /** 扩展样式（TradingView 设置里主字段之外的项、可见周期；按种类白名单收键，见 drawStyle.ts） */
+  style?: DrawStyle
 }
 
 /** 主力订单流的一条大单（价位按步长并档） */
