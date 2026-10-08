@@ -299,7 +299,7 @@ struct MainScreen: View {
         .environment(\.symbolWarmup, symbolWarmup)
         .preferredColorScheme(effectiveTheme.forced)
     }
-    // 对比（2026-10-05 起顶栏加号开）：同一张搜索页的对比模式（`CompareSearchMode`），挑一只就落进
+    // 对比（顶栏「⋯ › 添加对比」与分析面板「对比」一节开）：同一张搜索页的对比模式（`CompareSearchMode`），挑一只就落进
     // 集合、页面不关；「完成」或下滑收起。所以这一层是系统 sheet（能下滑），不是全屏盖层。
     // 关掉之后词清掉：搜索页与它共用一个 `SymbolPickerModel`。
     .sheet(isPresented: $showComparePicker, onDismiss: { picker.query = "" }) {
@@ -397,7 +397,7 @@ struct MainScreen: View {
 
   /// 报价簿要不要拉列表：看得见一列品种的时候才拉。
   ///
-  /// 顶栏加号开的对比搜索页（`showComparePicker`）也是一列品种：10-05 回归压测发现漏了它，
+  /// 对比搜索页（`showComparePicker`，顶栏「⋯ › 添加对比」开）也是一列品种：10-05 回归压测发现漏了它，
   /// 报价簿以为列表收着，`requestQuote` 只放行图上那只，对比页里搜出来的每一行价格与涨跌
   /// 一直是「—」。
   private var listVisible: Bool { showingFavorites || symbolSearch.isActive || showComparePicker }
@@ -1036,7 +1036,7 @@ struct MainScreen: View {
   private var panelActions: PanelActions {
     // 分析面板第一节「画线」：复盘回放 / 已经在画（横屏画线台的侧栏）时不排，对比期间置灰。
     let onDraw: (() -> Void)? = reviewChart.active || draw.active ? nil : { startDrawing() }
-    // 第三节「对比」（10-06 恢复，和顶栏加号并存）：开的是加号那张对比模式搜索页。
+    // 第三节「对比」（10-06 恢复，和顶栏「⋯ › 添加对比」并存）：开的是同一张对比模式搜索页。
     // 此刻不能对比——复盘回放、横屏画线台、看朋友分享的线（对比在这几处都暂退）——整节不排。
     let onAddCompare: (() -> Void)? = reviewChart.active || draw.active || landscape || draw.previewing != nil
       ? nil : { dismissPanel(); showComparePicker = true }
@@ -1060,10 +1060,10 @@ struct MainScreen: View {
       onBack: trail.origin.map { origin in { switchTo(tab: origin) } },
       onNote: chartRecordAction.map { record in { dismissPanel(); record() } },
       onShare: headerShareAction,
-      // 对比 2026-10-05 搬上顶栏：加号开搜索页的对比模式；10-06 起「分析」面板那一节恢复，两处开同一页。
-      // 看朋友分享的线时这张图不是「我的图」，对比本来就暂退，加号不排。
+      // 对比 2026-10-05 搬上顶栏，10-08 收进顶栏「⋯」菜单：开搜索页的对比模式；10-06 起「分析」面板那一节恢复，两处开同一页。
+      // 看朋友分享的线时这张图不是「我的图」，对比本来就暂退，菜单里这一项不排。满三只时这一项禁用。
       onCompare: draw.previewing == nil ? { dismissPanel(); showComparePicker = true } : nil,
-      compareActive: !compareKeys.isEmpty,
+      compareFull: CompareSearchMode(keys: prefs.compareSymbols, current: market.symbol).isFull,
       onAlerts: { openAlertHub() },
       alertCount: alerts.pendingCount(symbol: market.symbol),
       onSearch: { dismissPanel(); symbolSearch.openSearch() },

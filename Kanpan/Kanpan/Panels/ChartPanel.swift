@@ -58,7 +58,7 @@ import KanpanCore
 /// `.project-memory/PROJECT.md`「收设置项」一节与 tag settings-before-trim-2026-09-28。
 ///
 /// 2026-09-28（顶栏方案 B）：「这张图」整节撤掉。「记一笔」「分享」是动作不是设置，藏在图表设置
-/// 第一组里要先点齿轮才看得见；现在是行情页顶栏右侧的两颗圆片（`top.note` / `top.share`），
+/// 第一组里要先点齿轮才看得见；09-28 起是行情页顶栏右侧的两颗圆片，2026-10-08 起收进顶栏「⋯」菜单（菜单项 `top.note` / `top.share`），
 /// 分享两种都能用时弹的二选一改由 `Panel.share` 单独一张面板承载（仍是 `ShareChooser`）。
 /// 上面几段里讲「这张图」排在最前的都已成为历史。这一页只剩 **K 线 · 显示 · 价格轴**。
 struct ChartPanel: View {

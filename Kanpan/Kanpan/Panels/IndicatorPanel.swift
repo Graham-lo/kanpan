@@ -26,9 +26,9 @@ import KanpanCore
 /// 画线那颗记号挪进这一页、排在最上面单成一节，行尾回到「更多 ▾ · 分析 · 图表设置」三件，
 /// 这一页的标题跟着行尾改叫「分析」，「指标」只作第二节的节名。
 ///
-/// 2026-10-05 照 TradingView 手机版把「添加对比」搬到顶栏（加号那颗，`TopBar` 的 `top.compare`），
+/// 2026-10-05 照 TradingView 手机版把「添加对比」搬到顶栏（当时是一颗加号圆片；2026-10-08 起收进顶栏「⋯」菜单，菜单项 `top.compare`），
 /// 点开是搜索页的对比模式（`CompareSearchMode`），这一节当时撤了；10-06 用户要求两处并存
-/// （「分析里的对比要留」），分析面板恢复四节：这一节的「添加对比」开的就是顶栏加号那张
+/// （「分析里的对比要留」），分析面板恢复四节：这一节的「添加对比」开的就是顶栏「⋯ › 添加对比」那张
 /// 对比模式搜索页，两处入口共用同一页、同一份 `Prefs.compareSymbols`。
 ///
 /// 参数编辑那层 sheet 和面板提示仍挂在这一层自己身上。
@@ -37,7 +37,7 @@ struct IndicatorPage: View {
   /// 主力订单流的胶水与当前品种（它那张表要显示这只币此刻生效的门槛）。
   var orderFlow: OrderFlowLink? = nil
   var symbol: String = ""
-  /// 「添加对比」：关面板、开顶栏加号那张对比模式搜索页。此刻不能对比（复盘回放、横屏画线台、
+  /// 「添加对比」：关面板、开顶栏「⋯ › 添加对比」那张对比模式搜索页。此刻不能对比（复盘回放、横屏画线台、
   /// 看朋友分享的线）时调用方传 nil，「对比」这一节整节不排。
   var onAddCompare: (() -> Void)? = nil
   /// 对比品种键 → 显示名（主界面按品种表算好递进来，这儿不查表）。
@@ -166,7 +166,7 @@ struct IndicatorPage: View {
 
   /// 对比 K 线（`Kanpan/Kanpan/Compare/`）：最多三只，颜色跟皮肤色板走，不给选。
   /// 标识不变：`compare.add` / `compare.remove.<键>` / `compare.clear`。
-  /// 「添加对比」开的是顶栏加号那张对比模式搜索页（10-06 起，两处入口共用）。
+  /// 「添加对比」开的是顶栏「⋯ › 添加对比」那张对比模式搜索页（10-06 起，两处入口共用）。
   @ViewBuilder private var compareSection: some View {
     if let onAddCompare {
       PanelCardGroup(title: "对比") {

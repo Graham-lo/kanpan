@@ -188,12 +188,13 @@ struct MainHeaderView<Card: View>: View {
   /// 「要不要加提醒」/ 分享卡在场没有：价格行照旧占位，只是透明。
   let cardVisible: Bool
   let onBack: (() -> Void)?
-  /// 顶栏「记一笔」「分享」两颗圆片；nil 时那颗不排。
+  /// 顶栏「⋯」菜单里的「记一笔」「分享」「添加对比」（2026-10-08 从圆片收进菜单）；nil 时那一项不排，三项全 nil 时「⋯」不画。
   let onNote: (() -> Void)?
   let onShare: (() -> Void)?
-  /// 顶栏「添加对比」「提醒」两颗（2026-10-05）；nil 时那颗不排。
   let onCompare: (() -> Void)?
-  let compareActive: Bool
+  /// 对比集合已满三只：菜单里「添加对比」禁用。
+  let compareFull: Bool
+  /// 顶栏「提醒」铃（2026-10-05）；nil 时不画。
   let onAlerts: (() -> Void)?
   /// 这只还没响的提醒条数（铃铛角标）。宿主算好传进来，头部不自己翻提醒表。
   let alertCount: Int
@@ -216,7 +217,7 @@ struct MainHeaderView<Card: View>: View {
         onNote: onNote,
         onShare: onShare,
         onCompare: onCompare,
-        compareActive: compareActive,
+        compareFull: compareFull,
         onAlerts: onAlerts,
         alertCount: alertCount,
         onSearch: onSearch)
