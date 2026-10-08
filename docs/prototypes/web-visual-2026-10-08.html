@@ -293,8 +293,6 @@ table.dt{width:100%;border-collapse:collapse;table-layout:fixed}
 .icard .n52.s{background:var(--softF);color:var(--atext)}
 .icard .n20{width:24px;height:24px;display:grid;place-items:center;color:var(--t1)}
 .icard .n20 svg{width:20px;height:20px}
-.legendrow{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--t3);margin:2px 0 8px}
-.legendrow b{font-weight:500;color:var(--t2)}
 
 .flys{display:flex;flex-wrap:wrap;gap:20px 28px;align-items:flex-start}
 .flypair{display:flex;gap:14px;align-items:flex-start}
@@ -396,22 +394,21 @@ table.cr{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px
 .notes{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px 24px;margin-top:14px;font-size:12.5px;color:var(--t2)}
 .notes div b{color:var(--t1);font-weight:600;display:block;font-size:13px;margin-bottom:2px}
 
-/* ---------- 提案图标：C 淡彩色块 · A 彩砖 · B 彩色线稿 ---------- */
-.ic{--sz:28px;width:var(--sz);height:var(--sz);border-radius:calc(var(--sz)*.286);display:grid;place-items:center;flex:none;position:relative}
+/* ---------- 提案图标「质感」：只用当前皮肤这一族颜色 ----------
+ * 字形 = SF Symbols 分层：主体主文字色 1，次要 .55，面与辅助 .22–.28，关键点（锚点 / 斐波那契亮档 / 当前部位的尖）一处强调墨
+ * 底块 = 极淡的中性磨砂块：180° 比框架略亮 → 略暗（差 ≤ 3%），0.5px 内描边，1px 顶部内高光，一层很轻的投影 */
+.ic{--sz:28px;width:var(--sz);height:var(--sz);border-radius:8px;display:grid;place-items:center;flex:none;position:relative}
+.ic.s22{border-radius:6px}
 .ic>svg{width:var(--g,calc(var(--sz)*.643))!important;height:var(--g,calc(var(--sz)*.643))!important;overflow:visible;display:block}
-.ic.C{background:linear-gradient(135deg,color-mix(in srgb,var(--it) 13%,transparent),color-mix(in srgb,var(--it) 26%,transparent))}
-.ic.C.hov{background:linear-gradient(135deg,color-mix(in srgb,var(--it) 22%,transparent),color-mix(in srgb,var(--it) 36%,transparent))}
-.ic.C.sel{background:linear-gradient(135deg,color-mix(in srgb,var(--it) 34%,transparent),color-mix(in srgb,var(--it) 42%,transparent));box-shadow:inset 0 0 0 1.5px var(--ih)}
-.ic.A{background:linear-gradient(180deg,var(--ta),var(--tb));box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -1px 0 rgba(0,0,0,.14),0 1px 2px rgba(0,0,0,.18)}
-.ic.A::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,0) 55%);pointer-events:none}
-.ic.A>svg{filter:drop-shadow(0 .5px .6px rgba(0,0,0,.3))}
-.ic.A.hov{filter:brightness(1.1) saturate(1.06)}
-.ic.A.sel{outline:2px solid var(--accent);outline-offset:2px;transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -1px 0 rgba(0,0,0,.14),0 4px 10px -3px rgba(0,0,0,.34)}
-.ic.B{--bs:var(--t1)}
-.ic.B>svg{width:var(--g,calc(var(--sz)*.857))!important;height:var(--g,calc(var(--sz)*.857))!important}
-.ic.B.hov{background:color-mix(in srgb,var(--it) 12%,transparent)}
-.ic.B.sel{background:color-mix(in srgb,var(--it) 16%,transparent);--bs:var(--ih)}
-.ic.bare{background:none;box-shadow:none}
+.ic.Q{--q1:var(--qr);--qa:var(--qac);--qw:var(--qtm);background:linear-gradient(180deg,var(--qt0),var(--qt1));
+  box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--t1) 8%,transparent),inset 0 1px 0 var(--qhi),0 1px 1.5px var(--qsh)}
+.ic.Q.hov{--q1:var(--qh);--qw:var(--qhm);background:linear-gradient(180deg,var(--qh0),var(--qh1))}
+.ic.Q.sel{--q1:#fff;--qa:#fff;--qw:var(--qsm);background:linear-gradient(180deg,var(--qs0),var(--qs1));
+  box-shadow:inset 0 0 0 .5px rgba(255,255,255,.18),inset 0 1px 0 rgba(255,255,255,.25),0 2px 6px var(--qsg)}
+.ic.Q.del.hov{--q1:var(--qdn)}
+.ic.Q.bare{background:none;box-shadow:none;--qw:var(--frame)}
+.ic.Q.bare.hov{background:var(--fh);--qw:var(--fh)}
+.qdot{position:absolute;right:2px;top:2px;width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--frame);z-index:1;pointer-events:none}
 /* 图表页里的落点 */
 .new .db-b{width:40px;height:34px;background:none}
 .new .rl-b{background:none}
@@ -423,15 +420,41 @@ table.cr{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px
 .m-fly .r.h{background:color-mix(in srgb,var(--t1) 5%,transparent)}
 .m-fly .r.on{font-weight:600}
 .m-fly .r kbd{margin-left:auto;font:11px var(--sans);color:var(--t3)}
-/* 第 2 节：三个方向 */
-.dirs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-@media (max-width:1100px){.dirs{grid-template-columns:minmax(0,1fr)}}
-.dcol{min-width:0}
-.dcol .dh{display:flex;align-items:baseline;gap:8px;font-size:15px;font-weight:650;margin:0 0 4px}
-.dcol .dh em{font-style:normal;font-size:11px;font-weight:600;color:var(--atext);background:var(--soft);border-radius:4px;padding:1px 6px;align-self:center}
-.dcol .dh em.alt{color:var(--t2);background:color-mix(in srgb,var(--t1) 7%,transparent)}
-.dcol .dd{font-size:12px;color:var(--t2);margin:0 0 10px;min-height:34px}
-.dcol.main .mini{box-shadow:0 0 0 1.5px var(--accent)}
+/* 第 2 节：现在 → 质感 */
+.vsp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:1100px){.vsp{grid-template-columns:minmax(0,1fr)}}
+.vsp .col{min-width:0}
+.vsp .lab2{display:flex;align-items:baseline;gap:8px;font-size:12px;color:var(--t3);margin:0 0 6px 2px}
+.vsp .lab2 b{font-size:13px;color:var(--t1);font-weight:650}
+.mini .cc{width:28px;height:28px;display:grid;place-items:center;border-radius:6px;color:var(--t2);flex:none;position:relative}
+.mini .cc svg{width:20px;height:20px}
+.mini .cc.on{background:var(--soft);color:var(--atext)}
+.mini .cc.h{background:var(--s3);color:var(--t1)}
+.mini .cl .w .qdot{right:1px;top:1px}
+.mini .cc .dot{position:absolute;right:-4px;top:-4px;min-width:14px;height:14px;border-radius:7px;background:var(--accent);color:#fff;font-size:10px;line-height:14px;font-weight:600;text-align:center;padding:0 3px}
+.skins{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:1100px){.skins{grid-template-columns:minmax(0,1fr)}}
+.skc{border-radius:12px;background:var(--frame);color:var(--t1);box-shadow:0 0 0 1px var(--fline);padding:10px 12px 12px;min-width:0}
+.skc .mh{font-size:11px;color:var(--t3);margin:0 0 10px;display:flex;justify-content:space-between}
+.skc .mh b{color:var(--t1);font-weight:600}
+.skc .r{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.skc .r:last-child{margin-bottom:0}
+.skc .sep{width:1px;height:20px;background:var(--fline);margin:0 3px}
+.skc .w{position:relative;display:grid}
+.skc .tbt{height:30px;display:flex;align-items:center;gap:5px;padding:0 7px 0 4px;border-radius:6px;font-size:12.5px;color:var(--t1);white-space:nowrap}
+/* 主力订单流侧栏开关 */
+.ofw{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.ofp{border-radius:12px;background:var(--surface);color:var(--t1);box-shadow:0 0 0 1px var(--line);padding:6px 4px 4px;min-width:0}
+.ofp .hd{display:flex;align-items:baseline;gap:8px;font-size:12px;font-weight:600;color:var(--t1);padding:4px 10px 6px}
+.ofp .hd small{font-weight:400;color:var(--t3);font-size:11px}
+.ofp .row{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:8px;font-size:13px}
+.ofp .row .l{flex:1;white-space:nowrap}
+.tgq{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none}
+.tgq svg{width:18px;height:18px;display:block;overflow:visible}
+.swt{width:30px;height:18px;border-radius:9px;background:color-mix(in srgb,var(--t1) 18%,transparent);position:relative;flex:none}
+.swt::after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.22)}
+.swt.on{background:var(--accent)}
+.swt.on::after{left:14px}
 .mini{border-radius:12px;background:var(--frame);color:var(--t1);box-shadow:0 0 0 1px var(--fline);padding:10px 10px 12px;margin-bottom:10px;min-width:0}
 .mini .mh{font-size:11px;color:var(--t3);margin:0 0 8px;display:flex;justify-content:space-between}
 .mini .mt{display:flex;align-items:center;gap:2px;flex-wrap:wrap;padding-bottom:8px;margin-bottom:10px;box-shadow:inset 0 -1px 0 var(--fline)}
@@ -450,6 +473,7 @@ table.cr{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px
 .mini .fl .r{display:flex;align-items:center;gap:8px;height:34px;padding:0 6px 0 3px;border-radius:7px;font-size:12.5px;white-space:nowrap;overflow:hidden}
 .mini .fl .r.h{background:color-mix(in srgb,var(--t1) 5%,transparent)}
 .mini .fl .r.on{font-weight:600}
+.mini.q .fl{margin-top:130px}
 .states{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;padding:12px 10px;border-radius:12px;background:var(--frame);box-shadow:0 0 0 1px var(--fline);margin-bottom:10px}
 .states figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:6px}
 .states figcaption{font-size:11px;color:var(--t3)}
@@ -461,13 +485,13 @@ table.cr{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px
 .cat2{display:flex;flex-wrap:wrap;gap:14px 14px}
 .cg{border-radius:10px;padding:8px 8px 8px 6px;background:color-mix(in srgb,var(--t1) 3%,transparent);min-width:0}
 .cg .gh{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--t2);margin:0 0 4px 2px;white-space:nowrap}
-.cg .gh i{width:8px;height:8px;border-radius:3px;background:var(--ih)}
+.cg .gh i{width:8px;height:8px;border-radius:3px;background:var(--t3);opacity:.5}
 .cg .gb{display:flex}
 .cg .rl{display:flex;flex-direction:column;gap:8px;padding:30px 4px 0 0}
-.cg .rl span{height:28px;line-height:28px;font-size:10px;color:var(--t3);font-weight:650;width:12px;text-align:center}
+.cg .rl span{height:32px;line-height:32px;font-size:10px;color:var(--t3);font-weight:650;width:12px;text-align:center}
 .cg .tc{width:56px;display:flex;flex-direction:column;align-items:center;gap:8px}
 .cg .tc .nm{height:26px;font-size:10.5px;line-height:12.5px;color:var(--t2);text-align:center;display:flex;align-items:flex-end;justify-content:center;margin-bottom:-4px;word-break:break-all;padding:0 3px;overflow:hidden}
-.cg .cur{width:28px;height:28px;display:grid;place-items:center;color:var(--t2)}
+.cg .cur{width:32px;height:32px;display:grid;place-items:center;color:var(--t2)}
 .cg .cur svg{width:20px;height:20px}
 /* 2× 放大 */
 .mag2{display:flex;flex-direction:column;gap:12px}
@@ -498,8 +522,6 @@ table.cr{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px
   <div class="seg" data-k="theme"><button data-v="light">浅色</button><button data-v="dark">深色</button></div>
   <span class="lab">皮肤</span>
   <div class="seg" data-k="skin"><button data-v="sage">青苔</button><button data-v="classic">经典</button><button data-v="terra">陶土</button></div>
-  <span class="lab">图标</span>
-  <div class="seg" data-k="icon"><button data-v="C">C 淡彩色块</button><button data-v="A">A 彩砖</button><button data-v="B">B 彩色线稿</button></div>
   <nav><a href="#s1">图表页</a><a href="#s2">画线图标</a><a href="#s3">材料与颜色</a><a href="#s4">订单流特写</a></nav>
 </div>
 
@@ -512,14 +534,21 @@ table.cr{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px
 
 <section id="s2">
   <h2>2 · 图标</h2>
-  <p class="lede">41 种画线、5 个画线栏工具、21 个界面图标（左侧画线栏、右侧功能栏、工具条），每个都画了三个方向。<b>C · 淡彩色块</b>是主推：照「主力订单流」侧栏那四个开关的画法。A、B 是备选。顶上的「图标」开关只换第 1 节图表页里的图标；这一节三个方向并排，皮肤跟着顶上切。</p>
-  <div class="legendrow"><span>分类色：<b>线</b> 蓝 · <b>通道 / 叉子</b> 青 · <b>斐波那契 / 江恩</b> 琥珀 · <b>形态</b> 紫 · <b>形状</b> 粉 · <b>预测与测量</b> 绿 · <b>注释</b> 灰蓝 · <b>成交量</b> 橙 · <b>磁吸 / 锁 / 隐藏</b> 中性灰 · <b>删除</b> 红 · 右栏 <b>自选</b> 金 · <b>提醒</b> 红橙 · <b>主力订单流</b> 强调色 · <b>大单</b> 靛 · <b>对比</b> 青</span></div>
-  <div class="dirs" id="s2a"></div>
-  <h3>全部图标 · 现在 → C · A · B</h3>
+  <p class="lede">41 种画线、5 个画线栏工具、21 个界面图标（左侧画线栏、右侧功能栏、工具条）换成一套<b>「质感」</b>：整套只用当前皮肤这一族颜色，没有分类色。字形照 SF Symbols 的分层画法：主体是主文字色，次要部分 .55，面和辅助线 .22–.28；只有关键点（锚点、斐波那契亮档、当前部位的尖）用一处强调墨，涨跌箭头也是单色。底块是极淡的中性磨砂块：上亮下暗不超过 3%，0.5px 内描边，顶部 1px 内高光，一层很轻的投影。悬停时底块深一级（浅色）或亮一级（深色），字形提亮；选中是强调色玻璃块、字形全白、层次不变；删除平时和别的一样，悬停才变跌色。提醒未读是一颗强调色小点。</p>
+  <h3>现在 → 质感</h3>
+  <div class="vsp" id="s2a"></div>
+  <h3>三套皮肤</h3>
+  <div class="skins" id="s2s"></div>
+  <h3>三种状态 · 2 倍</h3>
+  <div class="vsp" id="s2st"></div>
+  <h3>全部图标 · 现在 → 质感</h3>
   <div id="s2b"></div>
   <h3>2 倍放大</h3>
   <div class="two" id="s2c"></div>
-  <h3>对比度 · 每个分类</h3>
+  <h3>主力订单流侧栏开关</h3>
+  <p class="lede" style="margin-top:-4px">四个开关的小图跟着收：同一块磨砂底，图里只剩强调 / 涨 / 跌三色，色度降到 6 成；热力里的橙色换成强调墨。这里只是原型，线上侧栏之后单独改。</p>
+  <div class="vsp" id="s2t"></div>
+  <h3>对比度</h3>
   <div id="s2d"></div>
 </section>
 
@@ -809,60 +838,35 @@ const svgU = (k, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24" fill="cur
 const FLYCH = '<svg viewBox="0 0 4 7"><path d="M.75 .75L3.25 3.5L.75 6.25" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const FLYCH_C = '<svg viewBox="0 0 4 6"><path d="M.8 .8L3.2 3L.8 5.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
 
-/* ============================================================ 提案图标：三个方向共用一份 18 格几何
- * C · 淡彩色块（主推，照侧栏「主力订单流」四个开关图标）：28 格淡彩渐变块 + 18 格实心小图，同色分层透明度
- * A · 彩砖：每个功能一块自己色相的渐变砖，白色字形
- * B · 彩色线稿：无底块，主线主文字色 1.75，锚点 / 面 / 斐波那契档位用分类色
- * 几何语言：线 = 2.2 圆头条，锚点 = 实心圆点带白内沿，面 = 淡填充，斐波那契 = 透明度递减的几根条 */
+/* ============================================================ 提案图标「质感」：一份 18 格几何
+ * 字形 = SF Symbols 分层：主体主文字色 1，次要 .55，面与辅助 .22–.28；关键点（锚点 / 斐波那契亮档 / 当前部位的尖）一处强调墨
+ * 底块 = 中性磨砂块（框架色往白 / 往亮推一点），选中 = 强调色玻璃块 + 全白字形
+ * 几何语言：线 = 2.2 圆头条，锚点 = 实心圆点带底色内沿，面 = 淡填充，斐波那契 = 透明度递减的几根条 */
 const hex2oklch = hex => {
   const [r, g, b] = H2R(hex).map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; });
   const l = Math.cbrt(.4122214708 * r + .5363325363 * g + .0514459929 * b), m = Math.cbrt(.2119034982 * r + .6806995451 * g + .1073969566 * b), s = Math.cbrt(.0883024619 * r + .2817188376 * g + .6299787005 * b);
   const L = .2104542553 * l + .7936177850 * m - .0040720468 * s, A = 1.9779984951 * l - 2.4285922050 * m + .4505937099 * s, B = .0259040371 * l + .7827717662 * m - .8086757660 * s;
   return [L, Math.hypot(A, B), (Math.atan2(B, A) * 180 / Math.PI + 360) % 360];
 };
-/* 分类色相（同明度 OKLCH，按意义分配）；neu = 跟皮肤的中性灰，acc = 皮肤强调色 */
-const HUES = {
-  line: ['线', 258, .14], chan: ['通道 · 叉子', 212, .11], fib: ['斐波那契 · 江恩', 72, .14], pat: ['形态', 305, .14],
-  meas: ['预测与测量', 152, .13], shape: ['形状', 356, .15], note: ['注释', 255, .05], vol: ['成交量', 48, .14],
-  neu: ['工具 · 中性', 'neu'], del: ['删除', 25, .17],
-  fav: ['自选', 86, .15], alert: ['提醒', 40, .16], flow: ['主力订单流', 'acc'], trades: ['大单', 280, .15], cmp: ['对比', 212, .11], ind: ['指标', 258, .14],
-};
-const TCAT = {};
-[['line', 'trend ray extended hline hray vline crossLine arrowLine'], ['chan', 'channel regression pitchfork'], ['fib', 'gannBox gannFan fib fibExtension fibChannel fibTimeZone fibFan'],
- ['pat', 'xabcd abcd headShoulders elliottImpulse elliottCorrection'], ['meas', 'position ptMeasure priceRange dateRange datePriceRange'], ['shape', 'rect ellipse triangle curve'],
- ['note', 'note callout priceLabel flag markerUp markerDown u_note'], ['vol', 'avwap fvp anchoredVolumeProfile'], ['neu', 'cursor magnet lock eye u_search u_layout u_camera u_full u_undo u_redo u_set u_eye u_eyeOff u_info'],
- ['del', 'trash'], ['fav', 'u_star u_list u_sun'], ['alert', 'u_bell'], ['flow', 'u_flow u_heat'], ['trades', 'u_trades u_moon'], ['cmp', 'u_cmp'], ['ind', 'u_ind']]
-  .forEach(([c, ks]) => ks.split(' ').forEach(k => TCAT[k] = c));
-
-const ICV = {};
-function icv(cat, t) {
-  const key = cat + t.skin + t.theme; if (ICV[key]) return ICV[key];
-  const d = t.theme === 'dark', H = HUES[cat]; let h, c, neu = false;
-  if (H[1] === 'neu') { h = hex2oklch(t.t2)[2]; c = .02; neu = true; }
-  else if (H[1] === 'acc') { const o = hex2oklch(ACC[t.skin].light[0]); h = o[2]; c = Math.min(.15, o[1]); }
-  else { h = H[1]; c = H[2]; }
-  // C：底块用亮一点的「染色」，字形用够深的「墨」——浅色下墨对框架、对静止底块都 ≥ 3:1
-  let tint, ink;
-  if (neu) { tint = t.t2; ink = d ? t.t2 : t.t2; }
-  else if (d) { tint = oklch(.70, c, h); ink = oklch(.80, Math.min(c, .13), h); }
-  else {
-    tint = oklch(.72, c, h); let L = .64; ink = oklch(L, c, h);
-    const rest = mix(t.frame, tint, .26);
-    const selT = mix(t.frame, tint, .42);
-    while ((cr(ink, rest) < 3.05 || cr(ink, t.frame) < 3.2 || cr(ink, selT) < 3.0) && L > .3) { L -= .01; ink = oklch(L, c, h); }
-  }
-  // A：砖顶色对白字 ≥ 3:1（浅色），深色整块明度 −0.05
-  const cA = neu ? .022 : Math.min(c + .01, .16); let Lt = .74;
-  while (cr(oklch(Lt, cA, h), '#FFFFFF') < 3.02 && Lt > .3) Lt -= .005;
-  if (d) Lt -= .05;
-  const ta = oklch(Lt, cA, h), tb = oklch(Lt - .085, cA + .01, h), deep = oklch(Lt - .22, cA, h);
-  const ihl = d ? oklch(.92, c * .5, h) : oklch(Math.min(.86, hex2oklch(ink)[0] + .2), c * .8, h);
-  const al = HUES.alert, ink2 = d ? oklch(.80, .13, al[1]) : oklch(.56, al[2], al[1]);
-  const iw = d ? mix(t.frame, tint, .3) : '#FFFFFF';
-  const v = { cat, name: H[0], h, c, neu, tint, ink, ta, tb, deep, ihl, ink2, iw,
-    css: `--ih:${ink};--it:${tint};--ta:${ta};--tb:${tb};--ihd:${deep};--ihl:${ihl};--ih2:${ink2};--iw:${iw};--gup:${t.upT};--gdn:${t.downT}` };
-  return ICV[key] = v;
+/* 「质感」的颜色只取当前皮肤这一族：主体 = 主文字色，强调墨 = 皮肤强调字色，底块 = 框架色往白 / 往亮推一点的中性磨砂块 */
+const QV = {};
+function qv(t) {
+  const key = t.skin + t.theme; if (QV[key]) return QV[key];
+  const d = t.theme === 'dark', W = '#FFFFFF', f = t.frame;
+  const sb = d ? ACC[t.skin].light[0] : t.accent; // 深色下选中块用浅色那一档强调色，白色字形才读得清（深色强调色对白只有 2.3:1 左右）
+  const v = {
+    rest: mix(t.t1, t.t2, .2), hov: t.t1, acc: t.atext, sb,
+    t0: d ? mix(f, W, .075) : mix(f, W, .56), t1: d ? mix(f, W, .045) : mix(f, W, .42),
+    h0: d ? mix(f, W, .125) : mix(f, W, .30), h1: d ? mix(f, W, .092) : mix(f, W, .16),
+    s0: mix(sb, W, .06), s1: mix(sb, '#000000', .06),
+    hi: d ? 'rgba(255,255,255,.06)' : 'rgba(255,255,255,.5)', sh: d ? 'rgba(0,0,0,.25)' : 'rgba(0,0,0,.06)', sg: rgba(sb, .3), dn: t.downT,
+  };
+  v.tm = mix(v.t0, v.t1, .5); v.hm = mix(v.h0, v.h1, .5);
+  v.css = `--qr:${v.rest};--qh:${v.hov};--qac:${v.acc};--qt0:${v.t0};--qt1:${v.t1};--qtm:${v.tm};--qh0:${v.h0};--qh1:${v.h1};--qhm:${v.hm};--qs0:${v.s0};--qs1:${v.s1};--qsm:${sb};--qhi:${v.hi};--qsh:${v.sh};--qsg:${v.sg};--qdn:${v.dn}`;
+  return QV[key] = v;
 }
+/* 侧栏开关的四色（强调 / 涨 / 跌）降饱和：oklch 色度 × .6，明度不动 */
+const desat = (hex, k = .6) => { const [L, C, h] = hex2oklch(hex); return oklch(L, C * k, h); };
 
 /* ---------- 几何 ---------- */
 const G = (() => {
@@ -961,68 +965,41 @@ const G = (() => {
     u_moon: [s('M10.2 2.2A6.9 6.9 0 1 0 15.8 11.9A5.4 5.4 0 0 1 10.2 2.2Z', .9, null, 1), O(11.6, 6.2, .9, .5)],
   };
 })();
-const ROLE_O = { m: 1, k: 1, s: .55, g: .3, x: .32 };
-
-/* C 与 A：实心形 + 同色分层透明度（A 是同一套几何的白色版本） */
-function rCA(ops, A) {
-  const ink = A ? '#fff' : 'var(--ih)', W = A ? 'var(--ihd)' : 'var(--iw)';
-  const col = c => c === 'w' ? W : A ? '#fff' : c === 'up' ? 'var(--gup)' : c === 'dn' ? 'var(--gdn)' : c === 'k2' ? 'var(--ih2)' : ink;
-  const op = (o, def) => { let v = o.o ?? def; if (A && o.c === 'dn') v *= .55; return +v.toFixed(3); };
+/* 单色相下的取舍：涨跌方向不再上色（跌那一半退到 .55），关键点改用强调墨，每个图标最多一处 */
+(() => {
+  G.cursor[1].c = 'a';          // 光标中心点
+  G.position[3].c = 'a';        // 开仓价那根线
+  G.fvp[3].c = 'a';             // 成交量分布的最大量那一档（POC）
+  G.markerUp[0].c = G.markerDown[0].c = null; // 上下箭头标记：整只主体色
+  // 主力订单流：两根横带在竖条两侧留缝，叠在一起也分得清层次
+  G.u_flow = [{ t: 'cut', d: 'M6 .5V17.5M12 3.5V16.5', w: 4.2, ops: [{ t: 'r', x: 1, y: 4, w: 16, h: 3, rx: 1.5, o: .3 }, { t: 'r', x: 1, y: 11, w: 16, h: 3, rx: 1.5, o: .55 }] },
+    { t: 'r', x: 5, y: 2, w: 2, h: 14, rx: 1, o: 1 }, { t: 'r', x: 11, y: 5, w: 2, h: 10, rx: 1, o: .55 }];
+})();
+const QO = { m: 1, k: 1, s: .55, g: .28, x: .3 };
+const hasKey = ops => ops.some(o => (o.t === 'a' && o.s) || (o.ops && hasKey(o.ops)));
+function rQ(ops, big) {
+  if (big == null) big = hasKey(ops);
+  const col = c => c === 'w' ? 'var(--qw)' : c === 'a' ? 'var(--qa)' : 'var(--q1)';
+  const op = (o, def) => +((o.o ?? def) * (o.c === 'dn' ? .55 : 1)).toFixed(3);
   return ops.map(o => {
     switch (o.t) {
-      case 'l': return `<path d="${o.d}" fill="none" stroke="${col(o.c)}" stroke-width="${o.w ?? 2.2}" stroke-linecap="round" stroke-linejoin="round" opacity="${op(o, ROLE_O[o.r])}"/>`;
-      case 'a': return `<circle cx="${o.x}" cy="${o.y}" r="${o.s ? 2.3 : 1.8}" fill="${A ? '#fff' : 'var(--ih)'}" stroke="${A ? 'var(--ihd)' : '#fff'}" stroke-width="${A ? .9 : 1}"/>`;
-      case 'f': return `<path d="${o.d}" fill="${col(o.c)}" opacity="${op(o, A ? .3 : .22) * (A ? 1.3 : 1)}"/>`;
+      case 'l': return `<path d="${o.d}" fill="none" stroke="${col(o.c)}" stroke-width="${o.w ?? 2.2}" stroke-linecap="round" stroke-linejoin="round" opacity="${op(o, QO[o.r])}"/>`;
+      // 锚点：端点（大）用强调墨；中间点（小）用主体色——没有端点的图标，它的小点就是那一处强调
+      case 'a': return `<circle cx="${o.x}" cy="${o.y}" r="${o.s ? 2.3 : 1.8}" fill="${o.s || !big ? 'var(--qa)' : 'var(--q1)'}" stroke="var(--qw)" stroke-width="1"/>`;
+      case 'f': return `<path d="${o.d}" fill="${col(o.c)}" opacity="${op(o, .22)}"/>`;
       case 's': return `<path d="${o.d}" fill="${col(o.c)}" fill-rule="evenodd" stroke="${col(o.c)}" stroke-width=".9" stroke-linejoin="round" opacity="${op(o, 1)}"/>`;
       case 'r': return `<rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" rx="${o.rx}" fill="${col(o.c)}" opacity="${op(o, 1)}"/>`;
       case 'o': return `<circle cx="${o.cx}" cy="${o.cy}" r="${o.r}" fill="${col(o.c)}" opacity="${op(o, 1)}"/>`;
-      case 'g': return `<g transform="${o.tr}">${rCA(o.ops, A)}</g>`;
-      case 'cut': { const id = 'm' + (++MID); return `<mask id="${id}" maskUnits="userSpaceOnUse" x="-2" y="-2" width="22" height="22"><rect x="-2" y="-2" width="22" height="22" fill="#fff"/><path d="${o.d}" stroke="#000" stroke-width="${o.w}" stroke-linecap="round"/></mask><g mask="url(#${id})">${rCA(o.ops, A)}</g>`; }
+      case 'g': return `<g transform="${o.tr}">${rQ(o.ops, big)}</g>`;
+      case 'cut': { const id = 'm' + (++MID); return `<mask id="${id}" maskUnits="userSpaceOnUse" x="-2" y="-2" width="22" height="22"><rect x="-2" y="-2" width="22" height="22" fill="#fff"/><path d="${o.d}" stroke="#000" stroke-width="${o.w}" stroke-linecap="round"/></mask><g mask="url(#${id})">${rQ(o.ops, big)}</g>`; }
     }
   }).join('');
 }
-/* B：主线主文字色 1.75 px（按 24 px 显示），关键部位分类色；面用 40→28% 渐变；锚点是带 1px 白内沿的玻璃珠 */
-function rB(ops, id) {
-  if (id == null) { id = 'b' + (++MID); }
-  const K = .6; // 18 格 2.2 → 1.32 格 ≈ 24 px 显示下的 1.75 px
-  const dir = c => c === 'up' ? 'var(--gup)' : c === 'dn' ? 'var(--gdn)' : null;
-  let body = ops.map(o => {
-    switch (o.t) {
-      case 'l': {
-        const hue = o.r === 'k', c = dir(o.c) || (hue ? 'var(--ih)' : 'var(--bs)');
-        const ov = o.o ?? (o.r === 'g' ? .42 : o.r === 's' ? .7 : o.r === 'x' ? .55 : 1);
-        return `<path d="${o.d}" fill="none" stroke="${c}" stroke-width="${((o.w ?? 2.2) * K).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"${o.r === 'x' ? ' stroke-dasharray="1.5 1.9"' : ''} opacity="${hue ? Math.max(ov, .32) : (o.r === 'm' ? Math.max(ov, .5) : ov)}"/>`;
-      }
-      case 'a': { const r = o.s ? 1.95 : 1.5; return `<circle cx="${o.x}" cy="${o.y}" r="${r}" fill="url(#${id}a)"/><circle cx="${o.x}" cy="${o.y}" r="${(r - .42).toFixed(2)}" fill="none" stroke="#fff" stroke-width=".55" opacity=".9"/>`; }
-      case 'f': return dir(o.c) ? `<path d="${o.d}" fill="${dir(o.c)}" opacity=".32"/>` : `<path d="${o.d}" fill="url(#${id}f)"/>`;
-      case 's': {
-        if (dir(o.c)) return `<path d="${o.d}" fill="${dir(o.c)}" fill-opacity=".34" stroke="${dir(o.c)}" stroke-width="1.15" stroke-linejoin="round"/>`;
-        if (o.h) return `<path d="${o.d}" fill="url(#${id}s)" fill-rule="evenodd" stroke="var(--bs)" stroke-width="1.15" stroke-linejoin="round"/>`;
-        if (o.c === 'w') return `<path d="${o.d}" fill="var(--iw)" opacity=".8"/>`;
-        return `<path d="${o.d}" fill="var(--bs)" fill-rule="evenodd" stroke="var(--bs)" stroke-width=".6" stroke-linejoin="round" opacity="${o.o ?? 1}"/>`;
-      }
-      case 'r': { const c = dir(o.c) || (o.c === 'w' ? 'var(--iw)' : o.c === 'k2' ? 'var(--ih2)' : 'var(--ih)'); return `<rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" rx="${o.rx}" fill="${c}" opacity="${o.o ?? 1}"/>`; }
-      case 'o': { const c = dir(o.c) || (o.c === 'w' ? 'var(--iw)' : 'var(--ih)'); return `<circle cx="${o.cx}" cy="${o.cy}" r="${o.r}" fill="${c}" opacity="${o.o ?? 1}"/>`; }
-      case 'g': return `<g transform="${o.tr}">${rB(o.ops, id)}</g>`;
-      case 'cut': { const m = 'm' + (++MID); return `<mask id="${m}" maskUnits="userSpaceOnUse" x="-2" y="-2" width="22" height="22"><rect x="-2" y="-2" width="22" height="22" fill="#fff"/><path d="${o.d}" stroke="#000" stroke-width="${o.w * .75}" stroke-linecap="round"/></mask><g mask="url(#${m})">${rB(o.ops, id)}</g>`; }
-    }
-  }).join('');
-  return body;
+/* 一个图标：state = '' | 'hov' | 'sel'；bare = 不垫块（工具条右侧撤销 / 布局这类次要按钮、搜索框里的放大镜）；删除画线悬停才变跌色 */
+function icon(k, t, o = {}) {
+  const v = qv(t), sz = o.sz || 28;
+  return `<span class="ic Q${sz <= 24 ? ' s22' : ''}${k === 'trash' ? ' del' : ''}${o.state ? ' ' + o.state : ''}${o.bare ? ' bare' : ''}${o.cls ? ' ' + o.cls : ''}" style="--sz:${sz}px;${o.g ? `--g:${o.g}px;` : ''}${v.css}"><svg viewBox="0 0 18 18" aria-hidden="true">${rQ(G[k] || [])}</svg></span>`;
 }
-const B_DEFS = id => `<defs><linearGradient id="${id}f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--ih)" stop-opacity=".42"/><stop offset="1" stop-color="var(--ih)" stop-opacity=".26"/></linearGradient>
-  <linearGradient id="${id}s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--ih)" stop-opacity=".62"/><stop offset="1" stop-color="var(--ih)" stop-opacity=".36"/></linearGradient>
-  <radialGradient id="${id}a" cx=".36" cy=".3" r=".85"><stop offset="0" stop-color="var(--ihl)"/><stop offset=".55" stop-color="var(--ih)"/><stop offset="1" stop-color="var(--ih)"/></radialGradient></defs>`;
-
-/* 一个图标：st = C / A / B；state = '' | 'hov' | 'sel'；bare = 不要底块（只用在工具条右侧这类次要按钮） */
-function icon(k, st, t, o = {}) {
-  if (o.bare && st === 'A') st = 'C';
-  const v = icv(TCAT[k] || 'neu', t), ops = G[k] || [];
-  let svg;
-  if (st === 'B') { const id = 'b' + (++MID); svg = B_DEFS(id) + rB(ops, id); }
-  else svg = rCA(ops, st === 'A');
-  return `<span class="ic ${st}${o.state ? ' ' + o.state : ''}${o.bare ? ' bare' : ''}${o.cls ? ' ' + o.cls : ''}" style="--sz:${o.sz || 28}px;${o.g ? `--g:${o.g}px;` : ''}${v.css}"><svg viewBox="0 0 18 18" aria-hidden="true">${svg}</svg></span>`;
-}
-const DIRS = [['C', 'C · 淡彩色块', '主推'], ['A', 'A · 彩砖', '备选'], ['B', 'B · 彩色线稿', '备选']];
 
 
 /* ============================================================ 画线分组（与 Web/src/chart/drawTools.ts 的 TOOL_GROUPS 一致） */
@@ -1248,26 +1225,26 @@ function cellHTML(t, id, act) {
     <div class="r"><span class="clock">21:14:08 (UTC+8)</span><span>%</span><span>对</span><span class="on">自</span></div></div></div>`;
 }
 function headerHTML(t) {
-  const N = t.mode === 'new', st = ST.icon;
-  const srch = N ? icon('u_search', st, t, { sz: 24, g: 16, bare: 1 }) : ic(t, 'search');
-  const bell = N ? icon('u_bell', st, t, { sz: 28 }) : ic(t, 'bell');
-  const mode = N ? icon(t.theme === 'dark' ? 'u_moon' : 'u_sun', st, t, { sz: 28 }) : ic(t, t.theme === 'dark' ? 'moon' : 'sun');
+  const N = t.mode === 'new';
+  const srch = N ? icon('u_search', t, { sz: 24, g: 16, bare: 1 }) : ic(t, 'search');
+  const bell = N ? icon('u_bell', t, { sz: 28 }) : ic(t, 'bell');
+  const mode = N ? icon(t.theme === 'dark' ? 'u_moon' : 'u_sun', t, { sz: 28 }) : ic(t, t.theme === 'dark' ? 'moon' : 'sun');
   return `<div class="m-hd"><div class="brand">${svgC('logo')}<span>Hkline</span></div>
     <div class="m-nav"><a class="on">图表</a><a>板块</a><a>复盘</a></div>
     <div style="flex:1"></div>
     <div class="m-srch">${srch}<span>搜索品种</span><kbd>/</kbd></div>
     <div style="flex:1"></div>
-    <div class="hd-r"><div class="ib">${bell}<span class="dot">2</span></div><div class="ib">${mode}</div><div class="avatar">G</div></div></div>`;
+    <div class="hd-r"><div class="ib">${bell}${N ? '<span class="qdot"></span>' : '<span class="dot">2</span>'}</div><div class="ib">${mode}</div><div class="avatar">G</div></div></div>`;
 }
-/* 工具条：带字按钮配 22 格小色块；右侧撤销 / 布局这类次要按钮在 C、B 里不垫块，A 里垫中性砖 */
+/* 工具条：带字按钮配 22 格磨砂小块；右侧撤销 / 布局这类次要按钮不垫块 */
 const TB_MAIN = [['u_ind', '指标', 't2'], ['u_bell', '提醒', 't2'], 0, ['u_cmp', '对比', 't3'], ['u_note', '记一笔', 't3'], ['u_heat', '热力', 't3']];
 const TB_UTIL = ['u_undo', 'u_redo', 0, 'u_layout', 'u_camera', 'u_full', 'u_set'];
-function tbMain(t, st, cls = 'tbt') { return TB_MAIN.map(x => x ? `<button class="${cls} ${x[2]}">${icon(x[0], st, t, { sz: 22, g: st === 'B' ? 19 : 15 })}${x[1]}</button>` : '<span class="tsep"></span>').join(''); }
-function tbUtil(t, st) { return TB_UTIL.map(k => k ? `<div class="tbi">${icon(k, st, t, st === 'A' ? { sz: 24, g: 16 } : { sz: 28, bare: 1, g: st === 'B' ? 22 : 18 })}</div>` : '<span class="tsep"></span>').join(''); }
+function tbMain(t, cls = 'tbt') { return TB_MAIN.map(x => x ? `<button class="${cls} ${x[2]}">${icon(x[0], t, { sz: 22, g: 15 })}${x[1]}</button>` : '<span class="tsep"></span>').join(''); }
+function tbUtil(t, keys = TB_UTIL) { return keys.map(k => k ? `<div class="tbi">${icon(k, t, { sz: 28, bare: 1, g: 18 })}</div>` : '<span class="tsep"></span>').join(''); }
 function toolbarHTML(t) {
   const N = t.mode === 'new', ivs = IV.map(s => `<button class="${s === '1时' ? 'on' : ''}">${s}</button>`).join('') + `<button>更多${N ? svgU('chev') : ic(t, 'chev')}</button>`;
   if (N) return `<div class="m-tb"><div class="sym"><span class="coin">₿</span><b>BTCUSDT</b><span class="pk">永续</span>${svgU('chev')}</div>
-    <div class="ivs">${ivs}</div>${tbMain(t, ST.icon)}<div style="flex:1"></div>${tbUtil(t, ST.icon)}</div>`;
+    <div class="ivs">${ivs}</div>${tbMain(t)}<div style="flex:1"></div>${tbUtil(t)}</div>`;
   return `<div class="m-tb"><div class="sym">BTCUSDT <span class="pk">永续</span>${svgC('chevronDown')}</div><span class="tsep"></span>
     <div class="ivs">${ivs}</div><span class="tsep"></span>
     <button class="tbt">${svgC('indicators')}指标</button><button class="tbt">${svgC('compare')}对比</button><button class="tbt">${svgC('bell')}提醒</button><button class="tbt">${svgC('note')}记一笔</button><button class="tbt">${svgC('layers')}热力</button>
@@ -1281,7 +1258,7 @@ const DB_BOT = ['magnet', 'lock', 'eye', 0, 'trash'];
 function drawbarHTML(t) {
   const N = t.mode === 'new', ch = N ? FLYCH : FLYCH_C;
   if (N) {
-    const cell = ([k, fly, cls = '', state = '']) => `<div class="db-c ${cls}"><div class="db-b">${icon(k, ST.icon, t, { sz: 28, state })}</div>${fly ? `<div class="db-f">${ch}</div>` : ''}${cls.includes('stk') ? '<span class="sticky"></span>' : ''}</div>`;
+    const cell = ([k, fly, cls = '', state = '']) => `<div class="db-c ${cls}"><div class="db-b">${icon(k, t, { sz: 32, g: 20, state })}</div>${fly ? `<div class="db-f">${ch}</div>` : ''}${cls.includes('stk') ? '<span class="sticky"></span>' : ''}</div>`;
     return `<div class="m-db">${DB_TOP.map(cell).join('')}<div class="db-sep"></div>${DB_BOT.map(k => k ? cell([k, 0]) : '<div class="db-sep"></div>').join('')}</div>`;
   }
   const cell = (k, fly, cls = '') => `<div class="db-c ${cls}"><div class="db-b">${di(t, k)}</div>${fly ? `<div class="db-f">${ch}</div>` : ''}${cls.includes('stk') ? '<span class="sticky"></span>' : ''}</div>`;
@@ -1290,19 +1267,18 @@ function drawbarHTML(t) {
   const bot = cell('magnet', 0) + cell('lock', 0) + cell('eye', 0) + '<div class="db-sep"></div>' + cell('trash', 0);
   return `<div class="m-db">${top}<div class="db-sep"></div>${bot}</div>`;
 }
-/* 右侧功能栏：自选列表 · 提醒 · 主力订单流 · 大单（选中）· 对比 · 记一笔 …… 说明 */
-const RAIL = [['u_list'], ['u_bell', '', '2'], ['u_flow', 'hov'], ['u_trades', 'sel'], ['u_cmp'], ['u_note'], 0, ['u_info']];
+/* 右侧功能栏：自选列表 · 提醒（未读 = 强调色小点）· 主力订单流（悬停）· 大单（选中）· 对比 · 记一笔 …… 说明 */
+const RAIL = [['u_list'], ['u_bell', '', 1], ['u_flow', 'hov'], ['u_trades', 'sel'], ['u_cmp'], ['u_note'], 0, ['u_info']];
 function railHTML(t) {
-  if (t.mode === 'new') return `<div class="m-rail">${RAIL.map(x => x ? `<div class="rl-b">${icon(x[0], ST.icon, t, { sz: 32, g: ST.icon === 'B' ? 26 : 20, state: x[1] || '' })}${x[2] ? `<span class="dot">${x[2]}</span>` : ''}</div>` : '<div style="flex:1"></div>').join('')}</div>`;
+  if (t.mode === 'new') return `<div class="m-rail">${RAIL.map(x => x ? `<div class="rl-b">${icon(x[0], t, { sz: 32, g: 20, state: x[1] || '' })}${x[2] ? '<span class="qdot" style="right:5px;top:5px"></span>' : ''}</div>` : '<div style="flex:1"></div>').join('')}</div>`;
   const b = (k, cls = '', dot = '') => `<div class="rl-b ${cls}">${ic(t, k)}${dot ? `<span class="dot">${dot}</span>` : ''}</div>`;
   return `<div class="m-rail">${b('list')}${b('bell', '', '2')}${b('trades', 'on')}${b('note')}${b('heat')}<div style="flex:1"></div>${b('info')}</div>`;
 }
 /* 展开的工具组（斐波那契） */
-function flyHTML(t, st, cls = 'm-fly', sz = 26) {
+function flyHTML(t, cls = 'm-fly', sz = 26) {
   const [g, tools] = GROUPS[3];
-  return `<div class="${cls}"><div class="gt">${g}</div>${tools.map(([k, nm, kb], i) => `<div class="r ${i === 0 ? 'on' : i === 2 ? 'h' : ''}">${icon(k, st, t, { sz, state: i === 0 ? 'sel' : i === 2 ? 'hov' : '' })}${nm}${kb && cls === 'm-fly' ? `<kbd>${kb}</kbd>` : ''}</div>`).join('')}</div>`;
+  return `<div class="${cls}"><div class="gt">${g}</div>${tools.map(([k, nm, kb], i) => `<div class="r ${i === 0 ? 'on' : i === 2 ? 'h' : ''}">${icon(k, t, { sz, state: i === 0 ? 'sel' : i === 2 ? 'hov' : '' })}${nm}${kb && cls === 'm-fly' ? `<kbd>${kb}</kbd>` : ''}</div>`).join('')}</div>`;
 }
-
 
 /* ---------- 大单列表数据 ---------- */
 const WIN = [['本根', 41.2e6, 18.6e6, -22.6e6], ['1小时', 182e6, 96.4e6, -85.6e6], ['今日', 2.32e9, 1.61e9, -705e6]];
@@ -1382,13 +1358,13 @@ function buildMock() {
   stage.innerHTML = `<div class="scaler" style="transform:scale(${k});width:${W}px"><div class="mock ${t.mode}" id="mock" style="width:${W}px;height:${H}px">
     ${headerHTML(t)}${toolbarHTML(t)}${drawbarHTML(t)}
     <div class="m-main"><div class="m-cells">${cellHTML(t, 'c1', 1)}${cellHTML(t, 'c2', 0)}</div>${drawerHTML(t, false)}</div>
-    ${railHTML(t)}${t.mode === 'new' ? flyHTML(t, ST.icon) : ''}</div></div>`;
+    ${railHTML(t)}${t.mode === 'new' ? flyHTML(t) : ''}</div></div>`;
   const m = document.getElementById('mock'); setVars(m, t);
   const vis = W >= 2000 ? 120 : 120;
   paintCell('c1', t, 'BTC', { vis, bands: 1, bubbles: 1, legendH: 84, rp: 70 });
   paintCell('c2', t, 'ETH', { vis, kl: 1, draw: 1, legendH: 84, dur: 4, rp: 40 });
   document.getElementById('s1lede').innerHTML = ST.mode === 'new'
-    ? '<b>提案</b>：框架（顶栏 · 工具条 · 左右栏 · 缝）是一整块低饱和底，图表格子和抽屉是亮一级的卡片，K 线画布与卡片同底。关键数字（最新价、净额、挂单金额）600 字重大一阶，其余数字主文字色 500，标签退成第三级小字。图标现在是 <b>' + DIRS.find(d => d[0] === ST.icon)[1] + '</b>（顶上「图标」可换）：画线栏选中趋势线、悬停斐波那契并展开这一组，右栏选中「大单」、悬停「主力订单流」。'
+    ? '<b>提案</b>：框架（顶栏 · 工具条 · 左右栏 · 缝）是一整块低饱和底，图表格子和抽屉是亮一级的卡片，K 线画布与卡片同底。关键数字（最新价、净额、挂单金额）600 字重大一阶，其余数字主文字色 500，标签退成第三级小字。图标是<b>「质感」</b>一套，全部只用皮肤这一族颜色：画线栏选中趋势线、悬停斐波那契并展开这一组，右栏选中「大单」、悬停「主力订单流」，提醒未读是一颗强调色小点。'
     : '<b>现在</b>：10-08 视觉调整之前的线上样子——底、卡片、K 线画布三种颜色，左右栏图标次要字色加 30% 衬底，工具条按钮同一分量，抽屉里数字全用方向色压在彩条上。';
 }
 
@@ -1397,46 +1373,93 @@ const UI_ICONS = [['u_search', '搜索', 'search'], ['u_bell', '提醒', 'bell']
   ['u_layout', '布局', 'layout'], ['u_camera', '截图', 'camera'], ['u_full', '全屏', 'fullscreen'], ['u_undo', '撤销', 'undo'], ['u_redo', '重做', 'redo'], ['u_set', '设置', 'gear'],
   ['u_eye', '显示', 'eye'], ['u_eyeOff', '隐藏', 'eyeOff'], ['u_star', '自选', 'star'], ['u_list', '自选列表', 'list'],
   ['u_flow', '主力订单流', ''], ['u_trades', '大单', 'trades'], ['u_info', '说明', 'info'], ['u_sun', '浅色', 'sun'], ['u_moon', '深色', 'moon']];
-const DIR_TXT = {
-  C: '照「主力订单流」侧栏四个开关：淡彩渐变底块 + 18 格实心小图，同一颜色叠 .28 / .55 / .85 / 1 四层；线是 2.2 圆头条，锚点实心带白边，面是淡填充，斐波那契是一档比一档淡的条。',
-  A: 'macOS / Raycast 式：每个功能一块自己色相的渐变砖，白色字形带一点内阴影；选中外圈 2px 强调色并上浮 1px，悬停整砖提亮。',
-  B: '不要底块：主线主文字色 1.75，锚点是带白内沿的分类色玻璃珠，面是 40→28% 分类色渐变，斐波那契档位线用分类色；悬停 / 选中才垫一块 12 / 16% 的淡色。',
-};
-function miniHTML(t, st) {
-  const tb = `<div class="mt">${tbMain(t, st)}<span class="tsep"></span>${['u_undo', 'u_layout', 'u_camera', 'u_set'].map(k => `<div class="tbi">${icon(k, st, t, st === 'A' ? { sz: 24, g: 16 } : { sz: 28, bare: 1, g: st === 'B' ? 22 : 18 })}</div>`).join('')}</div>`;
-  const db = `<div class="cl">${DB_TOP.slice(0, 7).map(([k, , , state]) => icon(k, st, t, { sz: 28, state })).join('')}<span class="sp"></span>${['magnet', 'lock', 'trash'].map(k => icon(k, st, t, { sz: 28 })).join('')}</div>`;
-  const rl = `<div class="cl rl">${RAIL.filter(Boolean).map(x => `<span class="w">${icon(x[0], st, t, { sz: 32, g: st === 'B' ? 26 : 20, state: x[1] || '' })}${x[2] ? `<span class="dot">${x[2]}</span>` : ''}</span>`).join('')}</div>`;
-  return `<div class="mini" data-th="${t.theme}"><div class="mh"><span>${t.theme === 'light' ? '浅色' : '深色'}</span><span>工具条 · 画线栏 · 展开组 · 右侧栏</span></div>${tb}<div class="mb">${db}${flyHTML(t, st, 'fl', 26)}${rl}</div></div>`;
+const SKN = { sage: '青苔', classic: '经典', terra: '陶土' }, THN = th => th === 'light' ? '浅色' : '深色';
+/* 「现在」的小样：线上那套图标（次要字色线稿，选中垫强调软底） */
+function miniCur(t) {
+  const cc = (k, cls = '', dot = '') => `<span class="cc ${cls}">${CUR[k] ? svgC(k) : ''}${dot ? `<span class="dot">${dot}</span>` : ''}</span>`;
+  const tb = `<div class="mt">${[['indicators', '指标'], ['compare', '对比'], ['bell', '提醒'], ['note', '记一笔'], ['layers', '热力']].map(([k, n]) => `<button class="tbt">${cc(k)}${n}</button>`).join('')}<span class="tsep"></span>${['undo', 'layout', 'camera', 'gear'].map(k => `<div class="tbi">${cc(k)}</div>`).join('')}</div>`;
+  const db = `<div class="cl">${DB_TOP.slice(0, 7).map(([k, , cls = '']) => cc(k, cls.includes('on') ? 'on' : cls === 'hov' ? 'h' : '')).join('')}<span class="sp"></span>${['magnet', 'lock', 'trash'].map(k => cc(k)).join('')}</div>`;
+  const [g, tools] = GROUPS[3];
+  const fl = `<div class="fl"><div class="gt">${g}</div>${tools.map(([k, nm], i) => `<div class="r ${i === 2 ? 'h' : ''}" style="${i === 0 ? 'background:var(--soft);color:var(--atext);font-weight:600' : ''}">${cc(k, i === 0 ? 'on' : '')}${nm}</div>`).join('')}</div>`;
+  const rl = `<div class="cl rl">${[['list'], ['bell', '', '2'], ['trades', 'on'], ['note'], ['layers'], ['info']].map(([k, c, d]) => cc(k, c, d)).join('')}</div>`;
+  return `<div class="mini" data-m="cur" data-th="${t.theme}"><div class="mh"><span>${THN(t.theme)} · 线上</span><span>工具条 · 画线栏 · 展开组 · 右侧栏</span></div>${tb}<div class="mb">${db}${fl}${rl}</div></div>`;
 }
-function statesHTML(t, st) {
-  const fig = (k, state, cap) => `<figure>${gx(icon(k, st, t, { sz: 56, state }), st)}<figcaption>${cap}</figcaption></figure>`;
-  return `<div class="states" data-th="${t.theme}">${fig('fib', '', '静止')}${fig('fib', 'hov', '悬停')}${fig('fib', 'sel', '选中')}<span class="vs"></span>${fig('u_trades', '', '静止')}${fig('u_trades', 'sel', '选中')}</div>`;
+/* 「质感」的小样：同一组按钮 */
+function miniQ(t) {
+  const tb = `<div class="mt">${tbMain(t)}<span class="tsep"></span>${tbUtil(t, ['u_undo', 'u_layout', 'u_camera', 'u_set'])}</div>`;
+  const db = `<div class="cl">${DB_TOP.slice(0, 7).map(([k, , , state]) => icon(k, t, { sz: 32, g: 20, state })).join('')}<span class="sp"></span>${['magnet', 'lock', 'trash'].map(k => icon(k, t, { sz: 32, g: 20 })).join('')}</div>`;
+  const rl = `<div class="cl rl">${RAIL.filter(Boolean).map(x => `<span class="w">${icon(x[0], t, { sz: 32, g: 20, state: x[1] || '' })}${x[2] ? '<span class="qdot"></span>' : ''}</span>`).join('')}</div>`;
+  return `<div class="mini q" data-m="new" data-th="${t.theme}"><div class="mh"><span>${THN(t.theme)} · 质感</span><span>工具条 · 画线栏 · 展开组 · 右侧栏</span></div>${tb}<div class="mb">${db}${flyHTML(t, 'fl', 26)}${rl}</div></div>`;
 }
-/* 2× 放大：在字形区上叠一层 18 格网格（每格 = 1 单位） */
-function gx(html, st, sz = 56) {
-  const g = st === 'B' ? sz * .857 : sz * .643, inset = (sz - g) / 2, u = g / 18;
+/* 三种状态（2 倍，带 18 格网格）+ 删除悬停变跌色 + 1 倍对照 */
+function statesHTML(t) {
+  const fig = (k, state, cap) => `<figure>${gx(icon(k, t, { sz: 56, state }))}<figcaption>${cap}</figcaption></figure>`;
+  const one = `<figure><span style="display:flex;gap:6px;padding:12px 0">${icon('trend', t, { sz: 32, g: 20 })}${icon('trend', t, { sz: 32, g: 20, state: 'hov' })}${icon('trend', t, { sz: 32, g: 20, state: 'sel' })}<span style="position:relative;display:grid">${icon('u_bell', t, { sz: 32, g: 20 })}<span class="qdot"></span></span></span><figcaption>1 倍 · 静 / 悬 / 选 · 未读</figcaption></figure>`;
+  return `<div class="states" data-th="${t.theme}">${fig('fib', '', '静止')}${fig('fib', 'hov', '悬停')}${fig('fib', 'sel', '选中')}<span class="vs"></span>${fig('trash', '', '删除 · 静止')}${fig('trash', 'hov', '删除 · 悬停')}<span class="vs"></span>${fig('u_trades', '', '静止')}${fig('u_trades', 'sel', '选中')}<span class="vs"></span>${one}</div>`;
+}
+/* 2× 放大：在字形区上叠一层 18 格网格（每格 = 2 单位） */
+function gx(html, sz = 56) {
+  const g = sz * .643, inset = (sz - g) / 2, u = g / 18;
   return `<span class="gx" style="--gi:${inset.toFixed(2)}px;--gu:${(u * 2).toFixed(3)}px">${html}</span>`;
 }
-function iconPanels() {
-  const sk = ST.skin, L = T('new', 'light', sk), D = T('new', 'dark', sk);
-  // 2a · 三个方向放到同一处
-  const a = document.getElementById('s2a'); a.innerHTML = '';
-  for (const [st, nm, tag] of DIRS) {
-    const col = document.createElement('div'); col.className = 'dcol' + (st === 'C' ? ' main' : '');
-    col.innerHTML = `<div class="dh">${nm}<em class="${st === 'C' ? '' : 'alt'}">${tag}</em></div><div class="dd">${DIR_TXT[st]}</div>` + miniHTML(L, st) + miniHTML(D, st) + statesHTML(L, st) + statesHTML(D, st);
-    col.querySelectorAll('[data-th]').forEach(el => setVars(el, el.dataset.th === 'dark' ? D : L));
-    a.appendChild(col);
+/* 侧栏「主力订单流」四个开关的小图：现在（Web/src/orderflow 里的 TILE）→ 质感（同一块磨砂底，强调 / 涨 / 跌降饱和） */
+function ofTiles(t, q) {
+  const d = t.theme === 'dark', svg = b => `<svg viewBox="0 0 18 18" aria-hidden="true">${b}</svg>`;
+  const rect = (x, y, w, h, rx, c, o = 1) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${c}" opacity="${o}"/>`;
+  let A, U, D, Hl, bg, tile = '', wall;
+  if (q) {
+    const v = qv(t); A = desat(t.accent); U = desat(d ? t.upT : t.up); D = desat(d ? t.downT : t.down); Hl = t.atext; wall = v.tm;
+    bg = () => `background:linear-gradient(180deg,${v.t0},${v.t1});box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--t1) 8%,transparent),inset 0 1px 0 ${v.hi},0 1px 1.5px ${v.sh}`;
+  } else {
+    A = t.accent; U = t.up; D = t.down; Hl = '#F59E0B'; wall = '#fff';
+    const wa = rgba(A, d ? .16 : .13);
+    bg = k => 'background:' + ({ flow: `linear-gradient(135deg,${wa},${rgba(A, .26)})`, ladder: `linear-gradient(135deg,${rgba(U, .13)},${rgba(D, .13)})`, drawer: `linear-gradient(135deg,${t.soft},${rgba(A, .22)})`, heat: `linear-gradient(135deg,${wa},${rgba(Hl, .14)})` }[k]);
   }
+  let heat = ''; for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) heat += rect(1 + c * 4.2, 1 + r * 4.2, 3.4, 3.4, .8, (c + r) % 3 ? A : Hl, (.25 + ((c * 3 + r * 5) % 7) / 9).toFixed(2));
+  const B = {
+    flow: rect(1, 4, 16, 3, 1.5, A, .55) + rect(1, 11, 16, 3, 1.5, A, .85) + rect(5, 2, 2, 14, 1, U) + rect(11, 5, 2, 10, 1, D),
+    ladder: rect(3, 2, 12, 2.4, 1.2, D, .55) + rect(6, 5.6, 9, 2.4, 1.2, D) + rect(7, 10, 8, 2.4, 1.2, U) + rect(2, 13.6, 13, 2.4, 1.2, U, .55),
+    drawer: rect(2, 10, 14, 6, 2, A) + rect(2, 2, 14, 6, 2, A, .28) + rect(5, 12.2, 4, 1.6, .8, q ? wall : '#fff') + rect(10, 12.2, 3, 1.6, .8, q ? wall : '#fff', .7),
+    heat,
+  };
+  if (q) { // 质感：横带降一档、竖条两侧留缝（和右栏「主力订单流」同一画法）
+    B.flow = `<mask id="ofm${++MID}" maskUnits="userSpaceOnUse" x="-2" y="-2" width="22" height="22"><rect x="-2" y="-2" width="22" height="22" fill="#fff"/><path d="M6 .5V17.5M12 3.5V16.5" stroke="#000" stroke-width="4.2" stroke-linecap="round"/></mask><g mask="url(#ofm${MID})">${rect(1, 4, 16, 3, 1.5, A, .4) + rect(1, 11, 16, 3, 1.5, A, .7)}</g>` + rect(5, 2, 2, 14, 1, U) + rect(11, 5, 2, 10, 1, D);
+  }
+  return Object.fromEntries(Object.entries(B).map(([k, b]) => [k, `<span class="tgq" style="${bg(k)}">${svg(b)}</span>`]));
+}
+function ofPanel(t, q) {
+  const T4 = ofTiles(t, q), rows = [['flow', '图上订单流', 1], ['ladder', '深度梯子', 1], ['drawer', '大单列表', 1], ['heat', '深度热力', 0]];
+  return `<div class="ofp" data-m="${t.mode}" data-th="${t.theme}"><div class="hd">主力订单流<small>${q ? '质感' : '现在'}</small></div>${rows.map(([k, l, on]) => `<div class="row">${T4[k]}<span class="l">${l}</span><span class="swt${on ? ' on' : ''}"></span></div>`).join('')}</div>`;
+}
+function iconPanels() {
+  const sk = ST.skin, L = T('new', 'light', sk), D = T('new', 'dark', sk), CL = T('cur', 'light', sk), CD = T('cur', 'dark', sk);
+  const vars = root => root.querySelectorAll('[data-th]').forEach(el => setVars(el, T(el.dataset.m || 'new', el.dataset.th, el.dataset.sk || sk)));
+  // 2a · 现在 → 质感，浅 / 深
+  const a = document.getElementById('s2a');
+  a.innerHTML = [[CL, L], [CD, D]].map(([c, n]) => `<div class="col"><div class="lab2"><b>${THN(n.theme)}</b>上：现在 · 下：质感</div>${miniCur(c)}${miniQ(n)}</div>`).join('');
+  vars(a);
+  // 2s · 三套皮肤
+  const s = document.getElementById('s2s'); let sh = '';
+  for (const th of ['light', 'dark']) for (const k of ['sage', 'classic', 'terra']) {
+    const t = T('new', th, k);
+    const draw = [['cursor'], ['trend', 'sel'], ['channel'], ['fib', 'hov'], ['xabcd'], ['position'], ['rect'], ['magnet'], ['trash']].map(([x, st]) => icon(x, t, { sz: 32, g: 20, state: st || '' })).join('');
+    const rail = [['u_list'], ['u_bell', '', 1], ['u_flow', 'hov'], ['u_trades', 'sel'], ['u_cmp']].map(([x, st, dot]) => `<span class="w">${icon(x, t, { sz: 32, g: 20, state: st || '' })}${dot ? '<span class="qdot"></span>' : ''}</span>`).join('');
+    sh += `<div class="skc" data-m="new" data-sk="${k}" data-th="${th}"><div class="mh"><b>${SKN[k]} · ${THN(th)}</b><span>强调墨 ${t.atext} · 选中块 ${qv(t).sb}</span></div><div class="r">${draw}</div><div class="r"><button class="tbt">${icon('u_ind', t, { sz: 22, g: 15 })}指标</button><button class="tbt">${icon('u_bell', t, { sz: 22, g: 15 })}提醒</button><span class="sep"></span>${rail}</div></div>`;
+  }
+  s.innerHTML = sh; vars(s);
+  // 2st · 三种状态
+  const st = document.getElementById('s2st');
+  st.innerHTML = [L, D].map(t => `<div class="col"><div class="lab2"><b>${THN(t.theme)}</b>静止 · 悬停 · 选中，删除只在悬停时变跌色</div>${statesHTML(t)}</div>`).join('');
+  vars(st);
   // 2b · 全目录
   const b = document.getElementById('s2b'); b.innerHTML = '';
   const groups = GROUPS.concat([['工具', [['cursor', '十字光标'], ['magnet', '磁吸'], ['lock', '锁定画线'], ['eye', '隐藏画线'], ['trash', '删除画线']]], ['界面图标', UI_ICONS]]);
   for (const t of [L, D]) {
     const p = document.createElement('div'); p.className = 'catp'; setVars(p, t);
-    p.innerHTML = `<div class="ph">${t.theme === 'light' ? '浅色' : '深色'}<small>每列从上到下：现在 · C · A · B，全是静止态；框架底 ${t.frame}</small></div><div class="cat2">` + groups.map(([g, tools]) => {
-      const v = icv(TCAT[tools[0][0]], t);
+    p.innerHTML = `<div class="ph">${THN(t.theme)}<small>每列从上到下：现在 · 质感静止 · 质感选中；框架底 ${t.frame}</small></div><div class="cat2">` + groups.map(([g, tools]) => {
       const cols = tools.map(([k, nm, x]) => { const ck = typeof x === 'string' && UI_ICONS.some(u => u[0] === k) ? x : (k.startsWith('u_') ? '' : k);
-        return `<div class="tc"><span class="nm">${nm}</span><span class="cur">${ck && CUR[ck] ? svgC(ck) : '<span style="color:var(--t3)">—</span>'}</span>${icon(k, 'C', t)}${icon(k, 'A', t)}${icon(k, 'B', t)}</div>`; }).join('');
-      return `<div class="cg"><div class="gh" style="--ih:${g === '界面图标' || g === '工具' ? 'var(--t3)' : v.ink}"><i></i>${g}<span style="color:var(--t3)">${tools.length}</span></div><div class="gb"><div class="rl"><span>现</span><span>C</span><span>A</span><span>B</span></div>${cols}</div></div>`;
+        return `<div class="tc"><span class="nm">${nm}</span><span class="cur">${ck && CUR[ck] ? svgC(ck) : '<span style="color:var(--t3)">—</span>'}</span>${icon(k, t, { sz: 32, g: 20 })}${icon(k, t, { sz: 32, g: 20, state: 'sel' })}</div>`; }).join('');
+      return `<div class="cg"><div class="gh"><i></i>${g}<span style="color:var(--t3)">${tools.length}</span></div><div class="gb"><div class="rl"><span>现</span><span>静</span><span>选</span></div>${cols}</div></div>`;
     }).join('') + '</div>';
     b.appendChild(p);
   }
@@ -1445,25 +1468,28 @@ function iconPanels() {
   const MAGK = [['trend', '趋势线'], ['fib', '斐波那契回撤'], ['pitchfork', '安德鲁斯分叉'], ['xabcd', 'XABCD'], ['position', '多空持仓框'], ['callout', '气泡标注'], ['u_flow', '主力订单流'], ['u_trades', '大单']];
   for (const t of [L, D]) {
     const p = document.createElement('div'); p.className = 'pan'; setVars(p, t);
-    p.innerHTML = `<div class="ph">${t.theme === 'light' ? '浅色' : '深色'}<small>56 格 = 2 倍，网格每格 2 单位</small></div><div class="mag2">` +
-      DIRS.map(([st]) => `<div class="row"><b>${st}</b>${MAGK.map(([k, nm]) => `<figure>${gx(icon(k, st, t, { sz: 56 }), st)}<figcaption>${nm}</figcaption></figure>`).join('')}</div>`).join('') + '</div>';
+    p.innerHTML = `<div class="ph">${THN(t.theme)}<small>56 格 = 2 倍，网格每格 2 单位</small></div><div class="mag2">` +
+      [['', '静'], ['hov', '悬'], ['sel', '选']].map(([state, lb]) => `<div class="row"><b>${lb}</b>${MAGK.map(([k, nm]) => `<figure>${gx(icon(k, t, { sz: 56, state }))}<figcaption>${nm}</figcaption></figure>`).join('')}</div>`).join('') + '</div>';
     c.appendChild(p);
   }
+  // 2t · 主力订单流侧栏开关
+  const o = document.getElementById('s2t');
+  o.innerHTML = [[CL, L], [CD, D]].map(([cu, n]) => `<div class="col"><div class="lab2"><b>${THN(n.theme)}</b>左：现在 · 右：质感</div><div class="ofw">${ofPanel(cu, 0)}${ofPanel(n, 1)}</div></div>`).join('');
+  vars(o);
   // 2d · 对比度
   const d = document.getElementById('s2d');
   const f2 = x => x.toFixed(2), cell = (v, min, info) => `<td class="${info ? 'info' : v < min ? 'bad' : ''}">${f2(v)}</td>`;
   let rows = '', worst = 99;
-  for (const cat of Object.keys(HUES)) {
-    const l = icv(cat, L), dk = icv(cat, D);
-    const rest = mix(L.frame, l.tint, .26), sel = mix(L.frame, l.tint, .42);
-    const vals = [cr(l.ink, L.frame), cr(l.ink, rest), cr(l.ink, sel), cr(l.ta, '#FFFFFF'), cr(l.tb, '#FFFFFF'), cr(dk.ink, D.frame), cr(dk.ink, mix(D.frame, dk.tint, .26)), cr(dk.ta, '#FFFFFF')];
-    worst = Math.min(worst, ...vals.slice(0, 5));
-    const sw = `<span class="sw">${icon(Object.keys(TCAT).find(k => TCAT[k] === cat), 'C', L, { sz: 22, g: 15 })}${icon(Object.keys(TCAT).find(k => TCAT[k] === cat), 'A', L, { sz: 22, g: 15 })}</span>`;
-    rows += `<tr><td>${sw}　${HUES[cat][0]}</td>${cell(vals[0], 3)}${cell(vals[1], 3)}${cell(vals[2], 3)}${cell(vals[3], 3)}${cell(vals[4], 3)}${cell(vals[5], 3)}${cell(vals[6], 3)}${cell(vals[7], 3, 1)}<td class="info">${l.ink}</td></tr>`;
+  for (const k of ['sage', 'classic', 'terra']) for (const th of ['light', 'dark']) {
+    const t = T('new', th, k), v = qv(t);
+    const vals = [cr(v.rest, v.tm), cr(v.rest, t.frame), cr(mix(v.tm, v.rest, .55), v.tm), cr(v.acc, v.tm), cr(v.hov, v.hm), cr('#FFFFFF', v.s0), cr('#FFFFFF', v.s1), cr(v.dn, v.hm)];
+    worst = Math.min(worst, ...vals);
+    const sw = `<span class="sw" data-m="new" data-sk="${k}" data-th="${th}">${icon('fib', t, { sz: 22, g: 15 })}${icon('fib', t, { sz: 22, g: 15, state: 'sel' })}</span>`;
+    rows += `<tr><td>${sw}　${SKN[k]} · ${THN(th)}</td>${vals.map(x => cell(x, 3)).join('')}${cell(cr(v.tm, t.frame), 0, 1)}</tr>`;
   }
-  d.innerHTML = `<div class="catp"><div class="ph">${{ sage: '青苔', classic: '经典', terra: '陶土' }[sk]}<small>WCAG 对比度，页面里实时算；红字 = 低于 3:1。浅色最低 ${f2(worst)}</small></div><div class="crwrap"><table class="crt">
-    <tr><th>分类</th><th>C 浅 · 字形 / 框架</th><th>C 浅 · 字形 / 静止底</th><th>C 浅 · 字形 / 选中底</th><th>A 浅 · 白字 / 砖顶</th><th>A 浅 · 白字 / 砖底</th><th>C 深 · 字形 / 框架</th><th>C 深 · 字形 / 静止底</th><th>A 深 · 白字 / 砖顶</th><th>浅色墨</th></tr>${rows}</table></div></div>`;
-  setVars(d.firstChild, L);
+  d.innerHTML = `<div class="catp"><div class="ph">对比度<small>WCAG，页面里实时算；图形元素门槛 3:1，红字 = 低于 3:1。全表最低 ${f2(worst)}</small></div><div class="crwrap"><table class="crt">
+    <tr><th>皮肤</th><th>主体 / 静止块</th><th>主体 / 框架</th><th>次要 .55 / 静止块</th><th>强调墨 / 静止块</th><th>悬停主体 / 悬停块</th><th>白 / 选中块顶</th><th>白 / 选中块底</th><th>删除悬停 / 悬停块</th><th>静止块 / 框架</th></tr>${rows}</table></div></div>`;
+  setVars(d.firstChild, L); vars(d);
 }
 
 /* ============================================================ 第 3 节 */
@@ -1549,9 +1575,9 @@ function closeup() {
 }
 
 /* ============================================================ 状态 */
-const ST = { mode: 'new', theme: 'light', skin: 'sage', icon: 'C' };
+const ST = { mode: 'new', theme: 'light', skin: 'sage' };
 try { Object.assign(ST, JSON.parse(localStorage.getItem('hk-visual-1008') || '{}')); } catch (e) {}
-if (!['C', 'A', 'B'].includes(ST.icon)) ST.icon = 'C';
+delete ST.icon;
 function save() { try { localStorage.setItem('hk-visual-1008', JSON.stringify(ST)); } catch (e) {} }
 function chrome() {
   const t = T('new', ST.theme, ST.skin); setVars(document.documentElement, t);
@@ -1567,7 +1593,7 @@ document.getElementById('ctl').addEventListener('click', e => {
   const b = e.target.closest('.seg button'); if (!b) return;
   const k = b.parentElement.dataset.k; if (ST[k] === b.dataset.v) return;
   ST[k] = b.dataset.v; save();
-  if (k === 'mode' || k === 'icon') renderAll('mock'); else renderAll();
+  if (k === 'mode') renderAll('mock'); else renderAll();
 });
 let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { buildMock(); closeup(); }, 120); });
 renderAll();
