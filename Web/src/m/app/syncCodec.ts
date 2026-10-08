@@ -20,8 +20,10 @@
  *
  * ## favorites / groups
  * iOS 的自选是一条全局列表：`groups:<id>` = {name, order}，`favorites:<venue/market/SYM>` =
- * {symbol, market, venue, groupId, order}。手机网页版只管币安 U 本位（裸代号 = binance/usd_m/SYM）；
- * 别的（Coinbase 现货……）原位留着、不删不改。解码时同名分类按 iOS mergeSameNamed 并成一个（留 id 最小的）。
+ * {symbol, market, venue, groupId, order}。2026-10-08 起手机网页版管注册表里有行情面的每一家：币安 U 本位（网页里存裸代号，
+ * = binance/usd_m/SYM）、美元指数（DXY = macro/index/DXY）、别家完整键（okx/usd_m/BTCUSDT、bybit/usd_m/…、hyperliquid/usd_m/KPEPE、
+ * coinbase/spot/BTC-USD）。线上 symbol 段是那一家的代号（parseKey），venue / market 照三段身份；收回来按 keyOf 拼回网页里存的键。
+ * 认不出的交易所 / 形状不合规的原位留着、不删不改。解码时同名分类按 iOS mergeSameNamed 并成一个（留 id 最小的）。
  *
  * ## alerts
  * 形状与 PC 网页一样（共用 alerts/shape.ts 的 19 个键），直接用 sync/codec.ts 的 encodeAlerts / decodeAlerts。
@@ -30,7 +32,8 @@ import { type Body, type Json, type SyncObject, same } from '../../sync/types'
 import type { Owned } from '../../sync/store'
 import { OWNED as PC_OWNED } from '../../sync/bridge'
 import { validSymbol, webSymbol, decodeAlerts, syncableAlert, alertId } from '../../sync/codec'
-import { isMacro, syncKeyOf, venueMarketOf } from '../../market/macro'
+import { syncKeyOf, venueMarketOf } from '../../market/macro'
+import { isDefaultVenue, keyOf, wireSymbol } from '../../market/identity'
 import { DRAW_OWNED } from './drawCodec'
 import type { Alert } from '../../alerts/shape'
 import {
@@ -297,20 +300,22 @@ export function changedRoots(a: Record<string, Body>, b: Record<string, Body>): 
 
 export const FAV_VENUE = 'binance'
 export const FAV_MARKET = 'usd_m'
-/** 裸代号 → 同步 id；美元指数（DXY）是 macro/index/DXY */
-export const favId = (symbol: string): string => isMacro(symbol) ? syncKeyOf(symbol) : `${FAV_VENUE}/${FAV_MARKET}/${symbol}`
+/** 网页里存的键 → 同步 id（三段身份）：裸代号 → binance/usd_m/<代号>；DXY → macro/index/DXY；别家完整键原样 */
+export const favId = (symbol: string): string => syncKeyOf(symbol)
 export type FavState = Pick<SymbolPrefs, 'favorites' | 'groups' | 'groupForSymbol'>
 
 const num = (v: Json | undefined): number | null => typeof v === 'number' && isFinite(v) ? v : null
 function liveSorted(objs: SyncObject[]): SyncObject[] {
   return objs.filter(o => !o.deleted).sort((a, b) => (num(a.body.order) ?? 0) - (num(b.body.order) ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 }
-/** 手机网页版管得着的自选：币安 U 本位、代号合规、id 与代号对得上 */
+/** 手机网页版管得着的自选：venue / market / symbol 三段拼得回网页的键（币安裸代号、DXY、注册表里那一家的完整键）、
+ *  代号形状合规、id 与三段对得上；返回网页里存的键 */
 function managed(o: SyncObject): string | null {
-  const s = o.body.symbol
-  if (typeof s !== 'string' || !webSymbol(s) || o.id !== favId(s)) return null
-  const vm = venueMarketOf(s)
-  if (o.body.venue !== vm.venue || o.body.market !== vm.market || (vm.venue === FAV_VENUE && !validSymbol(s))) return null
+  const w = o.body.symbol, v = o.body.venue, m = o.body.market
+  if (typeof w !== 'string' || typeof v !== 'string' || typeof m !== 'string' || !w || !v || !m) return null
+  const s = keyOf(v, m, w)
+  if (!webSymbol(s) || o.id !== favId(s)) return null
+  if (isDefaultVenue(s) && !validSymbol(s)) return null
   return s
 }
 const syncable = (s: string): boolean => webSymbol(s)
@@ -355,7 +360,7 @@ export function encodeFavorites(f: FavState, prevFavs: SyncObject[], prevGroups:
     const base = x.prev && !x.prev.deleted ? x.prev.body : null
     if (x.symbol == null) { out.push(mk('favorites', x.id, { ...(base ?? {}), order })); return }
     const g = f.groupForSymbol[x.symbol]
-    out.push(mk('favorites', x.id, { symbol: x.symbol, ...venueMarketOf(x.symbol), groupId: g && groupIds.has(g) ? g : null, order }))
+    out.push(mk('favorites', x.id, { symbol: wireSymbol(x.symbol), ...venueMarketOf(x.symbol), groupId: g && groupIds.has(g) ? g : null, order }))
   })
   for (const o of prev) if (!keep.has(o.id) && managed(o)) out.push({ ...o, deleted: true })
   return out

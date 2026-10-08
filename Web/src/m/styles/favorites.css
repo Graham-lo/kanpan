@@ -75,6 +75,8 @@ html[data-theme="dark"] .fav-cat.on { box-shadow: 0 3px 12px color-mix(in srgb, 
 .lr-quote { font: 400 11px/1.2 var(--font-ui); color: var(--lg-ink4) }
 /* 上线 30 天内的「新」字（NewListingMark：12 medium、强调色）；搜索行也用 */
 .row-new { font: 500 12px/1.2 var(--font-ui); color: var(--accent); flex: none }
+/* 名字前那截交易所缩写（2026-10-08 三端一致：不用图标用字）：灰、小一号，不抢名字 */
+.row-vtag { font: 400 11px/1.2 var(--font-ui); color: var(--lg-ink4, var(--ink3)); flex: none }
 .lr-meta { font: var(--t-caption2); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .lr-lead.up { color: var(--up) }
 .lr-right { display: flex; align-items: center; gap: var(--s-m); flex: none }

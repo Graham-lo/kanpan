@@ -74,7 +74,10 @@ describe('收件箱', () => {
   it('规范键、能不能开、朋友名单、时间', () => {
     expect(itemKey({ symbol: 'btcusdt', market: 'binance/usd_m' })).toBe('binance/usd_m/BTCUSDT')
     expect(openableSymbol({ symbol: 'BTCUSDT', market: 'binance/usd_m' })).toBe('BTCUSDT')
-    expect(openableSymbol({ symbol: 'coinbase/spot/BTC-USD', market: 'coinbase/spot' })).toBeNull()
+    // 2026-10-08 起注册表里的别家开得了（完整键）；认不出的交易所照旧开不了
+    expect(openableSymbol({ symbol: 'coinbase/spot/BTC-USD', market: 'coinbase/spot' })).toBe('coinbase/spot/BTC-USD')
+    expect(openableSymbol({ symbol: 'BTCUSDT', market: 'okx/usd_m' })).toBe('okx/usd_m/BTCUSDT')
+    expect(openableSymbol({ symbol: 'BTC-USD', market: 'kraken/spot' })).toBeNull()
     expect(withFriend(['zed', 'amy'], 'bob')).toEqual(['amy', 'bob', 'zed'])
     expect(withFriend(['amy'], 'amy')).toEqual(['amy'])
     expect(letterTime('nope')).toBe('')

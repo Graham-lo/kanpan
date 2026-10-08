@@ -22,7 +22,7 @@ import { st, save, subscribe } from '../app/store'
 import { INTERVALS, MAX_COMPARE, type IntervalId, type IndicatorId, type PriceMode } from '../app/prefs'
 import { hooks, nav, go, openSymbol, type PageHandle, type SyncChange } from '../app/shell'
 import { drawingBook, setDrawingIntervalSource } from '../app/drawings'
-import { S, on as onMarket, streamName } from '../../market'
+import { S, on as onMarket, streamName, ensureVenuesFor } from '../../market'
 import { createChart, type ChartHandle } from '../chart'
 import { attachDrawing, type DrawingController } from '../chart/view.drawing'
 import { canonicalInstrument } from '../chart/draw/instrument'
@@ -55,6 +55,8 @@ import { parseIntent } from '../model/replayLogic'
 import { INTENT_KEY, INTENT_EVENT } from '../model/reviewBook'
 import { onBack } from '../ui/backStack'
 import '../styles/chart.css'
+import { normKey } from '../chart/symbolKey'
+import { liveOf } from '../model/quoteCache'
 
 const LANDSCAPE = '(orientation: landscape) and (max-height: 500px)'
 const DAY_UP: readonly IntervalId[] = ['1d', '1w', '1M', '1y']
@@ -373,7 +375,8 @@ export function initChart(root: HTMLElement): PageHandle {
     if (raf) { cancelAnimationFrame(raf); raf = 0 }
     const now = Date.now()
     const s = S.symbols.get(sym())
-    const stale = isStale({ flag: st.stale, live: S.live, lastTick: s?.lastTick ?? null, now }) || s?.closed === true
+    // 别家的品种看那一家的表（S.venues），币安 / 美元指数看全市场表
+    const stale = isStale({ flag: st.stale, live: liveOf(sym()), lastTick: s?.lastTick ?? null, now }) || s?.closed === true
     topBar.render(sym(), nav.origin != null && nav.origin !== 'chart', st.compareSymbols.length >= MAX_COMPARE, pendingCount(sym()))
     header.render(sym(), stale, now)
     ivBar.render({ quick: st.quickIntervals, current: iv() })
@@ -393,7 +396,7 @@ export function initChart(root: HTMLElement): PageHandle {
 
   // ---- 换品种 / 扫图
   function switchSymbol(s: string, recordRecent: boolean): void {
-    const next = s.toUpperCase()
+    const next = normKey(s)
     if (next === st.symbol) return
     st.symbol = next
     if (recordRecent) st.symbols.recents = [next, ...st.symbols.recents.filter(x => x !== next)].slice(0, 10)
@@ -418,6 +421,8 @@ export function initChart(root: HTMLElement): PageHandle {
     const learned = learnedInterval(s, st.interval)
     if (learned) { st.interval = learned; save() }
     syncChart()
+    // 别家的品种：那一家的品种表拉上（精度、计价、图表头名字；已经拉到的不再拉），到了 universe 重画
+    void ensureVenuesFor([s, ...st.compareSymbols])
   })
   // 云端装进来的设置已经 save() 过（subscribe → syncChart 按键比对只换变了的那几样），这里不再清键整套重设；
   // 画线本由 bindDrawings 自己重读，这里只补工具偏好与画线上的铃
@@ -522,6 +527,7 @@ export function initChart(root: HTMLElement): PageHandle {
     show(): void {
       shown = true
       void ensureUniverse().then(() => schedule())
+      void ensureVenuesFor([sym(), ...st.compareSymbols])
       pushStreams()
       // 藏着时 K 线流是退订的；自选 / 板块页还订着行情，连接一直开着、不会有「重连上了」那一下，
       // 所以缺口只能靠这里：收起超过 5 秒回来，引擎重拉末页补上（最后一根不再停在离开那一刻）

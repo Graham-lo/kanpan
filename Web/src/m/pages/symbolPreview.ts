@@ -20,6 +20,8 @@ import { pillHTML, splitSymbol } from '../model/rowHTML'
 import { historyChange, miniCandles, RecentKeys, PREVIEW_BARS, PREVIEW_IV, PREVIEW_MINUTE_BARS, PREVIEW_SPAN_TEXT, type PreviewBar } from '../model/preview'
 import { fundingText, marketCapText, openInterestText, turnoverText } from './chart/logic'
 import { ago } from '../../util/clock'
+import { pairOf, venueTagHTML } from '../model/symKey'
+import { tableLive } from '../model/quoteCache'
 
 /** 菜单里的一项；带 submenu 的点了不关，原地换成子菜单 */
 export interface PreviewItem extends MenuItem { submenu?: () => MenuItem[] }
@@ -66,9 +68,12 @@ const cell = (label: string, value: string | null, k: string): string =>
 
 function cardHTML(o: PreviewOptions): string {
   const s = S.symbols.get(o.symbol)
-  const { base, quote } = s ? { base: s.base, quote: splitSymbol(o.symbol).quote || 'USDT' } : splitSymbol(o.symbol)
-  return `<div class="pv-head">${badgeHTML(base, 28, assetOf(s?.kind, base))}`
-    + `<div class="pv-name"><div class="pv-top"><span class="pv-base">${esc(base)}</span><span class="pv-quote">${esc(quote || 'USDT')}</span></div>`
+  // 别家（2026-10-08）：名字前带交易所缩写，计价币按那一家（USDC / USD）
+  const venue = o.symbol.includes('/')
+  const p = pairOf(o.symbol, s)
+  const { base, quote } = s && !venue ? { base: s.base, quote: splitSymbol(o.symbol).quote || 'USDT' } : venue ? p : splitSymbol(o.symbol)
+  return `<div class="pv-head">${badgeHTML(s?.base ?? base, 28, assetOf(s?.kind, s?.base ?? base))}`
+    + `<div class="pv-name"><div class="pv-top">${venueTagHTML(o.symbol)}<span class="pv-base">${esc(base)}</span><span class="pv-quote">${esc(quote || (venue ? '' : 'USDT'))}</span></div>`
     + `<div class="pv-span">${esc(PREVIEW_SPAN_TEXT)}</div></div>`
     + `<div class="pv-right"><span class="pv-price num"></span><span class="pv-pill"></span></div></div>`
     + `<div class="pv-candles"><canvas aria-hidden="true"></canvas></div>`
@@ -78,7 +83,7 @@ function cardHTML(o: PreviewOptions): string {
 /** 卡上要写的数（纯取值，渲染在 paint 里） */
 function factsOf(o: PreviewOptions): { price: number | null; pct: number | null; dec?: number | null; gone: boolean; rows: [string, string | null, string][][] } {
   const s = S.symbols.get(o.symbol)
-  const gone = o.gone?.() ?? (S.live === true && !s)
+  const gone = o.gone?.() ?? (!s && tableLive(o.symbol))
   const q = o.quote?.() ?? { price: s?.price ?? null, pct: s?.pct ?? null, vol: s?.vol ?? null, hiLo: true }
   const price = q.price != null && Number.isFinite(q.price) ? q.price : null
   const pct = !gone && q.pct != null && Number.isFinite(q.pct) ? q.pct : null

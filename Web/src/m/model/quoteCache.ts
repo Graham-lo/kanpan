@@ -9,7 +9,9 @@
  */
 import { S, on } from '../../market'
 import type { Sym } from '../../market/symbols'
-import { venueOf } from '../../market/identity'
+import { isDefaultVenue, venueOf } from '../../market/identity'
+import { isMacro } from '../../market/macro'
+import { normKey } from './symKey'
 
 export const QUOTE_CACHE_KEY = 'hkline-m-quotes-v1'
 /** 行情跳动时最多多久记一次 */
@@ -19,7 +21,7 @@ export const QUOTE_KEEP_MS = 14 * 86_400_000
 
 /** 记下来的一行（键短，整表几百只也就几十 KB） */
 export type CachedSym = Pick<Sym, 'symbol' | 'base' | 'code' | 'kind' | 'cn' | 'dec' | 'color' | 'price' | 'chg' | 'pct' | 'vol'>
-  & Partial<Pick<Sym, 'ut' | 'tags' | 'onboard' | 'macro'>>
+  & Partial<Pick<Sym, 'ut' | 'tags' | 'onboard' | 'macro' | 'quote' | 'raw' | 'title'>>
 
 interface Stored { at: number; rows: CachedSym[] }
 
@@ -33,12 +35,18 @@ export function compact(s: Sym): CachedSym {
   if (s.tags?.length) r.tags = s.tags
   if (s.onboard) r.onboard = s.onboard
   if (s.macro) r.macro = true
+  // 别家（2026-10-08）：计价币、原生代号、图表头名字要记着，表没到时行上「HL kPEPE / USDC」照样写得出来
+  if (!isDefaultVenue(s.symbol) && !s.macro) {
+    if (s.quote) r.quote = s.quote
+    if (s.raw) r.raw = s.raw
+    if (s.title) r.title = s.title
+  }
   return r
 }
 
 /** 记下来的一行 → 搜索 / 列表能直接用的 Sym（缺的实时字段一律空） */
 export function expand(r: CachedSym): Sym {
-  return { ...r, venue: r.macro ? 'macro' : venueOf(r.symbol), quote: r.macro ? '' : 'USDT', fr: null, nextFunding: null }
+  return { ...r, venue: r.macro ? 'macro' : venueOf(r.symbol), quote: r.macro ? '' : r.quote ?? 'USDT', fr: null, nextFunding: null }
 }
 
 export function readQuotes(store: KV | null = kv(), now = Date.now()): Stored | null {
@@ -71,7 +79,23 @@ const load = (): Map<string, Sym> => {
 /** 上次记下的这一只（实时表里已有就别用它） */
 export function cachedSym(symbol: string): Sym | null {
   install()
-  return load().get(symbol.toUpperCase()) ?? null
+  return load().get(normKey(symbol)) ?? null
+}
+
+/** 这只品种所属那一家的表：true 拿到了 / false 这一次没拿到 / null 还没拉（币安 / 美元指数看 S.live，别家看 S.venues） */
+export function liveOf(symbol: string): boolean | null {
+  if (isDefaultVenue(symbol) || isMacro(symbol)) return S.live
+  return S.venues[venueOf(symbol)]?.live ?? null
+}
+
+/** 这只品种所属那一家的表已经实时拿到了吗（币安 / 美元指数看全市场表，别家看 S.venues 那一家） */
+export function tableLive(symbol: string): boolean {
+  return liveOf(symbol) === true
+}
+
+/** 展示用的一只：实时表有就用；那一家的表还没到就退到上次记下的；到了却没有（下架）回 undefined */
+export function liveOrCached(symbol: string): Sym | undefined {
+  return S.symbols.get(symbol) ?? (tableLive(symbol) ? undefined : cachedSym(symbol) ?? undefined)
 }
 
 /** 上次记下的整表（实时表没到时拿来搜） */
@@ -92,8 +116,8 @@ export function symbolsForDisplay(): { list: Sym[]; cached: boolean } {
 export function symForDisplay(symbol: string): { s: Sym | null; cached: boolean } {
   const live = S.symbols.get(symbol)
   if (live) return { s: live, cached: false }
-  // 实时表已经到了却没这只：下架了，不拿旧价顶
-  if (S.live === true) return { s: null, cached: false }
+  // 那一家的实时表已经到了却没这只：下架了，不拿旧价顶
+  if (tableLive(symbol)) return { s: null, cached: false }
   const c = cachedSym(symbol)
   return { s: c, cached: !!c }
 }
@@ -104,12 +128,17 @@ let installed = false
 let lastSave = 0
 let timer: ReturnType<typeof setTimeout> | null = null
 
-/** 把实时表记一次（实时表没到时什么都不写，不拿空表盖掉上次的） */
+/** 别家的品种只记这几只（自选、最近看过、提醒里的；由壳装上）：别家整表上千行，全记会把每十秒一次的落盘拖重 */
+let extraKeep: () => Iterable<string> = () => []
+export function setQuoteCacheExtra(fn: () => Iterable<string>): void { extraKeep = fn }
+
+/** 把实时表记一次（实时表没到时什么都不写，不拿空表盖掉上次的）。币安与美元指数整表记，别家只记 extraKeep 那几只 */
 export function saveNow(): void {
   if (timer) { clearTimeout(timer); timer = null }
   if (!S.symbols.size || S.live !== true) return
   const rows: CachedSym[] = []
-  for (const s of S.symbols.values()) rows.push(compact(s))
+  const extra = new Set(extraKeep())
+  for (const s of S.symbols.values()) if (isDefaultVenue(s.symbol) || s.macro || extra.has(s.symbol)) rows.push(compact(s))
   if (writeQuotes(rows)) lastSave = Date.now()
 }
 

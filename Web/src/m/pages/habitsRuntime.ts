@@ -20,7 +20,7 @@ import { session, onSession } from '../../account/session'
 import { S, on } from '../../market'
 import { canonicalInstrument } from '../chart/draw/instrument'
 import { habitCategory, priceModeFor } from './chart/logic'
-import { splitSymbol } from '../model/rowHTML'
+import { pairOf } from '../model/symKey'
 import { H, AXIS_VALUES, SECTOR_VALUES, appendLog, learn, learnedEmpty, mergedLearned, pruneLog, readLog, type HabitEvent } from '../model/habits'
 
 const LOG_KEY = (owner: string): string => 'kanpan.habits.log.v1.' + (owner || 'guest')
@@ -70,7 +70,7 @@ function record(events: HabitEvent[]): void {
   }
 }
 
-const categoryOf = (sym: string): string => habitCategory(S.symbols.get(sym)?.kind, splitSymbol(sym).base)
+const categoryOf = (sym: string): string => habitCategory(S.symbols.get(sym)?.kind, pairOf(sym, S.symbols.get(sym)).base)
 const effectiveMode = (sym: string, mode = st.priceMode): string =>
   priceModeFor(mode, st.habitLearning, st.learnedDefaults.priceAxis[categoryOf(sym)]?.v)
 

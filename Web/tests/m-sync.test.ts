@@ -224,24 +224,27 @@ describe('第一次对上（照 iOS SettingsStamp：按根比谁新）', () => {
 })
 
 describe('自选与分类（照 iOS SymbolPrefs）', () => {
-  it('分类、归属、顺序来回；Coinbase 那几条原位留着', async () => {
+  // 2026-10-08 起手机网页管注册表里的每一家：Coinbase 的自选按完整键收进来、能来回（原来原位留着、本机看不见）
+  it('分类、归属、顺序来回；Coinbase 的自选按完整键认、能来回', async () => {
     const server = new FakeServer()
     server.put({ collection: 'favorites', id: 'coinbase/spot/BTC-USD', body: { symbol: 'BTC-USD', market: 'spot', venue: 'coinbase', groupId: null, order: 0 }, deleted: false })
     const a = phone(server), b = phone(server)
     await a.first(); await b.first()
+    expect(a.s.sym.favorites).toEqual(['coinbase/spot/BTC-USD'])
     a.s.sym.groups = [{ id: 'g1', name: '加密' }]
-    a.s.sym.favorites = ['ETHUSDT', 'BTCUSDT']
+    a.s.sym.favorites = ['coinbase/spot/BTC-USD', 'ETHUSDT', 'BTCUSDT']
     a.s.sym.groupForSymbol = { ETHUSDT: 'g1' }
     a.capture(); await a.sync(); await b.sync()
-    expect(b.s.sym.favorites).toEqual(['ETHUSDT', 'BTCUSDT'])
+    expect(b.s.sym.favorites).toEqual(['coinbase/spot/BTC-USD', 'ETHUSDT', 'BTCUSDT'])
     expect(b.s.sym.groups).toEqual([{ id: 'g1', name: '加密' }])
     expect(b.s.sym.groupForSymbol).toEqual({ ETHUSDT: 'g1' })
     const cb = server.objects.get('favorites:coinbase/spot/BTC-USD')!
     expect(cb.deleted).toBe(false)
-    expect(cb.body.order).toBe(0)
+    expect(cb.body).toMatchObject({ symbol: 'BTC-USD', venue: 'coinbase', market: 'spot', order: 0 })
     a.s.sym.favorites = ['BTCUSDT']; a.s.sym.groupForSymbol = {}
     a.capture(); await a.sync(); await b.sync()
     expect(server.objects.get('favorites:binance/usd_m/ETHUSDT')!.deleted).toBe(true)
+    expect(server.objects.get('favorites:coinbase/spot/BTC-USD')!.deleted).toBe(true)
     expect(b.s.sym.favorites).toEqual(['BTCUSDT'])
   })
 

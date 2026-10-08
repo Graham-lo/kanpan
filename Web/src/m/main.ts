@@ -15,7 +15,8 @@ import { installShell, registerPage, pageRoot, hooks, type PageHandle } from './
 import { startUniverseRefresh } from './app/universeRefresh'
 import { glyph, type GlyphName } from './ui/icons'
 import { resume } from '../account/client'
-import { setRoute } from '../market'
+import { setRoute, ensureVenuesFor } from '../market'
+import { setQuoteCacheExtra } from './model/quoteCache'
 import { initMobileSync } from './app/sync'
 import { startLinkGrace } from './app/linkGrace'
 import { startLineAlerts } from './app/lineAlerts'
@@ -62,6 +63,12 @@ let fullWarned = false
 tabGuard.onFull(() => { if (!fullWarned) { fullWarned = true; toast('本机存储已满，这次的改动没能存进本机') } })
 // 品种表：回前台超过 30 分钟、在前台每 6 小时重拉（新上线的搜得到、下架的翻成下架）
 startUniverseRefresh({ onForeground: fn => hooks.onForeground.push(fn) })
+// 别家（OKX / Bybit / Hyperliquid / Coinbase）的品种表懒拉（2026-10-08）：首屏不拉全部，正在看的那只、自选、提醒、对比里
+// 用到哪家才拉哪家（和币安那份并行，各家各自的主机与限流器；已经拉到的不再拉）；搜索页打开时再拉全部
+const venueKeys = (): string[] => [st.symbol, ...st.symbols.favorites, ...st.alerts.map(a => a.symbol), ...st.compareSymbols]
+setTimeout(() => { void ensureVenuesFor(venueKeys()) }, 0)
+// 本机记的上次行情：币安整表记，别家只记用得着的那几只（自选、最近、提醒、正在看的）
+setQuoteCacheExtra(() => [...venueKeys(), ...st.symbols.recents])
 
 // 先挂当前页，其余页空闲时再挂（切过去时已经就绪）
 const first = st.page

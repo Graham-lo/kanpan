@@ -70,7 +70,10 @@ describe('身份（market/identity.ts）', () => {
 
 describe('注册表：行情 + 订单流一张表', () => {
   it('五家都有行情面；缩写 / 全名 / 计价', () => {
-    expect(MARKET_VENUES.map(v => v.key)).toEqual(VENUE_LIST.map(v => v.key))
+    // 行情面的顺序和 iOS `VenueRegistry.all` 一致（币安 · OKX · Bybit · Hyperliquid · Coinbase）；
+    // 订单流的合并顺序 `VENUE_LIST` 是服务端读数 / 热力通道的下标，两者成员相同、顺序各管各的。
+    expect(MARKET_VENUES.map(v => v.key)).toEqual(['binance', 'okx', 'bybit', 'hyperliquid', 'coinbase'])
+    expect([...MARKET_VENUES.map(v => v.key)].sort()).toEqual([...VENUE_LIST.map(v => v.key)].sort())
     expect(['BTCUSDT', 'okx/usd_m/BTCUSDT', 'bybit/usd_m/BTCUSDT', 'hyperliquid/usd_m/BTC', 'coinbase/spot/BTC-USD', 'DXY'].map(venueLabel)).toEqual(['币安', 'OKX', 'Bybit', 'HL', 'CB', ''])
     expect(venueName('hyperliquid')).toBe('Hyperliquid')
     expect(marketOf('okx/usd_m/BTCUSDT')?.quote).toBe('USDT')

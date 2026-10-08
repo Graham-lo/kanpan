@@ -2,9 +2,11 @@
  *
  * 搜索页「查看全部 N 个品种」进来的那一页：页头「品种 · N 个永续合约」，两颗筛选小块（市场 / 板块），
  * 下面分组列表——没打字时 自选 → 最近 → 全部合约（按 24h 成交额降序，120 条封顶）；
- * 打了字只剩一组「搜到 N 个」（先最匹配、同档停牌沉底再按成交额，160 条封顶）。
+ * 打了字按交易所分组（2026-10-08，照 iOS SymbolSections.searchGroups）：一家一组，组头交易所全名 + 命中数，
+ * 组序先按组内最好的匹配档、同档按注册表；组内先最匹配、同档停牌沉底再按成交额，每组各自 160 条封顶；一条都没命中时一组空的「搜到 0 个」。
  */
-import { normalize, rank, type Hit } from './search'
+import { groupRanked, normalize, rank, type Hit } from './search'
+import { parseKey, wireSymbol } from '../../market/identity'
 
 /** 市场：贵金属按代号认（XAU/XAG/XPT/XPD 本身就是 ISO 资产代码），其余只看交易所给的 underlyingType，缺了不猜 */
 const METALS = new Set(['XAU', 'XAG', 'XPT', 'XPD'])
@@ -12,10 +14,12 @@ const BY_UT: Record<string, string> = {
   COIN: 'crypto', EQUITY: 'us', HK_EQUITY: 'hk', KR_EQUITY: 'kr', CN_EQUITY: 'cn',
   COMMODITY: 'commodities', INDEX: 'index', PREMARKET: 'premarket',
 }
-export interface PickerSym { symbol: string; base: string; ut?: string; tags?: string[]; vol: number; price: number | null }
+export interface PickerSym { symbol: string; base: string; ut?: string; tags?: string[]; vol: number; price: number | null; venue?: string }
 
-export function marketOf(s: Pick<PickerSym, 'base' | 'ut'>): string {
+/** 别家（OKX / Bybit / Hyperliquid / Coinbase）的品种表不给 underlyingType：它们只挂加密币，归「加密」 */
+export function marketOf(s: Pick<PickerSym, 'base' | 'ut' | 'venue'>): string {
   if (METALS.has(s.base.toUpperCase())) return 'metals'
+  if (!s.ut && s.venue && s.venue !== 'binance' && s.venue !== 'macro') return 'crypto'
   return s.ut ? BY_UT[s.ut.toUpperCase()] ?? 'other' : 'other'
 }
 export const MARKET_ORDER = ['crypto', 'us', 'hk', 'kr', 'cn', 'equity', 'metals', 'commodities', 'index', 'premarket', 'other'] as const
@@ -51,7 +55,8 @@ export const EMPTY_TEXT = '没有这个品种'
 export const moreNote = (more: number): string | null => more > 0 ? `还有 ${more} 个，搜名字更快。` : null
 
 export interface PickerRow { symbol: string; hl: Hit['hl'] }
-export interface PickerSection { kind: 'search' | 'favorites' | 'recents' | 'all'; title: string; rows: PickerRow[]; more: number }
+/** count：搜索组的命中总数（含封顶没列出来的），组头上写着；别的组不给 */
+export interface PickerSection { kind: 'search' | 'favorites' | 'recents' | 'all'; title: string; rows: PickerRow[]; more: number; count?: number; venue?: string }
 
 /**
  * 分组（SymbolSections.build）。
@@ -62,8 +67,13 @@ export interface PickerSection { kind: 'search' | 'favorites' | 'recents' | 'all
 export function buildSections<T extends PickerSym>(list: readonly T[], o: { query: string; favorites: readonly string[]; recents: readonly string[]; known: ReadonlySet<string> }): PickerSection[] {
   const q = normalize(o.query)
   if (q) {
-    const hits = rank([...list], q, s => s.base)
-    return [{ kind: 'search', title: `搜到 ${hits.length} 个`, rows: hits.slice(0, SEARCH_LIMIT).map(h => ({ symbol: h.item.symbol, hl: h.hit.hl })), more: Math.max(0, hits.length - SEARCH_LIMIT) }]
+    // 别家完整键（okx/usd_m/BTCUSDT）比的是代号那一段；币安的 base 照旧是去掉 1000 前缀的底
+    const hits = rank([...list], q, s => s.base, s => wireSymbol(s.symbol))
+    if (!hits.length) return [{ kind: 'search', title: '搜到 0 个', rows: [], more: 0, count: 0 }]
+    return groupRanked(hits, s => s.venue ?? parseKey(s.symbol).venue).map(g => ({
+      kind: 'search', title: g.title, venue: g.venue, count: g.hits.length,
+      rows: g.hits.slice(0, SEARCH_LIMIT).map(h => ({ symbol: h.item.symbol, hl: h.hit.hl })), more: Math.max(0, g.hits.length - SEARCH_LIMIT),
+    }))
   }
   const inList = new Set(list.map(s => s.symbol))
   const keep = (sym: string): boolean => inList.has(sym) || !o.known.has(sym)
@@ -81,5 +91,9 @@ export function buildSections<T extends PickerSym>(list: readonly T[], o: { quer
   return out
 }
 
-/** 页头右边那行小字：「571 个永续合约」（网页版品种表只收在交易的 U 本位永续，没有现货那半句） */
-export const countText = (catalog: readonly unknown[]): string => `${catalog.length} 个永续合约`
+/** 页头右边那行小字：「571 个永续合约」；有现货（Coinbase）时后面接「· 300 个现货」（照 iOS SymbolSections.countText） */
+export function countText(catalog: readonly { symbol?: string }[]): string {
+  const spot = catalog.filter(s => typeof s.symbol === 'string' && parseKey(s.symbol).market === 'spot').length
+  const perps = `${catalog.length - spot} 个永续合约`
+  return spot ? `${perps} · ${spot} 个现货` : perps
+}

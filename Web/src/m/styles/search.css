@@ -57,6 +57,8 @@ html[data-theme="dark"] .msr-chip { background: color-mix(in srgb, var(--ink) 7%
 .msr-chip:active { opacity: .6 }
 
 .msr-empty { padding: var(--s-xxl) var(--inset-page); text-align: center; font: var(--t-caption); color: var(--ink3) }
+/* 别家品种表还在路上 / 取不到：结果底下一行小字 */
+.msr-venues { padding: var(--s-m, 12px) var(--inset-page); font: var(--t-caption2); color: var(--ink3) }
 .msr-all {
   display: flex; align-items: center; justify-content: center; gap: var(--s-xs); width: 100%; height: 44px;
   font: var(--t-footnote); color: var(--accent);
@@ -76,6 +78,8 @@ html[data-theme="dark"] .msr-chip { background: color-mix(in srgb, var(--ink) 7%
 .sr-sep, .sr-quote { font: var(--t-caption); color: var(--ink3) }
 .sr-top em { font-style: normal; color: var(--accent) }
 .sr-top .row-new { margin-left: var(--s-xs) }
+.msr-cmpchip .row-vtag { font: 400 10px/1.2 var(--font-ui); color: var(--ink3) }
+.sr-top .row-vtag { font: 400 11px/1.3 var(--font-ui); color: var(--ink3); margin-right: var(--s-xs) }
 .sr-meta { font: var(--t-caption); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .sr-right { display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-xxs); flex: none; font-variant-numeric: tabular-nums }
 .sr-price { font: var(--t-body-emph); font-family: var(--font-ui); font-variant-numeric: tabular-nums; color: var(--ink) }

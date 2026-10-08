@@ -19,14 +19,14 @@ import { openMenu, openSheet, type MenuItem } from '../ui/sheet'
 import { swipeRow, closeOpenSwipe, type SwipeHandle } from '../ui/swipeDelete'
 import { reorderable, longPress, type ReorderHandle } from '../ui/reorder'
 import { toast } from '../ui/toast'
-import { S, on, streamName } from '../../market'
+import { S, on, streamName, ensureVenuesFor } from '../../market'
 import * as F from '../model/favorites'
 import { esc } from '../model/rowText'
 import { factsOf, liuliRowHTML, patchLiuli, type LiuliData } from '../model/rowHTML'
 import { openSearch } from './search'
 import { openPreviewMenu } from './symbolPreview'
 import { ensureUniverse, takeOpenParam, wantStreams } from './_streams'
-import { cachedSym } from '../model/quoteCache'
+import { cachedSym, tableLive } from '../model/quoteCache'
 import { trendSVG } from '../model/favoriteTrend'
 import { requestTrends, trendOf } from './favoritesTrend'
 
@@ -84,7 +84,8 @@ export function initFavorites(root: HTMLElement): PageHandle {
   const dataOf = (sym: string): LiuliData => {
     if (editing && frozen.has(sym)) return frozen.get(sym)!
     const live = S.symbols.get(sym)
-    const gone = S.live === true && !live
+    // 那一家的表到了却没有它才算下架（别家的表懒拉：还没拉到不算没有）
+    const gone = !live && tableLive(sym)
     // 表还没到：先摆上次记下的价（退灰，同休市的样子），到了就换实时的
     const s = live ?? (gone ? undefined : cachedSym(sym) ?? undefined)
     const cached = !live && !!s
@@ -368,6 +369,8 @@ export function initFavorites(root: HTMLElement): PageHandle {
       render()
       landing()
       void ensureUniverse().then(() => { seed(); if (active) renderList() }, () => { seed(); if (active) renderList() })
+      // 自选里有别家的品种：那几家的品种表拉上（只拉用到的那几家；已经拉到的不再拉），到了 universe 重画
+      void ensureVenuesFor(st.symbols.favorites)
       clearInterval(trendTimer)
       trendTimer = window.setInterval(() => { if (active && st.favoritesTrend && seen.size) requestTrends([...seen], wanted, loaded) }, 60_000)
     },

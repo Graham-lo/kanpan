@@ -39,13 +39,14 @@ import { toast } from '../../ui/toast'
 import { el, esc, setAttr, setText } from '../../ui/dom'
 import { icon } from '../../ui/icons'
 import { railIntervals, deleteDrawingById, safeHexColor, mergeStyleEdits } from './logic'
-import { splitPair } from './header'
+import { topBarText } from './header'
 import { openSymbolPicker, openMainIndicators } from './panels'
 import { penSwatches } from '../../chart/draw/pen'
 import { referencePrice, distancePercent } from '../../chart/draw/reference'
 import { readChartColors, type ChartColors } from '../../chart/paint'
 import type { BarSeries } from '../../chart/series'
 import { mainOverlaysOf } from './logic'
+import { isMacro } from '../../../market/macro'
 
 // ───────────────────────────── 工具记号（照 DrawingGlyph.swift，24 格取景）
 
@@ -336,24 +337,26 @@ export function createBench(ctx: BenchContext) {
     sheet?.close()
     sheet = openSymbolPicker({
       title: '换品种', id: 'land-symbol', current: ctx.symbol(),
-      accept: sym => /USDT$|USDC$/.test(sym), onPick: sym => ctx.onPickSymbol(sym),
+      // 美元指数不进这张表（照旧）；别家的品种（2026-10-08）照样能换过去画
+      accept: sym => !isMacro(sym), onPick: sym => ctx.onPickSymbol(sym),
     })
   })
   let pillHTML = ''
   const renderQuote = (): void => {
     const sym = ctx.symbol()
     const s = S.symbols.get(sym)
-    const { base, quote } = splitPair(sym)
+    // 同竖屏顶栏（2026-10-08）：品种名只写基础币，旁边小字「币安 USDT 永续」「CB USD 现货」「指数」
+    const { name, sub } = topBarText(sym)
     const up = (s?.pct ?? 0) >= 0
     const cls = s?.price != null ? (up ? 'up' : 'down') : ''
     // 每跳行情都会进来：拼出来一样就不重写
-    const html = `<b>${esc(base)}</b><small>/${esc(quote)}</small>${active ? `<span class="cp-lchev">${icon('chevron', 12)}</span>` : ''}`
+    const html = `<b>${esc(name)}</b><small>${esc(sub)}</small>${active ? `<span class="cp-lchev">${icon('chevron', 12)}</span>` : ''}`
       + (s?.price != null ? `<b class="num ${cls}">${esc(grouped(fmtPrice(s.price, s.dec ?? 2)))}</b>` : '')
       + (s?.pct != null && Number.isFinite(s.pct) ? `<small class="num ${cls}">${s.pct >= 0 ? '+' : ''}${s.pct.toFixed(2)}%</small>` : '')
     if (html !== pillHTML) { pillHTML = html; pill.innerHTML = html }
     renderIndicatorControls()
     if (pill.disabled === active) pill.disabled = !active
-    setAttr(pill, 'aria-label', active ? `换品种，当前 ${base}/${quote}` : `${base}/${quote}`)
+    setAttr(pill, 'aria-label', active ? `换品种，当前 ${name} ${sub}` : `${name} ${sub}`)
     const hint = active && c.tool && readout == null ? drawHint(c.tool, c.placedAnchors) : null
     setText(lread, readout ?? hint ?? '')
     lread.classList.toggle('hint', readout == null && hint != null)

@@ -6,6 +6,7 @@
 // 取数经 `market.j`：主机在 429 / 418 冷却里就不发，不会把 IP 打进封禁。
 
 import { j, REST } from '../../market'
+import { isDefaultVenue } from '../../market/identity'
 import type { IndicatorID } from '../indicator/ids'
 import type { BarSeries, Interval } from './series'
 import { ExternalSeries, bucketStart, stepMs } from './series'
@@ -79,6 +80,8 @@ function endpoint(id: ExternalID): { path: string; symbolKey: string; extra: str
  */
 export async function fetchMetric(id: ExternalID, symbol: string, iv: Interval, from: number, to: number,
   now = Date.now(), fetcher: <T>(url: string) => Promise<T> = u => j(u, 10000)): Promise<{ points: MetricPoint[]; complete: boolean }> {
+  // 这几条只有币安的 futures/data 接口（2026-10-08 起别家与美元指数都不去问币安冒领）：没有就空着、不报错
+  if (!isDefaultVenue(symbol)) return { points: [], complete: true }
   const lower = Math.max(from, now - REST_WINDOW_MS)
   if (lower > to) return { points: [], complete: true }
   const e = endpoint(id)

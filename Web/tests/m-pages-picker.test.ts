@@ -146,7 +146,9 @@ describe('手机网页版 · 品种整页', () => {
     expect(moreNote(0)).toBeNull()
     const hit = buildSections(cat, { query: 'x', favorites: [], recents: [], known })
     expect(hit).toHaveLength(1)
-    expect(hit[0].title).toBe('搜到 200 个')
+    // 2026-10-08 起搜索结果按交易所分组：组头是交易所全名，命中数单独给（原来是一组「搜到 200 个」）
+    expect(hit[0].title).toBe('币安')
+    expect(hit[0].count).toBe(200)
     expect(hit[0].rows).toHaveLength(SEARCH_LIMIT)
     expect(hit[0].more).toBe(40)
   })
@@ -158,6 +160,7 @@ describe('手机网页版 · 品种整页', () => {
     expect(secs[0].rows.map(r => r.symbol)).toEqual(['SOLUSDT', 'SOLVUSDT', 'ASOLUSDT'])
     expect(secs[0].rows[0].hl).toEqual([0, 3])
     expect(buildSections(cat, { query: 'zzz', favorites: [], recents: [], known: new Set() })[0].rows).toEqual([])
+    expect(buildSections(cat, { query: 'zzz', favorites: [], recents: [], known: new Set() })[0].title).toBe('搜到 0 个')
   })
   it('页头计数', () => { expect(countText([sym('A'), sym('B')])).toBe('2 个永续合约') })
 })

@@ -1,6 +1,6 @@
 /* 手机网页版 · 行情页成片（照 iOS Main/ChartSnapshotRenderer.swift）
  *
- * 「分享图片」与「记一笔」附的那张图是同一张：顶上一条身份条（基础币 /USDT · 周期，右边最新价与涨跌），
+ * 「分享图片」与「记一笔」附的那张图是同一张：顶上一条身份条（基础币 + 「币安 USDT 永续」这截小字 · 周期，右边最新价与涨跌），
  * 中间是眼前这张图（图的几层画布原样合成，十字线先收掉），右下角一个很小的「Hkline」落款。
  * 画布是引擎按设备像素画好的，这里只按 2× 叠一遍，不重描。
  */
@@ -8,7 +8,7 @@ import type { ChartHandle } from '../../chart'
 import { INTERVAL_SHORT, type Interval } from '../../chart/series'
 import { S } from '../../../market'
 import { grouped, fmtPrice, changePercentText } from '../../model/rowText'
-import { splitPair } from './header'
+import { topBarText } from './header'
 
 const SCALE = 2
 const cssVar = (name: string, fallback = ''): string =>
@@ -68,15 +68,16 @@ export function shotCanvas(chart: ChartHandle, symbol: string, interval: Interva
   const s = S.symbols.get(symbol)
   const pct = s?.pct ?? null
   const tint = pct == null ? ink : pct >= 0 ? cssVar('--up') : cssVar('--down')
-  const { base, quote } = splitPair(symbol)
+  // 同顶栏（2026-10-08）：基础币 + 小字「币安 USDT 永续」「CB USD 现货」「指数」
+  const { name: base, sub } = topBarText(symbol)
   const pad = 12, mid = stripH / 2
   g.textBaseline = 'alphabetic'
-  // 左：BTC /USDT · 1时
+  // 左：BTC 币安 USDT 永续 · 1时
   g.font = `600 17px ${ui}`; g.fillStyle = ink; g.textAlign = 'left'
   g.fillText(base, pad, mid + 6)
   const x = pad + g.measureText(base).width + 4
   g.font = `600 11px ${ui}`; g.fillStyle = ink3
-  const tail = `/${quote} · ${INTERVAL_SHORT[interval] ?? interval}`
+  const tail = `${sub} · ${INTERVAL_SHORT[interval] ?? interval}`
   g.fillText(tail, x, mid + 6)
   // 右：价格一行、涨跌一行小字
   g.textAlign = 'right'

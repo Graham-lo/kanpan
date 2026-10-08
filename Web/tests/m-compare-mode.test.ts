@@ -9,7 +9,10 @@ describe('compareKeyOf：裸代号 / 规范键都归到规范键', () => {
     expect(compareKeyOf('binance/usd_m/ETHUSDT')).toBe('binance/usd_m/ETHUSDT')
     expect(compareKeyOf('DXY')).toBe('macro/index/DXY')
     expect(compareKeyOf('macro/index/DXY')).toBe('macro/index/DXY')
-    expect(compareKeyOf('coinbase/spot/BTC-USD')).toBeNull()
+    // 2026-10-08 起别家的完整键也认（原来只认币安与美元指数）
+    expect(compareKeyOf('coinbase/spot/BTC-USD')).toBe('coinbase/spot/BTC-USD')
+    expect(compareKeyOf('okx/usd_m/ETHUSDT')).toBe('okx/usd_m/ETHUSDT')
+    expect(compareKeyOf('kraken/spot/BTC-USD')).toBeNull()
   })
 })
 

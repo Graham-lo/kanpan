@@ -3,7 +3,8 @@
 //
 // 规矩与 iOS 相同：
 //   - 最多三只，主图那只自己不算；认不出的交易所（新版本同步下来的键）留在偏好里，但绝不拿它的代号
-//     去别家冒领行情——这里只认 `binance/usd_m/<代号>`，别的键不取、不画（网页版只有币安合约行情）。
+//     去别家冒领行情——这里只认注册表里有行情面的那几家（2026-10-08 起：币安 `binance/usd_m/<代号>`、美元指数、
+//     okx/usd_m、bybit/usd_m、hyperliquid/usd_m、coinbase/spot，代号形状按那一家的规矩），别的键不取、不画。
 //   - 先拉右侧最新一页，够首屏即发布；再向左补到主序列起点。主图往左翻了历史，对比跟着补。
 //   - 推送来的根按 openTime 接末根（与主图同一个 kline 流）；断线重连后重拉末页补缺口。
 //   - 取不到按 2 s·2ⁿ 退避重试，最长 30 s。
@@ -16,6 +17,8 @@ import { BarSeries } from './series'
 import type { CompareSeries } from './state'
 import type { Hex } from './paint'
 import { validSymbol } from '../../sync/codec'
+import { symbolOk } from '../../venues'
+import { normKey } from './symbolKey'
 
 /** 对比品种最多三只（Prefs.compareSymbols）。 */
 export const MAX_COMPARE = 3
@@ -26,7 +29,9 @@ const RETRY_MAX_MS = 30_000
 
 export type CompareLoad = (symbol: string, iv: Interval, endTime: number | null) => Promise<Bar[] | null>
 
-/** `binance/usd_m/ETHUSDT` → `ETHUSDT`；别家、别的市场、写坏的键回 null。裸代号按币安合约认（InstrumentID.canonical）。 */
+/** 对比键 → 网页里取数用的品种键：`binance/usd_m/ETHUSDT` → `ETHUSDT`、`macro/index/DXY` → `DXY`、
+ *  `okx/usd_m/ETHUSDT` → 原样（注册表里那一家认得这个代号形状才算）；不认识的交易所 / 市场、写坏的键回 null。
+ *  裸代号按币安合约认（InstrumentID.canonical）。 */
 export function compareSymbolOf(key: string): string | null {
   const parts = key.trim().split('/')
   // 代号按币安那条规则（sync/codec.validSymbol，与服务端 binance_symbol 同一条）：「币安人生USDT」这种中文底名也认
@@ -36,14 +41,17 @@ export function compareSymbolOf(key: string): string | null {
   if (parts.length === 3 && parts[0].toLowerCase() === 'macro' && parts[1].toLowerCase() === 'index') return parts[2].toUpperCase() === 'DXY' ? 'DXY' : null
   if (parts.length === 1) return sym(parts[0])
   if (parts.length !== 3) return null
-  if (parts[0].toLowerCase() !== 'binance' || parts[1].toLowerCase() !== 'usd_m') return null
-  return sym(parts[2])
+  const venue = parts[0].toLowerCase(), market = parts[1].toLowerCase()
+  if (venue === 'binance' && market === 'usd_m') return sym(parts[2])
+  // 别家：venue / market 小写、代号大写（和 identity 的规范写法一致），过那一家登记的代号形状
+  const k = `${venue}/${market}/${parts[2].toUpperCase()}`
+  return parts[2] && symbolOk(k) ? k : null
 }
 
 /** 此刻真要取的几只：认得出、去重、去掉主图那只、最多三只（顺序按偏好）。 */
 export function compareTargets(keys: readonly string[], mainSymbol: string): { key: string; symbol: string }[] {
   const out: { key: string; symbol: string }[] = []
-  const main = mainSymbol.toUpperCase()
+  const main = normKey(mainSymbol)
   for (const key of keys) {
     const symbol = compareSymbolOf(key)
     if (!symbol || symbol === main || out.some(x => x.symbol === symbol)) continue
@@ -110,7 +118,7 @@ export class CompareFeed {
    */
   configure(keys: readonly string[], main: BarSeries | null, mainSymbol: string, interval: Interval): void {
     if (this.disposed) return
-    const wanted = main && main.symbol === mainSymbol.toUpperCase() && main.interval === interval && !main.isEmpty
+    const wanted = main && main.symbol === normKey(mainSymbol) && main.interval === interval && !main.isEmpty
       ? compareTargets(keys, mainSymbol) : []
     if (interval !== this.interval || !sameTargets(this.entries, wanted)) {
       this.stopAll()
@@ -125,7 +133,7 @@ export class CompareFeed {
   /** 推送来一根（与主图共用的 kline 流）。是对比品种的就接上，返回是否接住。 */
   upsert(symbol: string, iv: Interval, bar: Bar): boolean {
     if (iv !== this.interval) return false
-    const e = this.entries.find(x => x.symbol === symbol.toUpperCase())
+    const e = this.entries.find(x => x.symbol === normKey(symbol))
     if (!e || !e.series) return false
     if (!(Number.isFinite(bar.close) && bar.close > 0)) return false
     const s = e.series

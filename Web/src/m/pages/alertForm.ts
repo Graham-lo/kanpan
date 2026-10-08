@@ -25,7 +25,8 @@ import { el } from '../ui/dom'
 import { esc, priceText, changePercentText, fmtPrice, priceDecimalsFallback } from '../model/rowText'
 import { hintText, parseTarget } from '../model/formText'
 import { badgeHTML } from '../model/badge'
-import { factsOf, splitSymbol } from '../model/rowHTML'
+import { factsOf } from '../model/rowHTML'
+import { pairOf } from '../model/symKey'
 import { addPriceAlert, onAlertsChange, records, updatePriceAlert, webhookBody, type Alert, type Condition } from '../model/alerts'
 import { openSymbol } from '../app/shell'
 import { buildAlertList, deleteWithUndo, pairName, recordRowHTML, startAlertWatcher, venueLine } from './alerts'
@@ -88,7 +89,7 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
   function buildForm(host: HTMLElement, sh: Sheet, sym: string, existing: Alert | null, preset: number | null, L: Life): void {
     const s0 = S.symbols.get(sym)
     const f = factsOf(sym, s0)
-    const { quote } = splitSymbol(sym)
+    const { quote } = pairOf(sym, s0)
     const dec = s0?.dec
     const start = existing ? alertLevel(existing) : preset
     let cond: Condition = existing?.condition ?? 'touch'

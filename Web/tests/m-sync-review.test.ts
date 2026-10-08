@@ -110,7 +110,11 @@ describe('中文底名的币安合约（币安人生USDT 这类）：代号规�
     expect(syncableKey('binance/usd_m/BTCUSDT')).toBe(true)
     expect(syncableKey('coinbase/spot/BTC-USD')).toBe(true)
     expect(syncableKey('binance/usd_m/BTCUSD_PERP')).toBe(false)
-    expect(syncableKey('binance/usd_m/BTC-USD')).toBe(true) // 服务端 symbol() 不分交易所，照收
+    // 服务端 identity 2026-10-08 起按 venue / market 认那一家的代号形状（原来不分交易所、照收）：币安段里的 Coinbase 代号不收
+    expect(syncableKey('binance/usd_m/BTC-USD')).toBe(false)
+    expect(syncableKey('okx/usd_m/BTCUSDT')).toBe(true)
+    expect(syncableKey('hyperliquid/usd_m/KPEPE')).toBe(true)
+    expect(syncableKey('kraken/spot/BTC-USD')).toBe(false)
   })
 })
 

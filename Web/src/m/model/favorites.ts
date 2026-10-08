@@ -5,12 +5,14 @@
  */
 import type { FavoriteGroup, SymbolPrefs } from '../app/store'
 import { DEFAULT_WATCH, type Kind } from '../../market/symbols'
+import { normKey, venueCategory } from './symKey'
 
 export const RECENT_LIMIT = 10
 export const PRESETS = ['加密', '美股', '贵金属'] as const
 const PRECIOUS = new Set(['XAU', 'XAG', 'XPT', 'XPD'])
 
-export const key = (symbol: string): string => symbol.trim().toUpperCase()
+/** 自选里存的键：币安裸代号 / DXY 大写，别家完整键（okx/usd_m/BTCUSDT）照 market/identity 的规范写法 */
+export const key = (symbol: string): string => normKey(symbol)
 
 /** 分类名（FavoriteCategory.name）：币 → 加密；美股 → 美股；贵金属 → 贵金属；其余大宗 → 其他 */
 export function categoryName(kind: Kind | undefined, base: string): string | null {
@@ -74,10 +76,11 @@ export function addFavorite(p: SymbolPrefs, symbol: string, current: string | nu
   const s = key(symbol)
   if (!s || p.favorites.includes(s)) return
   p.favorites.push(s)
-  // 交易所自带分类的品种（美元指数 → 「指数」）不管他站在哪一类都落进自己那一类，分类排在「美股」后面
-  // （照 iOS SymbolPickerModel.assignVenueCategory）
-  if (facts?.kind === 'idx' || s === 'DXY') {
-    const id = createGroup(p, '指数', '美股')
+  // 交易所自带分类的品种（美元指数 → 「指数」；别家 → 交易所全名「OKX」「Hyperliquid」「Coinbase」……）
+  // 不管他站在哪一类都落进自己那一类，分类排在「美股」后面（照 iOS SymbolPickerModel.assignVenueCategory，2026-10-08）
+  const own = facts?.kind === 'idx' || s === 'DXY' ? '指数' : venueCategory(s)
+  if (own) {
+    const id = createGroup(p, own, VENUE_CATEGORY_ANCHOR)
     if (id) p.groupForSymbol[s] = id
     return
   }
@@ -88,6 +91,9 @@ export function addFavorite(p: SymbolPrefs, symbol: string, current: string | nu
   const id = createGroup(p, name)
   if (id) p.groupForSymbol[s] = id
 }
+
+/** 交易所自带分类开在哪一类后面（iOS SymbolPickerModel.venueCategoryAnchor） */
+export const VENUE_CATEGORY_ANCHOR = '美股'
 
 export function removeFavorite(p: SymbolPrefs, symbol: string): void {
   const s = key(symbol)
@@ -213,7 +219,8 @@ export function hotCoins(rows: Iterable<HotRow>, n = HOT_COUNT): string[] {
   const taken = new Set(NAMED_COINS.map(s => s.replace(/USDT$/, '')))
   const best = new Map<string, HotRow>()
   for (const r of rows) {
-    if (r.kind !== 'crypto' || taken.has(r.base) || !(Number.isFinite(r.vol) && r.vol > 0)) continue
+    // 只挑币安的（别家的完整键 okx/usd_m/… 不进默认自选）
+    if (r.symbol.includes('/') || r.kind !== 'crypto' || taken.has(r.base) || !(Number.isFinite(r.vol) && r.vol > 0)) continue
     const old = best.get(r.base)
     if (!old || r.vol > old.vol || (r.vol === old.vol && r.symbol.length < old.symbol.length)) best.set(r.base, r)
   }

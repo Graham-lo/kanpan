@@ -9,6 +9,7 @@
  */
 
 import { baseOf } from '../../alerts/shape'
+import { openableKey } from './symKey'
 
 export interface ShareView { from: number; to: number }
 export interface ShareItem {
@@ -139,10 +140,11 @@ export function itemKey(item: Pick<ShareItem, 'symbol' | 'market'>): string {
   const parts = full.split('/')
   return parts.length === 3 ? `${parts[0].toLowerCase()}/${parts[1].toLowerCase()}/${parts[2].toUpperCase()}` : full
 }
-/** 图表页认的代号：币安 U 本位永续就是裸代号（BTCUSDT）；别的交易所 / 市场网页版开不了，返回 null */
+/** 图表页认的代号：币安 U 本位永续就是裸代号（BTCUSDT）；注册表里的别家（2026-10-08 起）是完整键 okx/usd_m/BTCUSDT；
+ *  别的交易所 / 市场网页版开不了，返回 null */
 export function openableSymbol(item: Pick<ShareItem, 'symbol' | 'market'>): string | null {
   const [venue, market, sym] = itemKey(item).split('/')
-  return venue === 'binance' && market === 'usd_m' && sym ? sym : null
+  return venue && market && sym ? openableKey(venue, market, sym) : null
 }
 
 /** 「留下」要用的新 id：已经分过就用分过的（重试不重复复制） */

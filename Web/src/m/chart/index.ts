@@ -36,7 +36,10 @@ import { DepthFeed } from './depth.source'
 import { ChartBeat, resyncOnOpen } from './beat'
 import { ScaleReport } from './scaleReport'
 import { BarCache, FIRST_PAGE, HISTORY_PAGE, backfillLimit, pageExhausted, sharedBars } from './barCache'
-import { cachedSym } from '../model/quoteCache'
+import { liveOrCached } from '../model/quoteCache'
+import { normKey } from './symbolKey'
+import { isDefaultVenue, wireSymbol } from '../../market/identity'
+import { marketKlines, marketOf, venueLabel } from '../../venues'
 
 // ================================================================ ViewIntent
 
@@ -235,7 +238,7 @@ type KlineRow = [number, string, string, string, string, string, number, string,
 
 function defaultSymbolInfo(symbol: string): SymbolInfo | null {
   // 品种表还没到：先按上次记下的那份定小数位（m/model/quoteCache.ts），表到了 universe 会重排
-  const s = S.symbols.get(symbol.toUpperCase()) ?? (S.live === true ? null : cachedSym(symbol))
+  const s = liveOrCached(normKey(symbol))
   return s ? { symbol: s.symbol, base: s.base, priceDecimals: s.dec } : null
 }
 
@@ -250,10 +253,40 @@ function guessDecimals(price: number): number {
  * 不走 market 的 klines()：那边的量是成交额口径（r[7]）、主动买是成交额（r[10]），没有币量的主动买。
  */
 async function defaultLoad(symbol: string, iv: Interval, endTime: number | null, alive?: () => boolean, limit = HISTORY_PAGE): Promise<Bar[] | null> {
+  if (marketOf(symbol) && !isDefaultVenue(symbol)) return venueLoad(symbol, iv, endTime, alive, limit)
   try {
     const u = `${REST}/fapi/v1/klines?symbol=${symbol}&interval=${iv}&limit=${limit}${endTime ? `&endTime=${endTime - 1}` : ''}`
     const rows = await j<KlineRow[]>(u, 10000, false, alive)
     return rows.map(r => ({ openTime: r[0], open: +r[1], high: +r[2], low: +r[3], close: +r[4], volume: +r[5], takerBuy: +r[9] }))
+  } catch {
+    return null
+  }
+}
+
+/** 别家一次最多取几趟（OKX 一趟 300 根、Coinbase 350 根；1500 根约五趟；并出来的周期一趟少一些） */
+const VENUE_MAX_CALLS = 8
+/**
+ * 别家（OKX / Bybit / Hyperliquid / Coinbase）的一页 K 线：走注册表唯一的入口 marketKlines（缺的周期由小周期并），
+ * 量取币量（bv）、没有主动买（NaN）。那一家一次给不满 limit（OKX 300、Coinbase 350）就接着往左取，
+ * 直到够数、取空或不再往前——这样「取到的比要的少 = 左边到头」（barCache.pageExhausted）对别家也成立。
+ * 首屏那页（300 根）各家都是一发。取不到回 null。
+ */
+async function venueLoad(symbol: string, iv: Interval, endTime: number | null, alive?: () => boolean, limit = HISTORY_PAGE): Promise<Bar[] | null> {
+  const m = marketOf(symbol)
+  if (!m) return null
+  try {
+    let out: MarketBar[] = []
+    let end = endTime ?? undefined
+    for (let call = 0; call < VENUE_MAX_CALLS && out.length < limit; call++) {
+      if (alive && !alive()) break
+      const want = Math.min(limit - out.length, m.maxKlines)
+      const page = await marketKlines(symbol, iv, { limit: want, ...(end != null ? { end } : {}) }, { alive })
+      const older = end == null ? page : page.filter(b => b.t < end!)
+      if (!older.length) break
+      out = [...older, ...out]
+      end = older[0].t
+    }
+    return out.slice(Math.max(0, out.length - limit)).map(toChartBar)
   } catch {
     return null
   }
@@ -318,7 +351,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     listeners.get(name)?.forEach(fn => { try { fn(e) } catch (err) { console.error(err) } })
   }
 
-  let symbol = opts.symbol.toUpperCase()
+  let symbol = normKey(opts.symbol)
   let interval = opts.interval
   let series: BarSeries | null = null
   let generation = 0
@@ -411,7 +444,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     const known = symbolInfo(s.symbol)
     if (known) return known
     const last = s.count ? s.close[s.count - 1] : NaN
-    const base = s.symbol.replace(/USDT$|USDC$|USD$/, '') || s.symbol
+    const base = wireSymbol(s.symbol).replace(/-USD[CT]?$|USDT$|USDC$|USD$/, '') || s.symbol
     return { symbol: s.symbol, base, priceDecimals: guessDecimals(last) }
   }
 
@@ -420,7 +453,8 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   /** 此刻是不是对比态（MainScreen.comparing）：有认得出的对比品种、且不在横屏画线台。 */
   const comparingFor = (sym: string) => !landscape && compareTargets(compareKeys, sym).length > 0
   /** 盘口要不要连：开着、竖屏、不在对比态（对比态不画盘口，连着也白连）。 */
-  const depthWanted = () => depthOn && !landscape && !comparingFor(symbol)
+  // 盘口五档只有币安那条流（depth.source）：别家与美元指数不连
+  const depthWanted = () => depthOn && !landscape && !comparingFor(symbol) && isDefaultVenue(symbol)
   const syncDepth = () => depthPort?.setWanted(depthWanted(), symbol, isDirect())
 
   /** 颜色按它在偏好里的位置取调色板（ChartSession.compose：palette[slot % count]）。 */
@@ -430,7 +464,9 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   }
   const compareName = (key: string) => {
     const sym = compareSymbolOf(key) ?? key
-    return symbolInfo(sym)?.base ?? (sym.replace(/USDT$|USDC$|USD$/, '') || sym)
+    const base = symbolInfo(sym)?.base ?? (wireSymbol(sym).replace(/-USD[CT]?$|USDT$|USDC$|USD$/, '') || sym)
+    // 别家的写上缩写（同一个币对比币安与 OKX 时图例分得开）；币安、美元指数照旧只写币名
+    return sym.includes('/') ? `${venueLabel(sym)} ${base}`.trim() : base
   }
   let compareStreamKey = ''
   let compareTimer: ReturnType<typeof setTimeout> | null = null
@@ -1148,7 +1184,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
     get isAtLatest() { return view.isAtLatest },
 
     setSymbol(next: string) {
-      const up = next.toUpperCase()
+      const up = normKey(next)
       if (up === symbol) return
       settle.noteSwitch()
       symbol = up

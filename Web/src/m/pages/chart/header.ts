@@ -1,7 +1,8 @@
 /* 手机网页版 · 行情页顶栏 + 头部（照 iOS Main/TopBar.swift、MainScreenParts.swift、HeaderStats.swift）
  *
- * 顶栏：有来路时左边一颗「‹」；徽章 28 · 基础币 · /USDT · 「永续」角标（品种名不是按钮）；
- *       放不下时（横滑扫图带着「‹」）先收徽章、再收计价币，最后才截基础币——「永续」角标一直在（iOS a9f64327）；
+ * 顶栏：有来路时左边一颗「‹」；徽章 28 · 基础币（headName：DOGE、1000PEPE、kPEPE）· 角标小字「币安 USDT 永续」
+ *       「HL USDC 永续」「CB USD 现货」「指数」（2026-10-08 三端一致，计价币写进角标、不再单写「/USDT」；品种名不是按钮）；
+ *       放不下时（横滑扫图带着「‹」）先收徽章，最后才截基础币——角标一直在（iOS a9f64327）；
  *       右边三颗 32 圆片（2026-10-08 起，照 iOS）：提醒铃（角上这只还没响的条数）· ⋯（更多）· 放大镜。
  *       用户原话「分享和记一笔用的极少，我觉得可以放到二级菜单里」：「⋯」点开一张菜单，从上到下
  *       添加对比 · 记一笔 · 分享；对比满三只时「添加对比」那一项置灰（「分析」面板里的「对比」一节照旧）。
@@ -28,7 +29,9 @@ import {
   type AssetKind,
 } from './logic'
 import { fetchValuation, valuationOf } from './data'
-import { cachedSym } from '../../model/quoteCache'
+import { liveOrCached } from '../../model/quoteCache'
+import { chartSubOf, pairOf } from '../../model/symKey'
+import { headName, type Sym } from '../../../market/symbols'
 
 export const TERMS: Record<string, Term> = {
   oi: { id: 'oi', title: '仓 · 持仓量', body: '现在市场上还没平掉的合约一共值多少美元。\n它在涨，说明有更多资金押注在这只上；在跌，说明有人在离场。' },
@@ -44,13 +47,19 @@ export const TERMS: Record<string, Term> = {
 /** 顶栏圆片（照 iOS TopBar，2026-10-08 起三颗）：提醒铃 · ⋯（添加对比 / 记一笔 / 分享）· 搜索 */
 export interface TopBarHandlers { onBack(): void; onCompare(): void; onAlerts(): void; onNote(): void; onShare(): void; onSearch(): void }
 
-/** 「BTCUSDT」→ BTC / USDT；1000 前缀用全市场表的 base */
+/** 「BTCUSDT」→ BTC / USDT；1000 前缀用全市场表的 base（分享卡、订单流卡、习惯分类按币认）。
+ *  别家（okx/usd_m/BTCUSDT、coinbase/spot/BTC-USD、hyperliquid/usd_m/KPEPE）按品种表的 base / quote，表没到按键猜 */
 export function splitPair(sym: string): { base: string; quote: string } {
   const s = S.symbols.get(sym)
   // 美元指数没有计价币：顶栏只写 DXY，不写「/」
   if (s?.macro || sym === 'DXY') return { base: s?.base ?? sym, quote: '' }
+  if (sym.includes('/')) { const p = pairOf(sym, s); return { base: s?.base ?? p.base, quote: p.quote } }
   const quote = /USDC$/.test(sym) ? 'USDC' : 'USDT'
   return { base: s?.base ?? sym.replace(/USDT$|USDC$/, ''), quote }
+}
+/** 顶栏两截：品种名只写基础币（带交易所自己的倍数前缀，同电脑版 headName）+ 旁边那截小字（chartSubOf） */
+export function topBarText(sym: string, s: Sym | undefined = liveOrCached(sym)): { name: string; sub: string } {
+  return { name: headName(s ?? { symbol: sym }), sub: chartSubOf(sym, s) }
 }
 
 export function createTopBar(host: HTMLElement, h: TopBarHandlers) {
@@ -110,16 +119,17 @@ export function createTopBar(host: HTMLElement, h: TopBarHandlers) {
         bell.setAttribute('aria-label', n ? '提醒 ' + alerts : '提醒')
       }
       compareFull = full
-      const s = S.symbols.get(sym)
-      const { base, quote } = splitPair(sym)
-      const key = sym + '|' + (s?.kind ?? '') + '|' + document.documentElement.dataset.skin
+      const s = liveOrCached(sym)
+      const { base } = splitPair(sym)
+      const { name, sub } = topBarText(sym, s)
+      const key = sym + '|' + (s?.kind ?? '') + '|' + name + '|' + sub + '|' + document.documentElement.dataset.skin
       if (key !== shown) {
         shown = key
         bar.querySelector('.cp-badge')!.innerHTML = badgeHTML(base, 28, assetOf(s?.kind, base))
-        baseEl.textContent = base
-        bar.querySelector('.cp-quote')!.textContent = quote ? '/' + quote : ''
-        // 产品角标：永续合约写「永续」，美元指数写「指数」
-        bar.querySelector('.cp-perp')!.textContent = s?.macro ? '指数' : '永续'
+        baseEl.textContent = name
+        bar.querySelector('.cp-quote')!.textContent = ''
+        // 角标小字：交易所缩写 + 计价币 + 永续 / 现货；美元指数只写「指数」
+        bar.querySelector('.cp-perp')!.textContent = sub
       }
       fitId(hasOrigin)
     },
@@ -176,7 +186,7 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
     render(sym: string, stale: boolean, now = Date.now()): void {
       const live = S.symbols.get(sym)
       // 表还没到：先摆上次记下的价（退灰），实时的一到就换
-      const s = live ?? (S.live === true ? undefined : cachedSym(sym) ?? undefined)
+      const s = live ?? liveOrCached(sym)
       if (!live && s) stale = true
       const dec = s?.dec ?? 2
       const up = (s?.pct ?? s?.chg ?? 0) >= 0

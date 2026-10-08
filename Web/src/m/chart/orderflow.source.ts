@@ -23,6 +23,7 @@ import type { Override } from '../../orderflow/settings'
 import type { OrderFlowSnapshot } from '../../orderflow/group'
 import { ago } from '../../util/clock'
 import { feedBeat, recordFeedTrade } from '../../orderflow/flowTap'
+import { normKey } from './symbolKey'
 
 export interface OrderFlowSourceOptions {
   /** 是不是加密货币（美股、贵金属等传 false：默认门槛按标定走）。默认 true。 */
@@ -65,7 +66,7 @@ export class OrderFlowSource {
    * 同一品种再调只更新它和 options 里的线路 / 门槛，不重订。
    */
   start(symbol: string, intervalMs?: number, options: OrderFlowSourceOptions = {}): void {
-    const sym = symbol.toUpperCase()
+    const sym = normKey(symbol)
     this.intervalMs = Math.max(0, intervalMs ?? 0)
     if (this.feed && this.symbol === sym) {
       if (options.route) this.feed.setRoute(options.route)
@@ -205,7 +206,7 @@ export function createOrderFlowPort(
   )
   return {
     setWanted(on, symbol) {
-      const sym = symbol.toUpperCase()
+      const sym = normKey(symbol)
       if (!on) { wanted = null; src.stop(); return }
       if (sym !== wanted) seen = null
       if (bg) { wanted = sym; return }

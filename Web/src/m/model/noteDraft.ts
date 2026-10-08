@@ -12,6 +12,7 @@ import {
   DIRECTION_LABEL, CONFIRMATION_LABEL, ORIGIN_LABEL,
   type Direction, type Confirmation, type Origin,
 } from '../../notes/draft'
+import { normKey } from '../chart/symbolKey'
 
 export const NOTE_DRAFT_KEY = 'hkline-m-note-draft-v1'
 
@@ -58,7 +59,7 @@ export const meaningful = (v: Omit<UnfinishedNote, 'updated' | 'symbol' | 'inter
 
 /** 这份草稿能不能接在眼下这张图上（同品种、同周期，ReviewDraft.reusable） */
 export const reusableFor = (v: UnfinishedNote | null, symbol: string, interval: string): boolean =>
-  !!v && v.symbol === symbol.toUpperCase() && v.interval === interval
+  !!v && v.symbol === normKey(symbol) && v.interval === interval
 
 /**
  * 卡上动了一下之后，本机那份怎么办：

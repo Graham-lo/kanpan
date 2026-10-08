@@ -25,6 +25,7 @@ import { wantStreams } from './_streams'
 import { noteWatchMoveFired, startHabits, watchMoveFactor } from './habitsRuntime'
 import { startInbox } from './inboxStore'
 import { ago } from '../../util/clock'
+import { normKey } from '../chart/symbolKey'
 
 // ───────── 自选波动提醒 ─────────
 
@@ -42,7 +43,7 @@ function settleMove(): void {
     if (!on) tracker = new MoveTracker()
   }
   const list = on ? st.symbols.favorites.slice(0, MOVE_MAX) : []
-  const next = new Map(list.map(s => [s.toUpperCase(), canonicalInstrument(s)]))
+  const next = new Map(list.map(s => [normKey(s), canonicalInstrument(s)]))
   const same = next.size === moveFavs.size && [...next.keys()].every(k => moveFavs.has(k))
   if (same) return
   moveFavs = next

@@ -13,6 +13,7 @@ import type { OrderFlowPort } from '../../chart'
 import type { OrderFlowSnapshot } from '../../../orderflow/group'
 import type { Override } from '../../../orderflow/settings'
 import type { Thresholds } from '../../../orderflow/types'
+import { normKey } from '../../chart/symbolKey'
 
 // ───────────────────────────── 估值
 
@@ -97,7 +98,7 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
   )
   /** 两个理由合起来：要订哪只（null = 不订） */
   const want = (symbol: string): void => {
-    const sym = symbol.toUpperCase()
+    const sym = normKey(symbol)
     if (!walls && !signs) { wanted = null; last = null; src.stop(); return }
     if (sym !== wanted) seen = null
     if (suspended || bg) { wanted = sym; return }
@@ -112,7 +113,7 @@ export function createPagePort(push: (snap: OrderFlowSnapshot | null) => void, o
       want(symbol)
       // 只关墙、气泡还在订：图上的墙清掉；只开墙、气泡早在订：手上的最新一帧马上交给图
       if (was && !walls && signs) push(null)
-      else if (!was && walls && last && src.current === symbol.toUpperCase()) push(last)
+      else if (!was && walls && last && src.current === normKey(symbol)) push(last)
     },
     setSigns(onOff, symbol) { signs = onOff; want(symbol) },
     noteView(view, series) {

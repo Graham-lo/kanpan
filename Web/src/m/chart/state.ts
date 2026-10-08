@@ -17,6 +17,7 @@ import { FALLBACK_COLORS } from './paint'
 import type { Drawing } from './drawing'
 import type { OrderFlowSnapshot, OrderFlowDisplay, OrderFlowGroupKey } from '../../orderflow/group'
 import { defaultOrderFlowDisplay } from '../../orderflow/group'
+import { normKey } from './symbolKey'
 
 /** 图表要知道的品种信息（SymbolInfo 的子集）。 */
 export interface SymbolInfo {
@@ -74,7 +75,7 @@ export interface OrderBook { symbol: string; time: number; bids: BookLevel[]; as
 export function makeOrderBook(symbol: string, time: number, bids: BookLevel[], asks: BookLevel[]): OrderBook {
   const ok = (l: BookLevel) => Number.isFinite(l.price) && l.price > 0 && Number.isFinite(l.quantity) && l.quantity > 0
   return {
-    symbol: symbol.toUpperCase(), time,
+    symbol: normKey(symbol), time,
     bids: bids.filter(ok).sort((a, b) => b.price - a.price).slice(0, 5),
     asks: asks.filter(ok).sort((a, b) => a.price - b.price).slice(0, 5),
   }

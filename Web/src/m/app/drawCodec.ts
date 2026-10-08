@@ -27,7 +27,7 @@ import type { Body, Json, SyncObject } from '../../sync/types'
 import { type Drawing, encodeDrawing, tryDecodeDrawing, drawingIsValid, cloneDrawing, drawingsEqual } from '../chart/draw/drawing'
 import { type DrawAge, DrawArchive, DrawingPreferences, decodePreferences, encodePreferences } from '../chart/draw/archive'
 import { canonicalInstrument } from '../chart/draw/instrument'
-import { coinbaseSymbol, validSymbol } from '../../sync/codec'
+import { instrumentIdentity } from '../../sync/codec'
 
 export const PREFS_COLLECTION = 'drawingPreferences'
 export const PREFS_ID = 'tools'
@@ -58,12 +58,11 @@ export function instrumentOf(o: SyncObject): string {
 }
 const localId = (o: SyncObject): string => o.id.slice(o.id.lastIndexOf('/') + 1)
 
-/** 服务端收得下的桶键（sync_validation.rs 的 venue / market / symbol：代号按 binance_symbol 或 coinbase_symbol，不分交易所） */
+/** 服务端收得下的桶键（sync_validation.rs identity：按 venue / market 认那一家的代号形状——币安 binance_symbol、
+ *  Coinbase BASE-USD、美元指数只放 DXY，2026-10-08 起 OKX / Bybit / Hyperliquid 按注册表登记的形状；和电脑版 sync/codec instrumentIdentity 同一份） */
 export function syncableKey(key: string): boolean {
-  if (key === 'macro/index/DXY') return true   // 美元指数：服务端白名单只放这一个 macro 身份
   const p = key.split('/')
-  return p.length === 3 && key.length <= 128 && (p[0] === 'binance' || p[0] === 'coinbase') && (p[1] === 'usd_m' || p[1] === 'spot')
-    && (validSymbol(p[2]) || coinbaseSymbol(p[2]))
+  return p.length === 3 && key.length <= 128 && instrumentIdentity(p[0], p[1], p[2])
 }
 
 /** 这条线能不能上云（桶键合规、线本身合法、id 没有斜杠、端点在服务端的范围里） */

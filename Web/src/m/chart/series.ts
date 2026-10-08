@@ -3,6 +3,8 @@
 // 列式（SoA）K 线序列。openTime 列为空 ⇔ 严格等距（走 t0 + i*step 快路）。
 // revision / prefixRevision 两个戳：指标引擎靠它们 O(1) 判断「还是刚才那份」「只动了末根」。
 
+import { normKey } from './symbolKey'
+
 export interface Bar {
   openTime: number
   open: number
@@ -90,7 +92,7 @@ export class BarSeries {
     open: number[]; high: number[]; low: number[]; close: number[]; volume: number[]
     takerBuy?: number[]; openTime?: number[]
   }) {
-    this.symbol = o.symbol.toUpperCase()
+    this.symbol = normKey(o.symbol)
     this.interval = o.interval
     this.t0 = o.t0
     this.step = o.step ?? INTERVAL_STEP[o.interval]

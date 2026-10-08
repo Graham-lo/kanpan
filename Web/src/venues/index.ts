@@ -95,7 +95,9 @@ export function midRank(exchange: string, product: string): number {
 // ============================================================ 行情面
 
 /** 有行情面的几家（注册表顺序；币安在最前） */
-export const MARKET_VENUES: readonly VenueAdapter[] = VENUE_LIST.filter(v => !!v.market)
+/** 行情交易所的顺序（搜索分组同档时的先后、自选分类条的先后），和 iOS `VenueRegistry.all` 一致：
+ *  币安 · OKX · Bybit · Hyperliquid · Coinbase。订单流的合并顺序是 `VENUE_LIST`（服务端读数 / 热力通道的下标），两者不是一回事。 */
+export const MARKET_VENUES: readonly VenueAdapter[] = [binance, okx, bybit, hyperliquid, coinbase].filter(v => !!v.market)
 
 /** 这只品种那一家的行情面：按身份键的 venue 找，且 market 段要对得上（coinbase/usd_m/… 这种不存在的组合回 undefined）；
  *  美元指数（macro）不在注册表里，回 undefined */

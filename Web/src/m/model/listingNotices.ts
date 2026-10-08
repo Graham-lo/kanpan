@@ -5,6 +5,7 @@
  * 第一次拉（这台设备上这个账号还没有游标）只出最近 1 小时内的，之后出游标以后、24 小时以内的；
  * 太旧的只挪游标不打扰。一次最多出 5 条（新的在前）。
  */
+import { openableKey } from './symKey'
 
 export interface ListingNotice { id: number; venue: string; market: string; symbol: string; event: string; at: number; title: string; body: string }
 
@@ -33,7 +34,7 @@ export function planNotices(notices: readonly ListingNotice[], cursor: number | 
   return { show: fresh.slice(0, LN.maxPerPull), cursor: next }
 }
 
-/** 通知点开去哪只：币安 U 本位永续给裸代号，别的网页版开不了返回 null */
+/** 通知点开去哪只：币安 U 本位永续给裸代号，注册表里的别家给完整键（2026-10-08），别的网页版开不了返回 null */
 export function noticeSymbol(n: Pick<ListingNotice, 'venue' | 'market' | 'symbol'>): string | null {
-  return n.venue.toLowerCase() === 'binance' && n.market.toLowerCase() === 'usd_m' && n.symbol ? n.symbol.toUpperCase() : null
+  return openableKey(n.venue, n.market, n.symbol)
 }

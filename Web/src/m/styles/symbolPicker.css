@@ -64,6 +64,7 @@ html[data-theme="dark"] .mpk-chip.on::before { background: color-mix(in srgb, va
   padding: var(--s-l) calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left));
   font: var(--t-caption2-emph); letter-spacing: 1px; color: var(--ink3);
 }
+.mpk-shn { margin-left: var(--s-s); font-weight: 400; letter-spacing: 0; font-variant-numeric: tabular-nums }
 .mpk-more {
   padding: var(--s-s) calc(var(--inset-page) + var(--safe-right)) var(--s-xxs) calc(var(--inset-page) + var(--safe-left));
   font: var(--t-caption); line-height: 1.6; color: var(--ink3);

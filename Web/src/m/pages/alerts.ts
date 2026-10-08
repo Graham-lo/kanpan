@@ -19,7 +19,8 @@ import { toast } from '../ui/toast'
 import { icon } from '../ui/icons'
 import { esc } from '../model/rowText'
 import { badgeHTML } from '../model/badge'
-import { factsOf, splitSymbol } from '../model/rowHTML'
+import { factsOf } from '../model/rowHTML'
+import { pairOf, venueLine as venueLineOf } from '../model/symKey'
 import {
   activeAlerts, deleteAlert, onAlertFired, onAlertsChange, pinnedSections, recordMeta, recordTitle, restoreAlert, sections, watchedSymbols, checkPrice, webhookBody,
   type Alert,
@@ -33,14 +34,13 @@ import { startMeMonitors } from './meMonitors'
 const LINK = '<svg width="11" height="11" viewBox="0 0 24 24" aria-label="网络回调" role="img"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4L12 18.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
 const BELL_BADGE = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3.2a1.4 1.4 0 0 1 2.4.9v.5a6.4 6.4 0 0 1 .9.3 4.6 4.6 0 0 0 4.2 6.3v3.4l1.6 2.3a1 1 0 0 1-.8 1.6H4.7a1 1 0 0 1-.8-1.6l1.6-2.3V11a6.5 6.5 0 0 1 5-6.4V4c0-.3.2-.6.5-.8zM9.5 19.5h5a2.5 2.5 0 0 1-5 0z"/><circle cx="19" cy="5.5" r="3" fill="currentColor"/></svg>'
 
-/** 品种卡第二行：「币安 · USDT 永续」 */
+/** 品种卡第二行：「币安 · USDT 永续」「OKX · USDT 永续」「HL · USDC 永续」「CB · USD 现货」（按品种所属交易所，2026-10-08） */
 export const venueLine = (symbol: string): string => {
   if (symbol === 'DXY') return '美元指数 · 指数'
-  const { quote } = splitSymbol(symbol)
-  return '币安 · ' + (quote ? quote + ' 永续' : '永续')
+  return venueLineOf(symbol, S.symbols.get(symbol))
 }
 export const pairName = (symbol: string): string => {
-  const { base, quote } = splitSymbol(symbol)
+  const { base, quote } = pairOf(symbol, S.symbols.get(symbol))
   return quote ? `${base}/${quote}` : base
 }
 

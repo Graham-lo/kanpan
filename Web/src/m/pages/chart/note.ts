@@ -32,6 +32,8 @@ import {
 import { chartCanvas, jpegBase64 } from './snapshot'
 import { monthDayTime } from './logic'
 import { NOTE_DRAFT_KEY, parseUnfinished, reusableFor, nextStored, type UnfinishedNote } from '../../model/noteDraft'
+import { normKey } from '../../chart/symbolKey'
+import { parseKey } from '../../../market/identity'
 
 export const NOTES_KEY = 'hkline-m-notes-v1'
 export const NOTE_SHOTS_KEY = 'hkline-m-notes-shots-v1'
@@ -220,7 +222,21 @@ export function captureVisible(chart: ChartHandle, now = Date.now()): Capture | 
   const v = s.viewport.view
   const from = b.firstIndexAtOrAfter(v.from)
   const to = Math.min(b.count - 1, b.index(v.to))
-  return captureRange(b.symbol, b.interval, bars, from, to, now)
+  const cap = captureRange(b.symbol, b.interval, bars, from, to, now)
+  // 共用的 captureRange 只会写币安的三段身份：别家（Coinbase 现货）换成它自己的 venue / market / 代号（服务端复盘认币安与 Coinbase）
+  if (cap && b.symbol.includes('/')) {
+    const k = parseKey(b.symbol)
+    cap.range = { ...cap.range, ...({ venue: k.venue, market: k.market } as unknown as Pick<typeof cap.range, 'venue' | 'market'>), symbol: k.symbol }
+  }
+  return cap
+}
+
+/** 这只能不能记一笔：服务端复盘（native-review）认币安 U 本位与 Coinbase 现货；OKX / Bybit / Hyperliquid 本次不接（同回放）。
+ *  币安裸代号与美元指数照旧（不在这里改它们的行为） */
+export const noteSupported = (sym: string): boolean => {
+  if (!sym.includes('/')) return true
+  const k = parseKey(sym)
+  return k.venue === 'coinbase' && k.market === 'spot'
 }
 
 /** 价格输入：只收数字与一个小数点 */
@@ -237,6 +253,7 @@ const seg = <T extends string>(labels: Record<T, string>, value: T, act: string)
 // ───────────────────────────── 取景卡
 
 export function openNote(ctx: NoteContext): Sheet | null {
+  if (!noteSupported(ctx.symbol())) { toast('这家交易所的品种还不能记一笔'); return null }
   const now = Date.now()
   const cap = captureVisible(ctx.chart, now)
   if (!cap) {
@@ -273,7 +290,7 @@ export function openNote(ctx: NoteContext): Sheet | null {
   const persist = (): void => {
     if (saved_) return
     storeUnfinished({
-      symbol: sym.toUpperCase(), interval: iv, direction, confirmation, origin, text,
+      symbol: normKey(sym), interval: iv, direction, confirmation, origin, text,
       target: targetEdited ? target : '', invalidation: invalidationEdited ? invalidation : '',
       targetEdited, invalidationEdited, updated: Date.now(),
     })

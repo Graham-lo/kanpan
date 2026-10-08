@@ -19,12 +19,13 @@ import { swipeRow, closeOpenSwipe, type SwipeHandle } from '../ui/swipeDelete'
 import { reorderable, type ReorderHandle } from '../ui/reorder'
 import { S, on, streamName, type Sym } from '../../market'
 import { esc } from '../model/rowText'
-import { factsOf, listRowHTML, splitSymbol } from '../model/rowHTML'
+import { factsOf, listRowHTML } from '../model/rowHTML'
+import { pairOf, rowMeta } from '../model/symKey'
 import * as F from '../model/favorites'
 import { applyFilter, buildSections, countText, EMPTY_TEXT, marketTitle, moreNote, type PickerSection } from '../model/picker'
 import { life } from '../model/life'
 import { ensureUniverse, wantStreams } from './_streams'
-import { cachedSym, symbolsForDisplay } from '../model/quoteCache'
+import { liveOrCached, symbolsForDisplay, tableLive } from '../model/quoteCache'
 
 export interface PickerOptions {
   /** 带进来的查询词 */
@@ -84,7 +85,7 @@ export function openPicker(opts: PickerOptions): void {
 
   // 品种表还没到（网慢）：先按上次记下的那份列，价退灰；表一到整页重画成实时的
   const all = (): Sym[] => symbolsForDisplay().list
-  const symOf = (x: string): Sym | undefined => S.symbols.get(x) ?? (S.live === true ? undefined : cachedSym(x) ?? undefined)
+  const symOf = (x: string): Sym | undefined => liveOrCached(x)
   const fitViewport = (): void => {
     const vv = window.visualViewport
     if (!vv) return
@@ -106,13 +107,15 @@ export function openPicker(opts: PickerOptions): void {
   const row = (symbol: string, hl: [number, number] | null): string => {
     const s = symOf(symbol)
     // 品种表认得的照常；不认得的（已下架的自选）凑一行占位：价格与涨跌写「—」，退成灰
-    const gone = !s && S.live === true
-    const html = listRowHTML(factsOf(symbol, s), { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: s?.macro ? `${symbol} 指数` : `${symbol} 永续`, fav: F.isFavorite(st.symbols, symbol), hl })
+    const gone = !s && tableLive(symbol)
+    const html = listRowHTML(factsOf(symbol, s), { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: rowMeta(symbol, s), fav: F.isFavorite(st.symbols, symbol), hl })
     return gone ? html.replace('class="sr"', 'class="sr stale"') : s && !S.symbols.has(symbol) ? html.replace('class="sr"', 'class="sr cached"') : html
   }
   const sectionHTML = (sec: PickerSection): string => {
     const note = moreNote(sec.more)
-    return `<section class="mpk-sec" data-kind="${sec.kind}"><div class="mpk-sh">${esc(sec.title)}</div>`
+    // 搜索组（一家一组）：组头交易所全名 + 命中数
+    const n = sec.kind === 'search' && sec.count ? `<span class="mpk-shn num">${sec.count}</span>` : ''
+    return `<section class="mpk-sec" data-kind="${sec.kind}"${sec.venue ? ` data-venue="${esc(sec.venue)}"` : ''}><div class="mpk-sh">${esc(sec.title)}${n}</div>`
       + `<div class="mpk-rows">${sec.rows.map(r => row(r.symbol, r.hl)).join('')}</div>`
       + (note ? `<div class="mpk-more">${esc(note)}</div>` : '') + `</section>`
   }
@@ -221,7 +224,7 @@ export function openPicker(opts: PickerOptions): void {
     if (star) {
       const sym = star.dataset.star!
       const s = symOf(sym)
-      const added = F.toggleFavorite(st.symbols, sym, st.favoritesGroup || null, { kind: s?.kind, base: splitSymbol(sym).base })
+      const added = F.toggleFavorite(st.symbols, sym, st.favoritesGroup || null, { kind: s?.kind, base: pairOf(sym, s).base })
       save()
       keepScroll(render)
       if (added) opts.onStarred?.(sym)

@@ -41,6 +41,10 @@ import type { PagePort } from './data'
 import { notePriceAxisPicked } from '../habitsRuntime'
 import { BT } from '../../../terms'
 import { countedSection, sectionOrder, type AnalysisSection } from './analysisRank'
+import { compareSymbolOf } from '../../chart/compare.source'
+import { normKey } from '../../chart/symbolKey'
+import { venueLabel } from '../../../venues'
+import { venueTagHTML } from '../../model/symKey'
 
 // ───────────────────────────── 术语（照 iOS Glossary：只给读不出意思的短名挂问号）
 
@@ -97,11 +101,13 @@ export interface PanelContext {
 
 /** 当前生效参数（按指标能直接下标取用的长度） */
 const paramsOf = (id: IndicatorId): number[] => normalizedParams(id, st.params[id] ?? defaultParams(id))
-/** 对比品种键 → 显示名：binance/usd_m/ETHUSDT → ETH/USDT，macro/index/DXY → DXY */
+/** 对比品种键 → 显示名：binance/usd_m/ETHUSDT → ETH/USDT，okx/usd_m/ETHUSDT → OKX ETH/USDT，macro/index/DXY → DXY
+ *  （和图例一样：别家才带缩写，同一个币对比币安与别家时分得开） */
 export const compareName = (key: string): string => {
-  const sym = key.split('/').pop() ?? key
+  const sym = compareSymbolOf(key) ?? normKey(key.split('/').pop() ?? key)
   const { base, quote } = splitPair(sym)
-  return quote ? `${base}/${quote}` : base
+  const v = sym.includes('/') ? venueLabel(sym) : ''
+  return (v ? v + ' ' : '') + (quote ? `${base}/${quote}` : base)
 }
 
 // ───────────────────────────── 分析
@@ -550,7 +556,7 @@ export function openSymbolPicker(o: { title: string; id: string; accept(sym: str
       list.innerHTML = rows.length ? rows.map(s => {
         const { base, quote } = splitPair(s.symbol)
         return `<button type="button" class="cp-row cp-tap cp-cmp-row${s.symbol === o.current ? ' on' : ''}" data-sym="${esc(s.symbol)}">
-          <span class="cp-rn">${badgeHTML(s.base, 24, assetOf(s.kind, s.base))}<b>${esc(base)}</b><small>/${esc(quote)}</small></span>${chevron()}</button>`
+          <span class="cp-rn">${badgeHTML(s.base, 24, assetOf(s.kind, s.base))}${venueTagHTML(s.symbol)}<b>${esc(base)}</b>${quote ? `<small>/${esc(quote)}</small>` : ''}</span>${chevron()}</button>`
       }).join('') : '<div class="cp-empty">没有找到</div>'
     }
     draw()

@@ -64,10 +64,15 @@ function exchange(data: Record<string, Bar[]>, page = 100) {
 // ------------------------------------------------------------------ 键与对齐
 
 describe('对比 · 键、目标与对齐', () => {
-  it('只认币安合约键与裸代号；别家、别的市场、写坏的键一律不取', () => {
+  it('认币安合约键与裸代号、注册表里的别家（2026-10-08 起）；认不出的交易所 / 市场、写坏的键一律不取', () => {
     expect(compareSymbolOf('binance/usd_m/ethusdt')).toBe('ETHUSDT')
     expect(compareSymbolOf('SOLUSDT')).toBe('SOLUSDT')
-    expect(compareSymbolOf('coinbase/spot/BTC-USD')).toBeNull()
+    // 别家按完整键取数（原来网页只有币安行情、一律不取；2026-10-08 起注册表里有行情面的那几家都认）
+    expect(compareSymbolOf('coinbase/spot/BTC-USD')).toBe('coinbase/spot/BTC-USD')
+    expect(compareSymbolOf('OKX/USD_M/ethusdt')).toBe('okx/usd_m/ETHUSDT')
+    expect(compareSymbolOf('hyperliquid/usd_m/KPEPE')).toBe('hyperliquid/usd_m/KPEPE')
+    expect(compareSymbolOf('okx/spot/ETHUSDT')).toBeNull()
+    expect(compareSymbolOf('kraken/usd_m/ETHUSDT')).toBeNull()
     expect(compareSymbolOf('binance/spot/ETHUSDT')).toBeNull()
     expect(compareSymbolOf('binance/usd_m/')).toBeNull()
     expect(compareSymbolOf('a/b')).toBeNull()

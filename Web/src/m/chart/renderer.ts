@@ -33,6 +33,7 @@ import { DRAW_REST_ALPHA } from './draw/pen'
 import { drawOrderFlow, drawOrderFlowHover, drawOrderFlowLabels, hasOrderFlow, orderFlowHoversBand } from './renderer.orderflow'
 import { drawLegend, drawLegends, drawSub, subAxisLabels, subCrosshairY, subValueText } from './renderer.sub'
 import { compareLegendInset, compareRange, drawCompare, mainPriceTicks } from './renderer.compare'
+import { normKey } from './symbolKey'
 
 export type PriceFlash = 'up' | 'down'
 
@@ -931,7 +932,7 @@ export class ChartRenderer {
 
   depthEnvelope(pane: Pane, range: PriceRange, L: Layout): Rect | null {
     const st = this._state, book = st.overlay.depth, b = st.input.series
-    if (!book || book.symbol !== st.input.symbol.symbol.toUpperCase() || b.isEmpty) return null
+    if (!book || book.symbol !== normKey(st.input.symbol.symbol) || b.isEmpty) return null
     const price = b.close[b.count - 1]
     let largest = 0
     for (const l of book.bids) largest = Math.max(largest, l.quantity)

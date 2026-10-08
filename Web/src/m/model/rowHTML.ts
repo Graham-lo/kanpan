@@ -6,9 +6,11 @@ import type { CompareRowState } from './compareMode'
 import { assetOf, badgeHTML, liuliBadgeHTML, type BadgeAsset } from './badge'
 import { changePercentText, esc, fmtVol, MISSING, priceText, textIsUp } from './rowText'
 import { splitHighlight } from './search'
+import { pairOf, splitSymbol, venueTagHTML } from './symKey'
 import type { Sym } from '../../market/symbols'
 
-export interface RowFacts { symbol: string; base: string; quote: string; asset: BadgeAsset; kind?: Sym['kind']; cn?: string; isNew?: boolean }
+/** venue：名字前那截灰小字缩写的 HTML（币安 / OKX / Bybit / HL / CB；美元指数空串）；mark：徽章按哪个币认（别家用品种表的 base，kPEPE → PEPE） */
+export interface RowFacts { symbol: string; base: string; quote: string; asset: BadgeAsset; kind?: Sym['kind']; cn?: string; isNew?: boolean; venue?: string; mark?: string }
 /** 上线 30 天内挂「新」字（iOS SymbolInfo.isNewListing：onboardDate 缺 / 非正 / 在未来都不挂） */
 export const NEW_LISTING_MS = 30 * 86_400_000
 export function isNewListing(onboard: number | null | undefined, now = Date.now()): boolean {
@@ -18,15 +20,13 @@ export function isNewListing(onboard: number | null | undefined, now = Date.now(
 }
 /** 「新」字记号（NewListingMark：12 medium、强调色） */
 const NEW_MARK = '<span class="row-new" aria-label="新上线">新</span>'
-const QUOTES = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'USD1', 'TUSD', 'USD']
-/** 代号拆成 (base, quote)：BTCUSDT → BTC / USDT；1000PEPEUSDT → 1000PEPE / USDT */
-export function splitSymbol(symbol: string): { base: string; quote: string } {
-  for (const q of QUOTES) if (symbol.length > q.length && symbol.endsWith(q)) return { base: symbol.slice(0, -q.length), quote: q }
-  return { base: symbol, quote: '' }
-}
-export function factsOf(symbol: string, s?: Pick<Sym, 'kind' | 'cn' | 'onboard'> | null, now = Date.now()): RowFacts {
-  const { base, quote } = splitSymbol(symbol)
-  return { symbol, base, quote, asset: assetOf(s?.kind, base), kind: s?.kind, cn: s?.cn, isNew: isNewListing(s?.onboard, now) }
+/** 代号拆成 (base, quote)：BTCUSDT → BTC / USDT；1000PEPEUSDT → 1000PEPE / USDT（实现挪到 symKey，老调用照旧从这里拿） */
+export { splitSymbol }
+/** 一行的事实：名字两截按品种所属交易所拆（币安按代号；别家按品种表 title / quote，表没到按键猜），名字前带交易所缩写 */
+export function factsOf(symbol: string, s?: (Pick<Sym, 'kind' | 'cn' | 'onboard'> & Partial<Pick<Sym, 'title' | 'quote' | 'macro' | 'base'>>) | null, now = Date.now()): RowFacts {
+  const { base, quote } = pairOf(symbol, s)
+  const mark = symbol.includes('/') && s?.base ? s.base : base
+  return { symbol, base, quote, asset: assetOf(s?.kind, mark), kind: s?.kind, cn: s?.cn, isNew: isNewListing(s?.onboard, now), venue: venueTagHTML(symbol), mark }
 }
 
 /** 涨跌药丸：宽 72 高 28，底是涨跌色 14%、描边 30%，字就是涨跌色。
@@ -60,8 +60,8 @@ const idxName = (f: RowFacts): string => f.kind === 'idx' && !f.quote && f.cn ? 
 export function liuliRowHTML(f: RowFacts, d: LiuliData, first: boolean, extraCls = ''): string {
   const price = priceCell(d)
   return `<div class="lr${first ? ' first' : ''}${extraCls ? ' ' + extraCls : ''}" data-sym="${esc(f.symbol)}" role="button" tabindex="0">`
-    + `<div class="lr-in">${liuliBadgeHTML(f.base, f.asset)}`
-    + `<div class="lr-name"><div class="lr-top"><span class="lr-base">${esc(f.base)}</span>${f.quote ? `<span class="lr-quote">${esc(f.quote)}</span>` : idxName(f) ? `<span class="lr-quote">${esc(idxName(f))}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
+    + `<div class="lr-in">${liuliBadgeHTML(f.mark ?? f.base, f.asset)}`
+    + `<div class="lr-name"><div class="lr-top">${f.venue ?? ''}<span class="lr-base">${esc(f.base)}</span>${f.quote ? `<span class="lr-quote">${esc(f.quote)}</span>` : idxName(f) ? `<span class="lr-quote">${esc(idxName(f))}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
     + `<div class="lr-meta num"><span class="lr-vol">成交额 ${esc(volText(d.vol))}</span>${d.extra ?? ''}</div></div>`
     + `<div class="lr-right${d.trend === undefined ? ' solo' : ''}"><span class="${price.cls}">${esc(price.text)}</span>${d.trend === undefined ? pillHTML(d.pct, undefined, !!d.gone, !!d.closed)
       : `<span class="lr-tp"><span class="lr-trend">${d.trend}</span>${pillHTML(d.pct, undefined, !!d.gone, !!d.closed)}</span>`}</div>`
@@ -99,8 +99,8 @@ export function listRowHTML(f: RowFacts, d: { price: number | null; dec?: number
   const dir = chg === MISSING ? '' : textIsUp(chg) ? 'up' : 'down'
   // 对比模式（搜索页顶栏 ＋ 开的那一副）：主图那一行整行退成禁用色、点不动
   const main = d.cmp === 'main'
-  return `<div class="sr${main ? ' cmp-main' : ''}" data-sym="${esc(f.symbol)}" role="button" tabindex="${main ? -1 : 0}"${main ? ' aria-disabled="true"' : ''}>${badgeHTML(f.base, 32, f.asset)}`
-    + `<div class="sr-name"><div class="sr-top"><span class="sr-base">${baseParts}</span>${f.quote ? `<span class="sr-sep"> / </span><span class="sr-quote">${quoteParts}</span>` : idxName(f) ? `<span class="sr-sep"> </span><span class="sr-quote">${esc(idxName(f))}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
+  return `<div class="sr${main ? ' cmp-main' : ''}" data-sym="${esc(f.symbol)}" role="button" tabindex="${main ? -1 : 0}"${main ? ' aria-disabled="true"' : ''}>${badgeHTML(f.mark ?? f.base, 32, f.asset)}`
+    + `<div class="sr-name"><div class="sr-top">${f.venue ?? ''}<span class="sr-base">${baseParts}</span>${f.quote ? `<span class="sr-sep"> / </span><span class="sr-quote">${quoteParts}</span>` : idxName(f) ? `<span class="sr-sep"> </span><span class="sr-quote">${esc(idxName(f))}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
     + `<div class="sr-meta">${esc(d.meta)}</div></div>`
     + `<div class="sr-right num"><span class="sr-price">${esc(priceText(d.price, d.dec))}</span><span class="sr-chg ${dir}">${esc(chg)}</span></div>`
     + (d.cmp ? compareMarkHTML(f.symbol, d.cmp)

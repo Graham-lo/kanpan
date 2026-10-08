@@ -15,8 +15,8 @@ import { save } from './store'
 import { drawingBook, onDrawingsChanged } from './drawings'
 import type { Drawing } from '../chart/draw/drawing'
 import { AlertGeometry } from '../chart/draw/alert'
-import { drawingIdOf, MARKET, type Alert } from '../../alerts/shape'
-import { MACRO_KEY, MACRO_SYMBOL } from '../../market/macro'
+import { drawingIdOf, type Alert } from '../../alerts/shape'
+import { normKey } from '../chart/symbolKey'
 import { activeAlerts, alertsReplaced } from '../model/alerts'
 
 /** 这条线作为提醒几何的样子（点位取整到毫秒）；画不成提醒的线是 null */
@@ -41,14 +41,10 @@ export function reconcileLineAlerts(sym: string, drawings: readonly Drawing[]): 
 
 /**
  * 整批换进来的画线逐只对账。不止图上正显示的那一只——别的品种的线被别的设备挪了，它上面的提醒一样要跟上。
- * keys 是换了的桶（规范键 binance/usd_m/代号）。
+ * keys 是换了的桶（规范键 venue/market/代号）：币安的桶对网页裸代号、美元指数的桶对 DXY、别家（2026-10-08）对完整键。
  */
 export function reconcileLineAlertsIn(itemsOf: (key: string) => readonly Drawing[], keys: Iterable<string>): void {
-  const pre = MARKET + '/'
-  for (const k of keys) {
-    if (k.startsWith(pre)) reconcileLineAlerts(k.slice(pre.length), itemsOf(k))
-    else if (k === MACRO_KEY) reconcileLineAlerts(MACRO_SYMBOL, itemsOf(k))   // 美元指数的桶
-  }
+  for (const k of keys) if (k.split('/').length === 3) reconcileLineAlerts(normKey(k), itemsOf(k))
 }
 
 let stop: (() => void) | null = null

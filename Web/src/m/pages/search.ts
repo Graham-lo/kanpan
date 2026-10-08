@@ -2,9 +2,12 @@
  *
  * 自选页头部的放大镜开的那一页：满屏盖在上面，顶上一条 44 高的胶囊输入框 +「取消」。
  * 没打字：历史搜索（小块）→ 最近看过 → 都没有时给「热门」（24h 成交额前 10）。
- * 打了字：「品种 N」，先按最匹配、同档按 24h 成交额降序，先摆 6 行，多了给「查看全部 N 个品种」——
+ * 打了字：按交易所分组（2026-10-08，照 iOS SymbolSearchView）——一家一组，组头交易所全名 + 命中数，组序先按组内最好的匹配档、
+ * 同档按注册表顺序；组内先按最匹配、同档按 24h 成交额降序。一共先摆 6 行，按组轮流分（每家至少一行，model/search previewQuota），
+ * 多了给「查看全部 N 个品种」——
  * 点它进品种整页（symbolPicker.ts，盖在这一页上面），查询词跟着过去；整页那颗返回原路退回这里，查询词也带回来。
- * 行上的星是加自选的唯一入口；点行换图。
+ * 行上的星是加自选的唯一入口；点行换图。别家（OKX / Bybit / Hyperliquid / Coinbase）的品种表懒拉：这一页打开时拉全部（已经拉到的不再拉），
+ * 到一家重画一次；还在路上 / 取不到的在结果底下一行小字说明，不挡结果。
  *
  * 对比模式（2026-10-05，照 iOS CompareSearchMode / SymbolSearchView）：行情页顶栏那颗 ＋ 开的也是这一页，传进 compare 换一副样子——
  * 页顶一条「正在对比 n/3」小块各带 ×；行尾的星换成 ＋ / ✓；满三只别的行 ＋ 退色、点了说「最多对比 3 个品种」；主图那只整行禁用；
@@ -21,10 +24,13 @@ import { el, layer } from '../ui/dom'
 import { icon } from '../ui/icons'
 import { confirmDialog } from '../ui/sheet'
 import { toast } from '../ui/toast'
-import { S, on, streamName, type Sym } from '../../market'
+import { S, on, streamName, loadAllVenues, wireSymbol, type Sym } from '../../market'
+import { MARKET_VENUES } from '../../venues'
+import { DEFAULT_VENUE } from '../../market/identity'
 import { esc } from '../model/rowText'
-import { clearHistory, hot, rank, readHistory, remember, SEARCH_PREVIEW, type Ranked } from '../model/search'
-import { factsOf, listRowHTML, splitSymbol } from '../model/rowHTML'
+import { clearHistory, groupRanked, hot, previewQuota, rank, readHistory, remember, SEARCH_PREVIEW, type Ranked } from '../model/search'
+import { factsOf, listRowHTML } from '../model/rowHTML'
+import { pairOf, rowMeta } from '../model/symKey'
 import { badgeHTML } from '../model/badge'
 import { isFavorite, toggleFavorite } from '../model/favorites'
 import { life } from '../model/life'
@@ -33,7 +39,7 @@ import { openPicker } from './symbolPicker'
 import { CompareSearchMode, COMPARE_FULL_NOTICE, type CompareRowState } from '../model/compareMode'
 import { compareSymbolOf } from '../chart/compare.source'
 import { cleanCompare, MAX_COMPARE as MAX } from '../app/prefs'
-import { cachedSym, symbolsForDisplay } from '../model/quoteCache'
+import { liveOrCached, symbolsForDisplay } from '../model/quoteCache'
 
 const EMPTY_TEXT = '没有这个品种'
 
@@ -80,7 +86,7 @@ export function openSearch(opts: SearchOptions = {}): void {
 
   // 品种表还没到（网慢）：先按上次记下的那份搜，价退灰；表一到（universe）整页重画成实时的
   const all = (): Sym[] => symbolsForDisplay().list
-  const symOf = (x: string): Sym | undefined => S.symbols.get(x) ?? (S.live === true ? undefined : cachedSym(x) ?? undefined)
+  const symOf = (x: string): Sym | undefined => liveOrCached(x)
   const fitViewport = (): void => {
     const vv = window.visualViewport
     if (!vv) return
@@ -97,7 +103,7 @@ export function openSearch(opts: SearchOptions = {}): void {
   const row = (s: Sym | undefined, symbol: string, hl: [number, number] | null = null, m: CompareSearchMode | null = mode()): string => {
     const f = factsOf(symbol, s)
     const cmp: CompareRowState | undefined = m ? m.state(symbol) : undefined
-    const html = listRowHTML(f, { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: s?.macro ? `${symbol} 指数` : `${symbol} 永续`, fav: isFavorite(st.symbols, symbol), hl, cmp })
+    const html = listRowHTML(f, { price: s?.price ?? null, dec: s?.dec, pct: s?.pct ?? null, meta: rowMeta(symbol, s), fav: isFavorite(st.symbols, symbol), hl, cmp })
     return s && !S.symbols.has(symbol) ? html.replace('class="sr', 'class="sr cached') : html
   }
   const rows = (list: string[] | Ranked<Sym>[]): string => { const m = mode(); return list.map((x, i) => {
@@ -105,6 +111,18 @@ export function openSearch(opts: SearchOptions = {}): void {
     return (i ? '<div class="sr-div"></div>' : '') + html
   }).join('') }
   const head = (title: string, trailing = ''): string => `<div class="msr-head"><span>${esc(title)}</span>${trailing}</div>`
+  /** 别家的表还在路上 / 取不到：结果底下一行小字（不挡结果） */
+  const venueStatus = (): string => {
+    const loading: string[] = [], failed: string[] = []
+    for (const v of MARKET_VENUES) {
+      if (v.key === DEFAULT_VENUE) continue
+      const x = S.venues[v.key]
+      if (!x || x.live == null) loading.push(v.market.displayName)
+      else if (x.live === false) failed.push(v.market.displayName)
+    }
+    const parts = [loading.length ? `正在取 ${loading.join('、')} 的品种表…` : '', failed.length ? `${failed.join('、')} 的品种表取不到` : ''].filter(Boolean)
+    return parts.length ? `<div class="msr-venues">${esc(parts.join('；'))}</div>` : ''
+  }
 
   function render(): void {
     if (L.ended) return
@@ -113,15 +131,20 @@ export function openSearch(opts: SearchOptions = {}): void {
     let html = ''
     shown = []
     if (term) {
-      const hits = rank(all().map(s => s), term, s => splitSymbol(s.symbol).base)
+      const hits = rank(all(), term, s => pairOf(s.symbol, s).base, s => wireSymbol(s.symbol))
       if (!hits.length) html = `<div class="msr-empty">${all().length ? EMPTY_TEXT : S.live === false ? '品种表没拉到，稍后再试' : '品种表加载中…'}</div>`
       else {
-        // 对比模式整列给出来：「查看全部」去的品种整页没有对比模式
-        const list = opts.compare ? hits.slice(0, 200) : hits.slice(0, SEARCH_PREVIEW)
-        shown = list.map(h => h.item.symbol)
-        html = head('品种', `<span class="msr-count num">${hits.length}</span>`) + rows(list)
-        if (!opts.compare && hits.length > SEARCH_PREVIEW) html += `<button type="button" class="msr-all">查看全部 ${hits.length} 个品种${icon('chevronRight', 12)}</button>`
+        // 一家一组；每组先露几行按组轮流分。对比模式整列给出来（「查看全部」去的品种整页没有对比模式），每组封顶 200
+        const groups = groupRanked(hits)
+        const quota = opts.compare ? groups.map(g => Math.min(200, g.hits.length)) : previewQuota(groups.map(g => g.hits.length), SEARCH_PREVIEW)
+        groups.forEach((g, i) => {
+          const list = g.hits.slice(0, quota[i])
+          shown.push(...list.map(h => h.item.symbol))
+          html += head(g.title, `<span class="msr-count num">${g.hits.length}</span>`) + rows(list)
+        })
+        if (!opts.compare && shown.length < hits.length) html += `<button type="button" class="msr-all">查看全部 ${hits.length} 个品种${icon('chevronRight', 12)}</button>`
       }
+      html += venueStatus()
     } else {
       // 历史搜索词：对比模式不摆（也不记）——那一页是来挑对比的，不是来找主图的
       const terms = opts.compare ? [] : readHistory()
@@ -152,7 +175,7 @@ export function openSearch(opts: SearchOptions = {}): void {
       + `<div class="msr-cmpchips">${keys.map(k => {
         const sym = compareSymbolOf(k) ?? k
         const f = factsOf(sym, symOf(sym))
-        return `<span class="msr-cmpchip" data-key="${esc(k)}">${badgeHTML(f.base, 20, f.asset)}<span>${esc(f.base)}</span><button type="button" class="msr-cmpx" data-cmpx="${esc(k)}" aria-label="移除 ${esc(f.base)}">${XMARK}</button></span>`
+        return `<span class="msr-cmpchip" data-key="${esc(k)}">${badgeHTML(f.mark ?? f.base, 20, f.asset)}${f.venue ?? ''}<span>${esc(f.base)}</span><button type="button" class="msr-cmpx" data-cmpx="${esc(k)}" aria-label="移除 ${esc(f.base)}">${XMARK}</button></span>`
       }).join('')}</div>`
   }
   /** 对比模式里点了一行（或行尾那颗 / 小块的 ×）：加 / 减 / 满了提示，主图那只不动 */
@@ -203,7 +226,7 @@ export function openSearch(opts: SearchOptions = {}): void {
     if (star) {
       const sym = star.dataset.star!
       const s = symOf(sym)
-      const added = toggleFavorite(st.symbols, sym, st.favoritesGroup || null, { kind: s?.kind, base: splitSymbol(sym).base })
+      const added = toggleFavorite(st.symbols, sym, st.favoritesGroup || null, { kind: s?.kind, base: pairOf(sym, s).base })
       save()
       star.classList.toggle('on', added)
       star.setAttribute('aria-pressed', String(added))
@@ -285,6 +308,8 @@ export function openSearch(opts: SearchOptions = {}): void {
   render()
   requestAnimationFrame(() => root.classList.add('in'))
   void ensureUniverse().then(L.guard(() => { refreshHot(); schedule() }), L.guard(() => toast('品种表没拉到')))
+  // 别家的品种表：这一页打开时拉全部（已经拉到的不再拉；在途的共用；失败的 30 秒内不重拉），到一家发一次 universe、上面那条监听重画
+  void loadAllVenues()
 }
 
 export function closeSearch(): void { current?.close() }

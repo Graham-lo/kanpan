@@ -9,6 +9,7 @@
  */
 
 import { compareKey } from '../../sync/codec'
+import { syncKeyOf } from '../../market/identity'
 import { isDrawingKind } from '../chart/draw/drawing'
 import { ANALYSIS_SECTIONS, isAnalysisSection } from '../pages/chart/analysisRank'
 import { defaultParams } from '../indicator/ids'
@@ -207,7 +208,7 @@ export function cleanColors(v: unknown): Partial<Record<IndicatorId, Record<stri
 export function cleanCompare(v: unknown): string[] {
   const out: string[] = []
   for (const x of strs(v)) {
-    const k = x.includes('/') ? x : 'binance/usd_m/' + x.toUpperCase()
+    const k = x.includes('/') ? x : syncKeyOf(x.toUpperCase())
     // 与服务端 compare_key 同一条规则（按交易所分流：币安代号允许「币安人生USDT」这种中文底名，Coinbase 是 BASE-USD）；
     // 服务端对不合规的键整条 settings 拒收，所以这里认不下的就丢，不带上去
     if (compareKey(k) && !out.includes(k)) out.push(k)

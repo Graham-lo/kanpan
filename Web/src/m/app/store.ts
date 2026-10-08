@@ -17,7 +17,7 @@ import { defaultPrefs, layoutSnapshot, normalizePrefs, settleIndicatorLayouts, t
 import { migrateAlert, type Alert } from '../../alerts/shape'
 import { tabGuard } from './tabGuard'
 import { backupUnreadable } from './unreadable'
-import { validSymbol } from '../../sync/codec'
+import { validSymbol, webSymbol } from '../../sync/codec'
 
 export const KEY = 'hkline-m-v1'
 /** 提醒表并进 st 之前单独存的键（m/model/alerts.ts 早先用的）：第一次读档时搬进来，之后不再写 */
@@ -104,7 +104,8 @@ export function hydrate(raw: Record<string, unknown>): State {
   return {
     ...normalizePrefs(raw),
     page: (PAGES as readonly unknown[]).includes(raw.page) ? raw.page as PageId : d.page,
-    symbol: typeof raw.symbol === 'string' && (/^[A-Z0-9]{2,30}$/.test(raw.symbol) || validSymbol(raw.symbol)) ? raw.symbol : d.symbol,
+    // 别家的完整键（okx/usd_m/BTCUSDT、coinbase/spot/BTC-USD……，2026-10-08 起）按注册表那一家的代号形状认（webSymbol）
+    symbol: typeof raw.symbol === 'string' && (/^[A-Z0-9]{2,30}$/.test(raw.symbol) || validSymbol(raw.symbol) || webSymbol(raw.symbol)) ? raw.symbol : d.symbol,
     scroll: Object.fromEntries(Object.entries(scroll).filter((e): e is [string, number] => /^[\w.-]{1,48}$/.test(e[0]) && typeof e[1] === 'number' && e[1] >= 0)),
     symbols: {
       favorites: [...new Set(strs(sym.favorites))],

@@ -18,6 +18,7 @@ import { el } from '../ui/dom'
 import { installBack, onBack, syncBack } from '../ui/backStack'
 import { installNativeFeel } from '../ui/native'
 import { session, onSession } from '../../account/session'
+import { normKey } from '../chart/symbolKey'
 
 /** 一页对壳的承诺 */
 export interface PageHandle {
@@ -183,8 +184,8 @@ export function refreshPage(ids: readonly PageId[]): void {
 /** 打开一只品种的图（自选 / 板块 / 搜索点一行都走这里）：记最近、记来路、切到图表页。
  *  scanFrom：来源页那张列表此刻的顺序（自选当前分类、板块下钻那几行），给就冻结成扫图名单 */
 export function openSymbol(symbol: string, scanFrom?: readonly string[]): void {
-  const s = symbol.toUpperCase()
-  if (scanFrom) scanList = [...new Set(scanFrom.map(x => x.toUpperCase()).filter(Boolean))]
+  const s = normKey(symbol)
+  if (scanFrom) scanList = [...new Set(scanFrom.map(normKey).filter(Boolean))]
   const from = st.page
   st.symbol = s
   st.symbols.recents = [s, ...st.symbols.recents.filter(x => x !== s)].slice(0, 10)
