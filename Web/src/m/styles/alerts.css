@@ -17,6 +17,8 @@ html:not([data-theme="dark"]) .alf-sheet .m-sheet-back, html:not([data-theme="da
 .alf-sheet .m-sheet-titles { grid-column: 2; justify-content: center }
 .alf-sheet .m-sheet-title { font: var(--t-title); font-weight: 600; text-align: center }
 .alf-sheet .m-sheet-action { grid-column: 3; justify-self: end; padding: 0 var(--s-m); font: var(--t-body); font-size: 16px; font-weight: 500 }
+/* 创建页按内容高：正文不撑满（flex 不长），面板量到的就是内容高；推进下一层时回到撑满 */
+.alf-sheet[data-id="alerts.new"]:not(.pushed) .m-sheet-body { flex: 0 1 auto }
 .alf-body { padding-left: calc(var(--inset-page) + var(--safe-left)); padding-right: calc(var(--inset-page) + var(--safe-right)) }
 
 .al-card { background: var(--raised2); border-radius: var(--r-m); overflow: hidden }
@@ -45,7 +47,20 @@ html:not([data-theme="dark"]) .alf-sheet .m-sheet-back, html:not([data-theme="da
 .alr-del { width: 44px; height: 44px; display: grid; place-items: center; color: var(--ink3); flex: none }
 .alr-del:active { color: var(--accent) }
 
-.al-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-s); color: var(--ink3); font: var(--t-body); min-height: 50vh }
+/* 空态（照 iOS AlertEmptyState）：标题 body ink2、一句怎么建 footnote ink3（间距 xs），往下 l 一颗「去创建」琉璃胶囊；整块竖直居中 */
+.al-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-xs); color: var(--ink3); font: var(--t-body); min-height: 50vh; padding: 0 var(--s-xl); text-align: center }
+.al-empty-title { font: var(--t-body); color: var(--ink2) }
+.al-empty-hint { font: var(--t-footnote, var(--t-caption)); color: var(--ink3) }
+.al-empty-create {
+  margin-top: calc(var(--s-l) - var(--s-xs)); display: inline-flex; align-items: center; gap: var(--s-xs);
+  min-height: var(--hit); padding: 0 var(--s-xl); border-radius: 999px;
+  font: var(--t-body-emph); color: #fff;
+  background: linear-gradient(180deg, var(--glaze-accent-a, var(--accent)), var(--glaze-accent-b, var(--accent)));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 6px 14px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+html[data-theme="dark"] .al-empty-create { box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 6px 14px color-mix(in srgb, var(--accent) 25%, transparent) }
+.al-empty-create:active { transform: scale(.97); filter: brightness(.96) }
+.al-pin-empty { font: var(--t-footnote, var(--t-caption)); color: var(--ink3); padding: var(--s-m) var(--inset-card); min-height: var(--row-min); display: flex; align-items: center }
 
 /* 创建提醒 */
 .alf-form { display: flex; flex-direction: column; gap: var(--s-xl); padding-top: var(--s-m) }

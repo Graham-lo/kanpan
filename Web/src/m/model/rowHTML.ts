@@ -43,7 +43,10 @@ export function pillHTML(pct: number | null | undefined, text?: string, gone = f
  *  价格与涨跌写「—」、退成次要文字色（照 iOS FavoritesView 行：skeleton = 价缺 && !stale） */
 export interface LiuliData { price: number | null; dec?: number | null; pct: number | null; vol: number | null; priceText?: string; extra?: string; gone?: boolean
   /** 行情帧自己说了休市（美元指数周末）：价格退灰、涨跌药丸退成中性灰，数照摆（照 iOS FavoritesView） */
-  closed?: boolean }
+  closed?: boolean
+  /** 自选行那条 24 小时走势线（model/favoriteTrend 的 trendSVG）。undefined = 这张表不摆这一列（开关关着 / 板块下钻）；
+   *  空串 = 摆着这一格但还没数据（空着那 44，不摆占位） */
+  trend?: string }
 /** 成交额那格缺数写「—」，和同一行价格 / 涨跌的缺数一个样（iOS sectorVolumeText） */
 const volText = (v: number | null): string => v != null && Number.isFinite(v) ? fmtVol(v) : MISSING
 const priceCell = (d: LiuliData): { cls: string; text: string } => {
@@ -60,7 +63,8 @@ export function liuliRowHTML(f: RowFacts, d: LiuliData, first: boolean, extraCls
     + `<div class="lr-in">${liuliBadgeHTML(f.base, f.asset)}`
     + `<div class="lr-name"><div class="lr-top"><span class="lr-base">${esc(f.base)}</span>${f.quote ? `<span class="lr-quote">${esc(f.quote)}</span>` : idxName(f) ? `<span class="lr-quote">${esc(idxName(f))}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
     + `<div class="lr-meta num"><span class="lr-vol">成交额 ${esc(volText(d.vol))}</span>${d.extra ?? ''}</div></div>`
-    + `<div class="lr-right"><span class="${price.cls}">${esc(price.text)}</span>${pillHTML(d.pct, undefined, !!d.gone, !!d.closed)}</div>`
+    + `<div class="lr-right"><span class="${price.cls}">${esc(price.text)}</span>${d.trend === undefined ? pillHTML(d.pct, undefined, !!d.gone, !!d.closed)
+      : `<span class="lr-tp"><span class="lr-trend">${d.trend}</span>${pillHTML(d.pct, undefined, !!d.gone, !!d.closed)}</span>`}</div>`
     + `</div></div>`
 }
 /** 推送来了：只改价格、药丸与成交额 */
@@ -79,7 +83,13 @@ export function patchLiuli(row: Element, d: LiuliData): void {
   }
   const v = row.querySelector('.lr-vol')
   if (v) { const t = '成交额 ' + volText(d.vol); if (v.textContent !== t) v.textContent = t }
+  if (d.trend !== undefined) {
+    const tr = row.querySelector('.lr-trend')
+    if (tr && drawnTrend.get(tr) !== d.trend) { drawnTrend.set(tr, d.trend); tr.innerHTML = d.trend }
+  }
 }
+/** 走势线那一格上次画的是哪一份（innerHTML 读回来会被浏览器改写，比不出来） */
+const drawnTrend = new WeakMap<Element, string>()
 
 /** 搜索结果行（SymbolRowView）：徽章 32 · base（命中处着色）/ quote · 右侧价格与涨跌 · 星 */
 export function listRowHTML(f: RowFacts, d: { price: number | null; dec?: number | null; pct: number | null; meta: string; fav: boolean; hl?: [number, number] | null; cmp?: CompareRowState }): string {

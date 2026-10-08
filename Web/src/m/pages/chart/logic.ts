@@ -392,6 +392,55 @@ export function crosshairOHLC(b: OHLC, dec: number, fmtTime: (ms: number) => str
     + '\n低 ' + fmtPrice(b.l, dec) + '  收 ' + fmtPrice(b.c, dec) + '  量 ' + fmtVol(b.v)
 }
 
+/** 周期条那一行左边的十字线读数（照 iOS CrosshairBandReadout，2026-10-08）：`时间 · 开 高 低 收 · 涨跌幅`，一行。
+ *  头部价格、涨跌、六格一直实时；放不下时先收「开 高 低」，再收时间，收盘价和涨跌幅总在。 */
+export interface CrosshairBand {
+  /** 日内周期写「10-08 14:30」，日线及以上写「2026-10-08」（上海时间） */
+  time: string
+  open: string; high: string; low: string; close: string
+  /** 这一根相对上一根收盘的涨跌幅（第一根没有上一根，相对它自己的开盘），「+0.12%」 */
+  change: string | null
+}
+/** 一档放不下就往下一档退：全量 → 收掉开高低 → 再收掉时间 */
+export const BAND_FITS = ['full', 'closeOnly', 'bare'] as const
+export type BandFit = typeof BAND_FITS[number]
+
+export function crosshairBandText(r: CrosshairBand, fit: BandFit): string {
+  const tail = r.change != null ? ' · ' + r.change : ''
+  switch (fit) {
+    case 'full': return `${r.time} · 开 ${r.open} 高 ${r.high} 低 ${r.low} 收 ${r.close}${tail}`
+    case 'closeOnly': return `${r.time} · 收 ${r.close}${tail}`
+    default: return `收 ${r.close}${tail}`
+  }
+}
+
+/** 序列里够读一根的那几样（BarSeries 就满足） */
+export interface BandSeries { count: number; step: number; open: ArrayLike<number>; high: ArrayLike<number>; low: ArrayLike<number>; close: ArrayLike<number>; time(i: number): number }
+
+/** 十字线那一根的读数（照 iOS crosshairBandReadout）。副图上的十字线也给——它对着的仍是那一根 K 线。下标越界 null。 */
+export function crosshairBand(series: BandSeries, index: number, dec: number, offsetMinutes = 480): CrosshairBand | null {
+  if (!(index >= 0 && index < series.count)) return null
+  const i = index
+  const d = new Date(series.time(i) + offsetMinutes * 60_000)
+  const p = (n: number) => (n < 10 ? '0' + n : String(n))
+  const md = `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`
+  const time = series.step >= 86_400_000 ? `${d.getUTCFullYear()}-${md}` : `${md} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`
+  const close = series.close[i]
+  const base = i > 0 ? series.close[i - 1] : series.open[i]
+  let change: string | null = null
+  if (Number.isFinite(base) && Number.isFinite(close) && base !== 0) {
+    const pct = (close - base) / base * 100
+    // 四舍五入到两位之后是 0 的写「0.00%」，不写「−0.00%」；负号照全 app 用 U+2212
+    change = Math.abs(pct) < 0.005 ? '0.00%' : (pct > 0 ? '+' : MINUS) + toFixed(Math.abs(pct), 2) + '%'
+  }
+  return {
+    time,
+    open: fmtPrice(series.open[i], dec), high: fmtPrice(series.high[i], dec),
+    low: fmtPrice(series.low[i], dec), close: fmtPrice(close, dec),
+    change,
+  }
+}
+
 // ───────────────────────────── 画线台
 
 /** 横屏左侧周期栏：钉住的档 + 当前档（没钉住时插在它该在的位置） */

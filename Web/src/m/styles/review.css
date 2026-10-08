@@ -284,3 +284,15 @@ button.rv-rec:active { background: color-mix(in srgb, var(--ink) 5%, transparent
 .rv-mrow-l b { font: var(--t-body-emph); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .rv-mrow-l small { font: var(--t-caption); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .rv-mrow-score { flex: none; font: var(--t-body-emph); color: var(--ink) }
+
+/* 「观点」一条都没有（照 iOS 10-08 viewsEmptyState）：一句话 body ink3，间距 m，下面一颗强调色「去记一笔」胶囊 */
+.rv-views-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-m) }
+.rv-empty-note {
+  display: inline-flex; align-items: center; gap: var(--s-xs);
+  height: calc(var(--pill-h) + var(--s-s)); padding: 0 var(--s-l); border-radius: 999px;
+  background: var(--accent); color: #fff; font: var(--t-body-emph);
+  position: relative;
+}
+/* 点按区补到 44 */
+.rv-empty-note::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: var(--hit); transform: translateY(-50%) }
+.rv-empty-note:active { filter: brightness(.94) }

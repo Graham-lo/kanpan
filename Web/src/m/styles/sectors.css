@@ -1,15 +1,6 @@
 /* 手机网页版 · 板块页（照 iOS Sectors/SectorListView.swift、SectorSegment、SectorSkin）
- * 底与光斑沿用自选页的琉璃底（favorites.css），这里只覆盖取色：sage / terra 浅色用 --app 当底，
- * 光斑换成强调色与 amber 提亮；深色不画光斑。 */
-#page-sectors.liuli { --lg-ground: var(--ground); display: flex; flex-direction: column }
-html[data-skin="sage"][data-theme="light"] #page-sectors.liuli,
-html[data-skin="terra"][data-theme="light"] #page-sectors.liuli { --lg-ground: var(--app) }
-#page-sectors.liuli {
-  --lg-lobe-a: color-mix(in srgb, var(--accent) 38%, #fff);
-  --lg-lobe-b: color-mix(in srgb, var(--amber) 34%, #fff);
-  --lg-lobe-c: color-mix(in srgb, var(--accent) 22%, #fff);
-  --lg-lobe-alpha: .5;
-}
+ * 底是全 app 共用的琉璃底（tokens.css「琉璃材质」+ ui.css .lg-bg，2026-10-08 起和自选页同一份，不再自带一套光斑取色）。 */
+#page-sectors.liuli { display: flex; flex-direction: column }
 #page-sectors > :not(.lg-bg) { position: relative; z-index: 1 }
 .sec-layer { flex: 1; min-height: 0; display: flex; flex-direction: column }
 .sec-layer[hidden] { display: none }
@@ -56,17 +47,19 @@ html[data-skin="terra"][data-theme="light"] #page-sectors.liuli { --lg-ground: v
 .sec-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-xxs) }
 .sec-n { font: var(--t-body); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .sec-sub { font: var(--t-caption); color: var(--ink3) }
+/* 涨跌幅左边那行「领涨 X」（iOS SectorLeaderLabel：caption、弱墨、一行；地方不够时先让它截，名字那一列不让） */
+.sec-lead { font: var(--t-caption); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; max-width: 40% }
 .sec-pct { font: var(--t-footnote-emph); font-family: var(--font-ui); font-variant-numeric: tabular-nums; color: var(--ink3); flex: none }
 .sec-pct.up, .sec-dpct.up { color: var(--up) }
 .sec-pct.down, .sec-dpct.down { color: var(--down) }
 .stale .sec-pct, .stale .sec-dpct { color: var(--stale) }
 
+/* 空态（照 SectorPage 2026-10-08）：一句「板块行情还没取到」+ 一颗「重新获取」琉璃胶囊，上下间距 16，底下让出底栏 */
 .sec-empty {
-  position: absolute; inset: 0 0 var(--tabbar-clearance); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-xs); width: 100%;
+  position: absolute; inset: 0 0 var(--tabbar-clearance); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-l); width: 100%;
 }
 .sec-empty[hidden] { display: none }
 .sec-empty b { font: var(--t-body-emph); color: var(--ink2) }
-.sec-empty span { font: var(--t-caption); color: var(--ink3) }
 
 /* 下钻头：返回圆片 32、板块图标 38、名字 title + 副文案 caption2、右侧涨跌 title 字号 */
 .sec-dhead {

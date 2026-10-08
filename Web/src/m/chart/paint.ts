@@ -23,6 +23,8 @@ export interface ChartColors {
   hair: Hex
   amberSoft: Hex; amberLine: Hex
   up: Hex; down: Hex
+  /** 皮肤主色（`--accent`）：没定颜色的画线、把手、铃铛、放大镜都用它（照 iOS DrawPen，2026-10-08）。 */
+  accent: Hex
   palette: Hex[]
   sub: Hex[]
   orderFlow: OrderFlowColors
@@ -42,12 +44,13 @@ export const FALLBACK_COLORS: ChartColors = {
   hair: '#14211B0F',
   amberSoft: '#B57C2816', amberLine: '#B57C2855',
   up: '#36B257', down: '#E64552',
+  accent: '#2E7D6B',
   palette: ['#FFB400', '#E849B9', '#6EBF26', '#F55B58', '#1478C8', '#2FD2B2'],
   sub: ['#2FD2B2', '#FFB400', '#E849B9', '#1478C8', '#6EBF26', '#F55B58'],
   orderFlow: orderFlowOnLight,
 }
 
-const TOKEN: Record<Exclude<keyof ChartColors, 'palette' | 'sub' | 'orderFlow'>, string> = {
+const TOKEN: Record<Exclude<keyof ChartColors, 'palette' | 'sub' | 'orderFlow' | 'accent'>, string> = {
   bg: '--k-bg', grid: '--k-grid', axis: '--k-axis', text: '--k-text', dim: '--k-dim', ink: '--k-ink', amber: '--k-amber', cross: '--k-cross',
   band: '--k-band', oi: '--k-oi', oiFill: '--k-oi-fill', chip: '--k-chip', panel: '--k-panel',
   crossBg: '--k-cross-bg', crossInk: '--k-cross-ink', hair: '--k-hair', amberSoft: '--k-amber-soft', amberLine: '--k-amber-line',
@@ -85,6 +88,7 @@ export function readChartColors(root?: Element | null): ChartColors {
     if (v) { found++; out[k] = v }
   }
   if (found === 0) return FALLBACK_COLORS
+  out.accent = get('--accent', FALLBACK_COLORS.accent)
   out.palette = FALLBACK_COLORS.palette.map((fb, i) => get(`--palette-${i}`, fb))
   out.sub = FALLBACK_COLORS.sub.map((fb, i) => get(`--sub-${i}`, out.palette[i] ?? fb))
   const auto = orderFlowFor(out.bg)

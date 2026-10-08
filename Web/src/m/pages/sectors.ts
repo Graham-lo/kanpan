@@ -28,7 +28,7 @@ import * as F from '../model/favorites'
 import { sectorIconHTML } from '../model/badge'
 import { changePercentText, esc, MISSING, textIsUp } from '../model/rowText'
 import { factsOf, liuliRowHTML, patchLiuli, type LiuliData } from '../model/rowHTML'
-import { boardsWaiting, coveredCount, drillDecision, drillWaiting, skeletonRowsHTML } from '../model/sectorView'
+import { boardsWaiting, coveredCount, drillDecision, drillWaiting, leaderLabel, skeletonRowsHTML } from '../model/sectorView'
 import { backdropHTML } from './favorites'
 import { ensureUniverse, wantStreams } from './_streams'
 import { openPreviewMenu } from './symbolPreview'
@@ -54,7 +54,7 @@ export function initSectors(root: HTMLElement): PageHandle {
     <div class="sec-layer sec-boards">
       <header class="sec-head"><div class="sec-title"><h1>板块</h1><span class="sec-scale num"></span></div><div class="sec-market"></div></header>
       <div class="sec-win"></div>
-      <div class="sec-scroll sec-board-scroll"><div class="sec-board-list" role="list"></div><button type="button" class="sec-empty" hidden><b>暂无行情</b><span>点此重试</span></button></div>
+      <div class="sec-scroll sec-board-scroll"><div class="sec-board-list" role="list"></div><div class="sec-empty" hidden><b>板块行情还没取到</b><button type="button" class="liuli-pill" data-id="sector.empty">${icon('refresh', 14)}重新获取</button></div></div>
     </div>
     <div class="sec-layer sec-drill" hidden>
       <header class="sec-dhead"></header>
@@ -67,7 +67,7 @@ export function initSectors(root: HTMLElement): PageHandle {
   const winEl = root.querySelector<HTMLElement>('.sec-win')!
   const boardScroll = root.querySelector<HTMLElement>('.sec-board-scroll')!
   const boardList = root.querySelector<HTMLElement>('.sec-board-list')!
-  const emptyBtn = root.querySelector<HTMLButtonElement>('.sec-empty')!
+  const emptyBtn = root.querySelector<HTMLElement>('.sec-empty')!
   const dhead = root.querySelector<HTMLElement>('.sec-dhead')!
   const drillScroll = root.querySelector<HTMLElement>('.sec-drill-scroll')!
   const drillList = root.querySelector<HTMLElement>('.sec-drill-list')!
@@ -113,10 +113,14 @@ export function initSectors(root: HTMLElement): PageHandle {
     emptyBtn.hidden = !failed
     // 行情还在路上：摆一屏骨架行，不是空白
     if (boardsWaiting(boards.length, failed)) { setHTML(boardList, skeletonRowsHTML('board')); return }
+    const held = window === 'today' ? EMPTY_HISTORY : history.held
     setHTML(boardList, boards.map((b, i) => {
       const sub = subtitle(b)
+      // 涨跌幅左边那行小字「领涨 X」：这段窗口上涨得最多的那只成员，数据不够就不写（iOS SectorLeaderLabel）
+      const lead = Number.isFinite(b.pct) ? leaderLabel(membersOf(b.id), feed.quotes, window, held) : ''
       return `<div class="sec-row${i === 0 ? ' first' : ''}" role="button" tabindex="0" data-sec="${esc(b.id)}" data-id="sector.row.${esc(b.id)}">`
         + `${sectorIconHTML(b.id, 32)}<div class="sec-name"><span class="sec-n">${esc(b.name)}</span>${sub ? `<span class="sec-sub num">${esc(sub)}</span>` : ''}</div>`
+        + (lead ? `<span class="sec-lead" data-id="sector.board.leader.${esc(b.id)}">${esc(lead)}</span>` : '')
         + `<span class="sec-pct num ${dirOf(b.pct)}">${esc(changePercentText(b.pct))}</span></div>`
     }).join(''))
   }
@@ -141,7 +145,7 @@ export function initSectors(root: HTMLElement): PageHandle {
     const r = (e.target as HTMLElement).closest<HTMLElement>('.sec-row'); if (!r) return
     push(r.dataset.sec!)
   })
-  emptyBtn.onclick = () => { void ensureUniverse(); stopFeed(); startFeed(render) }
+  emptyBtn.querySelector<HTMLButtonElement>('.liuli-pill')!.onclick = () => { void ensureUniverse(); stopFeed(); startFeed(render) }
 
   // ---------------------------------------------------------------- 第二层
   function push(id: string): void {

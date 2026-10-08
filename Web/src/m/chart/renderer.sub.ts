@@ -9,7 +9,9 @@ import type { Layout, Pane } from './geometry'
 import { candlePixels, snap, swiftRound, visibleRange, yOfValue } from './geometry'
 import { fmtNum, fmtVol, toFixed } from './format'
 import type { Hex } from './paint'
-import { ChartFont, alpha, css, drawCentered, drawLeft, hairLine, textWidth } from './paint'
+import { ChartFont, alpha, css, drawCentered, drawLeft, hairLine } from './paint'
+import type { LegendItem } from './legendFit'
+import { LegendFit, legendItem, readable } from './legendFit'
 import type { ChartRenderer } from './renderer'
 import { drawCompareLegend } from './renderer.compare'
 import { drawOrderFlowLegend } from './renderer.orderflow'
@@ -249,64 +251,78 @@ function subOi(r: ChartRenderer, ctx: CanvasRenderingContext2D, box: Pane, L: La
 
 // ---------------------------------------------------------------- 图例
 
-type Put = (text: string, color: Hex) => void
-
-function putter(ctx: CanvasRenderingContext2D, plotW: number, start: { x: number; y: number }, wrap: number, limit: () => number): { put: Put; pos: { x: number; y: number } } {
-  const pos = { ...start }
-  const put: Put = (text, color) => {
-    if (text.includes('NaN') || text.includes('--')) return
-    const w = textWidth(text, ChartFont.axis)
-    if (pos.x + w > plotW - 4) { pos.x = 8; pos.y += wrap }
-    if (!(pos.y < limit())) return
-    drawLeft(ctx, text, pos.x, pos.y, ChartFont.axis, color)
-    pos.x += w + 8
-  }
-  return { put, pos }
+/** 主图叠加图例：单行，放不下先换短称、再把尾巴收成「+N」（见 LegendFit）。 */
+export function drawLegend(r: ChartRenderer, ctx: CanvasRenderingContext2D, pane: Pane, L: Layout): void {
+  if (r.state.input.percentAxis) { drawCompareLegend(r, ctx, pane, L); return }
+  const y = pane.y + 9
+  if (!(y < pane.y + pane.h - 6)) return
+  const x = LegendFit.draw(ctx, mainLegendItems(r), 8, y, L.plotW - 4, r.colors.dim)
+  drawOrderFlowLegend(r, ctx, pane, L, x, y)
 }
 
-export function drawLegend(r: ChartRenderer, ctx: CanvasRenderingContext2D, pane: Pane, L: Layout): void {
-  const inp = r.state.input
-  if (inp.percentAxis) { drawCompareLegend(r, ctx, pane, L); return }
-  const t = r.colors
+/** 主图叠加图例的各段（读数跟着十字线那根）。短称：每把指标第一段留个短名，后面几段只留读数（颜色认线）。 */
+export function mainLegendItems(r: ChartRenderer): LegendItem[] {
+  const inp = r.state.input, t = r.colors
   const i = r.legendIndex
   const p = inp.decimals
-  const { put, pos } = putter(ctx, L.plotW, { x: 8, y: pane.y + 9 }, 12, () => pane.y + Math.min(pane.h - 6, r.mainLegendInset(L.plotW) - 4))
+  const items: LegendItem[] = []
+  /** 一把指标的几段：第一段能读出数的短称带名字，其余只留读数。 */
+  const group = (name: string, parts: { full: string; value: string; color: Hex }[]): void => {
+    let named = false
+    for (const part of parts) {
+      const item = legendItem(part.full, named ? part.value : name + ' ' + part.value, part.color)
+      if (readable(item)) named = true
+      items.push(item)
+    }
+  }
   for (const id of inp.overlays) {
     const v = r.displayed(id)
     if (!v) continue
     switch (id) {
-      case 'MA': case 'EMA':
+      case 'MA': case 'EMA': {
+        const parts: { full: string; value: string; color: Hex }[] = []
         r.params(id).forEach((n, k) => {
-          if (k < v.lines.length && r.outputVisible(id, k)) put(`${indicatorName(id)}${n} ` + r.indicatorNumber(r.reading(v.lines[k]), p), r.indicatorColor(id, k))
+          if (!(k < v.lines.length && r.outputVisible(id, k))) return
+          const value = r.indicatorNumber(r.reading(v.lines[k]), p)
+          parts.push({ full: `${indicatorName(id)}${n} ` + value, value, color: r.indicatorColor(id, k) })
         })
+        group(id === 'MA' ? '均线' : '指数', parts)
         break
+      }
       case 'BOLL': {
+        // legendIndex 在序列为空时是 −1，指标结果也可能比序列短一截（换品种那一拍）：读不到就是 NaN，readable 会把它剔掉。
         if (v.lines.length < 3) break
-        const at = (k: number) => (i >= 0 && i < v.lines[k].length ? v.lines[k][i] : NaN)
-        put('上轨 ' + fmtNum(at(1), p), t.band)
-        put('中轨 ' + fmtNum(at(0), p), t.amber)
-        put('下轨 ' + fmtNum(at(2), p), t.band)
+        const at = (k: number) => fmtNum(i >= 0 && i < v.lines[k].length ? v.lines[k][i] : NaN, p)
+        group('布林', [
+          { full: '上轨 ' + at(1), value: at(1), color: t.band },
+          { full: '中轨 ' + at(0), value: at(0), color: t.amber },
+          { full: '下轨 ' + at(2), value: at(2), color: t.band },
+        ])
         break
       }
       case 'VWAP': {
         const a = v.lines[0]
         if (!a || !r.outputVisible(id, 0)) break
-        put('当日均价 ' + r.indicatorNumber(r.reading(a), p), r.indicatorColor(id, 0))
+        const value = r.indicatorNumber(r.reading(a), p)
+        items.push(legendItem('当日均价 ' + value, '均价 ' + value, r.indicatorColor(id, 0)))
         break
       }
       case 'ST': case 'SAR': {
+        // 这两把的图例跟着它当前的多空走同一套涨跌色，和线上 / 点上看到的颜色对得上。
         const a = v.lines[0]
         if (!a || !r.outputVisible(id, 0)) break
         const d = v.dir ? r.reading(v.dir) : NaN
-        put(indicatorName(id) + ' ' + r.indicatorNumber(r.reading(a), p), d > 0 ? t.up : t.down)
+        const value = r.indicatorNumber(r.reading(a), p)
+        items.push(legendItem(indicatorName(id) + ' ' + value, (id === 'SAR' ? '抛物 ' : '趋势 ') + value, d > 0 ? t.up : t.down))
         break
       }
       default: break
     }
   }
+  // 至今涨幅挂在图例最后一段：它读的是十字线那根，和前面几段同源。
   const chip = sinceChangeChip(r)
-  if (chip) put(chip.text, chip.color)
-  drawOrderFlowLegend(r, ctx, pane, L, pos.x, pos.y)
+  if (chip) items.push(legendItem(chip.text, chip.text.slice(3), chip.color))
+  return items
 }
 
 /** 十字线停在某根时，从那根收盘到最新收盘的涨跌（「至今」）。 */
@@ -331,82 +347,112 @@ export function drawLegends(r: ChartRenderer, ctx: CanvasRenderingContext2D, L: 
   drawLegend(r, ctx, L.main, L)
 }
 
+/** 副图图例：和主图一样单行，不折第二行压线；放不下先去参数、只留读数，再收「+N」。 */
 function subLegend(r: ChartRenderer, ctx: CanvasRenderingContext2D, pane: Pane, key: IndicatorID, plotW: number): void {
+  LegendFit.draw(ctx, subLegendItems(r, key), 8, pane.y + 8, plotW - 4, r.colors.dim)
+}
+
+/** 副图图例的各段。短称：标题去掉参数，读数去掉名字（颜色认线）。 */
+export function subLegendItems(r: ChartRenderer, key: IndicatorID): LegendItem[] {
   const t = r.colors, inp = r.state.input
   const i = r.legendIndex
   const pal = t.sub
-  const { put } = putter(ctx, plotW, { x: 8, y: pane.y + 8 }, 11, () => pane.y + (key === 'VOL' ? 24 : 26))
+  const items: LegendItem[] = []
+  const put = (full: string, short: string | null, color: Hex): void => { items.push(legendItem(full, short, color)) }
   const v = r.displayed(key)
   const at = (a: number[]) => r.reading(a)
-  const joined = (id: IndicatorID) => r.params(id).map(String).join(',')
+  const args = (id: IndicatorID) => '(' + r.params(id).map(String).join(',') + ')'
   switch (key) {
     case 'VOL':
-      if (r.outputVisible('VOL', v?.lines.length ?? 0)) put('成交量 ' + r.amountNumber(inp.series.volume[i]), t.text)
-      if (v) r.params('VOL').forEach((n, k) => { if (k < v.lines.length) put(`均量${n} ` + r.amountNumber(at(v.lines[k])), pal[k % pal.length]) })
+      if (r.outputVisible('VOL', v?.lines.length ?? 0) && i >= 0 && i < inp.series.count) {
+        const x = r.amountNumber(inp.series.volume[i])
+        put('成交量 ' + x, '量 ' + x, t.text)
+      }
+      if (v) r.params('VOL').forEach((n, k) => {
+        if (k >= v.lines.length) return
+        const x = r.amountNumber(at(v.lines[k]))
+        put(`均量${n} ` + x, x, pal[k % pal.length])
+      })
       break
     case 'MACD': {
-      put('平滑异同(' + joined('MACD') + ')', t.dim)
+      put('平滑异同' + args('MACD'), '平滑异同', t.dim)
       const hist = v?.histogram
       if (!v || !hist || v.lines.length < 2) break
-      put('差值 ' + r.indicatorNumber(at(v.lines[0]), inp.decimals), pal[0])
-      put('信号 ' + r.indicatorNumber(at(v.lines[1]), inp.decimals), pal[1])
+      // MACD 三个值都是价差，量级跟着价格走：跟着品种的价格精度走才读得出东西。
+      const d0 = r.indicatorNumber(at(v.lines[0]), inp.decimals)
+      const d1 = r.indicatorNumber(at(v.lines[1]), inp.decimals)
+      put('差值 ' + d0, d0, pal[0])
+      put('信号 ' + d1, d1, pal[1])
       const h = at(hist)
-      put('柱值 ' + r.indicatorNumber(h, inp.decimals), h >= 0 ? t.up : t.down)
+      const hs = r.indicatorNumber(h, inp.decimals)
+      put('柱值 ' + hs, hs, h >= 0 ? t.up : t.down)
       break
     }
     case 'RSI':
-      put(`强弱(${Math.trunc(inp.rsiUpper)}/${Math.trunc(inp.rsiLower)})`, t.dim)
+      put(`强弱(${Math.trunc(inp.rsiUpper)}/${Math.trunc(inp.rsiLower)})`, '强弱', t.dim)
       if (!v) break
-      r.params('RSI').forEach((n, k) => { if (k < v.lines.length) put(`${n} ` + r.indicatorNumber(at(v.lines[k]), 1), pal[k % pal.length]) })
+      r.params('RSI').forEach((n, k) => {
+        if (k >= v.lines.length) return
+        const x = r.indicatorNumber(at(v.lines[k]), 1)
+        put(`${n} ` + x, x, pal[k % pal.length])
+      })
       break
     case 'KDJ':
-      put('随机(' + joined('KDJ') + ')', t.dim)
+      put('随机' + args('KDJ'), '随机', t.dim)
       if (!v || v.lines.length < 3) break
-      put('快线 ' + r.indicatorNumber(at(v.lines[0]), 1), pal[0])
-      put('慢线 ' + r.indicatorNumber(at(v.lines[1]), 1), pal[1])
-      put('敏感线 ' + r.indicatorNumber(at(v.lines[2]), 1), pal[2])
+      ;['快线', '慢线', '敏感线'].forEach((name, k) => {
+        const x = r.indicatorNumber(at(v.lines[k]), 1)
+        put(name + ' ' + x, x, pal[k])
+      })
       break
     case 'SRSI':
-      put('随机强弱', t.dim)
+      put('随机强弱', null, t.dim)
       if (!v || v.lines.length < 2) break
-      put('快线 ' + r.indicatorNumber(at(v.lines[0]), 1), pal[0])
-      put('慢线 ' + r.indicatorNumber(at(v.lines[1]), 1), pal[1])
+      ;['快线', '慢线'].forEach((name, k) => {
+        const x = r.indicatorNumber(at(v.lines[k]), 1)
+        put(name + ' ' + x, x, pal[k])
+      })
       break
     case 'ATR': {
       const a = v?.lines[0]
       if (!a) break
-      put(`真实波幅${r.params('ATR')[0]} ` + fmtNum(at(a), inp.decimals), pal[0])
+      const x = fmtNum(at(a), inp.decimals)
+      put(`真实波幅${r.params('ATR')[0]} ` + x, '波幅 ' + x, pal[0])
       break
     }
     case 'LSR': case 'TAKER': case 'BASIS': {
-      put(indicatorName(key), t.dim)
+      put(indicatorName(key), null, t.dim)
       const values = v?.lines[0]
-      if (values && Number.isFinite(r.reading(values))) put(subValueText(r, r.reading(values), key), r.indicatorColor(key, 0))
+      if (values && Number.isFinite(r.reading(values))) put(subValueText(r, r.reading(values), key), null, r.indicatorColor(key, 0))
       break
     }
     case 'DMI':
-      put('动向(' + joined('DMI') + ')', t.dim)
+      put('动向' + args('DMI'), '动向', t.dim)
       if (!v || v.lines.length < 3) break
-      put('多头动向 ' + r.indicatorNumber(at(v.lines[0]), 1), pal[0])
-      put('空头动向 ' + r.indicatorNumber(at(v.lines[1]), 1), pal[1])
-      put('趋势强度 ' + r.indicatorNumber(at(v.lines[2]), 1), pal[2])
+      ;['多头动向', '空头动向', '趋势强度'].forEach((name, k) => {
+        const x = r.indicatorNumber(at(v.lines[k]), 1)
+        put(name + ' ' + x, x, pal[k])
+      })
       break
     case 'CVD': {
-      put(indicatorName(key), t.dim)
+      put(indicatorName(key), null, t.dim)
+      // 读数按涨跌色：为正是这一段被主动买上去的，为负是被主动卖下去的。
       const a = v?.lines[0]
       const x = a ? at(a) : NaN
-      if (Number.isFinite(x)) put(r.amountNumber(x), x >= 0 ? t.up : t.down)
+      if (Number.isFinite(x)) put(r.amountNumber(x), null, x >= 0 ? t.up : t.down)
       break
     }
     case 'OI': {
       const a = v?.lines[0]
       const x = a ? at(a) : NaN
-      // 「--」会被 put 滤掉，和 Swift 一样：没有读数时整条不画。
-      put('持仓量 ' + (Number.isFinite(x) ? r.amountNumber(x) : '--'), t.oi)
+      // 「--」会被 readable 滤掉，和 Swift 一样：没有读数时整条不画。
+      const x0 = Number.isFinite(x) ? r.amountNumber(x) : '--'
+      put('持仓量 ' + x0, '持仓 ' + x0, t.oi)
       break
     }
     default: break
   }
+  return items
 }
 
 export function subValueText(r: ChartRenderer, value: number, indicator: IndicatorID | string): string {

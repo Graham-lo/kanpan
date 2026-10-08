@@ -32,7 +32,7 @@ import { INTERVAL_SHORT } from '../../chart/series'
 import { S } from '../../../market'
 import { baseOf, drawingIdOf, marketOf, newAlertId, type Alert } from '../../../alerts/shape'
 import { activeAlerts, alertsReplaced, deleteAlert, onAlertsChange } from '../../model/alerts'
-import { grouped, fmtPrice } from '../../model/rowText'
+import { grouped, fmtPrice, changePercentText } from '../../model/rowText'
 import { openSheet, confirmDialog, type Sheet } from '../../ui/sheet'
 import { swipeRow, deleteAction } from '../../ui/swipeDelete'
 import { toast } from '../../ui/toast'
@@ -40,7 +40,11 @@ import { el, esc, setAttr, setText } from '../../ui/dom'
 import { icon } from '../../ui/icons'
 import { railIntervals, deleteDrawingById, safeHexColor, mergeStyleEdits } from './logic'
 import { splitPair } from './header'
-import { openSymbolPicker, openMainIndicators, colorControlHTML, syncColorControl } from './panels'
+import { openSymbolPicker, openMainIndicators } from './panels'
+import { penSwatches } from '../../chart/draw/pen'
+import { referencePrice, distancePercent } from '../../chart/draw/reference'
+import { readChartColors, type ChartColors } from '../../chart/paint'
+import type { BarSeries } from '../../chart/series'
 import { mainOverlaysOf } from './logic'
 
 // ───────────────────────────── 工具记号（照 DrawingGlyph.swift，24 格取景）
@@ -220,8 +224,41 @@ export interface BenchContext {
   onActive(on: boolean): void
 }
 
-/** 没设颜色的画线在样式页里显示的颜色（引擎默认金色） */
-const DEFAULT_LINE_COLOR = '#D6A64F'
+/**
+ * 画线的色板（照 iOS DrawingPenSwatches，2026-10-08）：五格全部从当前皮肤派生（DrawPen.swatches）。
+ * 第一格「跟皮肤」存 null——换皮肤、切深浅色线跟着变；其余四格存挑的那一刻的色值。不再给取色器。
+ * 老线存着色板之外的显式色时，行尾多一格「当前颜色」把它亮出来，点别的格就换掉；不点就原样留着。
+ */
+export function penSwatchesHTML(color: string | null | undefined, t: Pick<ChartColors, 'accent' | 'up' | 'down' | 'ink'>): string {
+  const swatches = penSwatches(t)
+  const cur = color ? color.toUpperCase() : null
+  const isOn = (stored: string | null): boolean => (stored == null ? cur == null : stored.toUpperCase() === cur)
+  const custom = cur != null && !swatches.some(w => isOn(w.stored)) ? safeHexColor(color, t.accent) : null
+  const dot = (hex: string, on: boolean, label: string, role: string): string =>
+    `<button type="button" class="cp-cchip${on ? ' on' : ''}" style="--c:${safeHexColor(hex, t.accent).slice(0, 7)}" data-act="pen" data-role="${role}" data-id="color.${role}" aria-label="${esc(label)}" aria-pressed="${on}"></button>`
+  return `<div class="cp-row cp-penrow"><span class="cp-rn">颜色</span><div class="cp-pens">${
+    swatches.map(w => dot(w.shown, isOn(w.stored), w.name, w.role)).join('')}${custom ? dot(custom, true, '当前颜色', 'custom') : ''}</div></div>`
+}
+
+/**
+ * 画线列表一行的副行（照 iOS DrawingController.listFacts）：周期 · 距现价 · 价位。
+ * 周期没记过（老线、别的设备画的）就不写；现价还没到就只写价位。距现价照自选页的写法（+ / −，两位小数）。
+ */
+export function drawingListFacts(item: Drawing, interval: string | null, series: BarSeries | null | undefined, decimals: number): string {
+  let distance: string | null = null
+  let price = item.points[0]?.p ?? NaN
+  const latest = series && series.count > 0 ? series.close[series.count - 1] : NaN
+  if (series && Number.isFinite(latest)) {
+    const t = series.time(series.count - 1)
+    const p = referencePrice(item, t, latest)
+    if (p != null) price = p
+    const pct = distancePercent(item, t, latest)
+    if (pct != null) distance = '距现价 ' + changePercentText(pct)
+  }
+  const label = interval ? (INTERVAL_SHORT as Readonly<Record<string, string>>)[interval] ?? null : null
+  return [label, distance, grouped(fmtPrice(price, decimals))].filter((x): x is string => !!x).join(' · ')
+}
+
 const WIDTHS = [1, 1.5, 2, 3]
 
 export function createBench(ctx: BenchContext) {
@@ -269,7 +306,7 @@ export function createBench(ctx: BenchContext) {
         ctx.onPickInterval(b.dataset.iv as IntervalId)
         sheet?.close()
       })
-    }, { title: '周期', detent: 'auto', className: 'cp-sheet', id: 'land-periods' })
+    }, { title: '周期', detent: 'fit', className: 'cp-sheet', id: 'land-periods' })
   }
 
   // ---- 中上：品种胶囊 + 读数 / 提示
@@ -482,8 +519,9 @@ export function createBench(ctx: BenchContext) {
       const draw = (): void => {
         swipes.splice(0).forEach(s => s.destroy())
         const items = c.drawings
+        const s = ctx.chart.state
         host.innerHTML = items.length ? `<div class="cp-group">${items.map(d => `<div class="cp-dl-row" data-id="${esc(d.id)}"><div class="m-sw-content cp-row">
-            <button type="button" class="cp-dl-main" data-act="select">${kindGlyph(d.kind, 20)}<span class="cp-rn">${esc(DrawKind.title(d.kind) + (d.locked ? ' · 已锁定' : ''))}</span></button>
+            <button type="button" class="cp-dl-main" data-act="select">${kindGlyph(d.kind, 20)}<span class="cp-dl-text"><span class="cp-rn">${esc(DrawKind.title(d.kind) + (d.locked ? ' · 已锁定' : ''))}</span><span class="cp-dl-facts num" data-id="draw.object.facts.${esc(d.id)}">${esc(drawingListFacts(d, drawingBook.archive.intervalOf(d.id), s?.input.series, s?.input.decimals ?? 2))}</span></span></button>
             <button type="button" class="cp-textbtn" data-act="eye" aria-label="${d.hidden ? '显示画线' : '隐藏画线'}">${d.hidden ? '显示' : '隐藏'}</button></div></div>`).join('')}</div>`
           : '<div class="cp-empty">还没有画线</div>'
         host.querySelectorAll<HTMLElement>('.cp-dl-row').forEach(row => {
@@ -519,12 +557,12 @@ export function createBench(ctx: BenchContext) {
     }
     let host: HTMLElement
     const draw = (): void => {
-      const cur = safeHexColor(item.color, DEFAULT_LINE_COLOR)
+      const colors: ChartColors = ctx.chart.state?.input.colors ?? readChartColors()
       const width = WIDTHS.reduce((m, w) => (Math.abs(w - item.lineWidth) < Math.abs(m - item.lineWidth) ? w : m), WIDTHS[0])
       const swaps = DrawKind.swaps(item.kind)
       // 照 iOS DrawingStyleEditor：颜色（取色圈 + 一排色卡）、粗细（四档样张）、换画法（同族几个字按钮，选中的墨色描边）
       host.innerHTML = `<div class="cp-gt">样式</div><div class="cp-group">
-          ${colorControlHTML('颜色', cur, 'color', '1')}
+          ${penSwatchesHTML(item.color, colors)}
           <div class="cp-row"><span class="cp-rn">粗细</span><div class="cp-widths">${WIDTHS.map(w =>
             `<button type="button" class="cp-wcell${w === width ? ' on' : ''}" data-act="width" data-w="${w}" aria-label="粗细 ${w}"><i style="height:${w}px"></i></button>`).join('')}</div></div>
           ${swaps.map(s => `<div class="cp-row cp-swaprow"><span class="cp-rn">${esc(s.title)}</span><div class="cp-swaps">${s.options.map(o =>
@@ -540,19 +578,20 @@ export function createBench(ctx: BenchContext) {
       host.addEventListener('click', e => {
         const b = (e.target as Element).closest<HTMLElement>('[data-act]')
         if (!b) return
-        if (b.dataset.act === 'color') item.color = b.dataset.c!
+        if (b.dataset.act === 'pen') {
+          if (b.dataset.role === 'custom') return
+          const colors: ChartColors = ctx.chart.state?.input.colors ?? readChartColors()
+          const w = penSwatches(colors).find(x => x.role === b.dataset.role)
+          if (!w) return
+          item.color = w.stored
+        }
         else if (b.dataset.act === 'width') item.lineWidth = +b.dataset.w!
         else if (b.dataset.act === 'swap' && isDrawingKind(b.dataset.k)) item.kind = b.dataset.k
         draw()
       })
       host.addEventListener('input', e => {
         const t = e.target as HTMLInputElement | HTMLTextAreaElement
-        if (t.dataset.pick) {
-          // 拖色盘时 input 事件一秒几十次：只改色块与高亮，不整块重写（重写会把正开着的取色器那个 input 拆掉）
-          item.color = safeHexColor(t.value, DEFAULT_LINE_COLOR)
-          syncColorControl(t as HTMLInputElement, item.color.slice(0, 7).toUpperCase())
-        }
-        else if (t.dataset.text) {
+        if (t.dataset.text) {
           let v = t.value
           while (graphemeCount(v) > DRAWING_TEXT_LIMIT) v = [...v].slice(0, -1).join('')
           if (v !== t.value) t.value = v

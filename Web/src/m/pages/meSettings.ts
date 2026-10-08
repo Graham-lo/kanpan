@@ -4,7 +4,7 @@
  * 一页平铺在 --app 上，分组只有组名、没有说明文字：
  *   配色（三张皮肤卡）· 深浅（外观）· 行情（涨跌色、线路 ?）·
  *   通知（通知被拒 / 浏览器收不了通知时最上面一条琥珀提示行；铃声 › 推一页四档；波动提醒 ? 开关；上新下架开关）·
- *   通用（自动适应 ? 开关；开着时「已学到的 N 项 ›」推一页；关于：版本 + 隐私政策 / 服务条款；恢复默认：不弹确认，提示条里「撤销」）。
+ *   通用（自选走势线开关（自选行价格与药丸之间那条 24 小时走势，出厂开）；自动适应 ? 开关；开着时「已学到的 N 项 ›」推一页；关于：版本 + 隐私政策 / 服务条款；恢复默认：不弹确认，提示条里「撤销」）。
  * 价格轴（线性 / 对数）不在这里：iOS 收设置项时把它留在图表设置里，网页版同样只在行情页的图表设置里切。
  * 改一下立刻生效、立刻落盘；进下一页的行尾一律是箭头，就地动作（恢复、清除）是强调色 / 红色的字。
  */
@@ -93,6 +93,7 @@ export function buildSettings(body: HTMLElement, layer: MeLayer, host: MeHost): 
       ${prow('波动提醒', sw('watchMove', st.watchMoveAlert, '波动提醒'), { term: 'watchMove' })}
       ${prow('上新下架', sw('listing', st.notifyListingChanges, '上新下架'), { last: true })}
       <div class="me-group">通用</div>
+      ${prow('自选走势线', sw('trend', st.favoritesTrend, '自选走势线'))}
       ${prow('自动适应', sw('habits', st.habitLearning, '自动适应'), { term: 'habits' })}
       ${st.habitLearning ? prow('已学到的', `${count > 0 ? `<span class="me-pval num">${count} 项</span>` : ''}<span class="me-chev">${CHEV}</span>`, { tap: 'learned' }) : ''}
       ${prow('关于', `<a class="me-link" href="${legalBase()}/privacy" target="_blank" rel="noopener">隐私政策</a><a class="me-link" href="${legalBase()}/terms" target="_blank" rel="noopener">服务条款</a>`, { meta: version })}
@@ -114,6 +115,7 @@ export function buildSettings(body: HTMLElement, layer: MeLayer, host: MeHost): 
         case 'watchMove': st.watchMoveAlert = !st.watchMoveAlert; save(); if (st.watchMoveAlert) askIfNeeded(); break
         case 'listing': st.notifyListingChanges = !st.notifyListingChanges; save(); if (st.notifyListingChanges) askIfNeeded(); break
         case 'habits': setHabitLearning(!st.habitLearning); break
+        case 'trend': st.favoritesTrend = !st.favoritesTrend; save(); break
       }
       paint()
       return

@@ -1,0 +1,33 @@
+/* 手机网页版 · 自选行的 24 小时走势线与药丸闪（照 iOS FavoriteTrendLine / ChangePill.flash，2026-10-08） */
+
+/* 价格 ─12─ [走势 ─8─ 药丸]（iOS quoteColumn：Space.m 之后 trend、Space.s、pill） */
+.lr-tp { display: flex; align-items: center; gap: var(--s-s); flex: none }
+/* 44×20 那一格：没数据时只让出地方（不画、不占位），行里其余几格不挪 */
+.lr-trend { display: block; width: 44px; height: 20px; flex: none; pointer-events: none }
+.lr-trend svg { display: block; overflow: visible }
+.lr-trend path { fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round }
+.lr-trend path.up { stroke: var(--up) }
+.lr-trend path.down { stroke: var(--down) }
+.lr-trend path.flat { stroke: var(--lg-ink4, var(--ink3)) }
+.editing .lr-trend { opacity: .55 }
+
+/* 窄屏（≤402）：价格 / 走势 / 药丸这一列优先，名字那一列让位截断；价格永远不塌 */
+.lr-right { min-width: max-content }
+.lr-base { min-width: 0 }
+.lr-quote { flex: none }
+.lr-top { overflow: hidden }
+@media (max-width: 359px) {
+  /* iOS 价格 minimumScaleFactor 0.7：再窄的屏宁可缩一档字，也不让价格被截 */
+  .lr-price { font-size: 13px; min-width: 0 }
+}
+
+/* 药丸闪：在 14% 的常态底上再垫一层 25% 的这一口方向色，150ms 后摘掉、0.18s 淡回去 */
+.lr .m-pill.up, .lr .m-pill.down { position: relative; isolation: isolate }
+.lr .m-pill.up::before, .lr .m-pill.down::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; z-index: -1; pointer-events: none;
+  opacity: 0; transition: opacity .18s ease-out;
+}
+.lr .m-pill.fl-up::before { background: var(--up); opacity: .25; transition: none }
+.lr .m-pill.fl-down::before { background: var(--down); opacity: .25; transition: none }
+.stale .lr .m-pill::before { display: none }
+@media (prefers-reduced-motion: reduce) { .lr .m-pill::before { display: none } }

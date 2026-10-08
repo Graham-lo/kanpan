@@ -102,6 +102,12 @@ export function tally(rows: ViewRecordFull[]): Tally {
 }
 
 /** 待判定的条数：角标、筛选胶囊、「我的」那一行同一个数 */
+/** 复盘本打开时停在哪一面（照 iOS TradeReviewFeature.preferredSegment）：「观点」一条没有、「交易」有回合就翻到交易；
+ *  两面都有（或都没有）留在上次那面 */
+export function preferredSegment(current: 'views' | 'trades', viewsEmpty: boolean, tradesEmpty: boolean): 'views' | 'trades' {
+  return viewsEmpty && !tradesEmpty ? 'trades' : current
+}
+
 export function pendingCount(rows: ViewRecordFull[]): number {
   let n = 0
   for (const r of rows) if (needsAction(r)) n++

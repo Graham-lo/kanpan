@@ -84,7 +84,7 @@ export function openShare(ctx: ShareContext): Sheet | null {
       sheet.close()
       openFriendPicker(ctx)
     })
-  }, { title: '分享', detent: 'medium', dim: 'large', id: 'share', className: 'cp-sheet' })
+  }, { title: '分享', detent: 'fit', dim: 'large', id: 'share', className: 'cp-sheet' })
   return sheet
 }
 

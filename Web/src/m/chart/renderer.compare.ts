@@ -6,7 +6,8 @@ import type { Layout, Pane, PriceRange, PriceTransform, ViewWindow } from './geo
 import { AICoinBehavior, PriceMapping, priceRange, priceTicks, visibleRange } from './geometry'
 import { advancing } from './format'
 import type { Hex } from './paint'
-import { ChartFont, css, drawLeft, textWidth } from './paint'
+import { css } from './paint'
+import { LegendFit, legendItem } from './legendFit'
 import type { ChartRenderer } from './renderer'
 import type { CompareSeries } from './state'
 import { compareBase, compareBaseIndex, compareBaseIndexFrom, comparePercentAt, comparePercentLabel, effectivePriceMode } from './state'
@@ -137,25 +138,12 @@ export function compareLegend(r: ChartRenderer): { name: string; value: number |
   }))
 }
 
-export function compareLegendInset(r: ChartRenderer, plotW: number): number {
-  let x = 8, rows = 1
-  for (const entry of compareLegend(r)) {
-    const width = textWidth(entry.name + ' −999.99%', ChartFont.axis) + 8
-    if (x + width > plotW - 4) { rows += 1; x = 8 }
-    x += Math.min(width, plotW - 12)
-  }
-  return Math.max(AICoinBehavior.mainTopInset, rows * 12 + 12)
+/** 对比图例和叠加图例一样单行（见 LegendFit）：宽度不再随品种名折行，内缩恒为一行。 */
+export function compareLegendInset(_r: ChartRenderer, _plotW: number): number {
+  return AICoinBehavior.mainTopInset
 }
 
 export function drawCompareLegend(r: ChartRenderer, ctx: CanvasRenderingContext2D, pane: Pane, L: Layout): void {
-  let x = 8, y = pane.y + 9
-  ctx.save()
-  ctx.beginPath(); ctx.rect(0, pane.y, L.plotW, r.mainLegendInset(L.plotW)); ctx.clip()
-  for (const entry of compareLegend(r)) {
-    const width = textWidth(entry.name + ' −999.99%', ChartFont.axis) + 8
-    if (x + width > L.plotW - 4) { x = 8; y += 12 }
-    drawLeft(ctx, entry.name + ' ' + comparePercentLabel(entry.value), x, y, ChartFont.axis, entry.color)
-    x += Math.min(width, L.plotW - 12)
-  }
-  ctx.restore()
+  const items = compareLegend(r).map(entry => legendItem(entry.name + ' ' + comparePercentLabel(entry.value), null, entry.color))
+  LegendFit.draw(ctx, items, 8, pane.y + 9, L.plotW - 4, r.colors.dim)
 }

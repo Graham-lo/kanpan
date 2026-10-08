@@ -26,6 +26,7 @@ import { el, esc } from '../../ui/dom'
 import { icon, glyph } from '../../ui/icons'
 import { S, rankSearch } from '../../../market'
 import { badgeHTML, assetOf } from '../../model/badge'
+import { lineSwatchOptions, swatchRoleName, type LineSwatch } from '../../model/lineSwatches'
 import { baseOfSymbol, defaultThresholds, applyOverride, isValidBase } from '../../../orderflow/settings'
 import type { Thresholds } from '../../../orderflow/types'
 import {
@@ -146,7 +147,7 @@ export function openAnalysis(ctx: PanelContext): Sheet {
       onMove(from, to, rows) { st.subs = moveSubAmong(st.subs, rows.map(r => r.dataset.sub as IndicatorId), from, to); save() },
       onEnd() { if (redrawAfterDrag) { redrawAfterDrag = false; render() } },
     })
-  }, { title: '分析', detent: 'medium', dim: 'large', id: 'analysis', className: 'cp-sheet cp-list', onClose: () => { off?.(); reorder?.destroy() } })
+  }, { title: '分析', detent: 'medium', dim: 'large', id: 'analysis', className: 'cp-sheet cp-list cp-cards', onClose: () => { off?.(); reorder?.destroy() } })
   return sheet
 }
 
@@ -198,7 +199,7 @@ export function openMainIndicators(): Sheet {
         save()
       }
     })
-  }, { title: '主图指标', detent: 'large', dim: 'large', id: 'main-indicators', className: 'cp-sheet cp-list', onClose: () => { off?.() } })
+  }, { title: '主图指标', detent: 'large', dim: 'large', id: 'main-indicators', className: 'cp-sheet cp-list cp-cards', onClose: () => { off?.() } })
   return sheet
 }
 
@@ -313,6 +314,26 @@ function defaultLineColor(id: IndicatorId, i: number): string {
   return toHex(getComputedStyle(document.documentElement).getPropertyValue(`--palette-${n}`))
 }
 
+/** 指标线的色卡（照 iOS IndicatorColorControl 2026-10-08）：第一支是出厂色、下面标「默认」，点它清掉自选色；
+ *  其余从当前皮肤派生（强调色 / 浅强调色 / 涨色 / 跌色 / 墨色，对图表底色至少 3:1、去重，见 model/lineSwatches）。
+ *  选中：默认那支在没改过或正好改成出厂色时亮，其余是正好那一色时亮；外面一圈墨色。标识 indicator.color.N.<角色> */
+function lineSwatchesFor(id: IndicatorId, i: number): LineSwatch[] {
+  const cs = getComputedStyle(document.documentElement)
+  const v = (name: string): string => toHex(cs.getPropertyValue(name))
+  return lineSwatchOptions(defaultLineColor(id, i), { accent: v('--accent'), ink: v('--ink'), up: v('--k-up'), down: v('--k-down'), bg: v('--k-bg') })
+}
+function indicatorColorHTML(i: number, name: string, picked: string | undefined, swatches: LineSwatch[]): string {
+  const p = picked?.slice(0, 7).toUpperCase()
+  const cur = p ?? swatches[0].hex
+  return `<div class="cp-crow"><div class="cp-crow-top"><span class="cp-rn">${esc(name)}</span>
+      <label class="cp-cpick" style="--c:${cur}" aria-label="${esc(name)} · 自选颜色"><input type="color" data-pick="${i}" value="${cur.toLowerCase()}"></label></div>
+    <div class="cp-chips-c cp-ichips">${swatches.map((sw, k) => {
+      const def = k === 0
+      const on = def ? p == null || p === sw.hex : p === sw.hex
+      return `<button type="button" class="cp-cchip${def ? ' cp-cdef' : ''}${on ? ' on' : ''}" style="--c:${sw.hex}" data-act="${def ? 'color-default' : 'color'}:${i}" data-c="${sw.hex}" data-id="indicator.color.${i}.${sw.role}" aria-label="${def ? '默认' : swatchRoleName(sw.role)}" aria-pressed="${on}">${def ? '<small>默认</small>' : ''}</button>`
+    }).join('')}</div></div>`
+}
+
 export function openIndicatorEditor(id: IndicatorId): Sheet {
   ensureTerms()
   const variable = VARIABLE_PARAMS.includes(id)
@@ -342,7 +363,7 @@ export function openIndicatorEditor(id: IndicatorId): Sheet {
     if (hasColors) {
       const names = lineNames(id, draft.params)
       colors = gt('线条颜色') + `<div class="cp-group">${names.map((name, i) =>
-        colorControlHTML(name, draft.colors[i] ?? defaultLineColor(id, i), `color:${i}`, String(i))).join('')}<button type="button" class="cp-row cp-tap cp-accent" data-act="colors-reset">恢复默认颜色</button></div>`
+        indicatorColorHTML(i, name, draft.colors[i], lineSwatchesFor(id, i))).join('')}<button type="button" class="cp-row cp-tap cp-accent" data-act="colors-reset">恢复默认颜色</button></div>`
     }
     host.innerHTML = (draft.params.length ? gt('参数') + `<div class="cp-group cp-params">${rows}${add}</div>` : '') + colors
     if (variable && draft.params.length > 1) {
@@ -380,6 +401,7 @@ export function openIndicatorEditor(id: IndicatorId): Sheet {
         render()
         host.querySelector<HTMLInputElement>(`input[data-param="${draft.params.length - 1}"]`)?.focus()
       } else if (act === 'color') { commitFields(); draft.colors[arg] = b.dataset.c!; render() }
+      else if (act === 'color-default') { commitFields(); delete draft.colors[arg]; render() }
       else if (act === 'colors-reset') { commitFields(); draft.colors = {}; render() }
     })
     const lead = sh.root.querySelector('.m-sheet-lead') // build 里 sheet 还没赋上，用回调给的那个
@@ -459,7 +481,7 @@ export function openChartSettings(axis: AxisContext): Sheet {
       else return
       save()
     })
-  }, { title: '图表设置', detent: 'medium', dim: 'large', id: 'chart-settings', className: 'cp-sheet cp-list', onClose: () => off?.() })
+  }, { title: '图表设置', detent: 'fit', dim: 'large', id: 'chart-settings', className: 'cp-sheet cp-list cp-cards', onClose: () => off?.() })
   return sheet
 }
 

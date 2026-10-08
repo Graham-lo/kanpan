@@ -13,7 +13,7 @@
 
 import { IndicatorEngine } from '../indicator/engine'
 import type { IndicatorID } from '../indicator/ids'
-import { defaultParams, IndicatorResult, lineNames, paletteOffset } from '../indicator/ids'
+import { defaultParams, IndicatorResult, paletteOffset } from '../indicator/ids'
 import type { BarSeries } from './series'
 import { heikinAshiSlice, isIrregular } from './series'
 import type { PriceRange, PriceTransform, ViewWindow, Pane } from './geometry'
@@ -29,6 +29,7 @@ import type { ChartState } from './state'
 import { comparePercentLabel, effectiveGrid, effectivePriceMode, effectiveShape, indicatorInputs } from './state'
 import type { Drawing } from './drawing'
 import { DrawAxes, paintDrawing } from './drawing'
+import { DRAW_REST_ALPHA } from './draw/pen'
 import { drawOrderFlow, drawOrderFlowHover, drawOrderFlowLabels, hasOrderFlow, orderFlowHoversBand } from './renderer.orderflow'
 import { drawLegend, drawLegends, drawSub, subAxisLabels, subCrosshairY, subValueText } from './renderer.sub'
 import { compareLegendInset, compareRange, drawCompare, mainPriceTicks } from './renderer.compare'
@@ -89,6 +90,23 @@ const sameIds = (a: readonly string[], b: readonly string[]): boolean => a.lengt
 
 export type Rect = { x: number; y: number; w: number; h: number }
 
+/** 主图叠加线超过这么多条才开始淡非焦点线（ChartRenderer.overlayCrowd）。 */
+export const OVERLAY_CROWD = 6
+/** 非焦点线的透明度（ChartRenderer.overlayFadedAlpha）。 */
+export const OVERLAY_FADED_ALPHA = 0.45
+/** 一条叠加线：哪把指标的第几条输出（OverlayLineKey）。 */
+export interface OverlayLineKey { id: IndicatorID; k: number }
+export const overlayKey = (key: OverlayLineKey): string => key.id + ':' + key.k
+
+const sameNumbers = (a: readonly number[] | undefined, b: readonly number[] | undefined): boolean =>
+  a === b || (a != null && b != null && a.length === b.length && a.every((x, i) => x === b[i]))
+function sameColors(a: Record<number, Hex> | undefined, b: Record<number, Hex> | undefined): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  const ka = Object.keys(a), kb = Object.keys(b)
+  return ka.length === kb.length && ka.every(k => a[+k] === b[+k])
+}
+
 export class ChartRenderer {
   private _guestDrawings: Drawing[] = []
   /** 临时客线不属于存档与个人布局。金额签也躲客线上的字，签存在订单流那只盒子里，线一换就得重排。 */
@@ -98,12 +116,21 @@ export class ChartRenderer {
     this._guestDrawings = v
   }
   ownDimmed = false
+  /** 选中的那条画线：底图里它画满 1、排在最后，其余按 `DRAW_REST_ALPHA` 退后一步（照 iOS DrawPen，2026-10-08）。 */
+  drawingSelected: string | null = null
+  /** 系统「降低透明度」打开：画线一律画满。 */
+  reduceTransparency = false
+  /** 没选中的画线此刻画多浓。 */
+  get drawingRestAlpha(): number { return this.reduceTransparency ? 1 : DRAW_REST_ALPHA }
   priceFlash: PriceFlash | null = null
   pinnedPriceRange: PriceRange | null = null
   engine = new IndicatorEngine()
   heikin: HeikinSlice | null = null
   /** 订单流子模块自己的缓存；输入 / 视野 / 订单流快照任何一样变了就整只换新。 */
   orderFlowCache: Map<string, unknown> = new Map()
+
+  /** 最近一次被编辑的那把主图叠加指标（overlayFocus 用）：只在 recalc 里认。 */
+  overlayEdited: IndicatorID | null = null
 
   private _state: ChartState
   private print: SeriesPrint
@@ -143,7 +170,14 @@ export class ChartRenderer {
     const viewportChanged = previous.viewport !== state.viewport && !(
       previous.viewport.view.equals(state.viewport.view) && sameTransform(previous.viewport.price, state.viewport.price)
       && previous.viewport.axisScaleAnchor === state.viewport.axisScaleAnchor && previous.viewport.subScale === state.viewport.subScale)
-    if (inputChanged) this.inputCache = newInputCache()
+    if (inputChanged) {
+      if (previous.input !== state.input) {
+        const edited = ChartRenderer.editedOverlay(previous, state)
+        if (edited != null) this.overlayEdited = edited
+        if (this.overlayEdited != null && !state.input.overlays.includes(this.overlayEdited)) this.overlayEdited = null
+      }
+      this.inputCache = newInputCache()
+    }
     if (inputChanged || viewportChanged) this.viewportCache = newViewportCache()
     // 画线一变也换：金额签躲画线上的字（drawingLabelBoxes），签和色带几何同存一只盒子。
     if (inputChanged || viewportChanged || previous.overlay.orderFlow !== state.overlay.orderFlow
@@ -238,7 +272,7 @@ export class ChartRenderer {
     return (this._state.input.params[id] as number[] | undefined) ?? defaultParams(id)
   }
 
-  /** 自适应只多留图例行，从不改面板分配。 */
+  /** 图例一律单行（2026-10-08，LegendFit）：内缩恒为一行，开着主力订单流再多一行。 */
   mainLegendInset(plotW: number): number {
     const hit = this.inputCache.legendInset
     if (hit && hit.plotW === plotW) return hit.value
@@ -248,22 +282,74 @@ export class ChartRenderer {
   }
 
   private computeMainLegendInset(plotW: number): number {
-    const s = this._state, inp = s.input
-    if (inp.percentAxis) return compareLegendInset(this, plotW)
+    if (this._state.input.percentAxis) return compareLegendInset(this, plotW)
     const orderFlowRow = hasOrderFlow(this) ? 12 : 0 // 主力订单流的图例另占一行
-    if (!inp.options.adaptiveIndicators) return AICoinBehavior.mainTopInset + orderFlowRow
-    let x = 8, rows = 1
-    const last = inp.series.close[inp.series.count - 1] ?? 0
-    for (const id of inp.overlays) {
-      const names = lineNames(id, this.params(id))
-      names.forEach((name, k) => {
-        if (!this.outputVisible(id, k)) return
-        const width = textWidth(name + ' ' + this.indicatorNumber(last, inp.decimals), ChartFont.axis) + 8
-        if (x + width > plotW - 4) { rows += 1; x = 8 }
-        x += width
-      })
+    return AICoinBehavior.mainTopInset + orderFlowRow
+  }
+
+  // ---------------------------------------------------------------- 叠加线焦点（+OverlayFocus）
+
+  /** 主图上此刻看得见的每条叠加线（按画的顺序）。 */
+  overlayLineKeys(): OverlayLineKey[] {
+    const keys: OverlayLineKey[] = []
+    for (const id of this._state.input.overlays) {
+      const v = this.displayed(id)
+      if (!v) continue
+      switch (id) {
+        case 'MA': case 'EMA':
+          v.lines.forEach((_, k) => { if (this.outputVisible(id, k)) keys.push({ id, k }) })
+          break
+        case 'BOLL':
+          if (v.lines.length < 3) break
+          for (const k of [1, 0, 2]) if (this.outputVisible(id, k)) keys.push({ id, k })
+          break
+        case 'VWAP': case 'ST': case 'SAR':
+          if (v.lines.length && this.outputVisible(id, 0)) keys.push({ id, k: 0 })
+          break
+        default: break
+      }
     }
-    return Math.max(AICoinBehavior.mainTopInset, rows * 12 + 12) + orderFlowRow
+    return keys
+  }
+
+  /**
+   * 叠加线太多时的「焦点」：超过 OVERLAY_CROWD 条，非焦点线退到 OVERLAY_FADED_ALPHA。返回该画满的那几条（「id:k」），
+   * null 表示不淡任何一条。焦点按这个顺序定（2026-10-08）：
+   * 1. 十字线停在主图上：读数离十字线价格最近的那一条（正在读的线）；
+   * 2. 最近一次改过的那把指标（加进来、改参数、改颜色、显隐某条输出）的各条线；
+   * 3. 都没有：排在前面的 OVERLAY_CROWD 条。
+   */
+  overlayFocus(): Set<string> | null {
+    const keys = this.overlayLineKeys()
+    if (keys.length <= OVERLAY_CROWD) return null
+    const st = this._state, c = st.overlay.crosshair, b = st.input.series
+    if (c && c.pane == null && c.index >= 0 && c.index < b.count) {
+      const price = c.price ?? b.close[c.index]
+      let best: OverlayLineKey | null = null, bestD = Infinity
+      for (const key of keys) {
+        const a = this.displayed(key.id)?.lines[key.k]
+        if (!a || !(c.index < a.length) || !Number.isFinite(a[c.index])) continue
+        const d = Math.abs(a[c.index] - price)
+        if (best == null || d < bestD) { best = key; bestD = d }
+      }
+      if (best) return new Set([overlayKey(best)])
+    }
+    const edited = this.overlayEdited
+    if (edited != null) {
+      const mine = keys.filter(k => k.id === edited)
+      if (mine.length) return new Set(mine.map(overlayKey))
+    }
+    return new Set(keys.slice(0, OVERLAY_CROWD).map(overlayKey))
+  }
+
+  /** 两份 state 之间只有一把叠加指标被动过（新加、参数、颜色、显隐）时报它；
+   *  一次换整套布局（登录拉下来、换周期带进来）不算「编辑了某一把」。 */
+  static editedOverlay(old: ChartState, next: ChartState): IndicatorID | null {
+    const o = old.input, n = next.input
+    const touched = n.overlays.filter(id =>
+      !o.overlays.includes(id) || !sameNumbers(o.params[id], n.params[id])
+      || !sameColors(o.indicatorColors[id], n.indicatorColors[id]) || !sameNumbers(o.hiddenOutputs[id], n.hiddenOutputs[id]))
+    return touched.length === 1 ? touched[0] : null
   }
 
   // ---------------------------------------------------------------- 布局与区间
@@ -773,27 +859,35 @@ export class ChartRenderer {
     const { lo, hi } = this.visible()
     ctx.save()
     ctx.beginPath(); ctx.rect(0, pane.y, L.plotW, pane.h); ctx.clip()
+    // 超过六条时非焦点线退到 0.45（overlayFocus），六条以内 focus 是 null，一条都不淡。
+    const focus = this.overlayFocus()
+    const fade = (id: IndicatorID, k: number, body: () => void): void => {
+      if (!focus || focus.has(overlayKey({ id, k }))) { body(); return }
+      ctx.save(); ctx.globalAlpha = OVERLAY_FADED_ALPHA
+      body()
+      ctx.restore()
+    }
     for (const id of this._state.input.overlays) {
       const v = this.displayed(id)
       if (!v) continue
       switch (id) {
         case 'MA': case 'EMA':
-          v.lines.forEach((a, k) => this.line(ctx, pane, r, L.plotW, a, this.indicatorColor(id, k), lo, hi))
+          v.lines.forEach((a, k) => fade(id, k, () => this.line(ctx, pane, r, L.plotW, a, this.indicatorColor(id, k), lo, hi)))
           break
         case 'BOLL':
           if (v.lines.length < 3) break
-          this.line(ctx, pane, r, L.plotW, v.lines[1], t.band, lo, hi)
-          this.line(ctx, pane, r, L.plotW, v.lines[0], t.amber, lo, hi)
-          this.line(ctx, pane, r, L.plotW, v.lines[2], t.band, lo, hi)
+          for (const [k, color] of [[1, t.band], [0, t.amber], [2, t.band]] as [number, Hex][]) {
+            fade(id, k, () => this.line(ctx, pane, r, L.plotW, v.lines[k], color, lo, hi))
+          }
           break
         case 'VWAP':
-          if (v.lines[0]) this.line(ctx, pane, r, L.plotW, v.lines[0], this.indicatorColor(id, 0), lo, hi)
+          if (v.lines[0]) fade(id, 0, () => this.line(ctx, pane, r, L.plotW, v.lines[0], this.indicatorColor(id, 0), lo, hi))
           break
         case 'ST':
-          if (v.lines[0]) this.directedLine(ctx, pane, r, L.plotW, v.lines[0], v.dir ?? [], lo, hi)
+          if (v.lines[0]) fade(id, 0, () => this.directedLine(ctx, pane, r, L.plotW, v.lines[0], v.dir ?? [], lo, hi))
           break
         case 'SAR':
-          if (v.lines[0]) this.dots(ctx, pane, r, L, v.lines[0], v.dir ?? [], lo, hi)
+          if (v.lines[0]) fade(id, 0, () => this.dots(ctx, pane, r, L, v.lines[0], v.dir ?? [], lo, hi))
           break
         default: break
       }
@@ -812,14 +906,24 @@ export class ChartRenderer {
     ctx.save()
     // Swift 用透明层整体压 0.35；Canvas 没有透明层，逐笔压同一个透明度（交叠处略深，肉眼看不出）。
     if (this.ownDimmed) ctx.globalAlpha = 0.35
+    // 没在编辑的线退后一步（DRAW_REST_ALPHA）；选中的那条画满、排在最后盖在别的线上面；正在拖的那条底图跳过，由覆盖层整只画。
     if (st.input.options.drawings) {
+      const base = ctx.globalAlpha, sel = this.drawingSelected
+      let selected: Drawing | null = null
+      ctx.globalAlpha = base * this.drawingRestAlpha
       for (const d of st.overlay.drawings) {
         if (d.id === st.overlay.drawingPreviewID) continue
+        if (d.id === sel) { selected = d; continue }
         paintDrawing(d, ctx, axes, this.colors, st.input.series, s)
       }
+      ctx.globalAlpha = base
+      if (selected) paintDrawing(selected, ctx, axes, this.colors, st.input.series, s)
     }
     ctx.restore()
+    ctx.save()
+    ctx.globalAlpha *= this.drawingRestAlpha
     for (const d of this.guestDrawings) paintDrawing(d, ctx, axes, this.colors, st.input.series, s)
+    ctx.restore()
     ctx.restore()
   }
 

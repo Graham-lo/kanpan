@@ -5,11 +5,13 @@
  *   品种卡（不可编辑）：徽章 + BTC/USDT + 币安 · USDT 永续，右侧现价与涨跌幅（涨跌色）。
  *   条件卡：「价格」输入井（铅笔记号、数字右对齐、后缀计价币）+ 提示行（现价 X · 高于 / 低于现价 N%）
  *           + 发丝线 +「条件 ?」两段分段「价格达到 | 收盘穿过」（槽取页面底色，和输入井同一个底）。没有 ±% 快捷。
- *   通知卡：「Webhook ?」只填地址（https://），没有单独的开关——填了就发、空着就不发（iOS 2026-09-28 收设置项 E 组去掉了开关）；
+ *   通知卡：「网络回调 ?」只填地址（https://），没有单独的开关——填了就发、空着就不发（iOS 2026-09-28 收设置项 E 组去掉了开关）；
  *           框里有字时下面靠右一颗「发一条测试」，地址不合法时灰着点不了（不另写错误字）。
  *   主按钮「创建提醒」（胶囊 48 高；不能交时换中性底 + ink3 字，不整块降透明度）。
  *   「当前提醒 N」：列这只品种还没触发的价格与画线提醒，价格提醒点一条进「编辑提醒」（同一页，按钮「保存」），行上删除 icon。
- * 没有备注、没有重复提醒（只响一次）。建完请求一次通知权限。
+ * 没有备注、没有重复提醒（只响一次）。通知权限照 iOS 10-08：创建页第一次露面时问一次（只在还没问过 = 'default' 时真弹，
+ * 必须在打开它的那次点按里同步发起），点「创建提醒」不再问。
+ * 高度照 iOS：创建页按内容高（整页刚好装下，超屏才封顶），推进「全部预警」「编辑提醒」时拉满。
  * 条件提醒（资金费率 / 持仓量 / 均线 / 大单墙）iOS 只在登录 + 币安 U 本位时由服务端判，网页版暂不摆。
  */
 import '../styles/alerts.css'
@@ -26,13 +28,14 @@ import { badgeHTML } from '../model/badge'
 import { factsOf, splitSymbol } from '../model/rowHTML'
 import { addPriceAlert, onAlertsChange, records, updatePriceAlert, webhookBody, type Alert, type Condition } from '../model/alerts'
 import { openSymbol } from '../app/shell'
-import { askNotifyPermission, buildAlertList, deleteWithUndo, pairName, recordRowHTML, startAlertWatcher, venueLine } from './alerts'
+import { buildAlertList, deleteWithUndo, pairName, recordRowHTML, startAlertWatcher, venueLine } from './alerts'
 import { wantStreams } from './_streams'
+import { askNotifyPermission, notifyPermission } from './notify'
 import { life, layers, type Life } from '../model/life'
 
 registerTerms([
   { id: 'alertCondition', title: '条件', body: '价格达到：盘中价格一碰到就响。\n收盘穿过：要等 K 线收盘、收盘价越过这个价才响，盘中来回插针不算。' },
-  { id: 'webhook', title: 'Webhook', body: '触发时向这个地址发一条 JSON，里面是一句提醒文字，格式由我们定好。\n可以接到自己的机器人或群里；点「发一条测试」先试一下。' },
+  { id: 'webhook', title: '网络回调', body: '提醒响的时候，往你填的这个网址发一条消息（也叫 Webhook），内容是一句提醒文字，格式由我们定好。\n可以接到自己的机器人或群里；点「发一条测试」先试一下。' },
 ])
 
 const CONDITIONS: readonly [Condition, string][] = [['touch', '价格达到'], ['close', '收盘穿过']]
@@ -41,6 +44,8 @@ const PENCIL = '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="tru
 
 /** 打开「创建提醒」。price：十字线那一口（预填） */
 export function openAlertForm(symbol: string, price?: number | null): Sheet {
+  // 第一次露面问一次通知权限：同步发起，还在打开它的那次点按里（浏览器只认用户手势里的请求）
+  if (notifyPermission() === 'default') void askNotifyPermission()
   startAlertWatcher()
   // 底层（创建提醒）活到整张面板关掉；推进去的「编辑提醒」「全部预警」退回底层就收尾
   const base = life()
@@ -49,7 +54,7 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
     body.classList.add('alf-body')
     buildForm(body, sh, symbol, null, price ?? null, base)
   }, {
-    title: '创建提醒', detent: 'large', expandable: false, className: 'alf-sheet', id: 'alerts.new',
+    title: '创建提醒', detent: 'auto', expandable: false, className: 'alf-sheet', id: 'alerts.new',
     action: { title: '全部预警', run: () => pushAll() },
     onClose: () => { above.endAll(); base.end(); wantStreams('alertForm', []) },
   })
@@ -67,10 +72,16 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
   const mo = new MutationObserver(() => {
     const pushed = sheet.root.classList.contains('pushed')
     if (action) action.hidden = pushed
+    sheet.setDetent(pushed ? 'large' : 'auto')
     above.settle(!pushed)
   })
   mo.observe(sheet.root, { attributes: true, attributeFilter: ['class'] })
   base.add(() => mo.disconnect())
+  // 创建页内容会长会缩（「当前提醒」增删、「发一条测试」出没）：没推进时跟着量一次
+  const ro = new ResizeObserver(() => { if (!sheet.closed && !sheet.root.classList.contains('pushed')) sheet.setDetent('auto') })
+  const form = sheet.body.firstElementChild
+  if (form) ro.observe(form)
+  base.add(() => ro.disconnect())
   wantStreams('alertForm', [streamName.ticker(symbol)])
   return sheet
 
@@ -99,8 +110,8 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
         <div class="alf-row alf-cond-row"><span class="alf-label">条件${termHTML('alertCondition')}</span><div class="m-seg" role="radiogroup" aria-label="条件">${CONDITIONS.map(([v, t]) => `<button type="button" class="m-seg-opt${v === cond ? ' on' : ''}" role="radio" aria-checked="${v === cond}" data-v="${v}">${t}</button>`).join('')}</div></div>
       </div>
       <div class="al-card alf-notify">
-        <label class="alf-row"><span class="alf-label">Webhook${termHTML('webhook')}</span>
-          <input class="alf-hook" type="url" inputmode="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://" aria-label="Webhook 地址" value="${esc(existing?.webhook ?? '')}"></label>
+        <label class="alf-row"><span class="alf-label">网络回调${termHTML('webhook')}</span>
+          <input class="alf-hook" type="url" inputmode="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://" aria-label="网络回调地址" value="${esc(existing?.webhook ?? '')}"></label>
       </div>
       <div class="alf-under" hidden><button type="button" class="alf-test">发一条测试</button></div>
       <button type="button" class="alf-submit">${existing ? '保存' : '创建提醒'}</button>
@@ -183,7 +194,6 @@ export function openAlertForm(symbol: string, price?: number | null): Sheet {
         ? updatePriceAlert(existing.id, target, q.price, dec, hook.value, Date.now(), cond)
         : addPriceAlert(sym, target, q.price, dec, hook.value, Date.now(), cond)
       if (!a) { toast('没建成，再试一次'); return }
-      if (!existing) askNotifyPermission()
       if (existing) { sh.back(); return }
       sh.close()
     }

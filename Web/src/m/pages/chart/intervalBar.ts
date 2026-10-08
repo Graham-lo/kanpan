@@ -3,14 +3,16 @@
  * 钉住的档位按 INTERVALS 顺序等宽铺满；当前档一颗贴字的 accent-soft 药丸（「最新」药丸 2026-10-02 按用户要求删了：
  * 回到最新靠双击图、或在行情页再点一下底栏「图表」）；
  * 一根 1×14 分隔线；行尾三件：「更多 ▾」（当前档没钉住时写成那一档并高亮）· 「分析」· 图表设置记号。
- * 长按一档 = 取消钉。十字线活着（主图或副图）时整行透明让位；落在主图上时同一行靠左换成「创建提醒」药丸。
+ * 长按一档 = 取消钉。十字线活着（主图或副图）时整行透明让位，同一行换成一条带子（照 iOS CrosshairActionBar 2026-10-08）：
+ * 左边是那一根的读数「时间 · 开 高 低 收 · 涨跌幅」（11 号、ink2，放不下先收开高低、再收时间），
+ * 右边一颗「创建提醒」药丸（只在主图上出：副图读的是指标值，建不了价格提醒）。出主力订单流详情卡时读数让位给卡片。
  */
 import { INTERVALS, MAX_QUICK, type IntervalId } from '../../app/prefs'
 import { INTERVAL_SHORT, INTERVAL_DISPLAY } from '../../chart/series'
 import { openPopover, type Popover } from '../../ui/sheet'
 import { icon } from '../../ui/icons'
 import { el, esc } from '../../ui/dom'
-import { sortIntervals } from './logic'
+import { sortIntervals, crosshairBandText, BAND_FITS, type CrosshairBand } from './logic'
 
 /** SF Symbols pin / pin.fill 的描法（这一颗 icons.ts 里没有，只行情页用） */
 const PIN = (filled: boolean) => `<svg class="cp-pin-g" width="10" height="12" viewBox="0 0 10 12" aria-hidden="true">
@@ -31,8 +33,10 @@ export interface IntervalBarState {
   quick: readonly IntervalId[]; current: IntervalId
   /** 十字线活着（任何一格）：整行让位 */
   crosshair: boolean
-  /** 十字线落在主图：让出来的位置摆「创建提醒」 */
+  /** 十字线落在主图：让出来的位置右边摆「创建提醒」 */
   crosshairOnMain: boolean
+  /** 十字线那一根的读数（null = 不摆，比如订单流详情卡开着） */
+  reading: CrosshairBand | null
 }
 
 export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
@@ -49,10 +53,30 @@ export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
   bar.append(chips, divider, more, analysis, settings)
   const alert = el('button', 'cp-alertpill', `${icon('bell', 12)}<span>创建提醒</span>`)
   alert.type = 'button'
-  row.append(bar, alert)
+  const xband = el('div', 'cp-xband')
+  const xread = el('span', 'cp-xread num')
+  xread.setAttribute('role', 'text')
+  xband.append(xread, alert)
+  row.append(bar, xband)
   host.append(row)
 
-  let state: IntervalBarState = { quick: [], current: '1h', crosshair: false, crosshairOnMain: false }
+  let state: IntervalBarState = { quick: [], current: '1h', crosshair: false, crosshairOnMain: false, reading: null }
+  let readKey = ''
+
+  /** 读数：一档放不下退一档（ViewThatFits）；最后一档还放不下就截尾。 */
+  function renderReading(): void {
+    const r = state.crosshair ? state.reading : null
+    xread.hidden = r == null
+    if (!r) { readKey = ''; return }
+    const key = crosshairBandText(r, 'full') + '|' + (state.crosshairOnMain ? 1 : 0) + '|' + row.clientWidth
+    if (key === readKey) return
+    readKey = key
+    xread.setAttribute('aria-label', crosshairBandText(r, 'full'))
+    for (const fit of BAND_FITS) {
+      xread.textContent = crosshairBandText(r, fit)
+      if (xread.scrollWidth <= xread.clientWidth + 0.5) break
+    }
+  }
   let grid: Popover | null = null
   let gridRender: (() => void) | null = null
   let chipsKey = ''
@@ -168,6 +192,7 @@ export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
     }
     row.classList.toggle('yield', state.crosshair)
     row.classList.toggle('alerting', state.crosshairOnMain)
+    renderReading()
     if (state.crosshair) grid?.close()
     gridRender?.()
   }

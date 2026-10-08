@@ -172,34 +172,54 @@ export function visit(p: SymbolPrefs, symbol: string): void {
 }
 
 /** 第一次打开：照 iOS DefaultFavorites（2026-10-07 用户定的名单，访客和登录一样）落默认自选。只给一次。
- *  · 「加密」：黄金、白银摆最上面（用户要它们跟加密放一起，不开「贵金属」），再接 DEFAULT_WATCH.crypto；
- *  · 「美股」：DEFAULT_WATCH.us，按名单顺序；
- *  · 其余大宗（原油）照 categoryName 归类。
- *  iOS 在每个点名的币后面紧跟它的 Coinbase 现货；手机网页的自选只认币安代号，这里不给 Coinbase 那几条。
- *  exists 用来滤掉交易所已经下架的代号（表还没到时传 null，全收）。 */
+ *  · 「加密」：黄金、白银摆最上面（用户要它们跟加密放一起，不开「贵金属」），再接点名的六个币（BTC ETH SOL XRP DOGE ZEC），
+ *    再接当日 24h 成交额前五、还没占上的币（hot，见 hotCoins）；
+ *  · 「美股」：DEFAULT_WATCH.us，按名单顺序。
+ *  iOS 名单里没有原油等其他大宗，这里也不给。
+ *  iOS 在每个点名的币前面摆它的 Coinbase 现货；手机网页的自选只认币安代号，这里不给 Coinbase 那几条。
+ *  exists 用来滤掉交易所已经下架的代号（表还没到时传 null，全收）。
+ *  hot：成交额榜（hotCoins 算的）；表没到 / 取不到时传 null，退回 DEFAULT_WATCH.crypto 里点名之后那几只 */
 export const TOP_METALS = ['XAUUSDT', 'XAGUSDT']
-export function seedDefaults(p: SymbolPrefs, exists: ((symbol: string) => boolean) | null = null): boolean {
+export const NAMED_COINS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'ZECUSDT']
+/** 点名的币之外再按成交额取几条 */
+export const HOT_COUNT = 5
+export function seedDefaults(p: SymbolPrefs, exists: ((symbol: string) => boolean) | null = null, hot: readonly string[] | null = null): boolean {
   if (p.seeded) return false
   p.seeded = true
   if (p.favorites.length) return true
-  const plan: { sym: string; name: string | null }[] = [
+  const extras = hot ?? DEFAULT_WATCH.crypto.filter(s => !NAMED_COINS.includes(s))
+  const plan: { sym: string; name: string }[] = [
     ...TOP_METALS.map(sym => ({ sym, name: '加密' })),
-    ...DEFAULT_WATCH.crypto.map(sym => ({ sym, name: '加密' })),
+    ...NAMED_COINS.map(sym => ({ sym, name: '加密' })),
+    ...extras.map(sym => ({ sym, name: '加密' })),
     ...DEFAULT_WATCH.us.map(sym => ({ sym, name: '美股' })),
   ]
-  for (const kind of Object.keys(DEFAULT_WATCH) as Kind[]) {
-    if (kind === 'crypto' || kind === 'us') continue
-    for (const sym of DEFAULT_WATCH[kind]) plan.push({ sym, name: categoryName(kind, key(sym).replace(/USDT$/, '')) })
-  }
   for (const { sym, name } of plan) {
     if (exists && !exists(sym)) continue
     const s = key(sym)
     if (p.favorites.includes(s)) continue
-    const id = name ? createGroup(p, name) : null
+    const id = createGroup(p, name)
     p.favorites.push(s)
     if (id) p.groupForSymbol[s] = id
   }
   return true
+}
+
+/** 成交额榜（iOS DefaultFavorites.pick 的 hot 那段）：只认币（kind = crypto，合约表里的美股、黄金、指数不算）；
+ *  一个币只占一行（BTCUSDT / BTCUSDC、1000PEPE / PEPE 按 base 归并，留成交额大的那条，并列取代号短的）；
+ *  点名的六个算已经占上了；成交额 ≤ 0 的不要；按成交额降序、并列按 base 升序，取前 n 条 */
+export interface HotRow { symbol: string; base: string; kind: Kind; vol: number }
+export function hotCoins(rows: Iterable<HotRow>, n = HOT_COUNT): string[] {
+  const taken = new Set(NAMED_COINS.map(s => s.replace(/USDT$/, '')))
+  const best = new Map<string, HotRow>()
+  for (const r of rows) {
+    if (r.kind !== 'crypto' || taken.has(r.base) || !(Number.isFinite(r.vol) && r.vol > 0)) continue
+    const old = best.get(r.base)
+    if (!old || r.vol > old.vol || (r.vol === old.vol && r.symbol.length < old.symbol.length)) best.set(r.base, r)
+  }
+  return [...best.values()]
+    .sort((a, b) => a.vol === b.vol ? (a.base < b.base ? -1 : a.base > b.base ? 1 : 0) : b.vol - a.vol)
+    .slice(0, n).map(r => r.symbol)
 }
 
 export const groupName = (p: SymbolPrefs, id: string | null): string => p.groups.find((g: FavoriteGroup) => g.id === id)?.name ?? ''

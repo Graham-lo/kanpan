@@ -1,7 +1,8 @@
 /* 手机网页版 · 「我的」（照 iOS Me/MePage.swift）
  *
- * 根：居中标题「我的」+ 四张 raised2 卡（圆角 12、卡间 16，卡内两行之间 1/3 px 发丝线左缩 16）：
- *   账号（没登录「账号 / 登录 / 注册」；登录了是用户名 + 同步状态，行尾一颗「立即同步」，照 MePage.accountRow）
+ * 根：居中标题「我的」+ 四张琉璃玻璃卡（.liuli-card，圆角 12、卡间 16，卡内两行之间 1/3 px 细线左缩 16），
+ *   整层铺琉璃底（ui/liuli.ts；账号、登录、交易所这几层也铺，照 iOS 2026-10-08 MePage / AccountView / ExchangeAccountPage）：
+ *   账号（没登录「账号 · 未登录」+ 行尾一颗「登录 / 注册」琉璃胶囊；登录了是用户名 + 同步状态，行尾一颗「立即同步」，照 MePage.accountRow）
  *   复盘本（观点 N 条 · 待判定 N / 交易那半句）· 全部预警（生效中 N）
  *   朋友与收件箱（未登录 / 未读 N）· 交易所
  *   设置
@@ -19,6 +20,7 @@ import { hooks, openSymbol, trackScroll, restoreScroll, type PageHandle } from '
 import { setRoute } from '../../market'
 import { icon } from '../ui/icons'
 import { el, esc, pressGate, setHTML } from '../ui/dom'
+import { liuliBackdropHTML } from '../ui/liuli'
 import { session, loggedIn, onSession } from '../../account/session'
 import { liveCount, onAlertsChange } from '../model/alerts'
 import { onSyncChange, syncMeta, syncSource } from '../model/syncStatus'
@@ -56,9 +58,10 @@ export function initMe(root: HTMLElement): PageHandle {
   setRoute(st.routePolicy)
   startAlertWatcher()
 
-  function makeLayer(title: string, isRoot: boolean): MeLayer {
-    const L = el('div', 'me-layer' + (isRoot ? '' : ' me-pushed'))
-    L.innerHTML = `<header class="me-nav">${isRoot ? '<span class="me-nav-side"></span>' : `<button type="button" class="me-back" aria-label="返回">${icon('chevronLeft', 20)}</button>`}
+  /** liuli：这一层铺琉璃底（根、账号一支、交易所） */
+  function makeLayer(title: string, isRoot: boolean, liuli = false): MeLayer {
+    const L = el('div', 'me-layer' + (isRoot ? '' : ' me-pushed') + (liuli ? ' me-liuli' : ''))
+    L.innerHTML = `${liuli ? liuliBackdropHTML() : ''}<header class="me-nav">${isRoot ? '<span class="me-nav-side"></span>' : `<button type="button" class="me-back" aria-label="返回">${icon('chevronLeft', 20)}</button>`}
       <h1 class="me-title">${esc(title)}</h1><span class="me-nav-side me-nav-trailing"></span></header>
       <div class="me-scroll"><div class="me-body"></div></div>`
     root.appendChild(L)
@@ -130,16 +133,19 @@ export function initMe(root: HTMLElement): PageHandle {
     L.addEventListener('touchcancel', () => { if (g?.claimed) release(false); else g = null }, { capture: true })
   }
 
+  /** 推一层；liuli 不指明时跟着下面那层走（账号页里再推的同步、登录设备、改密码也铺琉璃底），根上推的默认不铺 */
+  function pushLayer(title: string, build: (body: HTMLElement, layer: MeLayer) => void, liuli?: boolean): MeLayer {
+    const top = stack.top
+    const layer = makeLayer(title, false, liuli ?? (!!top && top !== rootLayer && top.el.classList.contains('me-liuli')))
+    if (top) belowOf.set(layer, top.el)
+    stack.push(layer)
+    build(layer.body, layer)
+    requestAnimationFrame(() => { layer.el.classList.add('in'); top?.el.classList.add('under') })
+    return layer
+  }
+
   const host: MeHost = {
-    push(title, build) {
-      const top = stack.top
-      const layer = makeLayer(title, false)
-      if (top) belowOf.set(layer, top.el)
-      stack.push(layer)
-      build(layer.body, layer)
-      requestAnimationFrame(() => { layer.el.classList.add('in'); top?.el.classList.add('under') })
-      return layer
-    },
+    push(title, build) { return pushLayer(title, build) },
     back() { stack.back() },
     popToRoot() { stack.popToRoot() },
     isTop(layer) { return stack.top === layer },
@@ -152,17 +158,17 @@ export function initMe(root: HTMLElement): PageHandle {
         save()
       }
     },
-    openLogin() { host.push('登录', (b, l) => buildAuth(b, l, host, 'login')) },
+    openLogin() { pushLayer('登录', (b, l) => buildAuth(b, l, host, 'login'), true) },
   }
 
   // ───────── 根 ─────────
-  const rootLayer = makeLayer('我的', true)
+  const rootLayer = makeLayer('我的', true, true)
   stack.push(rootLayer)
   const rootScroll = rootLayer.el.querySelector<HTMLElement>('.me-scroll')!
 
   function row(id: string, title: string, lines: (string | null | undefined)[] = [], chevron = true, danger = false): string {
     const sub = lines.filter((x): x is string => !!x).map(s => `<span class="me-row-status num${danger ? ' danger' : ''}">${esc(s)}</span>`).join('')
-    return `<button type="button" class="me-row" data-go="${id}"><span class="me-row-text"><span class="me-row-title">${esc(title)}</span>${sub}</span>${chevron ? `<span class="me-chev">${CHEV}</span>` : ''}</button>`
+    return `<button type="button" class="me-row" data-go="${id}" data-id="me.${id}"><span class="me-row-text"><span class="me-row-title">${esc(title)}</span>${sub}</span>${chevron ? `<span class="me-chev">${CHEV}</span>` : ''}</button>`
   }
   const divider = '<div class="me-divider" aria-hidden="true"></div>'
 
@@ -174,12 +180,14 @@ export function initMe(root: HTMLElement): PageHandle {
     // 被拒 / 被顶下去之后：账号行第二行先说为什么（红字），点进去是带说明的登录页
     const account = loggedIn()
       ? `<div class="me-acct">${row('account', session.user || '', [syncMeta(syncSource().state())], false)}<button type="button" class="me-sync" data-sync>立即同步</button></div>`
-      : session.notice ? row('account', '账号', [session.notice], true, true) : row('account', '账号', ['登录 / 注册'])
+      : session.notice ? row('account', '账号', [session.notice], true, true)
+      // 没登录：「账号 · 未登录」+ 行尾一颗「登录 / 注册」琉璃胶囊，整行仍可点（照 MePage.accountRow 2026-10-08）
+      : `<div class="me-acct">${row('account', '账号', ['未登录'], false)}<button type="button" class="liuli-pill me-login" data-go="account" data-id="me.account.login">登录 / 注册</button></div>`
     const rv = reviewRootStatus()
-    setHTML(rootLayer.body, `<div class="me-card">${account}</div>
-      <div class="me-card">${row('review', '复盘本', [rv.line1, rv.line2])}${divider}${row('alerts', '全部预警', [`生效中 ${liveCount()}`])}</div>
-      <div class="me-card">${row('friends', '朋友与收件箱', [loggedIn() ? `未读 ${inboxUnseen()}` : '未登录'])}${divider}${row('exchange', '交易所', ['在 App 里接入'])}</div>
-      <div class="me-card">${row('settings', '设置')}</div>`)
+    setHTML(rootLayer.body, `<div class="me-card liuli-card">${account}</div>
+      <div class="me-card liuli-card">${row('review', '复盘本', [rv.line1, rv.line2])}${divider}${row('alerts', '全部预警', [`生效中 ${liveCount()}`])}</div>
+      <div class="me-card liuli-card">${row('friends', '朋友与收件箱', [loggedIn() ? `未读 ${inboxUnseen()}` : '未登录'])}${divider}${row('exchange', '交易所', ['在 App 里接入'])}</div>
+      <div class="me-card liuli-card">${row('settings', '设置')}</div>`)
   }
   rootLayer.body.addEventListener('click', e => {
     const t = e.target as HTMLElement
@@ -191,7 +199,7 @@ export function initMe(root: HTMLElement): PageHandle {
   function go(id: string): void {
     switch (id) {
       case 'account':
-        if (loggedIn()) host.push('账号', (b, l) => buildAccount(b, l, host))
+        if (loggedIn()) pushLayer('账号', (b, l) => buildAccount(b, l, host), true)
         else host.openLogin()
         break
       case 'review': host.push('复盘本', (b, l) => buildReviewBook(b, l, host)); break
@@ -202,7 +210,7 @@ export function initMe(root: HTMLElement): PageHandle {
         })
         break
       case 'friends': host.push('朋友与收件箱', (b, l) => buildFriends(b, l, host)); break
-      case 'exchange': host.push('交易所', buildExchange); break
+      case 'exchange': pushLayer('交易所', buildExchange, true); break
       case 'settings': host.push('设置', (b, l) => buildSettings(b, l, host)); break
     }
   }
@@ -233,7 +241,7 @@ export function initMe(root: HTMLElement): PageHandle {
 
 /** 交易所：浏览器做不到接入（密钥只在手机上），只说去哪儿接、接了以后这里能看到什么 */
 function buildExchange(body: HTMLElement): void {
-  body.innerHTML = `<div class="me-card"><div class="me-ex">
+  body.innerHTML = `<div class="me-card liuli-card"><div class="me-ex">
       <span class="me-row-text"><span class="me-row-title">币安 · 合约</span><span class="me-row-status">在 App 里接入</span></span>
     </div></div>
     <p class="me-foot">密钥只存在手机上；接入后交易记录这里也能看</p>`

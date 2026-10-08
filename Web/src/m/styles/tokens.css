@@ -248,3 +248,74 @@ html[data-updown="red-up"] {
   --up: var(--ink-pair-down); --down: var(--ink-pair-up);
   --k-up: var(--seed-down); --k-down: var(--seed-up);
 }
+
+/* ───────── 琉璃材质（照 iOS DesignSystem/LiuliMaterial.swift，2026-10-08 起全 app 一份） ─────────
+ * 自选页定稿的那层底与玻璃抽成共用令牌：页底（光斑 + 同色收敛 + 颗粒）、玻璃卡、液态药丸、1/3pt 材质细线。
+ * 三套皮肤各一笔签名：经典 = 种子底、不画光斑；青苔 = #E9F3F1 + 天青 · 冷绿 · 薄荷；陶土 = #F4EFEA + 暖调纸纹（颗粒 0.06）；
+ * 深色一律种子底、不画光斑。类名在 ui.css（.liuli-backdrop / .liuli-card / .liuli-pill）。
+ * 这些令牌都挂在 <html> 上算好再往下继承：要换哪一个，在同一档 html[data-skin][data-theme] 上覆盖，不在子元素上改 --lg-pane 之类的料。 */
+html {
+  /* 细线：1/3pt，三倍屏上正好一个物理像素 */
+  --hairline: 0.34px;
+  --lg-ground: var(--ground);
+  /* 玻璃的料：青苔 / 经典借 raised（白），陶土借暖白，深色借墨色 */
+  --lg-pane: var(--raised);
+  --lg-glass: color-mix(in srgb, var(--lg-pane) 64%, transparent);
+  --lg-glass-thin: color-mix(in srgb, var(--lg-pane) 46%, transparent);
+  --lg-edge-soft: color-mix(in srgb, var(--lg-pane) 62%, transparent);
+  --lg-card-edge: var(--lg-edge-soft);
+  --lg-rule: color-mix(in srgb, var(--ink) 9%, transparent);
+  --lg-well: color-mix(in srgb, var(--ink) 6%, transparent);
+  --lg-ink4: color-mix(in srgb, var(--ink3) 70%, transparent);
+  --lg-highlight: color-mix(in srgb, var(--lg-pane) 90%, transparent);
+  /* 卡顶那一线高光：经典不画 */
+  --lg-highlight-on: 1;
+  --lg-accent-grad: linear-gradient(to bottom right, var(--accent-lift), var(--accent));
+  --lg-pill-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 35%, transparent);
+  /* 光斑：峰值 0.9 × 0.7；不画的皮肤 --lg-lobes: none */
+  --lg-lobes: block;
+  --lg-lobe-a: #A9DDF3; --lg-lobe-b: #9FE6C8; --lg-lobe-c: #DCEFF6;
+  --lg-lobe-alpha: .63;
+  /* 颗粒（照 LiuliGrain：灰噪点平铺）：透明度直接烘进图里，一层背景就够，不另开元素、不叠 opacity */
+  --lg-grain: .035;
+  --lg-grain-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 .035'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* 提示条（照 iOS TabBar.swift Toast）：系统模糊 + 九成玻璃料 + 1/3pt 墨线；动作字 = 强调色压到对最坏底 4.5:1 */
+  --toast-base: var(--raised);
+  --toast-edge: color-mix(in srgb, var(--ink) 12%, transparent);
+  --toast-glass-shadow: 0 4px 24px rgba(0, 0, 0, .10);
+}
+html[data-skin="sage"][data-theme="light"] { --lg-ground: #E9F3F1; --accent-lift: #5FB4A0; --toast-act: #2B7362; --toast-dot: #5C6B63 }
+html[data-skin="terra"][data-theme="light"] {
+  --lg-ground: #F4EFEA; --lg-pane: #FFFAF4; --toast-base: #FFFAF4;
+  --lg-lobe-a: #B5D9F1; --lg-lobe-b: #F5D8C3; --lg-lobe-c: #D3EDE0;
+  --lg-grain: .06;
+  /* 陶土纸纹：噪点染一点暖褐（#C9A07A），读成纸而不是屏幕脏 */
+  --lg-grain-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.788 0 0 0 0 .627 0 0 0 0 .478 0 0 0 0 0 0 0 0 .06'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --accent-lift: #D28264; --toast-act: #9E4E30; --toast-dot: #716256;
+}
+html[data-skin="classic"][data-theme="light"] {
+  --lg-lobes: none; --lg-highlight-on: 0;
+  /* 经典：白纸上一片极淡灰白（raised2 七成 / 四成五），靠 1/3pt 墨线立住 */
+  --lg-glass: color-mix(in srgb, var(--raised2) 70%, transparent);
+  --lg-glass-thin: color-mix(in srgb, var(--raised2) 45%, transparent);
+  --lg-card-edge: color-mix(in srgb, var(--ink) 10%, transparent);
+  --accent-lift: #5FB4A0; --toast-act: #2B7362; --toast-dot: #5C6B63;
+}
+html[data-theme="dark"] {
+  --lg-lobes: none;
+  --lg-pane: var(--ink);
+  --lg-glass: color-mix(in srgb, var(--lg-pane) 6.5%, transparent);
+  --lg-glass-thin: color-mix(in srgb, var(--lg-pane) 4.5%, transparent);
+  --lg-edge-soft: color-mix(in srgb, var(--lg-pane) 12%, transparent);
+  --lg-rule: color-mix(in srgb, var(--ink) 11%, transparent);
+  --lg-well: color-mix(in srgb, var(--ink) 12%, transparent);
+  --lg-highlight: color-mix(in srgb, var(--lg-pane) 30%, transparent);
+  --lg-pill-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 25%, transparent);
+  --lg-grain: .05;
+  --lg-grain-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 .05'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --toast-edge: color-mix(in srgb, var(--ink) 16%, transparent);
+  --toast-glass-shadow: 0 4px 24px rgba(0, 0, 0, .45);
+}
+html[data-skin="sage"][data-theme="dark"] { --accent-lift: #7BD5BE; --toast-act: #4FB69C; --toast-dot: #8C9C94 }
+html[data-skin="terra"][data-theme="dark"] { --accent-lift: #EEA67A; --toast-act: #E2874F; --toast-dot: #A49587 }
+html[data-skin="classic"][data-theme="dark"] { --accent-lift: #7BD5BE; --toast-act: #4FB69C; --toast-dot: #93A39C }

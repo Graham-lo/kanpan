@@ -172,6 +172,11 @@ export class DrawArchive {
   preferences = new DrawingPreferences()
   version: number
   bySymbol: Record<string, Drawing[]>
+  /** 每条线是在哪个周期上画的：线 id → 周期（画线列表那一行的「15分」）。
+   *  **只在本机，不进同步、也不是 Drawing 的字段**（照 iOS DrawArchive.intervals，JSON 键 `iv`，空表不写）：
+   *  线的同步逐条逐字段走、服务端对画线字段是白名单，多一个键整条会被拒；这只是给人看的一行小字。
+   *  别的设备同步来的线这儿没有记录，列表上就不写周期；云端那批换进来时这张表跟着留下（app/drawings.ts replaceDrawings）。 */
+  intervals: Record<string, string> = {}
 
   constructor(version: number = DrawArchive.currentVersion, bySymbol: Record<string, Drawing[]> = {}) {
     this.version = version
@@ -193,16 +198,35 @@ export class DrawArchive {
     return output
   }
 
+  /** 这条线是在哪个周期上画的；没记过（老线、别的设备画的）是 null。 */
+  intervalOf(id: string): string | null {
+    return Object.prototype.hasOwnProperty.call(this.intervals, id) ? this.intervals[id] : null
+  }
+
+  /** 给 symbol 那一桶里还没记过周期的线记上 interval（刚画下的那几条），顺手把已经不在任何一桶里的记录清掉。真改了返回 true。 */
+  noteIntervals(interval: string, symbol: string): boolean {
+    let next: Record<string, string> = { ...this.intervals }
+    for (const d of this.get(symbol)) if (!Object.prototype.hasOwnProperty.call(next, d.id)) next[d.id] = interval
+    if (Object.keys(next).length > Object.keys(this.intervals).length) {
+      const alive = new Set(Object.values(this.bySymbol).flatMap(b => b.map(d => d.id)))
+      next = Object.fromEntries(Object.entries(next).filter(([k]) => alive.has(k)))
+    }
+    if (recordEquals(next, this.intervals)) return false
+    this.intervals = next
+    return true
+  }
+
   clone(): DrawArchive {
     const a = new DrawArchive(this.version)
     a.preferences = this.preferences.clone()
+    a.intervals = { ...this.intervals }
     a.bySymbol = Object.fromEntries(Object.entries(this.bySymbol).map(([k, v]) => [k, v.map(cloneDrawing)]))
     return a
   }
 
   equals(o: DrawArchive): boolean {
     const ks = Object.keys(this.bySymbol), ok = Object.keys(o.bySymbol)
-    return this.version === o.version && this.preferences.equals(o.preferences)
+    return this.version === o.version && this.preferences.equals(o.preferences) && recordEquals(this.intervals, o.intervals)
       && ks.length === ok.length && ks.every(k => o.bySymbol[k] !== undefined && drawingsEqual(this.bySymbol[k], o.bySymbol[k]))
   }
 
@@ -252,11 +276,25 @@ export class DrawArchive {
 }
 
 export function encodeArchive(a: DrawArchive): Record<string, unknown> {
-  return {
+  const out: Record<string, unknown> = {
     preferences: encodePreferences(a.preferences),
     v: a.version,
     d: Object.fromEntries(Object.entries(a.bySymbol).map(([k, v]) => [k, v.map(encodeDrawing)])),
   }
+  if (Object.keys(a.intervals).length) out.iv = { ...a.intervals }
+  return out
+}
+
+function recordEquals(a: Readonly<Record<string, string>>, b: Readonly<Record<string, string>>): boolean {
+  const ka = Object.keys(a)
+  return ka.length === Object.keys(b).length && ka.every(k => Object.prototype.hasOwnProperty.call(b, k) && a[k] === b[k])
+}
+
+/** `iv` 解不开（不是对象、值不是字符串）当没记过，线照留（照 iOS try? decodeIfPresent） */
+function decodeIntervals(v: unknown): Record<string, string> {
+  if (!isObj(v)) return {}
+  const entries = Object.entries(v)
+  return entries.every(([, x]) => typeof x === 'string') ? Object.fromEntries(entries) as Record<string, string> : {}
 }
 
 /** 解码：v 缺省 3；偏好坏了只丢偏好；逐条解画线，解不开的那一条丢掉，空桶丢掉，然后迁移。 */
@@ -282,5 +320,6 @@ export function decodeArchive(json: unknown): DrawArchive {
   }
   const a = new DrawArchive(version, raw)
   a.preferences = preferences
+  a.intervals = decodeIntervals(json.iv)
   return a
 }

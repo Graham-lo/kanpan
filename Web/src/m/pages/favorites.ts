@@ -7,8 +7,11 @@
  * 从这一页点进图的那一只、点的时候并不露着（滚远了），回来直接把它摆到屏幕中间（iOS restoreScrollAnchor）。
  * 「调整顺序」时价格冻住、点行不开图、长按拖动排序。删自选没有二次确认，给五秒撤销。
  * 加自选只在搜索结果行的星上（一个动作一个入口）。
+ * 价格与药丸之间一条 24 小时迷你走势（设置 › 通用「自选走势线」，出厂开），只取露面那几行（./favoritesTrend）；
+ * 同一只的价真跳了一口，药丸按方向闪 150ms（model/favoriteTrend 的 pillFlash）。
  */
 import '../styles/favorites.css'
+import '../styles/favoritesTrend.css'
 import { st, save, subscribe } from '../app/store'
 import { openSymbol, hooks, trackScroll, restoreScroll, type PageHandle } from '../app/shell'
 import { icon } from '../ui/icons'
@@ -24,6 +27,9 @@ import { openSearch } from './search'
 import { openPreviewMenu } from './symbolPreview'
 import { ensureUniverse, takeOpenParam, wantStreams } from './_streams'
 import { cachedSym } from '../model/quoteCache'
+import { pillFlash, trendSVG, PILL_FLASH_MS } from '../model/favoriteTrend'
+import { flashPill, requestTrends, trendOf } from './favoritesTrend'
+import { reducedMotion } from '../ui/dom'
 
 /** 琉璃底（光斑 + 冲淡 + 颗粒）：自选页和板块页共用 */
 export function backdropHTML(): string {
@@ -57,7 +63,14 @@ export function initFavorites(root: HTMLElement): PageHandle {
   const unpress: (() => void)[] = []
   let openSwipe = (): boolean => swipes.some(s => s.isOpen)
 
-  if (F.seedDefaults(st.symbols, null)) save()
+  /** 默认自选（只给一次）：要等品种表——成交额前五要它算、下架的代号要它滤（iOS 也是等目录到了才摆）；
+   *  表取不到（离线）就按出厂名单摆。没摆之前列表空着，不闪「还没有自选」 */
+  function seed(): void {
+    if (st.symbols.seeded) return
+    const table = S.symbols.size ? S.symbols : null
+    if (F.seedDefaults(st.symbols, table ? s => table.has(s) : null, table ? F.hotCoins(table.values()) : null)) { save(); if (active) render() }
+  }
+  if (S.symbols.size) seed()
 
   const current = (): string | null => F.group(st.symbols, st.favoritesGroup || null)
   /** 这一类的滚动位置记在哪个键上（按分类各一份：A 类的位置套到 B 类上就是乱滚） */
@@ -77,8 +90,15 @@ export function initFavorites(root: HTMLElement): PageHandle {
     const s = live ?? (gone ? undefined : cachedSym(sym) ?? undefined)
     const cached = !live && !!s
     // 美元指数没有成交量（恒 0）：成交额写「—」；休市时价格与药丸退灰
-    return { price: s?.price ?? null, dec: s?.dec, pct: gone ? null : s?.pct ?? null, vol: gone || s?.macro ? null : s?.vol ?? null, gone, closed: s?.closed === true || cached }
+    // 走势线：开关关着整列不摆；目录说它没有实时价的那行空着那一格（iOS trend: stale ? nil）
+    const trend = st.favoritesTrend ? (gone ? '' : trendSVG(trendOf(sym), s?.price ?? null)) : undefined
+    return { price: s?.price ?? null, dec: s?.dec, pct: gone ? null : s?.pct ?? null, vol: gone || s?.macro ? null : s?.vol ?? null, gone, closed: s?.closed === true || cached, trend }
   }
+  /** 这一行此刻的「一口」：编辑中（报价冻住）、断线、休市 / 上次记下的价、目录说没实时价、没价都不给（不闪） */
+  const tickOf = (sym: string, d: LiuliData): number | null =>
+    editing || st.stale || d.closed || d.gone || d.price == null || !(d.price > 0) ? null : d.price
+  /** 每行上一口的价：重画整表（换分类、排序、回前台）时按当时的价重记，所以那些都不算「一口」 */
+  let ticks = new Map<string, number>()
 
   // ---------------------------------------------------------------- 头部
   function renderHead(): void {
@@ -148,7 +168,11 @@ export function initFavorites(root: HTMLElement): PageHandle {
     swipes.splice(0).forEach(s => s.destroy())
     unpress.splice(0).forEach(f => f())
     shown = F.visible(st.symbols, current())
-    if (!shown.length) {
+    if (!shown.length && !st.symbols.seeded) {
+      // 默认自选还在等品种表：先空着，不闪「还没有自选」
+      list.innerHTML = ''
+      empty.hidden = true
+    } else if (!shown.length) {
       list.innerHTML = ''
       empty.hidden = false
       empty.innerHTML = `<div class="fav-empty-in"><span class="fav-empty-mark">${icon('plus', 20)}</span><div class="fav-empty-title">还没有自选</div>
@@ -157,7 +181,12 @@ export function initFavorites(root: HTMLElement): PageHandle {
       if (editing) setEditing(false)
     } else {
       empty.hidden = true
-      list.innerHTML = shown.map((sym, i) => liuliRowHTML(factsOf(sym, S.symbols.get(sym) ?? cachedSym(sym)), dataOf(sym), i === 0)).join('')
+      ticks = new Map()
+      list.innerHTML = shown.map((sym, i) => {
+        const d = dataOf(sym), t = tickOf(sym, d)
+        if (t != null) ticks.set(sym, t)
+        return liuliRowHTML(factsOf(sym, S.symbols.get(sym) ?? cachedSym(sym)), d, i === 0)
+      }).join('')
       list.querySelectorAll<HTMLElement>('.lr').forEach(row => {
         const sym = row.dataset.sym!
         if (!editing) {
@@ -173,8 +202,42 @@ export function initFavorites(root: HTMLElement): PageHandle {
       })
     }
     wantStreams('favorites', active ? shown.map(s => streamName.ticker(s)) : [])
+    watchTrends()
   }
   function render(): void { renderHead(); renderList() }
+
+  // ---------------------------------------------------------------- 24 小时走势：只取露面那几行
+  /** 此刻露在列表可视区（上下各多看半屏）里的行 */
+  const seen = new Set<string>()
+  let io: IntersectionObserver | null = null
+  const wanted = (sym: string): boolean => active && st.favoritesTrend && seen.has(sym)
+  const loaded = (sym: string): void => {
+    if (!active || editing || !shown.includes(sym)) return
+    pending.add(sym)
+    if (!raf) raf = requestAnimationFrame(flush)
+  }
+  function watchTrends(): void {
+    io?.disconnect(); io = null
+    seen.clear()
+    if (!active || !st.favoritesTrend || !shown.length || typeof IntersectionObserver === 'undefined') return
+    io = new IntersectionObserver(entries => {
+      const fresh: string[] = []
+      for (const e of entries) {
+        const sym = (e.target as HTMLElement).dataset.sym!
+        if (e.isIntersecting) { if (!seen.has(sym)) { seen.add(sym); fresh.push(sym) } } else seen.delete(sym)
+      }
+      if (fresh.length) requestTrends(fresh, wanted, loaded)
+    }, { root: scroll, rootMargin: '50% 0px' })
+    list.querySelectorAll('.lr').forEach(r => io!.observe(r))
+  }
+  /** 一直停在这一页时，露着的那几行过了新鲜期也要续上（不发请求的检查，一分钟一次） */
+  let trendTimer = 0
+  let trendOn = st.favoritesTrend
+  subscribe(() => {
+    if (trendOn === st.favoritesTrend) return
+    trendOn = st.favoritesTrend
+    if (active) renderList()
+  })
 
   sorter = reorderable(list, {
     item: '.lr',
@@ -266,11 +329,19 @@ export function initFavorites(root: HTMLElement): PageHandle {
 
   // ---------------------------------------------------------------- 行情
   let pending = new Set<string>(), raf = 0
-  const flush = (): void => {
+  function flush(): void {
     raf = 0
+    const still = reducedMotion()
     for (const sym of pending) {
       const row = list.querySelector(`.lr[data-sym="${CSS.escape(sym)}"]`)
-      if (row) patchLiuli(row, dataOf(sym))
+      if (!row) continue
+      const d = dataOf(sym)
+      patchLiuli(row, d)
+      const t = tickOf(sym, d), old = ticks.get(sym)
+      if (t == null) { ticks.delete(sym); continue }
+      ticks.set(sym, t)
+      const dir = pillFlash(old == null ? null : { key: sym, price: old }, { key: sym, price: t }, still)
+      if (dir) flashPill(row, dir, PILL_FLASH_MS)
     }
     pending = new Set()
   }
@@ -288,7 +359,8 @@ export function initFavorites(root: HTMLElement): PageHandle {
   hooks.onTheme.push(() => { if (active) renderList() })
   hooks.onForeground.push(() => { if (active) renderList() })
   // 推送断满 5 秒（app/linkGrace.ts 置 st.stale）整表价格变灰，接上立刻复原（iOS QuoteBook 同一条规矩）
-  subscribe(() => root.classList.toggle('stale', st.stale))
+  // 断线期间没有「一口」：接上后第一口不跟断线前那口比（iOS tick 在 linkDown 时是 nil）
+  subscribe(() => { root.classList.toggle('stale', st.stale); if (st.stale) ticks.clear() })
 
   // 验收截图用：?open=search 进来直接开搜索页
   if (takeOpenParam(['search'])) requestAnimationFrame(() => searchBtn.click())
@@ -315,10 +387,14 @@ export function initFavorites(root: HTMLElement): PageHandle {
       retrack()
       render()
       landing()
-      void ensureUniverse().then(() => { if (active) renderList() })
+      void ensureUniverse().then(() => { seed(); if (active) renderList() }, () => { seed(); if (active) renderList() })
+      clearInterval(trendTimer)
+      trendTimer = window.setInterval(() => { if (active && st.favoritesTrend && seen.size) requestTrends([...seen], wanted, loaded) }, 60_000)
     },
     hide() {
       active = false
+      clearInterval(trendTimer)
+      io?.disconnect(); io = null; seen.clear()
       if (editing) setEditing(false)
       closeOpenSwipe()
       wantStreams('favorites', [])

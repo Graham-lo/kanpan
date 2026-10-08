@@ -1,6 +1,6 @@
 /* Hkline 手机网页版 · 底部提示条（照 iOS Main/ToastCenter.swift）
  *
- * 胶囊形、raised 底、1px line 描边、footnote 字；离底栏上沿 92（安全区以上）。
+ * 胶囊形、琉璃玻璃底（系统模糊 + 九成玻璃料 + 1/3pt 墨线）、footnote 字；离屏幕下沿 = 底栏高 + 8（安全区以上，照 iOS 2026-10-08 Toast）。
  * 带动作（「撤销」）的停 5 秒，否则 1.6 秒；新的一条直接顶掉旧的。动作字用 accent，中间隔一个「·」。
  */
 import { el, esc, layer } from './dom'

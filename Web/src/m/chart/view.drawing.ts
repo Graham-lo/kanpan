@@ -37,6 +37,8 @@ import { DrawingBook, type DrawingBookChange } from './draw/book'
 import { canonicalInstrument } from './draw/instrument'
 import { fittedRegression } from './draw/regression'
 import { AlertGeometry, alertLinePrice, type AlertLine } from './draw/alert'
+import { penAlpha, penColor, prefersReducedTransparency } from './draw/pen'
+import { Parts } from './view.parts'
 
 // ------------------------------------------------------------------ 常量与反馈
 
@@ -283,7 +285,8 @@ export function paintDrawing(d: Drawing, ctx: CanvasRenderingContext2D, axes: Dr
   const g = drawingGeometry(d, axes.bounds, axes.x, axes.y, axes.decimals, series)
   const placedLabels = g.layoutLabels(axes.layout.plotW, axes.pane.y, axes.pane.h, measureDrawLabel)
   if (d.hidden) return
-  const color = d.color ?? t.band
+  // 一条线上所有的墨都出自这一支笔（DrawPen）：没挑过颜色就跟皮肤。
+  const color = penColor(d.color, t)
   ctx.save()
   try {
     ctx.beginPath(); ctx.rect(axes.bounds.left, axes.bounds.top, axes.layout.plotW, axes.pane.h); ctx.clip()
@@ -323,7 +326,7 @@ export function paintDrawing(d: Drawing, ctx: CanvasRenderingContext2D, axes: Dr
       for (const p of points) {
         ctx.beginPath(); ctx.ellipse(p.x, p.y, 6, 6, 0, 0, Math.PI * 2)
         ctx.fillStyle = css(t.panel); ctx.fill()
-        ctx.strokeStyle = css(t.amber); ctx.lineWidth = 1.5; ctx.stroke()
+        ctx.strokeStyle = css(color); ctx.lineWidth = 1.5; ctx.stroke()
       }
     }
   } finally {
@@ -1069,12 +1072,30 @@ export class DrawingController {
 
   // ================================================================ 覆盖层
 
+  /** 系统「降低透明度」此刻开没开（每次画覆盖层时读一次，设置一变下一帧就跟上）。 */
+  private get reduceTransparency(): boolean { return prefersReducedTransparency() }
+
+  /**
+   * 把「选中哪条、系统降不降透明度」交给底图：没选中的线按 DRAW_REST_ALPHA 退后一步，选中的那条画满。
+   * 选中散在各处改（_selected），覆盖层每次重画都会走到这里，对不上就让底图重画一次。
+   */
+  private syncFocus(): void {
+    const r = this.view.renderer
+    if (!r) return
+    const selected = this._selected, reduce = this.reduceTransparency
+    if (r.drawingSelected === selected && r.reduceTransparency === reduce) return
+    r.drawingSelected = selected
+    r.reduceTransparency = reduce
+    this.view.setNeedsRedraw(Parts.plot)
+  }
+
   /** DrawingOverlayView.draw：选中那条、半截预览、读数与放大镜、铃铛。 */
   paintOverlay(ctx: CanvasRenderingContext2D): void {
     const v = this.view
     const s = v.state
     const axes = drawAxesOf(v)
     if (!s || !axes) return
+    this.syncFocus()
     ctx.save()
     try {
       if (v.ownDimmed) ctx.globalAlpha = 0.35
@@ -1098,15 +1119,20 @@ export class DrawingController {
           plan.points = fittedRegression(plan.points, series) ?? plan.points
         }
         const points = plan.points
+        const kind = DrawingPreferences.kindFor(tool, this.variants)
+        // 落下来会带上这种线记住的颜色（styles），预览、手柄、连线就先用同一支笔，不然画的一路是皮肤色、松手才换色。
+        const pen = Object.prototype.hasOwnProperty.call(this.styles, kind) ? this.styles[kind]?.color ?? null : null
         if (plan.whole) {
-          const preview = drawingWith(DrawingPreferences.kindFor(tool, this.variants), points)
+          const preview = drawingWith(kind, points)
+          preview.color = pen
           preview.dash = 'dashed'
           paintDrawing(preview, ctx, axes, t, series, v.scale, { selected: true, handles: true })
         } else {
-          for (const pt of points) handleDot(ctx, axes.x(pt.t), axes.y(pt.p), t)
+          for (const pt of points) handleDot(ctx, axes.x(pt.t), axes.y(pt.p), t, penColor(pen, t))
           for (let i = 1; i < Math.max(points.length, 1); i++) {
             const link = drawingWith('trend', points.slice(i - 1, i + 1))
             link.dash = 'dashed'
+            link.color = pen
             paintDrawing(link, ctx, axes, t, null, v.scale, { selected: true, handles: false })
           }
         }
@@ -1165,7 +1191,11 @@ export class DrawingController {
       if (p == null || !Number.isFinite(p)) continue
       const y = axes.y(p)
       if (!Number.isFinite(y) || !(y > axes.pane.y) || !(y < axes.pane.y + axes.pane.h)) continue
-      bell(ctx, x, y, item.color ?? t.ink)
+      // 铃铛是这条线的记号：同一支笔、同一档浓淡（没选中就和线一起退后一步）。
+      ctx.save()
+      ctx.globalAlpha *= penAlpha(item.id, this._selected, this.reduceTransparency)
+      bell(ctx, x, y, penColor(item.color, t))
+      ctx.restore()
     }
   }
 
@@ -1182,7 +1212,7 @@ export class DrawingController {
       ctx.restore()
       ctx.save()
       ctx.setLineDash([])
-      ctx.strokeStyle = css(t.amber); ctx.lineWidth = 1.5
+      ctx.strokeStyle = css(t.accent); ctx.lineWidth = 1.5
       ctx.beginPath(); ctx.ellipse(c.x, c.y, box.w / 2, box.h / 2, 0, 0, Math.PI * 2); ctx.stroke()
       ctx.beginPath()
       ctx.moveTo(c.x - 7, c.y); ctx.lineTo(c.x + 7, c.y)
@@ -1200,13 +1230,13 @@ export class DrawingController {
   }
 }
 
-/** 半截预览上的锚点圆：半径 5，面板底、琥珀描边 1.4。 */
-function handleDot(ctx: CanvasRenderingContext2D, x: number, y: number, t: ChartColors): void {
+/** 半截预览上的锚点圆：半径 5，面板底、笔色描边 1.4（和将要落下的线同一支笔）。 */
+function handleDot(ctx: CanvasRenderingContext2D, x: number, y: number, t: ChartColors, pen: Hex): void {
   ctx.save()
   ctx.setLineDash([])
   ctx.beginPath(); ctx.ellipse(x, y, 5, 5, 0, 0, Math.PI * 2)
   ctx.fillStyle = css(t.panel); ctx.fill()
-  ctx.strokeStyle = css(t.amber); ctx.lineWidth = 1.4; ctx.stroke()
+  ctx.strokeStyle = css(pen); ctx.lineWidth = 1.4; ctx.stroke()
   ctx.restore()
 }
 

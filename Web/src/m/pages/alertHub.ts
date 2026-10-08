@@ -3,7 +3,8 @@
  * - 列表：提醒总表（buildAlertList），图上这只置顶成一组（下面分价格 / 画线），其余品种照旧；
  *         底部一颗通栏「创建提醒」开创建页——品种锁定为图上这只、价格预填最新价。
  * - 日志：响过的提醒（alerts/log.ts，账在服务端、留 30 天），按上海时间分天，一行是徽章 + 品种、
- *         条件 · 触发价、时刻。进表就拉一趟；右上「清空」（登录了且有记录时才摆）要确认。没登录只有一句「登录后可查看」。
+ *         条件 · 触发价、时刻。进表就拉一趟；右上「清空」（登录了且有记录时才摆）要确认。没登录只有一句「登录后可查看」；
+ *         一条没有时照 iOS 空态「还没有响过的提醒」+「去创建」（切回列表、开创建页）。
  * 十字线那颗「创建提醒」与「我的 › 全部预警」照旧，不受这张表影响。
  */
 import '../styles/alerts.css'
@@ -16,7 +17,7 @@ import { esc } from '../model/rowText'
 import { badgeHTML } from '../model/badge'
 import { factsOf } from '../model/rowHTML'
 import { openSymbol } from '../app/shell'
-import { buildAlertList, pairName, startAlertWatcher } from './alerts'
+import { alertEmptyHTML, buildAlertList, pairName, startAlertWatcher } from './alerts'
 import { openAlertForm } from './alertForm'
 
 type Tab = 'list' | 'log'
@@ -67,7 +68,10 @@ export function openAlertHub(symbol: string, price?: number | null): Sheet {
     if (!logOwner()) { pane.innerHTML = `<div class="al-empty alg-empty"><span>登录后可查看</span></div>`; return }
     const days = logDays(log.records)
     if (!days.length) {
-      pane.innerHTML = `<div class="al-empty alg-empty"><span>${log.phase === 'loading' || log.phase === 'idle' ? '正在载入…' : log.phase === 'failed' ? '暂时取不到记录' : '暂无记录'}</span></div>`
+      pane.innerHTML = log.phase === 'loading' || log.phase === 'idle' || log.phase === 'failed'
+        ? `<div class="al-empty alg-empty"><span>${log.phase === 'failed' ? '暂时取不到记录' : '正在载入…'}</span></div>`
+        // 照 iOS：「还没有响过的提醒」+ 一句 +「去创建」（切回列表、推创建页）
+        : alertEmptyHTML('还没有响过的提醒', '提醒响了会按天记在这里', 'alerts.log.empty')
       return
     }
     pane.innerHTML = `<div class="alg-list">${days.map(d => `<section class="al-sec"><div class="al-title">${esc(d.title)}</div>
@@ -84,6 +88,7 @@ export function openAlertHub(symbol: string, price?: number | null): Sheet {
     if (t === 'list') {
       offList = buildAlertList(pane, {
         pinned: symbol,
+        onCreate: create,
         // 图上这只：开创建页（底下「当前提醒」点进去能改）；别的品种：关表去那只
         onOpen: a => { if (a.symbol === symbol) openAlertForm(symbol, S.symbols.get(symbol)?.price ?? price ?? null); else { sheet.close(); openSymbol(a.symbol) } },
       })
@@ -104,11 +109,13 @@ export function openAlertHub(symbol: string, price?: number | null): Sheet {
   // 日志里点一行：关表去那只
   pane.addEventListener('click', e => {
     if (tab !== 'log') return
+    if ((e.target as HTMLElement).closest('[data-create]')) { show('list'); create(); return }
     const row = (e.target as HTMLElement).closest<HTMLElement>('.alg[data-sym]')
     const sym = row?.dataset.sym
     if (sym && sym !== symbol && S.symbols.has(sym)) { sheet.close(); openSymbol(sym) }
   })
-  body.querySelector<HTMLElement>('.alhub-create')!.onclick = () => openAlertForm(symbol, S.symbols.get(symbol)?.price ?? price ?? null)
+  function create(): void { openAlertForm(symbol, S.symbols.get(symbol)?.price ?? price ?? null) }
+  body.querySelector<HTMLElement>('.alhub-create')!.onclick = create
   offs.push(log.onChange(renderLog))
   log.select(logOwner())
   show('list')

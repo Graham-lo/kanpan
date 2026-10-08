@@ -2,8 +2,9 @@
  *
  * 四种，都挂在最上层 #m-layer，带遮罩：
  *   openSheet    底部半屏面板：顶上一根拖拽条；标题行左「‹」（amber，关或回上一层）+ 标题 + 灰副标题 + 右端一个字按钮；
- *                正文可滚。档位 medium（半屏）/ large（留出状态栏）/ auto（按内容高，封顶 large），
- *                拖标题行或在正文顶上往下拉可以换档或关掉。底色 raised。
+ *                正文可滚。档位 medium（半屏）/ large（留出状态栏）/ auto（按内容高，封顶 large）/
+ *                fit（照 iOS PanelHost 2026-10-08 的短面板：按内容高作唯一一档，内容高过屏幕 85% 才多一档满屏），
+ *                拖标题行或在正文顶上往下拉可以换档或关掉。底是不带光斑的琉璃底（底色 + 颗粒，ui.css .m-sheet）。
  *                形状照 iOS 26 的系统 sheet：没撑满时四边各留 8、四角大圆角浮在屏幕上（与屏幕圆角同心），
  *                撑到 large 才贴住左右下三边、只留上圆角。键盘起来时整张面板坐到键盘上沿（visualViewport）。
  *   openPopover  盖在内容上的弹层：从 anchor 下沿展开（周期条「更多」这类），下方整片遮罩，点遮罩关。
@@ -52,7 +53,7 @@ export const sheetOpen = (): boolean => stack.length > 0
 
 // ───────── 底部面板 ─────────
 
-export type Detent = 'medium' | 'large' | 'auto'
+export type Detent = 'medium' | 'large' | 'auto' | 'fit'
 
 export interface SheetOptions {
   title?: string
@@ -61,7 +62,7 @@ export interface SheetOptions {
   action?: { title: string; run: () => void }
   /** 起始档位，默认 medium */
   detent?: Detent
-  /** 能不能被拖到 large，默认 true（detent 为 auto 时无效） */
+  /** 能不能被拖到 large，默认 true（detent 为 auto 时无效；fit 时只有内容高过屏幕 85% 才能） */
   expandable?: boolean
   /** 模态（默认 true）：遮罩盖住背后、点遮罩关。false = 背后还能点（iOS backgroundInteraction），也不画遮罩 */
   modal?: boolean
@@ -102,10 +103,18 @@ export function keyboardInset(innerH: number, vvTop: number, vvH: number): numbe
   return kb >= 40 ? kb : 0
 }
 
-/** 面板该多高。view = 可视视口高；kb > 0（键盘起来）时 medium 也按 large 给，免得正在填的框被压成一条缝 */
+/** fit 档（照 iOS PanelFitBox.screenCap）：定高不超过屏幕 85%；内容比这还高才多给一档满屏，正文自己滚 */
+export function fitDetent(content: number, view: number): { height: number; expandable: boolean } {
+  const cap = Math.round(view * 0.85)
+  const natural = Math.ceil(content)
+  return { height: Math.min(natural, cap), expandable: natural > cap }
+}
+
+/** 面板该多高。view = 可视视口高；kb > 0（键盘起来）时 medium / fit 也按 large 给，免得正在填的框被压成一条缝 */
 export function sheetHeight(d: Detent, o: { view: number; safeTop: number; content: number; kb?: number }): number {
   const large = Math.round(o.view - Math.max(o.safeTop, 20) - 10)
   if (d === 'auto') return Math.min(large - SHEET_FLOAT, Math.round(o.content))
+  if (d === 'fit' && !((o.kb ?? 0) > 0)) return Math.min(large - SHEET_FLOAT, fitDetent(o.content, o.view).height)
   if (d === 'large' || (o.kb ?? 0) > 0) return large
   return Math.round(o.view * 0.52)
 }
@@ -142,6 +151,9 @@ export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts
   const subEl = root.querySelector<HTMLElement>('.m-sheet-sub')!
   const levels: { title: string; sub?: string; nodes: Node[]; scroll: number }[] = []
   let detent: Detent = opts.detent ?? 'medium'
+  /** 拖回来时落的那一档（fit 撑满后往下拉回 fit，其余回 medium） */
+  const restDetent: Detent = detent === 'fit' ? 'fit' : 'medium'
+  let content = 0
   let closed = false
 
   const setTitle = (t: string, s?: string): void => {
@@ -150,7 +162,7 @@ export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts
   }
   const layout = (): void => {
     const kb = kbNow()
-    const content = root.querySelector<HTMLElement>('.m-sheet-grab')!.offsetHeight + head.offsetHeight + body.scrollHeight + 2
+    content = root.querySelector<HTMLElement>('.m-sheet-grab')!.offsetHeight + head.offsetHeight + body.scrollHeight + 2
     root.style.height = detentPx(detent, content, kb) + 'px'
     // 键盘起来：整张面板坐到键盘上沿，贴边（与 large 同形）
     wrap.style.setProperty('--kb', kb + 'px')
@@ -204,7 +216,9 @@ export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts
   visualViewport?.addEventListener('scroll', onResize)
 
   // —— 拖：标题行 / 拖拽条随便拖；正文只在滚到顶时往下拉才接手 ——
-  const expandable = opts.expandable !== false && detent !== 'auto'
+  const canExpand = opts.expandable !== false && detent !== 'auto'
+  /** fit 档只有内容高过屏幕 85% 才能拖到满屏（量的是最近一次 layout 的内容高） */
+  const expandableNow = (): boolean => canExpand && (restDetent !== 'fit' || fitDetent(content, vh()).expandable)
   let startY = 0, startH = 0, dy = 0, dragging = false, lastY = 0, lastT = 0, vel = 0
   const begin = (y: number): void => {
     startY = lastY = y; lastT = performance.now(); dy = 0; vel = 0; dragging = true
@@ -215,7 +229,7 @@ export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts
     vel = (y - lastY) / Math.max(1, now - lastT); lastY = y; lastT = now
     dy = y - startY
     if (dy >= 0) root.style.transform = `translateY(${dy}px)`
-    else if (expandable) { root.style.transform = ''; root.style.height = Math.min(detentPx('large', 0, kbNow()), startH - dy) + 'px' }
+    else if (expandableNow()) { root.style.transform = ''; root.style.height = Math.min(detentPx('large', 0, kbNow()), startH - dy) + 'px' }
     else root.style.transform = `translateY(${dy / 6}px)` // 往上拉不动，给一点阻尼
   }
   const end = (): void => {
@@ -223,10 +237,10 @@ export function openSheet(build: (body: HTMLElement, sheet: Sheet) => void, opts
     dragging = false; root.classList.remove('dragging'); root.style.transform = ''
     const h = root.offsetHeight
     if (dy > 0 && (dy > h * 0.3 || vel > 0.6)) {
-      if (detent === 'large' && expandable && dy < h * 0.5 && vel < 1.2) { detent = 'medium'; layout(); return }
+      if (detent === 'large' && expandableNow() && dy < h * 0.5 && vel < 1.2) { detent = restDetent; layout(); return }
       sheet.close(); return
     }
-    if (dy < 0 && expandable && (-dy > 40 || vel < -0.5)) detent = 'large'
+    if (dy < 0 && expandableNow() && (-dy > 40 || vel < -0.5)) detent = 'large'
     layout()
   }
   const grabZone = [root.querySelector<HTMLElement>('.m-sheet-grab')!, head]

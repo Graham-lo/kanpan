@@ -21,7 +21,7 @@
 import { st, save, subscribe } from '../app/store'
 import { INTERVALS, MAX_COMPARE, type IntervalId, type IndicatorId, type PriceMode } from '../app/prefs'
 import { hooks, nav, go, openSymbol, type PageHandle, type SyncChange } from '../app/shell'
-import { drawingBook } from '../app/drawings'
+import { drawingBook, setDrawingIntervalSource } from '../app/drawings'
 import { S, on as onMarket, streamName } from '../../market'
 import { createChart, type ChartHandle } from '../chart'
 import { attachDrawing, type DrawingController } from '../chart/view.drawing'
@@ -37,7 +37,8 @@ import { openSearch } from './search'
 import { openAlertForm } from './alertForm'
 import { openAlertHub } from './alertHub'
 import { onAlertsChange, pendingCount } from '../model/alerts'
-import { chartIndicatorsFor, isStale, isLandscape, spacingFor, spacingWrite, priceModeFor, showsOtherChart, switchCue, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, habitCategory } from './chart/logic'
+import { chartIndicatorsFor, isStale, isLandscape, spacingFor, spacingWrite, priceModeFor, showsOtherChart, switchCue, swipeTarget, toggleQuick, replaceQuick, crosshairOHLC, crosshairBand, habitCategory } from './chart/logic'
+import type { CrosshairBand } from './chart/logic'
 export { habitCategory }
 import { createTopBar, createHeader, splitPair } from './chart/header'
 import { createIntervalBar } from './chart/intervalBar'
@@ -197,11 +198,22 @@ export function initChart(root: HTMLElement): PageHandle {
     header.setBusy(cue.busy)
     if (!e.loading) older.classList.remove('on')
   })
-  const card = createOrderFlowCard((chart.el.firstElementChild as HTMLElement | null) ?? chart.el)
+  const ofCard = createOrderFlowCard((chart.el.firstElementChild as HTMLElement | null) ?? chart.el)
+  // 十字线读数挪到周期条那一行（10-08）；主力订单流卡片开着时那一行的读数让给卡片（iOS readout.orderFlow == nil）
+  let reading: CrosshairBand | null = null
+  let cardOn = false
+  const showReading = (): void => { ivBar.render({ reading: cardOn ? null : reading }) }
+  const card = {
+    set(f: ChartOrderFlowFocus | null, base: string, dec: number): void {
+      ofCard.set(f, base, dec)
+      if (cardOn !== (f != null)) { cardOn = f != null; showReading() }
+    },
+  }
 
   // ---- 画线
   const c: DrawingController = attachDrawing(chart.view)
   c.bindDrawings(drawingBook)
+  setDrawingIntervalSource(() => chart.state?.input.series.interval ?? chart.interval)
   let benchRef: Bench | null = null // createBench 里就会回调 onState，那时 bench 还没赋上
   // 对账用图上真画着的那只（换品种取数的那一拍图上还是上一只，线也是上一只的），不是页面状态里的新代号
   c.onChanged = items => { reconcileLineAlerts(chart.state?.input.series.symbol ?? sym(), items); benchRef?.render() }
@@ -282,14 +294,15 @@ export function initChart(root: HTMLElement): PageHandle {
   chart.on('notice', t => toast(t))
   chart.on('crosshair', e => {
     const x = e.crosshair, b = e.bar
-    // 照 iOS：十字线落在任何一格（主图或副图）上都出开高低收读数、周期条让位；「创建提醒」只在主图上出
+    // 照 iOS：十字线落在任何一格（主图或副图）上，周期条那一行让位给这一根的读数（头部价格、六格照旧实时）；「创建提醒」只在主图上出
     const alive = !!x && !!b
     const onMain = alive && x!.pane == null
     const s = S.symbols.get(sym())
     const text = alive ? crosshairOHLC({ t: b!.openTime, o: b!.open, h: b!.high, l: b!.low, c: b!.close, v: b!.volume }, s?.dec ?? chart.state?.input.symbol.priceDecimals ?? 2, crossTime(iv())) : null
     crossPrice = onMain ? (x!.price ?? b!.close) : null
-    header.setReadout(text)
-    ivBar.render({ crosshair: alive, crosshairOnMain: onMain })
+    const dec = s?.dec ?? chart.state?.input.symbol.priceDecimals ?? 2
+    reading = alive && chart.state ? crosshairBand(chart.state.input.series, x!.index, dec, chart.state.input.tzOffset) : null
+    ivBar.render({ crosshair: alive, crosshairOnMain: onMain, reading: cardOn ? null : reading })
     bench.setReadout(text ? text.replace(/\n/g, '  ') : null)
   })
   chart.on('select', e => {

@@ -708,7 +708,11 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
       : bookTab === 'decided' ? group(null, s.decided) : group(null, s.all)
     if (loading) html += spinner()
     if (error) html += `<div class="rv-line rv-danger">${esc(error)}</div><button type="button" class="rv-link" data-retry>重试</button>`
-    if (!s.all.length && !loading && !error) html += `<div class="rv-empty">${bookTab === 'todo' ? '没有待判定的' : '还没有记录'}</div>`
+    if (viewsEmpty() && !error && !q) {
+      // 一条观点都没有（照 iOS 10-08 走查）：一句话 + 一颗「去记一笔」，点了关上复盘本回到图上记
+      html += `<div class="rv-empty rv-views-empty"><span data-id="review.empty">还没有观点 · 在图上记一笔</span>
+        <button type="button" class="rv-empty-note" data-empty-note data-id="review.empty.note">${icon('note', 16)}<span>去记一笔</span></button></div>`
+    } else if (!s.all.length && !loading && !error) html += `<div class="rv-empty">${q ? '没有搜到' : bookTab === 'todo' ? '没有待判定的' : '还没有记录'}</div>`
     if (next && !error) html += '<div class="rv-more" aria-hidden="true"></div>'
     viewsList.innerHTML = html
     io?.disconnect()
@@ -748,6 +752,24 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
 
   const paintAll = (): void => { paintTop(); paintTrades() }
 
+  /** 「观点」一条都没有：服务端那份拉回来了也是空、本机也没有还没传的（还在拉的时候不算空，免得那几条还在路上就把人翻到交易去） */
+  function viewsEmpty(): boolean {
+    return status.views != null && status.views.length === 0 && !records.length && !localRows().length && !pendingNotes().length && !loading
+  }
+  /** 照 iOS settleSegment：「观点」空、「交易」有回合就翻到交易那面；两面有没有东西一变再摆一次，人自己点过的那面只要两面都有就不动 */
+  let settled = ''
+  function settle(): void {
+    const ve = viewsEmpty()
+    const te = !status.trades?.some(t => !t.voided)
+    const key = `${ve}|${te}|${status.trades != null}`
+    if (key === settled) return
+    const viewsChanged = settled.split('|')[0] !== String(ve)
+    settled = key
+    const nextSeg = M.preferredSegment(segment, ve, te)
+    if (nextSeg !== segment) setSegment(nextSeg)
+    if (viewsChanged) paintViews()
+  }
+
   const openRec = (r: ViewRecordFull): void => openRecord(host, r)
 
   // 交互
@@ -762,7 +784,7 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
       return
     }
     if (t.closest('[data-stats]')) { openStats(host); return }
-    if (t.closest('[data-resume]')) { startNote(host); return }
+    if (t.closest('[data-resume]') || t.closest('[data-empty-note]')) { startNote(host); return }
     if (t.closest('[data-retry]')) { void (next && records.length ? load(false) : load(true)); return }
     if (t.closest('[data-retry-trades]')) { refreshReviewStatus(true); paintTrades(); return }
     const rec = t.closest<HTMLElement>('[data-rec]')
@@ -799,7 +821,7 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
 
   const segFn = (): void => { paintTop(); if (segment === 'trades') paintTrades() }
   segSubs.add(segFn)
-  const offStatus = onReviewStatus(paintAll)
+  const offStatus = onReviewStatus(() => { paintAll(); settle() })
   // 队列动了：就地重画（叠的那层变了）；服务端回了新的一版：换掉手上那份；记一笔刚传上去：整张重拉
   const offRecord = onRecord((id, server) => {
     if (id === '*') { void load(true); return }
@@ -813,7 +835,8 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
   const tick = setInterval(() => { if (!document.hidden && segment === 'trades') paintTrades() }, 60_000)
 
   paintAll()
-  void load(true)
+  settle()
+  void load(true).then(settle)
   // 一打开就对一次数（战绩三个数、待判定条数、交易），并把本机没传完的补传
   refreshReviewStatus(true)
   syncAll()

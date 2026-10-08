@@ -12,6 +12,8 @@
  * 工具偏好（收藏的工具、磁吸、连续画、各工具的样式与变体）改了 book 不发通知：
  * 改完 `drawingBook.preferences` 之后调一次 `saveDrawingPreferences()`。
  *
+ * 每条线在哪个周期上画的（archive.intervals，键 `iv`）只在本机：本机编辑时按行情页登记的周期记上（setDrawingIntervalSource），
+ * 整本换进来时本机这张表留下。
  * 云端来的线由 sync.ts 用 `drawingBook.replace(next)` 整本换进来（只有真变了的桶清撤销栈、发 replaced），
  * 换账号时 `replace(next, true)` 连撤销栈一起清。
  */
@@ -75,8 +77,17 @@ function emit(c: DrawingsChange): void {
   for (const fn of [...listeners]) { try { fn(c) } catch (e) { console.error(e) } }
 }
 
+/** 眼下图上的周期（行情页绑画线本时登记）；没登记就不记 */
+let intervalSource: (() => string | null | undefined) | null = null
+/** 行情页登记「图上现在是哪个周期」：本机编辑过的那一桶里新画的线记上这个周期（画线列表那行小字；只在本机，不进同步） */
+export function setDrawingIntervalSource(fn: (() => string | null | undefined) | null): void { intervalSource = fn }
+
 const owner = {}
-drawingBook.observe(owner, c => { persist(); emit(c) })
+drawingBook.observe(owner, c => {
+  // 照 iOS DrawingController：每次本机编辑都给这一桶里还没记过的线记上图上的周期（先记再落盘，一次写全）
+  if (c.kind === 'edited') { const iv = intervalSource?.(); if (iv) drawingBook.archive.noteIntervals(iv, c.key) }
+  persist(); emit(c)
+})
 
 /** 改完 drawingBook.preferences 之后调：落盘并记账 */
 export function saveDrawingPreferences(): void { persist(); emit({ kind: 'preferences' }) }
@@ -85,6 +96,9 @@ export function saveDrawingPreferences(): void { persist(); emit({ kind: 'prefer
  *  resetAll：换账号，撤销栈全清 */
 export function replaceDrawings(next: DrawArchive, resetAll = false): void {
   const prefsChanged = !drawingBook.preferences.equals(next.preferences)
+  // 周期表只在本机：云端那批（不带它）换进来时把本机记过的留下；别的标签页写的那份带着它自己的，叠在上面
+  const iv = { ...drawingBook.archive.intervals, ...next.intervals }
+  next.intervals = iv
   drawingBook.replace(next, resetAll)
   if (prefsChanged) { persist(); emit({ kind: 'preferences' }) }
 }

@@ -1,7 +1,7 @@
 // 手机网页版 · 壳的「像 app」那几件：系统返回接到 app 的返回、面板躲键盘、长按菜单、看图不锁屏
 import { describe, expect, it } from 'vitest'
 import { createBackStack, type BackEnv } from '../src/m/ui/backStack'
-import { keyboardInset, sheetHeight, SHEET_FLOAT } from '../src/m/ui/sheet'
+import { fitDetent, keyboardInset, sheetHeight, SHEET_FLOAT } from '../src/m/ui/sheet'
 import { allowsSystemMenu, wantsWakeLock } from '../src/m/ui/native'
 
 /** 假的浏览器历史：entries 是一摞，idx 指当前；back() 之后 popstate 异步到达（与浏览器一致） */
@@ -152,6 +152,23 @@ describe('面板 · 键盘与档位', () => {
     expect(sheetHeight('medium', { view: 596, safeTop: 59, content: 300, kb: 336 })).toBe(596 - 59 - 10)
     // 没有刘海（鸿蒙 nova 16 的安全区上沿是 0）：至少留 20
     expect(sheetHeight('large', { view: 720, safeTop: 0, content: 0 })).toBe(720 - 20 - 10)
+  })
+
+  it('fit 档（照 iOS PanelHost 短面板）：按内容高作唯一一档；高过屏幕 85% 才封顶并多一档满屏；键盘起来撑到 large', () => {
+    const base = { view: 844, safeTop: 47 }
+    // 图表设置那样三组：就是内容高，不能拖到满屏
+    expect(fitDetent(330, 844)).toEqual({ height: 330, expandable: false })
+    expect(sheetHeight('fit', { ...base, content: 330 })).toBe(330)
+    // 正好 85% 仍是一档
+    expect(fitDetent(717, 844)).toEqual({ height: 717, expandable: false })
+    // 高过 85%：这一档封在 85%，另给满屏
+    expect(fitDetent(900, 844)).toEqual({ height: Math.round(844 * 0.85), expandable: true })
+    expect(sheetHeight('fit', { ...base, content: 900 })).toBe(Math.round(844 * 0.85))
+    // 小数内容高向上取整，不切掉最后一像素
+    expect(fitDetent(250.2, 844).height).toBe(251)
+    // 横屏矮视口：85% 比 large 还高时以 large（减浮起的边）为顶
+    expect(sheetHeight('fit', { view: 390, safeTop: 0, content: 600 })).toBe(Math.min(Math.round(390 * 0.85), 390 - 20 - 10 - SHEET_FLOAT))
+    expect(sheetHeight('fit', { ...base, content: 330, kb: 300 })).toBe(844 - 47 - 10)
   })
 })
 

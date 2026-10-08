@@ -74,6 +74,9 @@ const INPUT_KEYS_EXCEPT_SERIES = [
 const sameCrosshair = (a: Crosshair | null, b: Crosshair | null): boolean =>
   a === b || (a != null && b != null && a.index === b.index && a.pane === b.pane && a.t === b.t && a.price === b.price)
 
+const sameFocus = (a: Set<string> | null, b: Set<string> | null): boolean =>
+  a == null || b == null ? a == null && b == null : a.size === b.size && [...a].every(k => b.has(k))
+
 function hasLadder(s: ChartState): boolean {
   const book = s.overlay.depth
   if (!book || book.symbol !== s.input.symbol.symbol) return false
@@ -403,11 +406,14 @@ export class ChartView {
       overlay: !old || old.overlay !== s.overlay,
     }
     const layoutBefore = layers.viewport ? this.chartLayout : null
+    // 叠加线超过六条时焦点跟十字线走（overlayFocus）：焦点换了，蜡烛那层也得重画。
+    const focusBefore = this.renderer ? this.renderer.overlayFocus() : null
     if (!this.renderer) this.renderer = new ChartRenderer(s)
     else this.renderer.state = s
     this.renderer.guestDrawings = this._guestDrawings
     this.renderer.ownDimmed = this._ownDimmed
     let parts = this.changed(old, oldMark, s, nextMark)
+    if (old && !(parts & Parts.plot) && !sameFocus(focusBefore, this.renderer.overlayFocus())) parts |= Parts.plot
     if (layoutBefore && !(parts & Parts.cross)) {
       const L = this.chartLayout
       if (L && !sameLayout(L, layoutBefore)) parts |= Parts.cross

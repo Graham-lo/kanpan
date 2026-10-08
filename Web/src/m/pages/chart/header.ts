@@ -1,12 +1,13 @@
 /* 手机网页版 · 行情页顶栏 + 头部（照 iOS Main/TopBar.swift、MainScreenParts.swift、HeaderStats.swift）
  *
  * 顶栏：有来路时左边一颗「‹」；徽章 28 · 基础币 · /USDT · 「永续」角标（品种名不是按钮）；
+ *       放不下时（横滑扫图带着「‹」）先收徽章、再收计价币，最后才截基础币——「永续」角标一直在（iOS a9f64327）；
  *       右边三颗 32 圆片（2026-10-08 起，照 iOS）：提醒铃（角上这只还没响的条数）· ⋯（更多）· 放大镜。
  *       用户原话「分享和记一笔用的极少，我觉得可以放到二级菜单里」：「⋯」点开一张菜单，从上到下
  *       添加对比 · 记一笔 · 分享；对比满三只时「添加对比」那一项置灰（「分析」面板里的「对比」一节照旧）。
  * 头部：左边最新价（--t-price，按涨跌上色，停住变灰）+ 紧贴其下一行涨跌额 涨跌幅；
  *       右边两列六格：仓 / 市值 / 结算 · 额 / 费率 / 估值。
- *       十字线活着（主图或副图）时整行价格连同六格透明让位（行高不变），同一位置换成铺满整宽的开高低收读数。
+ *       十字线活着时价格、涨跌、六格照旧实时（2026-10-08 起读数挪到周期条那一行，见 intervalBar.ts）。
  *       价格区横滑扫图（左滑下一只、右滑上一只）。
  */
 import { S, detailOf, fetchDetail } from '../../../market'
@@ -81,7 +82,22 @@ export function createTopBar(host: HTMLElement, h: TopBarHandlers) {
     ], () => { more.setAttribute('aria-expanded', 'false'); menu = null })
   }
   bar.querySelector<HTMLButtonElement>('[data-act=search]')!.onclick = () => h.onSearch()
+  const id = bar.querySelector<HTMLElement>('.cp-id')!
+  const baseEl = bar.querySelector<HTMLElement>('.cp-base')!
   let shown = ''
+  let fitKey = ''
+  /** 品种块放不下（基础币被截了）时一档一档退：先收徽章，再收计价币（照 iOS TopBar 的 ViewThatFits） */
+  function fitId(hasOrigin: boolean): void {
+    const k = shown + '|' + hasOrigin + '|' + innerWidth
+    if (k === fitKey) return
+    fitKey = k
+    id.classList.remove('nobadge', 'noquote')
+    const cut = (): boolean => baseEl.scrollWidth > baseEl.clientWidth + 0.5
+    if (cut()) id.classList.add('nobadge')
+    if (cut()) id.classList.add('noquote')
+  }
+  // 字体晚到时第一次量的是后备字体的宽度，到了再量一遍
+  void document.fonts?.ready.then(() => { fitKey = ''; fitId(!back.hidden) })
   return {
     el: bar,
     /** full：对比集合已满三只（「⋯ › 添加对比」置灰） */
@@ -97,15 +113,17 @@ export function createTopBar(host: HTMLElement, h: TopBarHandlers) {
       const s = S.symbols.get(sym)
       const { base, quote } = splitPair(sym)
       const key = sym + '|' + (s?.kind ?? '') + '|' + document.documentElement.dataset.skin
-      if (key === shown) return
-      shown = key
-      bar.querySelector('.cp-badge')!.innerHTML = badgeHTML(base, 28, assetOf(s?.kind, base))
-      bar.querySelector('.cp-base')!.textContent = base
-      bar.querySelector('.cp-quote')!.textContent = quote ? '/' + quote : ''
-      // 产品角标：永续合约写「永续」，美元指数写「指数」
-      bar.querySelector('.cp-perp')!.textContent = s?.macro ? '指数' : '永续'
+      if (key !== shown) {
+        shown = key
+        bar.querySelector('.cp-badge')!.innerHTML = badgeHTML(base, 28, assetOf(s?.kind, base))
+        baseEl.textContent = base
+        bar.querySelector('.cp-quote')!.textContent = quote ? '/' + quote : ''
+        // 产品角标：永续合约写「永续」，美元指数写「指数」
+        bar.querySelector('.cp-perp')!.textContent = s?.macro ? '指数' : '永续'
+      }
+      fitId(hasOrigin)
     },
-    invalidate(): void { shown = '' },
+    invalidate(): void { shown = ''; fitKey = '' },
   }
 }
 
@@ -117,7 +135,6 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
     <div class="cp-quotebox">
       <div class="cp-quoteinner"><div class="cp-price num"></div><div class="cp-chg num"></div></div>
     </div>
-    <pre class="cp-readout" hidden></pre>
     <div class="cp-busy" aria-hidden="true"><i></i></div>
     <div class="cp-stats">
       <div class="cp-col">
@@ -136,7 +153,6 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
   cell('oi').querySelector('.cp-lab')!.append(termMark(TERMS.oi))
   cell('vol').querySelector('.cp-lab')!.append(termMark(TERMS.turnover))
   const priceEl = head.querySelector<HTMLElement>('.cp-price')!, chgEl = head.querySelector<HTMLElement>('.cp-chg')!
-  const readout = head.querySelector<HTMLElement>('.cp-readout')!
   const valCell = cell('val')
   const stats = head.querySelector<HTMLElement>('.cp-stats')!
   let valKey = ''
@@ -215,12 +231,6 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
     },
     /** 换品种 / 周期取数中：头部下沿一条来回走的细条 */
     setBusy(on: boolean): void { head.classList.toggle('busy', on) },
-    /** 十字线读数：null = 收起，恢复价格 */
-    setReadout(text: string | null): void {
-      if (readout.hidden !== (text == null)) readout.hidden = text == null
-      head.classList.toggle('reading', text != null)
-      if (text != null) setText(readout, text)
-    },
   }
 }
 

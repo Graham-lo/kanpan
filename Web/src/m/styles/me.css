@@ -244,3 +244,27 @@
 .fr-shot svg { width: 36px; height: 36px }
 .fr-letter-text { display: flex; flex-direction: column; gap: var(--s-xxs) }
 .fr-letter-text .fr-item-title { white-space: normal; font: var(--t-heading) }
+
+/* ───────── 琉璃（照 iOS 2026-10-08 MePage / AccountView / ExchangeAccountPage）─────────
+ * 根层、账号一支（账号 / 登录 / 同步 / 登录设备 / 改密码 / 注销）、交易所铺琉璃底（.me-liuli，底由 ui/liuli.ts 插进层里），
+ * 卡是同一份玻璃（liuli-card 的料 + 1/3pt 边 + 顶上一线高光），卡内分隔线是材质细线，输入框是薄玻璃。
+ * 设置、复盘本、预警、朋友这些层不铺（行不带卡、通栏发丝线，照 iOS 各自的页）。 */
+#page-me { --page-bg: var(--lg-ground); background: var(--lg-ground) }
+.me-page .me-layer.me-liuli { background: var(--lg-ground) }
+.me-liuli > .me-nav, .me-liuli > .me-scroll { position: relative; z-index: 1 }
+.me-liuli .me-card {
+  position: relative; background: var(--lg-glass); box-shadow: inset 0 0 0 var(--hairline) var(--lg-card-edge);
+}
+.me-liuli .me-card::before {
+  content: ''; position: absolute; top: 0; left: var(--r-m); right: var(--r-m); height: 1px; border-radius: 1px;
+  background: var(--lg-highlight); opacity: var(--lg-highlight-on); pointer-events: none; z-index: 1;
+}
+.me-liuli .me-divider { height: var(--hairline); transform: none; background: var(--lg-rule) }
+.me-liuli .me-row + .me-row::before, .me-liuli .me-dev + .me-dev::before { height: var(--hairline); transform: none; background: var(--lg-rule) }
+.me-liuli .me-back { background: var(--lg-glass); box-shadow: 0 2px 10px #00000014, inset 0 0 0 var(--hairline) var(--lg-card-edge) }
+.me-liuli .me-field input { background: var(--lg-glass-thin); box-shadow: inset 0 0 0 var(--hairline) var(--lg-card-edge) }
+.me-liuli .me-field input:focus { box-shadow: inset 0 0 0 1.5px var(--accent-line) }
+/* 没登录的账号卡：行尾那颗「登录 / 注册」胶囊的投影不让卡裁掉；按下的底色自己收圆角 */
+.me-card:has(.me-login) { overflow: visible }
+.me-acct .me-row { border-radius: var(--r-m) 0 0 var(--r-m) }
+.me-login { align-self: center; margin: 0 var(--inset-card) 0 0 }

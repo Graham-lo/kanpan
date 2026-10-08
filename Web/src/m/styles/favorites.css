@@ -1,47 +1,11 @@
 /* 手机网页版 · 自选页「琉璃」（照 iOS Symbols/FavoritesView.swift：LiuliSkin、AuroraBackdrop、LiuliSymbolRow）
  * 琉璃底、琉璃行、徽章、涨跌药丸也给板块页用（sectors.ts 同样 import 本文件）。 */
 
-/* ───────── 琉璃色板（照 LiuliSkin） ───────── */
-.liuli {
-  --lg-ground: var(--ground);
-  --lg-pane: var(--raised);
-  --lg-glass-thin: color-mix(in srgb, var(--lg-pane) 46%, transparent);
-  --lg-edge-soft: color-mix(in srgb, var(--lg-pane) 62%, transparent);
-  --lg-rule: color-mix(in srgb, var(--ink) 9%, transparent);
-  --lg-ink4: color-mix(in srgb, var(--ink3) 70%, transparent);
-  --lg-accent-lift: color-mix(in srgb, var(--accent) 58%, #fff);
-  --lg-accent-grad: linear-gradient(to bottom right, var(--lg-accent-lift), var(--accent));
-  --lg-highlight: color-mix(in srgb, var(--lg-pane) 90%, transparent);
-  --lg-lobe-a: #A9DDF3; --lg-lobe-b: #BFEFD6; --lg-lobe-c: #DCEFF6;
-  --lg-lobe-alpha: .63;
-  --lg-grain: .035;
-  --page-bg: var(--lg-ground);
-  --sw-bg: transparent;
-  background: var(--lg-ground);
-}
-html[data-skin="sage"][data-theme="light"] .liuli { --lg-ground: #E9F3F1 }
-html[data-skin="terra"][data-theme="light"] .liuli { --lg-ground: #F4EFEA; --lg-lobe-a: #B5D9F1; --lg-lobe-b: #F5D8C3; --lg-lobe-c: #D3EDE0 }
-html[data-theme="dark"] .liuli {
-  --lg-pane: var(--ink);
-  --lg-glass-thin: color-mix(in srgb, var(--lg-pane) 4.5%, transparent);
-  --lg-edge-soft: color-mix(in srgb, var(--lg-pane) 12%, transparent);
-  --lg-rule: color-mix(in srgb, var(--ink) 11%, transparent);
-  --lg-highlight: color-mix(in srgb, var(--lg-pane) 30%, transparent);
-  --lg-grain: .05;
-}
+/* ───────── 琉璃底 ─────────
+ * 色板与底（光斑 · 收敛 · 颗粒）2026-10-08 起是全 app 共用的一份：令牌在 tokens.css「琉璃材质」，
+ * 类名 .lg-bg / .liuli-backdrop 在 ui.css（照 iOS 自选页私有 LiuliSkin 删掉改用 LiuliMaterial）。 */
+.liuli { --page-bg: var(--lg-ground); --sw-bg: transparent; background: var(--lg-ground) }
 #page-favorites { --page-bg: var(--lg-ground) }
-
-/* ───────── 底：三团光 + 冲淡 + 颗粒（深色只留素底加颗粒） ───────── */
-.lg-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0 }
-.lg-blob { position: absolute; border-radius: 50%; opacity: var(--lg-lobe-alpha); animation: lg-drift 22s ease-in-out infinite alternate }
-.lg-blob.b1 { width: 300px; height: 300px; left: -95px; top: -80px; background: radial-gradient(closest-side, var(--lg-lobe-a), color-mix(in srgb, var(--lg-lobe-a) 55%, transparent) 45%, transparent) }
-.lg-blob.b2 { width: 250px; height: 250px; right: -80px; top: 240px; background: radial-gradient(closest-side, var(--lg-lobe-b), color-mix(in srgb, var(--lg-lobe-b) 55%, transparent) 45%, transparent); animation-duration: 27s }
-.lg-blob.b3 { width: 280px; height: 280px; left: -70px; bottom: -50px; background: radial-gradient(closest-side, var(--lg-lobe-c), color-mix(in srgb, var(--lg-lobe-c) 55%, transparent) 45%, transparent); animation-duration: 31s }
-.lg-wash { position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 22%, color-mix(in srgb, var(--lg-ground) 70%, transparent)) }
-.lg-grain { position: absolute; inset: 0; opacity: var(--lg-grain); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E") }
-html[data-theme="dark"] .lg-blob, html[data-theme="dark"] .lg-wash { display: none }
-@keyframes lg-drift { to { transform: translate(18px, -26px) scale(1.08) } }
-@media (prefers-reduced-motion: reduce) { .lg-blob { animation: none } }
 
 /* ───────── 页骨架 ───────── */
 #page-favorites { display: flex; flex-direction: column }

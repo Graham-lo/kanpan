@@ -2,12 +2,13 @@
  *
  * - buildAlertList(host, opts)：「全部预警」那一页的正文。分「价格提醒 N」「画线提醒 N」两类，
  *   每类一张分组卡：品种头（徽章 + BTC/USDT + 币安 · USDT 永续 + 条数）下面挂这只品种的提醒行；
- *   行 = 状态圆点 + 价位（body）+「价格达到」（caption ink3，有 Webhook 时后面一个链接记号）+ 删除 icon。
- *   触发过的不展示（只响一次，响完就从表里删掉）。空表：铃铛 +「暂无预警」。
+ *   行 = 状态圆点 + 价位（body）+「价格达到」（caption ink3，有网络回调时后面一个链接记号）+ 删除 icon。
+ *   触发过的不展示（只响一次，响完就从表里删掉）。空表照 iOS AlertEmptyState：「还没有提醒」+ 一句怎么建 +「去创建」胶囊（opts.onCreate；
+ *   没给时开图上这只的「提醒」表）。
  * - recordRowHTML：创建提醒页底下「当前提醒」也用同一种行。
  * - startAlertWatcher()：常驻监听（幂等）。订有提醒挂着的品种的 ticker（切后台也保住），
  *   每笔新价交给 checkPrice；响了（照 iOS AlertNotifier）：提示条「标题 · 查看」+ 铃声；页面在后台时
- *   弹系统通知（标题 = 提醒标题、正文「现价 X」，点开去那只）+ 没登录时本机发 Webhook（登录后由服务端发，免得发两遍，照 PC webhookByPage）。
+ *   弹系统通知（标题 = 提醒标题、正文「现价 X」，点开去那只）+ 没登录时本机发网络回调（登录后由服务端发，免得发两遍，照 PC webhookByPage）。
  *   顺带起「我的」底下那几样常驻的：自选波动提醒、上新下架通知、个性化学习（meMonitors.ts）。
  */
 import '../styles/alerts.css'
@@ -24,12 +25,13 @@ import {
   type Alert,
 } from '../model/alerts'
 import { hooks, openSymbol } from '../app/shell'
+import { st } from '../app/store'
 import { wantStreams } from './_streams'
 import { askNotifyPermission as ask, notify, wireNotify } from './notify'
 import { startMeMonitors } from './meMonitors'
 
-const LINK = '<svg width="11" height="11" viewBox="0 0 24 24" aria-label="Webhook" role="img"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4L12 18.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
-const BELL = '<svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5a1.5 1.5 0 0 1 1.5 1.5v.6A6.5 6.5 0 0 1 18.5 11v3.6l1.6 2.3a1 1 0 0 1-.8 1.6H4.7a1 1 0 0 1-.8-1.6l1.6-2.3V11a6.5 6.5 0 0 1 5-6.4V4A1.5 1.5 0 0 1 12 2.5zM9.5 19.5h5a2.5 2.5 0 0 1-5 0z"/></svg>'
+const LINK = '<svg width="11" height="11" viewBox="0 0 24 24" aria-label="网络回调" role="img"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4L12 18.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
+const BELL_BADGE = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 3.2a1.4 1.4 0 0 1 2.4.9v.5a6.4 6.4 0 0 1 .9.3 4.6 4.6 0 0 0 4.2 6.3v3.4l1.6 2.3a1 1 0 0 1-.8 1.6H4.7a1 1 0 0 1-.8-1.6l1.6-2.3V11a6.5 6.5 0 0 1 5-6.4V4c0-.3.2-.6.5-.8zM9.5 19.5h5a2.5 2.5 0 0 1-5 0z"/><circle cx="19" cy="5.5" r="3" fill="currentColor"/></svg>'
 
 /** 品种卡第二行：「币安 · USDT 永续」 */
 export const venueLine = (symbol: string): string => {
@@ -62,6 +64,15 @@ function symbolHeadHTML(symbol: string, count: number): string {
     <span class="alh-count num">${count}</span></div>`
 }
 
+/** 空态（照 iOS AlertEmptyState）：标题 body ink2 + 一句怎么建 footnote ink3 +「去创建」琉璃胶囊；整块竖直居中 */
+export function alertEmptyHTML(title: string, hint: string, id: string): string {
+  return `<div class="al-empty" data-id="${esc(id)}">
+    <span class="al-empty-title">${esc(title)}</span>
+    <span class="al-empty-hint">${esc(hint)}</span>
+    <button type="button" class="al-empty-create" data-create data-id="${esc(id)}.create">${BELL_BADGE}<span>去创建</span></button>
+  </div>`
+}
+
 /** 删一条：从表里拿掉，给 5 秒撤销 */
 export function deleteWithUndo(id: string): void {
   const gone = deleteAlert(id)
@@ -69,19 +80,22 @@ export function deleteWithUndo(id: string): void {
 }
 
 /** 「全部预警」正文；返回解绑。pinned：顶栏铃铛开的「提醒」表里，图上这只置顶成一组（组名是品种名，下面分价格 / 画线） */
-export function buildAlertList(host: HTMLElement, opts: { onOpen?: (a: Alert) => void; pinned?: string } = {}): () => void {
+export function buildAlertList(host: HTMLElement, opts: { onOpen?: (a: Alert) => void; pinned?: string; onCreate?: () => void } = {}): () => void {
   host.classList.add('all-alerts')
   const render = (): void => {
     const pin = opts.pinned ? pinnedSections(opts.pinned) : []
     const secs = sections(opts.pinned).filter(s => s.count > 0)
     if (!secs.length && !pin.length) {
-      host.innerHTML = `<div class="al-empty">${BELL}<span>暂无预警</span></div>`
+      host.innerHTML = alertEmptyHTML('还没有提醒', '在图上长按后点「创建提醒」，或点顶栏的铃铛', 'alerts.empty')
       return
     }
     const pinned = pin.length ? `<section class="al-sec al-pinned" data-kind="pinned">
       <div class="al-card">${symbolHeadHTML(opts.pinned!, pin.reduce((n, s) => n + s.count, 0))}${pin.map((sec, si) => `<div class="al-sub num">${sec.title} ${sec.count}</div>`
         + sec.groups[0].alerts.map((a, i) => recordRowHTML(a, { divider: !(si === pin.length - 1 && i === sec.groups[0].alerts.length - 1) })).join('')).join('')}</div>
-    </section>` : ''
+    </section>` : opts.pinned
+      // 图上这只一条没有、别的品种有：这一组只说一句怎么建（底下就是通栏「创建提醒」，不摆第二颗按钮）
+      ? `<section class="al-sec al-pinned" data-kind="pinned"><div class="al-card">${symbolHeadHTML(opts.pinned, 0)}<div class="al-pin-empty" data-id="alerts.pinned.empty">这只还没有提醒 · 点下面「创建提醒」，或在图上长按后点「创建提醒」</div></div></section>`
+      : ''
     host.innerHTML = pinned + secs.map(sec => `<section class="al-sec" data-kind="${sec.id}">
       <div class="al-title num">${sec.title} ${sec.count}</div>
       <div class="al-card">${sec.groups.map((g, gi) => symbolHeadHTML(g.symbol, g.alerts.length)
@@ -91,6 +105,7 @@ export function buildAlertList(host: HTMLElement, opts: { onOpen?: (a: Alert) =>
   const byId = (id: string): Alert | undefined => activeAlerts().find(a => a.id === id)
   const onClick = (e: Event): void => {
     const t = e.target as HTMLElement
+    if (t.closest('[data-create]')) { if (opts.onCreate) opts.onCreate(); else void import('./alertHub').then(m => m.openAlertHub(st.symbol, S.symbols.get(st.symbol)?.price ?? null)); return }
     const del = t.closest<HTMLElement>('[data-del]')
     if (del) { deleteWithUndo(del.dataset.del!); return }
     const open = t.closest<HTMLElement>('[data-open]')

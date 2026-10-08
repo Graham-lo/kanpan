@@ -4,9 +4,10 @@
  *    真算得出收益的那些——不是「挂在板块下、手里有报价」的那些（5 日档缺收盘价的不算）。
  * 2. 已经钻进某个板块、这一帧统计里却找不到它时：只有目录不认、兜底桶里也没有、而且
  *    这一帧确实算出了别的板块，才算「板块没了」退回列表；其余只是行情还没到，留在原地等。
+ * 3. 板块行涨跌幅左边那行小字「领涨 X」（iOS SectorStat.leader / SectorLeaderLabel，2026-10-08）。
  */
 import {
-  catalog, windowReturn,
+  MIN_ELIGIBLE_MEMBERS, catalog, cmpStr, covered, memberSet, windowReturn,
   type Quotes, type SectorBucket, type SectorHistory, type SectorMarket, type SectorStat, type SectorWindow,
 } from '../../sectors/aggregate'
 
@@ -59,3 +60,37 @@ export function skeletonRowsHTML(kind: 'board' | 'symbol', n = SKELETON_ROWS): s
 export const boardsWaiting = (boards: number, failed: boolean): boolean => boards === 0 && !failed
 /** 钻进去的板块该不该摆骨架：行情一只都还没到 */
 export const drillWaiting = (rows: number, quotes: number): boolean => rows === 0 && quotes === 0
+
+// ---------------------------------------------------------------- 领涨（iOS SectorAggregator.leader / SectorLeaderLabel）
+
+/** 领涨成员：这段窗口上收益最高的那一只。至少两只算得出收益、且最高的那只真的在涨（> 0）才有；
+ *  并列按代号升序取第一个，两次刷新之间不换人 */
+export function leaderOf(bases: readonly string[], returns: readonly number[]): string | null {
+  if (bases.length !== returns.length || returns.length < 2) return null
+  let best: { base: string; ret: number } | null = null
+  for (let i = 0; i < returns.length; i++) {
+    const r = returns[i], base = bases[i]
+    if (!Number.isFinite(r)) continue
+    if (best && (r < best.ret || (r === best.ret && cmpStr(base, best.base) >= 0))) continue
+    best = { base, ret: r }
+  }
+  return best && best.ret > 0 ? best.base : null
+}
+
+/** 代号太长截到几位，免得把涨跌幅挤走 */
+export const LEADER_MAX_CODE = 8
+/** 「领涨」后面写谁：港股 HK0992、LGELECTRONICS 这种读不出是谁的代号（有数字或超过 6 个字符、且分类表里有简称）
+ *  换成中文简称；其余照写代号，超过 8 个字符截到 8 位 */
+export function leaderName(base: string): string {
+  const opaque = base.length > 6 || /\d/.test(base)
+  const cn = opaque ? catalog.chineseName(base) : undefined
+  return cn ?? base.slice(0, LEADER_MAX_CODE)
+}
+
+/** 板块行那行「领涨 X」。板块强弱不算数（有行情成员不到三家、或 5 日档覆盖不够）或没有领涨的给空串，界面上那格直接不画 */
+export function leaderLabel(members: string[], quotes: Quotes, w: SectorWindow, history: SectorHistory): string {
+  const set = memberSet(members, quotes, w, history)
+  if (set.returns.length < MIN_ELIGIBLE_MEMBERS || !covered(set, w)) return ''
+  const base = leaderOf(set.bases, set.returns)
+  return base ? '领涨 ' + leaderName(base) : ''
+}

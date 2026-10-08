@@ -23,7 +23,8 @@
   left: calc(var(--sheet-float) + var(--safe-left)); right: calc(var(--sheet-float) + var(--safe-right));
   bottom: calc(var(--sheet-float) + var(--kb));
   display: flex; flex-direction: column; overflow: hidden;
-  background: var(--raised); color: var(--ink);
+  /* 琉璃底（无光斑）：底色 + 颗粒一层背景，照 iOS PanelHost 的 LiuliBackdrop(lobes: false) */
+  background: var(--lg-grain-img) 0 0 / 160px 160px, var(--lg-ground); color: var(--ink);
   border-radius: var(--sheet-r);
   box-shadow: 0 10px 40px var(--toast-shadow), 0 0 0 0.5px var(--hair);
   transform: translateY(calc(100% + var(--sheet-float)));
@@ -48,7 +49,7 @@
 .m-sheet-head {
   flex: none; display: flex; align-items: center; min-height: calc(var(--hit) + var(--s-xs) * 2);
   padding: var(--s-xs) var(--inset-page) var(--s-xs) 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--hairline) solid var(--lg-rule);
   touch-action: none;
 }
 .m-sheet-back {
@@ -151,23 +152,83 @@ html[data-theme="dark"] .m-alert, html[data-theme="dark"] .m-term-card { box-sha
 .m-term-body { margin-top: var(--s-s); font: 400 14px/1.5 var(--font-ui); color: var(--ink2); white-space: pre-line }
 .m-term-ok { width: 100%; min-height: var(--hit); border-top: 1px solid var(--line); font: var(--t-body-emph); color: var(--accent) }
 
-/* ───────── toast ───────── */
+/* ───────── toast（照 iOS TabBar.swift Toast / ToastCenter.swift） ─────────
+ * 琉璃玻璃胶囊：一层系统模糊垫着，上面压九成玻璃料（浅色白 / 陶土暖白，深色 raised），描一圈 1/3pt 墨线；
+ * 离安全区下沿「底栏高 + 8」（原来写死 92，比栏高出 34，提示和底栏之间空一大截）。
+ * 动作字与间隔点按最坏底（料九成盖在纯白 / 纯黑上）压到 4.5:1：令牌 --toast-act / --toast-dot。 */
 .m-toast {
-  position: fixed; left: 50%; bottom: calc(92px + var(--safe-bottom));
+  position: fixed; left: 50%; bottom: calc(var(--tabbar-h) + var(--s-s) + var(--safe-bottom));
   transform: translate(-50%, 0); max-width: calc(100vw - 32px);
   display: flex; align-items: center; gap: var(--s-s);
   padding: 10px var(--s-l); border-radius: 999px;
-  background: var(--raised); border: 1px solid var(--line);
-  box-shadow: 0 4px 12px var(--toast-shadow);
+  background: color-mix(in srgb, var(--toast-base) 90%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
+  border: var(--hairline) solid var(--toast-edge);
+  box-shadow: var(--toast-glass-shadow);
   font: var(--t-footnote); color: var(--ink);
   opacity: 0; transition: opacity 180ms var(--ease-out);
   pointer-events: auto;
 }
 .m-toast.in { opacity: 1 }
 .m-toast-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.m-toast-dot { color: var(--ink3) }
-.m-toast-act { color: var(--accent); font: inherit; position: relative; white-space: nowrap }
+.m-toast-dot { color: var(--toast-dot, var(--ink3)) }
+.m-toast-act { color: var(--toast-act, var(--accent)); font: inherit; position: relative; white-space: nowrap }
 .m-toast-act::after { content: ''; position: absolute; inset: -14px }
+
+/* ───────── 琉璃材质（照 iOS DesignSystem/LiuliMaterial.swift：LiuliBackdrop / .liuliCard() / LiuliPill） ─────────
+ * 令牌在 tokens.css「琉璃材质」。全 app 一份：自选、板块、我的、交易所与账号页铺 .liuli-backdrop，
+ * 面板（.m-sheet）铺无光斑的那层（底色 + 颗粒），分组一律 .liuli-card。
+ * 滚动便宜：底是页面后面一层不动的绝对定位块，光斑只是放射渐变，颗粒烘了透明度的一张平铺图；行上不加任何滤镜。 */
+.lg-bg, .liuli-backdrop { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; background: var(--lg-ground) }
+/* 颗粒压在光斑上面（照 LiuliBackdrop 的叠放次序）；透明度烘在图里，一层伪元素就够 */
+.lg-bg::after, .liuli-backdrop::after { content: ''; position: absolute; inset: 0; background: var(--lg-grain-img) 0 0 / 160px 160px }
+.lg-blob { position: absolute; border-radius: 50%; opacity: var(--lg-lobe-alpha); display: var(--lg-lobes); animation: lg-drift 22s ease-in-out infinite alternate }
+.lg-blob.b1 { width: 300px; height: 300px; left: -95px; top: -80px; background: radial-gradient(closest-side, var(--lg-lobe-a), color-mix(in srgb, var(--lg-lobe-a) 55%, transparent) 45%, transparent) }
+.lg-blob.b2 { width: 250px; height: 250px; right: -80px; top: 240px; background: radial-gradient(closest-side, var(--lg-lobe-b), color-mix(in srgb, var(--lg-lobe-b) 55%, transparent) 45%, transparent); animation-duration: 27s }
+.lg-blob.b3 { width: 280px; height: 280px; left: -70px; bottom: -50px; background: radial-gradient(closest-side, var(--lg-lobe-c), color-mix(in srgb, var(--lg-lobe-c) 55%, transparent) 45%, transparent); animation-duration: 31s }
+/* 底部同色收敛：从 22% 高度起往下回到底色，到底盖住七成（和光斑一起画、一起不画） */
+.lg-wash { position: absolute; inset: 0; display: var(--lg-lobes); background: linear-gradient(to bottom, transparent 22%, color-mix(in srgb, var(--lg-ground) 70%, transparent)) }
+/* 颗粒由 .lg-bg::after 画；老标记里的 .lg-grain 留着不画 */
+.lg-grain { display: none }
+@keyframes lg-drift { to { transform: translate(18px, -26px) scale(1.08) } }
+@media (prefers-reduced-motion: reduce) { .lg-blob { animation: none } }
+/* 页上铺了 .liuli-backdrop 的，内容压在它上面 */
+.liuli-page { --page-bg: var(--lg-ground); --sw-bg: transparent; background: var(--lg-ground) }
+.liuli-page > :not(.lg-bg):not(.liuli-backdrop) { position: relative; z-index: 1 }
+
+/* 玻璃卡：玻璃填充 + 1/3pt 描边（经典墨线 / 其余柔光白边）+ 顶上一线高光（经典不画）。只画底，不加内边距 */
+.liuli-card {
+  position: relative; border-radius: var(--r-m);
+  background: var(--lg-glass); box-shadow: inset 0 0 0 var(--hairline) var(--lg-card-edge);
+}
+.liuli-card.thin { background: var(--lg-glass-thin) }
+.liuli-card::before {
+  content: ''; position: absolute; top: 0; left: var(--r-m); right: var(--r-m); height: 1px; border-radius: 1px;
+  background: var(--lg-highlight); opacity: var(--lg-highlight-on); pointer-events: none; z-index: 1;
+}
+/* 卡里的行：左右 Inset.card，行底一条材质细线（左缩进到正文、右到卡边），最后一行不画 */
+.liuli-row { position: relative }
+.liuli-row + .liuli-row::after {
+  content: ''; position: absolute; top: 0; left: var(--inset-card); right: 0; height: var(--hairline); background: var(--lg-rule); pointer-events: none;
+}
+/* 分组标题：和卡里行文左对齐（缩进 = 面板边距 + 卡内边距） */
+.liuli-gt { padding: var(--s-xl) calc(var(--inset-page) + var(--inset-card)) var(--s-s); font: var(--t-caption2-emph); letter-spacing: 1px; color: var(--ink3) }
+
+/* 液态药丸：强调色提亮 → 强调色的斜向渐变、白字、最矮 44、左右 20，顶上一线高光，强调色投影 */
+.liuli-pill {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: var(--s-xs);
+  min-height: var(--hit); padding: 0 var(--s-xl); border-radius: 999px; flex: none;
+  font: var(--t-body-emph); color: #fff; white-space: nowrap;
+  background: var(--lg-accent-grad); box-shadow: var(--lg-pill-shadow);
+  -webkit-tap-highlight-color: transparent;
+}
+.liuli-pill::before {
+  content: ''; position: absolute; top: 1px; left: var(--s-l); right: var(--s-l); height: 1px; border-radius: 1px;
+  background: var(--lg-highlight); pointer-events: none;
+}
+.liuli-pill.fill { display: flex; width: 100% }
+.liuli-pill:active { opacity: .7 }
+.liuli-pill .ic { color: currentColor }
 
 /* ───────── 左划（SwipeToDelete） ───────── */
 .m-sw-row { position: relative; overflow: hidden; touch-action: pan-y }

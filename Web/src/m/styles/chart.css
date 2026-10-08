@@ -91,8 +91,11 @@
   font: var(--t-caption2-emph); font-variant-numeric: tabular-nums; line-height: 16px; text-align: center; pointer-events: none;
 }
 .cp-bellcount[hidden] { display: none }
-/* 「永续」角标不许被挤掉（照 iOS 2026-10-08）：右侧收成三颗后 375 宽带返回键也还剩约 167pt，
-   真放不下时截的是基础币（上面 .cp-base 的省略号），角标一直在 */
+/* 「永续」角标不许被挤掉（照 iOS TopBar 2026-10-08）：放不下时先收币种徽章（左边有返回键顶着，少一颗圆不显空），
+   再收计价币，最后才截基础币（上面 .cp-base 的省略号）——角标一直在。哪一档由 header.ts 量了再挂类 */
+/* 徽章收起时仍占着那一行的高度（宽度归零、连 gap 一起退掉），计价币贴底的位置才不跟着跳 */
+.cp-id.nobadge .cp-badge { visibility: hidden; width: 0; overflow: hidden; margin-right: -6px }
+.cp-id.noquote .cp-quote { display: none }
 
 /* ───────────── 头部：价格 + 六格 ───────────── */
 .cp-head {
@@ -112,16 +115,8 @@
 .cp-quoteinner { display: flex; flex-direction: column; gap: var(--s-xxs) }
 .cp-price { font: var(--t-price); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .cp-chg { font: var(--t-footnote-emph); font-variant-numeric: tabular-nums; white-space: nowrap }
-/* 十字线读数：照 CrosshairOHLCLabel（等宽 11、ink、铺满头部整宽）；读数在时价格行连同六格一起让位 */
-.cp-readout {
-  position: absolute; left: var(--inset-page); right: var(--inset-page); top: 50%; transform: translateY(-50%);
-  font: 400 11px/1.3 var(--font-num); color: var(--ink);
-  white-space: pre; overflow: hidden; pointer-events: none;
-}
-.cp-readout[hidden] { display: none }
-.cp-head.reading .cp-quoteinner, .cp-head.reading .cp-stats { visibility: hidden }
 /* 朋友的线 / 顺便建提醒那一格（照 ShareCard、ShareReplyBar、AlertPromptBar）：36 高、盖在价格行上，行高不变 */
-.cp-head.carding .cp-quoteinner, .cp-head.carding .cp-stats, .cp-head.carding .cp-readout { visibility: hidden }
+.cp-head.carding .cp-quoteinner, .cp-head.carding .cp-stats { visibility: hidden }
 .cp-card {
   position: absolute; left: var(--inset-page); right: var(--inset-page); top: 50%; transform: translateY(-50%);
   height: calc(var(--hit) - var(--s-s)); z-index: 2;
@@ -229,9 +224,21 @@
 .cp-more svg { transition: transform var(--dur-fast) var(--ease-out) }
 .cp-more.open svg { transform: rotate(180deg) }
 .cp-gear { margin-right: calc(-1 * var(--s-s)) }
-/* 「创建提醒」：照 CrosshairActionBar，靠页边左起，28 高、淡琥珀底 + 0.5 描边 */
+/* 十字线活着时顶替周期条的那条带子（照 CrosshairActionBar 2026-10-08）：左读数、右「创建提醒」，左右缘和周期条同一根线 */
+.cp-xband {
+  position: absolute; inset: 0; padding: 0 var(--inset-page);
+  display: none; align-items: center; gap: var(--s-s); pointer-events: none;
+}
+.cp-ivrow.yield .cp-xband { display: flex }
+/* 读数：11 号、等宽数字（不用等宽字体）、次级墨色，一行；三档都放不下才截尾 */
+.cp-xread {
+  flex: 1; min-width: 0; font: var(--t-caption2); color: var(--ink2);
+  font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cp-xread[hidden] { display: none }
+/* 「创建提醒」：28 高、淡琥珀底 + 0.5 描边，靠右 */
 .cp-alertpill {
-  position: absolute; left: var(--inset-page); top: 50%; transform: translateY(-50%);
+  flex: none; margin-left: auto; pointer-events: auto;
   display: none; align-items: center; gap: var(--s-xs);
   height: var(--pill-h); padding: 0 var(--s-m); border-radius: 999px;
   font: var(--t-control-on); color: var(--accent); background: var(--accent-soft);
@@ -485,6 +492,34 @@ p.cp-meta { padding: var(--s-s) var(--s-xs) 0; white-space: normal }
 .cp-list .cp-reheight { font: var(--t-control); min-height: var(--hit); padding: 0; margin-left: var(--s-s) }
 .cp-list .cp-grip { width: var(--hit); margin-right: calc(var(--inset-page) - var(--s-m)) }
 
+/* 玻璃卡分组（照 iOS PanelCardGroup 2026-10-08：分析、主图指标、图表设置）：
+ * 每节一张琉璃玻璃卡，卡按面板边距缩进、圆角 12；卡里行左右 Inset.card，行间一条材质细线（左缩到正文）；
+ * 节名和卡里行文左对齐（缩进 = 面板边距 + 卡内边距）。面板底由 .m-sheet 铺（琉璃底色 + 颗粒，无光斑）。 */
+.cp-cards .cp-gt { padding: var(--s-xl) calc(var(--inset-page) + var(--inset-card)) var(--s-s) }
+.cp-cards .cp-panel > .cp-gt:first-child { padding-top: var(--s-l) }
+.cp-cards .cp-group, .cp-cards .cp-inuse {
+  position: relative; margin: 0 var(--inset-page); border-radius: var(--r-m); overflow: hidden; border-bottom: 0;
+  background: var(--lg-glass); box-shadow: inset 0 0 0 var(--hairline) var(--lg-card-edge);
+}
+.cp-cards .cp-group::before, .cp-cards .cp-inuse::before {
+  content: ''; position: absolute; top: 0; left: var(--r-m); right: var(--r-m); height: 1px; border-radius: 1px; z-index: 3;
+  background: var(--lg-highlight); opacity: var(--lg-highlight-on); pointer-events: none;
+}
+.cp-cards .cp-group > * + * { border-top: 0; position: relative }
+.cp-cards .cp-group > * + *::before {
+  content: ''; position: absolute; top: 0; left: var(--inset-card); right: 0; height: var(--hairline); background: var(--lg-rule); pointer-events: none;
+}
+.cp-cards .cp-row { padding: var(--s-m) var(--inset-card) }
+.cp-cards .cp-iu { background: transparent }
+.cp-cards .cp-iu.m-lifted { background: var(--raised) }
+.cp-cards .cp-iu-main { padding: 0 var(--inset-card) }
+.cp-cards .cp-inuse:has(.cp-grip) .cp-iu-main { padding-right: var(--s-xs) }
+.cp-cards .cp-grip { margin-right: calc(var(--inset-card) - var(--s-m)) }
+.cp-cards .cp-reset { margin-top: var(--s-xl) }
+.cp-cards .cp-tap:active { background: var(--lg-well) }
+/* 分段的槽：材质里那口井（ink 6% / 深色 12%），压在玻璃上不像贴补丁 */
+.cp-cards .cp-seg { background: var(--lg-well) }
+
 /* 参数编辑 */
 .cp-editor { padding-bottom: var(--s-s) }
 .cp-prow { background: var(--raised2) }
@@ -577,6 +612,10 @@ p.cp-meta { padding: var(--s-s) var(--s-xs) 0; white-space: normal }
   background: var(--c); box-shadow: inset 0 0 0 .5px var(--hair);
 }
 .cp-form .cp-cchip.on::before { box-shadow: 0 0 0 2px var(--raised), 0 0 0 4px var(--ink) }
+/* 指标线色卡（IndicatorColorControl）：第一支出厂色下面一行「默认」小字 ink3；整排顶对齐，行跟着高出那一行字 */
+.cp-form .cp-ichips { align-items: flex-start }
+.cp-form .cp-cdef { height: auto; min-height: var(--hit); padding-top: calc(11px + 22px + var(--s-xxs)) }
+.cp-form .cp-cdef small { display: block; font: var(--t-caption); color: var(--ink3); white-space: nowrap; text-align: center }
 /* 粗细四档样张 44×32、紧挨着；换画法是一排字按钮，选中的墨色淡底 + 描边 */
 .cp-form .cp-widths { gap: 0; flex-wrap: nowrap }
 .cp-form .cp-swaps { gap: var(--s-xs); justify-content: flex-end }
@@ -748,3 +787,14 @@ p.cp-meta { padding: var(--s-s) var(--s-xs) 0; white-space: normal }
   background: var(--accent); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out);
 }
 .cp-rscrub.dragging .cp-rknob { opacity: 1 }
+
+/* 画线色板（照 iOS DrawingPenSwatches，2026-10-08）：一行「颜色」+ 五格皮肤色，22px 圆点、选中的墨色圈 */
+.cp-penrow .cp-rn { flex: 1 }
+.cp-pens { flex: none; display: flex; align-items: center }
+/* 画线列表一行：名字下面一行小字「周期 · 距现价 · 价位」 */
+.cp-dl-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px }
+.cp-dl-text .cp-rn { flex: none; max-width: 100% }
+.cp-dl-facts {
+  max-width: 100%; font: var(--t-caption); color: var(--ink3); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
