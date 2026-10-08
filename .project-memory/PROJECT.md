@@ -1885,3 +1885,28 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **验证**：`tsc --noEmit` 0 错；`vitest` 177 文件 / 2246 条全过；画线交叉套件 `draw-cross.mjs` scroll-zoom 40 / indicators 66 / perf 5 全过（十六图 × 20 条画线缩放 300 下单次重画 p95 2.4 ms）；
   `wheel-feel.mjs` 全过；手机网页 `m-crosshair-e2e` / `m-layout-e2e` / `m-chart-perf` 见本节提交说明。测试新增 `tests/oi-live-tail.test.ts`、`m-favorites-trend` / `m-sector-leader` /
   `m-draw-pen` / `m-draw-reference` / `m-review-segment` / `m-chart-legend-focus` / `m-crosshair-band` / `m-line-swatches`。
+
+## 58. 10-08：网页版「主力订单流」图上逐笔点换成每根 K 线一枚大单签、大单列表抽屉换成四块图文汇总（含爆仓）、开关互不牵连；服务端爆仓分钟聚合（`Backend/kanpan-api`）
+
+- **起因**（用户，只做 web）：图上小绿点小红点「下一根就没了」、看不清；底部「大单列表」全是文字表格，「而不是要交易员再看一遍文字板的盘口信息」，要「图文结合、极致优美」；
+  第一次打开「图上订单流」会把其他开关一起拨开「这点体验很不好」；爆仓数据「放到大单列表中作为一个单独信息，不用处理太多东西」。
+- **「下一根就没了」根因**（先复现再定）：旧点只活在 `Tape` 内存里——后台 tab ≈ 70 s 空闲门把流停掉并清点、刷新 / 换品种也丢；新签不依赖 tape，数据走 `tradeFlow` 分钟桶
+  （`Cell` 加 `bn/sn` 大单笔数、现货占比、分交易所、最大一笔）+ 服务端 `/v1/market/orderflow/flow` 三天历史（bigUsd = 门槛 ÷ 50），刷新回来还在。
+- **大单签**（`Web/src/orderflow/bigTags.ts`，`layer.ts` 画）：每根买 + 卖合一枚，落在主导方向那侧（买签在高点上、卖签在低点下）；三档按近 300 根的相对分位：P85 三角 / P95 金额签 /
+  max(P99, 3×P95) 大签，再加绝对地板 `OF.bigTrade`（门槛 ÷ 5）；另一侧只有自己 ≥ P95 才给一枚描边签。本侧放不下（顶到窗格边、掉进成交量那截、撞 OHLC/MA 图例、坐标轴、画线文字
+  ——`chart.ts` 暴露 `textRects`）先翻到 K 线另一侧，两侧都撞才退成三角，极值那根不再整枚丢掉。悬停卡、点签开抽屉并滚到那一根；按数据版本缓存。
+  第一版用绝对三档一屏 400+ 枚、几乎全是 10× 档，改相对分位 + 一根一枚后 1440 宽一屏 ≈ 20–40 枚。
+- **抽屉**（`summary.ts`、`liquidation.ts`、`drawer.ts` 重写，`orderflow.css`，默认高 280、`--drawer-h`）四块画布：
+  1. 汇总：本根 / 近 1 小时 / 今日 买卖对撞条（sqrt 比例尺——线性共用刻度把小窗口压没；拆分条 ≥ 2 段才画）；
+  2. 每根：每根一对镜像柱，十字线同步高亮；
+  3. 价位：服务端 1 分钟大单行 × 1 分钟 K 线 (h+l+c)/3 落进步长桶、实时覆盖最新一桶（只用实时时「近 1 小时 49.7M 而最密价位 121K」对不上）；最近挂单墙药丸；
+     同一档既是买前三又是卖前三并成一行（一根条先涨色后跌色、两个额各按颜色写）；
+  4. 爆仓：30 s 轮询 `/liq`，多空对撞条 + 「今日最大一笔」药丸；没数据不画假图。
+- **开关**：`setOrderFlow()` 只拨自己那一位（原来第一次开会把梯子 / 抽屉 / 侧栏小件一起种上，`OF.prefs.seeded/seededStats` 留着兼容、不再读）。
+- **服务端爆仓**（`orderflow_history/liq.rs`，迁移 `0052_orderflow_liq.sql`，表 `orderflow_liq`，三天滚动）：币安 `!forceOrder@arr`（fstream + dstream，每品种每秒最多一条采样）+
+  OKX `liquidation-orders`（SWAP / FUTURES），按分钟按 base 聚合；`GET /v1/market/orderflow/liq?base=&from=&to=` → `{base,tracked,rows:[[minute_ms,longUsd,shortUsd,n,maxUsd,maxPrice,maxSide,maxEx]]}`，
+  gzip、`max-age=20`。已部署，备份 `/opt/kanpan-backups/orderflow-liq-20261008-131218/`，回滚见 `ops/README.md`。`docs/不做清单.md` 第 15 条改成「强平只开这道窄口」。
+- **压测 / 交叉**：新签 vs 旧点整帧耗时差 ≈ 1 个百分点内、0 长任务；十六图 + 订单流 + 趋势线 + 斐波那契 2560 下签与画线文字 0 相交；`tsc` 0 错、`vitest` 全过
+  （新增 `tests/orderflow-bigtags.test.ts` 翻侧 / 撞字退三角 / 相对档位 / 价位并行等）。验收图 `docs/acceptance/网页版-大单签与摘要抽屉-2026-10-08/`（浅深、1440 / 2560、抽屉 280 / 480、十字线对行）。
+- **删除前标签**：`before-remove-web-tape-dots-and-bigorder-table-2026-10-08`（`45c7afa0`）。旧打点 / 旧表格要找回从这里取 `layer.ts`、`tape.ts`、`drawer.ts`。
+- **未动**：iOS 与手机网页仍是旧点 + 旧表格；用户要的是这轮稳定后给一份完全可重设计的原型（部署到 VPS `/ui/`）+ 最终方案，再做。
