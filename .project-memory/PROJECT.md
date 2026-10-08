@@ -1855,3 +1855,33 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **测试沙盒**：`KANPAN_TEST_PROFILE=1` 下起步仍是直连（`MarketRoutePolicyStore.launchDefault`，DEBUG 才有这条岔路），`KANPAN_TEST_ROUTE_POLICY` 点名换——`ChartFoundationUITests` 等契约文件验的是盘口、外部统计这些直连才有的东西，和沙盒常用行自己铺一套是同一个道理；真正的出厂值由 `PrefsDefaultsTests` / `MarketRoutePolicyTests` 守，`SettingsBugfixTests.线路迁移` 守第 5 版迁移。`MarketRouteUITests` 的措辞从「出厂直连」改成「沙盒起步直连」。
 - **术语解释**（设置页「线路」那颗问号）改成「网关：经我们的服务器转一道，出厂就是它，不开代理也能用。直连：手机自己直接连交易所，网络本来就连得上交易所时更快。」
 - 网关各条接口从 Mac 实测都通（`/chart-gateway/health`、`/market/v1/{tickers,klines,instruments}?source=okx`、`/v1/market/funding?source=okx`、`/v1/market/raw/fapi/v1/ticker/24hr?source=binance`）。老用户升级后手机会翻到网关一次，想回直连在「图表设置 › 线路」或「我的 › 设置」点一下就一直走直连。
+
+## 57. 10-08：网页版 K 线缩放不如 TV 丝滑 / 偶尔闪一下 · 持仓量副图不延长 · 手机网页对齐 iOS 10-08 批次
+
+- **起因**：用户看 PC 网页「拖动缩放放大，K 线变化没有 TV 丝滑，有时候还会闪一下」「持仓量好像不会移动延长」「app 优化了，移动端好像没跟上」。
+- **缩放 · 先量后改**（探针在 `/tmp/kanpan-zoom/`，改前 / 改后两份构建对照）：整帧重画 p50 0.5–5 ms、补历史 / 重算便宜、价格轴宽度从不变、
+  spacing 0.5→50 扫描无渲染台阶——瓶颈不在耗时。真正能看见的是三件：
+  1. 蜡烛 x / 宽按 CSS 像素取整，Retina 上每根一次跳 2 个物理像素，缩放中整排「抖」——改成按物理像素取整（`TVChart.pr`、`snapX` / `wickW` / `candleW`，
+     照 TV lightweight-charts：`Math.round(x*pixelRatio)`，影线宽 `floor(pixelRatio)` 且不超过 `floor(spacing*pixelRatio)`，实体保留我们的 3/4 比例与「< 2.5 只剩影线」）；
+     成交量柱、副图柱、列线同一套。
+  2. 影线在间距 20 处 1→2 px 跳粗、实体奇偶同时翻——放大过 20 那一帧整屏一起变，就是「闪一下」——去掉这道台阶（sweep 近 20 处的帧差 4.19→5.13 变成 4.19→4.43）。
+  3. 触控板捏合走的是滚轮那条 120 ms 缓动、每次手势都重启缓动，跟手慢半拍——ctrl / 捏合改即时（`wheelZoom(..., instant)`），滚轮刻度照旧缓动。
+  另两处顺手：1 秒 / 1 分钟线拖动中收线，新一根顶出来时起拖记的右缘下标没 +1，下一帧视口跳回一根（`updateBar` 里 `drag.right0 += 1`）；
+  「加载更早…」标签 .25s 就淡入，快的历史加载会眨一下，改 .5s。
+- **持仓量不延长 · 根因**：`attachOI` 只在装载时取一次 500 点，WebSocket 推进来的新 K 线没有 `oi`，线停在装载那一刻；1m / 3m、周线以上根本不取（币安 period 只有 5m–1d）。
+  **改法**（照手机网页 `OISource.refreshOIIfNeeded` 的节奏）：露着持仓量副图的格子每分钟拿最近两桶补一次尾巴（`pages/chart.ts refreshOITail`，limit 只要几个点；
+  从缓存出的图也走它），新开一根先顺延上一根的值、等真值盖掉（`updateBar`）；`oiPeriod`：更细的周期铺 5 分钟桶、更粗的取那根里最后一个日点。
+  实测本机构建 + 真数据：5m 图新开的一根在 +61s 的 `limit=3` 补取后拿到真值；1m 图 1500 根全有值、跟着延长。
+- **手机网页对齐 iOS 10-08（§ 54）**，四路 Opus 子代理并行、本窗口验收：
+  - 自选行尾迷你走势（24h / 15m 97 根 / 尾点换实时价，44×20，只取露面的行、60s 巡检）+ 设置 › 通用「自选走势线」开关（默认开、随账号同步）；药丸真跳价才闪 150ms；
+    板块行「领涨 X」（规则照 `SectorLeaderLabel`）；默认自选对齐 iOS（加密：金银 + 六币 + 成交额前五；美股 12 只）。
+  - 提醒：Webhook → 「网络回调」，空态「还没有提醒 / 去创建」，通知授权只在 default 时、在开表那一下手势里问一次，创建表按内容定高；
+    复盘本观点空时落到「交易」、观点空态「去记一笔」；画线笔色默认跟皮肤、五色板、平时 70% 选中 100%、列表副行「周期 · 距现价 ±x.xx% · 价」（`draw/pen.ts`、`draw/reference.ts`）。
+  - 图例恒一行（短称 → 「+N」，`legendFit.ts`）、副图图例只留读数、叠加线 > 6 条非焦点 0.45、十字线读数挪到周期条行（11px，放不下先收开高低再收时间）、
+    头部一直实时、横滑扫图后顶栏先收徽章再收计价币「永续」一直在。
+  - 琉璃料全站令牌（`tokens.css`）、面板底无光斑琉璃、提示条玻璃 + 底栏高度 + 8、分析 / 主图指标 / 图表设置玻璃卡、短面板 `detent:'fit'`、
+    指标色板「默认」在前 + 皮肤派生（`lineSwatches.ts`，对图底 ≥ 3:1）、板块空态「板块行情还没取到 / 重新获取」、我的页未登录「登录 / 注册」药丸。
+  - 和 iOS 的已知差异：手机网页没接 Coinbase 现货，默认自选六币只有币安永续一条；默认自选只在空时播一次（iOS 每台设备并一次）。
+- **验证**：`tsc --noEmit` 0 错；`vitest` 177 文件 / 2246 条全过；画线交叉套件 `draw-cross.mjs` scroll-zoom 40 / indicators 66 / perf 5 全过（十六图 × 20 条画线缩放 300 下单次重画 p95 2.4 ms）；
+  `wheel-feel.mjs` 全过；手机网页 `m-crosshair-e2e` / `m-layout-e2e` / `m-chart-perf` 见本节提交说明。测试新增 `tests/oi-live-tail.test.ts`、`m-favorites-trend` / `m-sector-leader` /
+  `m-draw-pen` / `m-draw-reference` / `m-review-segment` / `m-chart-legend-focus` / `m-crosshair-band` / `m-line-swatches`。
