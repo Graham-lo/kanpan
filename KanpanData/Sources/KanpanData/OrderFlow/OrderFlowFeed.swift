@@ -65,6 +65,10 @@ public actor OrderFlowFeed {
   /// （挂着的照回）；nil 不带这个参数。取不到给 nil。
   public typealias HistoryLoader = @Sendable (_ base: String, _ fromMs: Int64, _ toMs: Int64,
                                               _ minLifeMs: Int64?) async -> OrderFlowHistoryPage?
+  /// 取服务端每分钟大单买卖额（`base` 已去掉缩放前缀）。取不到给 nil。
+  public typealias FlowLoader = @Sendable (_ base: String, _ fromMs: Int64, _ toMs: Int64) async -> BigTradeFlowPage?
+  /// 大单成交账多久随帧换一份（分钟桶每笔大单都在长，图表与弹层一秒一换足够）。
+  public static let tradesEveryMs: Int64 = 1_000
 
   /// 每隔多久按簿算一帧（出现、消失的确认要两次评估且相隔 ≥ 300 ms，所以不能比 300 ms 更密）。
   public static let evaluateEveryMs: Double = 500
@@ -96,6 +100,7 @@ public actor OrderFlowFeed {
   private let loadClose: CloseLoader
   private let loadTurnover: TurnoverLoader
   private let loadHistory: HistoryLoader
+  private let loadFlow: FlowLoader
   private let historyEveryMs: Int64
   /// 图上一个价格单位是几个币（`1000PEPE` 为 1000）：服务端的价是每个币的价，并进来时要乘它。
   private let chartScale: Double
@@ -139,6 +144,11 @@ public actor OrderFlowFeed {
   static let firstSnapshotTimeoutMs: Int64 = 15_000
   static let maxFirstSnapshotNudges = 3
   private var lastEmitted: OrderFlowSnapshot?
+  /// 大单成交分钟账（本机逐笔 + 服务端 /flow 分钟行）。
+  private var trades: BigTradeFlow
+  private var tradesAttachedMs: Int64 = .min / 2
+  private var flowFetch: Task<Void, Never>?
+  private var flowDueMs: Int64 = .min / 2
   private var lastEmitMs: Int64 = .min / 2
   /// 上一次把活单的金额换成新的是什么时候（`amountRefreshMs`）。
   private var amountsAtMs: Int64 = .min / 2
@@ -195,6 +205,7 @@ public actor OrderFlowFeed {
               loadBooks: @escaping BookLoader, makeAdapters: @escaping AdapterMaker,
               loadClose: @escaping CloseLoader, loadTurnover: @escaping TurnoverLoader = { nil },
               loadHistory: @escaping HistoryLoader = { _, _, _, _ in nil },
+              loadFlow: @escaping FlowLoader = { _, _, _ in nil },
               historyEveryMs: Int64 = OrderFlowFeed.historyEveryMs,
               pacer: any Pacer = SystemPacer(),
               clock: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
@@ -210,6 +221,8 @@ public actor OrderFlowFeed {
     self.loadClose = loadClose
     self.loadTurnover = loadTurnover
     self.loadHistory = loadHistory
+    self.loadFlow = loadFlow
+    self.trades = BigTradeFlow(symbol: symbol)
     self.historyEveryMs = max(historyEveryMs, 1)
     self.chartScale = OrderFlowBase.normalize(facts.base).scale
     self.file = directory.map { Self.journalFile(in: $0, symbol: symbol) }
@@ -240,6 +253,7 @@ public actor OrderFlowFeed {
               loadHistory: { base, from, to, minLife in
                 await catalog.history(base: base, fromMs: from, toMs: to, minLifeMs: minLife)
               },
+              loadFlow: { base, from, to in await catalog.flow(base: base, fromMs: from, toMs: to) },
               precise: precise, log: log, sink: sink)
   }
 
@@ -310,6 +324,7 @@ public actor OrderFlowFeed {
     frameSink.finish()
     tasks.forEach { $0.cancel() }; tasks = []
     historyFetch?.cancel(); historyFetch = nil; historyGeneration += 1
+    flowFetch?.cancel(); flowFetch = nil
     schemeTask?.cancel(); schemeTask = nil
     snapshotTasks.values.forEach { $0.cancel() }; snapshotTasks = [:]
     let dying = streams; streams = []; adapters = []; connectionOf = [:]; connectedAtMs = [:]
@@ -424,7 +439,12 @@ public actor OrderFlowFeed {
       }
     case .messages(let messages):
       var actions: [String: OrderFlowModel.Action] = [:]
+      let cut = BigTradeFlow.threshold(model.thresholds).map(BigTradeFlow.cut(threshold:))
       for m in messages {
+        if case .trade(let t) = m.message, let venue = model.venue(m.venueID) {
+          trades.record(timeMs: t.timeMs > 0 ? t.timeMs : now, price: t.price,
+                        usd: venue.notional.usd(price: t.price, quantity: t.quantity), buy: t.hitSide == .ask, cut: cut)
+        }
         let action = model.ingest(m.venueID, m.message, nowMs: now)
         if action != .none { actions[m.venueID] = action }
       }
@@ -726,6 +746,30 @@ public actor OrderFlowFeed {
     pumpHistory()
   }
 
+  // MARK: - 大单成交分钟账
+
+  /// 服务端每分钟大单买卖额：起订就取（从已有的最晚一分钟接着，没有就 3 天），之后每分钟一次；
+  /// 取不到半分钟后再试，纯本地照常。
+  private func pumpFlow(nowMs now: Int64) {
+    guard started, !stopped, flowFetch == nil, now >= flowDueMs else { return }
+    let load = loadFlow, base = facts.overrideKey, from = trades.serverFetchFrom(nowMs: now)
+    flowFetch = Task { [weak self] in
+      let page = await load(base, from, now)
+      await self?.flowArrived(page)
+    }
+  }
+
+  private func flowArrived(_ page: BigTradeFlowPage?) {
+    guard !stopped else { return }
+    flowFetch = nil
+    let now = clock()
+    guard let page else { flowDueMs = now + BigTradeFlow.retryMs; return }
+    flowDueMs = now + BigTradeFlow.pollMs
+    trades.merge(page, nowMs: now)
+    tradesAttachedMs = .min / 2
+    emitNextTick()
+  }
+
   // MARK: - 出帧
 
   private func evaluateLoop() async {
@@ -742,16 +786,24 @@ public actor OrderFlowFeed {
     nudgeSilentBooks(nowMs: now)
     if calibrating || recalibrating { calibrate(nowMs: now) }
     pumpHistory()
+    trades.beat(nowMs: now, ok: !adapters.isEmpty && connectedAtMs.count == adapters.count)
+    pumpFlow(nowMs: now)
     // 标定之前出「加载中」、不带门槛与默认：面板那时按品种事实查表（兜底 200 万），标定完换成标定值。
     var frame = calibrating ? OrderFlowSnapshot.loading(symbol, asOfMs: now) : model.evaluate(nowMs: now)
     if !calibrating {
       frame.defaults = Self.effective(facts: facts, turnover: turnover, override: nil, derivedStep: nil,
                                       calibrated: calibrated)
     }
+    if now - tradesAttachedMs >= Self.tradesEveryMs || lastEmitted?.trades == nil {
+      frame.trades = trades
+    } else {
+      frame.trades = lastEmitted?.trades
+    }
     if model.journalDirty || calibrated != savedCalibrated, now - lastSaveMs >= Self.saveEveryMs { save() }
     guard let out = Self.pace(frame, after: lastEmitted, sinceLastMs: now - lastEmitMs,
                               sinceAmountsMs: now - amountsAtMs, precise: precise()) else { return }
     if out.amountsRefreshed { amountsAtMs = now }
+    if out.frame.trades != lastEmitted?.trades { tradesAttachedMs = now }
     lastEmitted = out.frame
     lastEmitMs = now
     frameSink.yield(out.frame)

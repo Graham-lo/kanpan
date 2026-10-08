@@ -166,6 +166,8 @@ public struct OrderFlowSnapshot: Sendable, Equatable {
   /// app 手里的品种事实没有成交额，自己查表只会落到「成交额不知道」那一档（第三档）。模型本身不知道，由数据层填。
   public var defaults: OrderFlowThresholds
   public var venues: [OrderFlowVenueStatus]
+  /// 大单成交分钟账（「图上大单签」与「大单与爆仓」弹层用）。数据层每秒最多换一份；挂单墙那一路不看它。
+  public var trades: BigTradeFlow?
 
   public init(symbol: String, phase: Phase, orders: [BigOrder], asOfMs: Int64,
               thresholds: OrderFlowThresholds = OrderFlowThresholds(),
@@ -183,7 +185,7 @@ public struct OrderFlowSnapshot: Sendable, Equatable {
   /// 按精确值比的话图表静止时也要每秒整层重画两次（审查第 31 项）。
   public func sameContent(as other: OrderFlowSnapshot) -> Bool {
     guard symbol == other.symbol, phase == other.phase, thresholds == other.thresholds, defaults == other.defaults,
-          venues == other.venues, orders.count == other.orders.count else { return false }
+          venues == other.venues, trades == other.trades, orders.count == other.orders.count else { return false }
     if orders.sharesStorage(with: other.orders) { return true }
     return zip(orders, other.orders).allSatisfy { BigOrder.samePixels($0, $1) }
   }
@@ -192,6 +194,7 @@ public struct OrderFlowSnapshot: Sendable, Equatable {
   public func sameExactContent(as other: OrderFlowSnapshot) -> Bool {
     symbol == other.symbol && phase == other.phase && orders == other.orders
       && thresholds == other.thresholds && defaults == other.defaults && venues == other.venues
+      && trades == other.trades
   }
 }
 
@@ -361,6 +364,8 @@ public struct OrderFlowModel: Sendable {
   public var venues: [OrderFlowVenue] { venueOrder.compactMap { books[$0]?.venue } }
 
   public func isReady(_ venueID: String) -> Bool { books[venueID]?.isReady ?? false }
+  /// 这本簿（数据层记大单成交时按它换美元）。
+  public func venue(_ venueID: String) -> OrderFlowVenue? { books[venueID]?.venue }
 
   /// 按簿深标定非币默认门槛用：已拿到首张快照（就绪）的每本簿中间价 ±`bps` 以内两侧美元名义之和，
   /// 以及就绪了几本、一共几本。公式见 `OrderFlowDefaults.calibratedThreshold(depth:)`。

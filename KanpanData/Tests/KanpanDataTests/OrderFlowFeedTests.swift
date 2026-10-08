@@ -147,7 +147,8 @@ struct OrderFlowFeedTests {
   private func makeFeed(_ adapters: [ScriptAdapter], facts: OrderFlowFacts = eth, override: OrderFlowOverride? = nil,
                         dir: URL?, frames: Frames, handed: Handed = Handed(),
                         close: Double? = 1_250, clock: TestClock? = nil,
-                        history: OrderFlowFeed.HistoryLoader? = nil) -> OrderFlowFeed {
+                        history: OrderFlowFeed.HistoryLoader? = nil,
+                        flow: OrderFlowFeed.FlowLoader? = nil) -> OrderFlowFeed {
     let books = adapters.flatMap(\.books)
     return OrderFlowFeed(
       symbol: symbolKey, facts: facts, override: override, directory: dir,
@@ -161,6 +162,7 @@ struct OrderFlowFeedTests {
       },
       loadClose: { _ in close },
       loadHistory: history ?? { _, _, _, _ in nil },
+      loadFlow: flow ?? { _, _, _ in nil },
       clock: { @Sendable in clock?.now ?? Int64(Date().timeIntervalSince1970 * 1000) },
       evaluateEveryMs: 10,
       sink: { await frames.add($0) })
@@ -261,6 +263,43 @@ struct OrderFlowFeedTests {
     #expect(saved.step == 1)
     #expect(await again.modelForTests().orders.map(\.id).sorted() == saved.orders.map(\.id).sorted())
     await again.stop()
+  }
+
+  @Test("大单成交分钟账：门槛÷50 以上的主动成交按分钟记买 / 卖，随帧带出；/flow 起订就取 3 天、并进服务端分钟行与大单线",
+        .timeLimit(.minutes(1)))
+  func bigTradeMinutes() async throws {
+    let t0 = Int64(1_700_000_000_000) / 60_000 * 60_000
+    let clock = TestClock(t0 + 30_000)
+    let big = OrderFlowTrade(price: 1_600, quantity: 100, hitSide: .ask, timeMs: t0 + 20_000)     // 16 万，主动买
+    let sell = OrderFlowTrade(price: 1_600, quantity: 90, hitSide: .bid, timeMs: t0 + 25_000)     // 14.4 万，主动卖
+    let small = OrderFlowTrade(price: 1_600, quantity: 10, hitSide: .ask, timeMs: t0 + 26_000)    // 1.6 万，不算
+    let okx = ScriptAdapter(name: "okx", books: [okxSpot], script: [
+      "snap": [VenueMessage(okxSpot.id, .snapshot(deepSnapshot(last: 100)))],
+      "trades": [VenueMessage(okxSpot.id, .trade(big)), VenueMessage(okxSpot.id, .trade(sell)),
+                 VenueMessage(okxSpot.id, .trade(small))]])
+    actor Calls { var all: [(String, Int64, Int64)] = []; func add(_ c: (String, Int64, Int64)) { all.append(c) } }
+    let calls = Calls()
+    let frames = Frames()
+    let feed = makeFeed([okx], dir: nil, frames: frames, clock: clock, flow: { base, from, to in
+      await calls.add((base, from, to))
+      return BigTradeFlowPage(tracked: true, bigUsd: 120_000,
+                              rows: [.init(minuteMs: t0 - 3_600_000, buyUsd: 500_000, sellUsd: 0)])
+    })
+    await feed.start()
+    #expect(await waitUntil(5) { await okx.snapshots.connects == 1 })
+    await okx.snapshots.socket(0)?.push(.text("snap"))
+    #expect(await waitUntil(5) { await calls.all.count == 1 })
+    let first = try #require(await calls.all.first)
+    #expect(first.0 == "ETH" && first.2 - first.1 == BigTradeFlow.keepMs)
+    await okx.snapshots.socket(0)?.push(.text("trades"))
+    clock.advance(2_000)
+    #expect(await waitUntil(5) { await frames.last?.trades?.minutes[t0]?.sellCount == 1 })
+    let trades = try #require(await frames.last?.trades)
+    #expect(trades.minutes[t0] == BigTradeCell(buyUsd: 160_000, sellUsd: 144_000, buyCount: 1, sellCount: 1))
+    #expect(trades.cut == 120_000 && trades.tracked == true)
+    #expect(trades.serverRows[t0 - 3_600_000]?.buy == 500_000)
+    #expect(trades.lastTradeMs == t0 + 26_000)
+    await feed.stop()
   }
 
   @Test("流内快照断档、这家不会单本重订（Coinbase 那种整条连接一个序号）：整条连接重拨，新快照到了照常；挂着的单不因为重连被判结束", .timeLimit(.minutes(1)))

@@ -111,6 +111,18 @@ public struct BigTradeFlow: Sendable {
   /// 门槛 → 大单线（÷ 50）。
   public static func cut(threshold: Double) -> Double { threshold / 50 }
 
+  /// 这只品种按哪档门槛定大单线：U 本位永续 → 现货 → 币本位 / 交割里低的那个（和网页版、服务端同口径）。
+  public static func threshold(_ t: OrderFlowThresholds) -> Double? {
+    if let v = t[.usdtPerp] { return v }
+    if let v = t[.spot] { return v }
+    switch (t[.coinPerp], t[.delivery]) {
+    case let (a?, b?): return min(a, b)
+    case let (a?, nil): return a
+    case let (nil, b?): return b
+    default: return nil
+    }
+  }
+
   // MARK: - 记录
 
   /// 进一笔成交（`usd` 已按这本簿的计价算成美元）。`cut` 是本机此刻的大单线。返回这笔算不算大单。
