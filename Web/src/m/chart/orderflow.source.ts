@@ -7,6 +7,8 @@
 //   2. 拷一份：feed 的模型原地改单子（push、改 notional / status），直接交出去的话图表那边按「同一块数组」认缓存会认错，
 //      所以每帧把单子逐条浅拷贝成一份不再变的快照（几千单一次拷贝 < 1 ms，500 ms 一帧）。
 //   3. 拼上品种与默认门槛：symbol 用 feed 规范化后的代号，defaults 取 feed.defaults()（面板「恢复默认」用）。
+//   4. 逐笔记进按品种的成交流（chart/tradeFlow.ts，与电脑网页版同一套接线 orderflow/flowTap.ts）：图上大单签与「大单与爆仓」弹层
+//      读它的分钟桶；每出一帧拍一次覆盖心跳；记下正在订那只最近一笔成交的时刻（弹层「数据停在 hh:mm」）。
 //
 // 线路（直连 / 网关）与用户改过的门槛由调用方按需传 options，或随后 setRoute / setOverride；默认直连、不叠用户门槛。
 
@@ -20,6 +22,7 @@ import type { Snapshot } from '../../orderflow/model'
 import type { Override } from '../../orderflow/settings'
 import type { OrderFlowSnapshot } from './orderflowGroup'
 import { ago } from '../../util/clock'
+import { feedBeat, recordFeedTrade } from '../../orderflow/flowTap'
 
 export interface OrderFlowSourceOptions {
   /** 是不是加密货币（美股、贵金属等传 false：默认门槛按标定走）。默认 true。 */
@@ -41,6 +44,8 @@ export class OrderFlowSource {
   private key: string | null = null
   private intervalMs = 0
   private lastEmit = -Infinity
+  /** 正在订那只最近一笔成交（本机时间）；换品种清零 */
+  private lastTrade = 0
   private readonly keeper = new FeedKeeper<OrderFlowFeed>()
 
   constructor(private readonly onSnapshot: (s: OrderFlowSnapshot | null) => void) {}
@@ -50,6 +55,10 @@ export class OrderFlowSource {
 
   /** 正在订的品种（大写）；没在订是 null。 */
   get current(): string | null { return this.symbol }
+  /** 正在订那只最近一笔成交的本机时刻（毫秒）；这只还没进过成交是 0 */
+  get lastTradeMs(): number { return this.lastTrade }
+  /** 正在订那只的价位步长（簿的聚合档；还没定是 null） */
+  get step(): number | null { return this.feed?.model.scheme?.step ?? null }
 
   /**
    * 开始订这一只。intervalMs 是两帧之间至少隔多久交给图表（默认 0：feed 出一帧交一帧，即每 500 ms）；
@@ -69,6 +78,7 @@ export class OrderFlowSource {
     this.symbol = sym
     this.key = key
     this.lastEmit = -Infinity
+    this.lastTrade = 0
     const kept = this.keeper.take(key)
     if (kept) {
       // 刚看过的：连接与簿都还在，换回来马上出一帧
@@ -87,6 +97,8 @@ export class OrderFlowSource {
       override: options.override ?? null,
       precise: options.precise,
       onFrame: s => this.frame(feed, s),
+      // 留着的那只也照记（与电脑网页版 keptTrade 同口径）：换回来分钟桶是连着的
+      onTrade: ev => { recordFeedTrade(feed.symbol, ev, feed.model.thresholds); if (feed === this.feed) this.lastTrade = Date.now() },
     })
     this.feed = feed
     void feed.start()
@@ -124,6 +136,8 @@ export class OrderFlowSource {
   private frame(feed: OrderFlowFeed, s: Snapshot): void {
     if (feed !== this.feed) return
     const now = Date.now()
+    // 三家逐笔的覆盖心跳：连接都开着这半秒才算盖住（大单签、弹层合计据此判断哪几分钟能信本机）
+    feedBeat(feed, now)
     if (this.intervalMs > 0 && ago(this.lastEmit, now) < this.intervalMs) return
     this.lastEmit = now
     this.onSnapshot(toChartSnapshot(feed.symbol, s, feed.defaults(), s.phase === 'ready' ? undefined : feed.stage))

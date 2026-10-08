@@ -16,11 +16,11 @@ import { term } from '../ui/overlay'
 import { OrderFlowFeed, getJSON, type TradeEvent } from './feed'
 import { buildFine, exName, venueName } from './aggregate'
 import { HeatStore, parseHeat, heatHint, heatRing, heatUrl, type HeatRing } from './heat'
-import { Tape, tapeBase } from './tape'
+import { Tape } from './tape'
 import { TradeLadder } from './tradeLadder'
 import { TpsMeter } from './stats'
 import { FeedKeeper } from './keep'
-import { recordTrade, beat } from '../chart/tradeFlow'
+import { recordFeedTrade, feedBeat, tierFloor } from './flowTap'
 import { recordFootprintTrade, footprintWanted } from '../chart/footprint'
 import { heatFetchSent } from './heatFetch'
 import { createLayer } from './layer'
@@ -193,15 +193,13 @@ function onFrame(s: Snapshot): void {
   const now = Date.now()
   OF.snap = s
   // 三家逐笔的覆盖心跳：连接都开着这半秒才算盖住（副图累计量差 / 大单与散户）
-  const conns = f.debug().conns
-  beat(f.symbol, now, conns.length > 0 && conns.every(c => c.open))
+  feedBeat(f, now)
   OF.fine = buildFine(f.model, D.fineRadiusBps, now)
   if (OF.prefs.heat && OF.fine) {
     if (!OF.heat || OF.heat.step !== OF.fine.step) { OF.heat = new HeatStore(OF.fine.step); heatBack = freshBack() }
     OF.heat.sample(OF.fine, s.thresholds, now)
   }
-  const tb = tapeBase(s.thresholds)
-  OF.bigTrade = tb ? tb / 5 : 0
+  OF.bigTrade = tierFloor(s.thresholds)
   if (OF.fine) {
     // 梯子「变化」的实时环（梯子开着才记）；两块 24 小时统计（放在侧栏里才取）
     if (st.slots.ladder) OF.delta.sample(OF.fine, s.thresholds, now)
@@ -221,8 +219,7 @@ function onFrame(s: Snapshot): void {
 function onTrade(f: OrderFlowFeed, ev: TradeEvent): void {
   if (f !== OF.feed) { keptTrade(f, ev); return }
   const v = ev.book.venue
-  const cut = OF.snap ? tapeBase(OF.snap.thresholds) : null
-  recordTrade(f.symbol, ev, cut ? cut / 50 : null)
+  recordFeedTrade(f.symbol, ev, OF.snap?.thresholds)
   recordFootprintTrade(f.symbol, ev)
   const row = OF.tape.push({
     t: ev.trade.timeMs || Date.now(), exchange: v.exchange, label: exName(v.exchange), product: v.product,
@@ -239,8 +236,7 @@ function onTrade(f: OrderFlowFeed, ev: TradeEvent): void {
 function keptTrade(f: OrderFlowFeed, ev: TradeEvent): void {
   const k = keptState.get(f)
   if (!k) return
-  const cut = tapeBase(f.model.thresholds)
-  recordTrade(f.symbol, ev, cut ? cut / 50 : null)
+  recordFeedTrade(f.symbol, ev, f.model.thresholds)
   recordFootprintTrade(f.symbol, ev)
   const v = ev.book.venue
   const row = k.tape.push({
