@@ -15,7 +15,7 @@ import { pressure, steppedBook, exName, venueName, PRODUCT_SHORT, EXCHANGE_CH, t
 import { orderId, type BigOrder, type Product } from './types'
 import { tapeBase, bpsText, tapeRowH, tapeRowAlpha, TAPE_ROW_SMALL, type TapeRow } from './tape'
 import { parseAmount } from './settings'
-import { OF, feedIdleText, savePrefs, amt, hms, durShort, decFor, px, canvasFont, bandColor } from './state'
+import { OF, feedIdleText, savePrefs, amt, hms, durShort, decFor, px, canvasFont, bandColor, productColor } from './state'
 import { planSidebar, dragSidebar, sideCanDrag, toggleCollapsed, partsFor, BOOK_ROW, WALL_ROW, PARTS } from './sidebar'
 import { sizes, saveSizes } from '../app/sizes'
 import { StatChart, statHead, tpsLine, TPS_SHELL, type StatKind } from './statsView'
@@ -435,9 +435,9 @@ function updateWalls(): void {
       patchAttr(row, 'data-wall', id)
       patchAttr(row, 'aria-label', `${bid ? '买' : '卖'} ${px(o.price, dec)} ${amt(o.notional)}`)
       const [bar, sd, vn, p, v, t] = Array.from(row.children)
-      patchStyle(bar, 'width', `${(o.notional / max * 100).toFixed(1)}%`); patchStyle(bar, 'background', bandColor(o.product, o.side, 0.16))
+      patchStyle(bar, 'width', `${(o.notional / max * 100).toFixed(1)}%`); patchStyle(bar, 'background', bandColor(o.product, o.side, 0.14))
       patchClass(sd, `sd ${bid ? 'up' : 'down'}`); patchText(sd, bid ? '买' : '卖')
-      patchStyle(vn.firstElementChild, 'background', bandColor(o.product, o.side, 1)); patchText(vn.lastElementChild, venueName(exName(o.exchange), o.product))
+      patchStyle(vn.firstElementChild, 'background', productColor(o.product, document.documentElement.dataset.theme === 'dark')); patchText(vn.lastElementChild, venueName(exName(o.exchange), o.product))
       patchText(p, px(o.price, dec)); patchText(v, amt(o.notional)); patchText(t, durShort(now - o.firstSeenMs))
     })
 }

@@ -22,7 +22,7 @@ import { rowOf, exName, venueName, outcomeText, EXCHANGE_NAMES } from './aggrega
 import { HeatCache, percentile, heatAlpha, edgeFade, type HeatCol } from './heat'
 import { pickBands, liveAlpha, placeLabels, placeMark, mergedWalls, wallOf, wallId, bookRows, wallPeak, MAX_MARKS, ENDED_LINE, HIGHLIGHT_ALPHA, type Rect, type BookRow } from './bands'
 import { OrderFlowGroup } from './group'
-import { OF, rowsPerLine, bandColor, bandInk, isDarkBg, rgbOf, showCard, hideCard, amt, hms, mdhm, durShort, decFor, px, peak, canvasFont } from './state'
+import { OF, rowsPerLine, bandColor, bandInk, productColor, isDarkBg, rgbOf, showCard, hideCard, amt, hms, mdhm, durShort, decFor, px, peak, canvasFont } from './state'
 import { esc } from '../ui/dom'
 import { hexA } from '../util/format'
 import { flowOf, ensureHistory } from '../chart/tradeFlow'
@@ -231,8 +231,10 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     for (let rank = n - 1; rank >= 0; rank--) {
       const v = pick.live[rank]
       const hl = OF.highlight === v.id
-      c.fillStyle = bandColor(v.o.product, v.o.side, hl ? HIGHLIGHT_ALPHA : liveAlpha(rank, n, dark), dark)
+      c.fillStyle = bandColor(v.o.product, v.o.side, hl ? HIGHLIGHT_ALPHA[dark ? 'dark' : 'light'] : liveAlpha(rank, n, dark), dark)
       c.fillRect(v.x0, v.y0, v.x1 - v.x0, v.h)
+      // 左缘 2 px 品类细条：方向看底色，现货 / 永续看这一道
+      if (v.x0 > -2) { c.fillStyle = productColor(v.o.product, dark); c.fillRect(v.x0, v.y0, 2, v.h) }
       if (hl) { c.strokeStyle = g.colors.accent; c.lineWidth = 1; c.strokeRect(v.x0 + .5, v.y0 + .5, v.x1 - v.x0 - 1, v.h - 1) }
       bands.push({ x0: v.x0, x1: v.x1, y0: v.y0, y1: v.y0 + v.h, v })
     }
@@ -275,9 +277,10 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
       if (!r) continue
       const v = all[i]
       markRects.push(r)
-      c.fillStyle = hexA(g.colors.bg, p.dark ? 0.55 : 0.6)
+      // 先垫一层 70% 的画布底，蜡烛不从字后面透出来（规范 §5b）
+      c.fillStyle = hexA(g.colors.bg, 0.7)
       rrect(c, r.x, r.y, r.w, r.h, 3); c.fill()
-      c.fillStyle = bandColor(v.o.product, v.o.side, p.dark ? 0.24 : 0.16, p.dark)
+      c.fillStyle = bandColor(v.o.product, v.o.side, p.dark ? 0.2 : 0.12, p.dark)
       rrect(c, r.x, r.y, r.w, r.h, 3); c.fill()
       c.fillStyle = bandInk(v.o.product, v.o.side, p.dark)
       c.fillText(texts[i], r.x + 5, r.y + r.h / 2 + 0.5)
@@ -402,7 +405,7 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     const now = Date.now()
     const buy = w.side === 'bid'
     const kind = w.contract ? '合约' : '现货'
-    const head = `<div class="hc-h"><i class="sw" style="background:${bandColor(b.v.o.product, w.side, 1)}"></i><b>${kind} · <span class="${buy ? 'up' : 'dn'}">${buy ? '买单' : '卖单'}</span></b>· <span class="num">${px(lo, d)} – ${px(hi, d)}</span></div>`
+    const head = `<div class="hc-h"><i class="sw" style="background:${productColor(b.v.o.product, plan?.dark ?? false)}"></i><b>${kind} · <span class="${buy ? 'up' : 'dn'}">${buy ? '买单' : '卖单'}</span></b>· <span class="num">${px(lo, d)} – ${px(hi, d)}</span></div>`
     const net = `<div class="hc-net"><span class="v num ${buy ? 'up' : 'dn'}">${amt(b.v.pk)}</span><span class="l">${w.isLive ? BT.statusLive : BT.statusEnded}</span></div>`
     const one = w.members.length === 1 ? w.members[0] : null
     const fill = w.filledNotional > 0 ? `${amt(w.filledNotional)}` : '—'

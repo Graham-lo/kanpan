@@ -16,7 +16,7 @@ import { I, esc } from '../ui/dom'
 import { hexA } from '../util/format'
 import { bucketIndex, mergeFactor } from './bucket'
 import { ladderRows, rowOf, type LadderRow, venueName, exName } from './aggregate'
-import { OF, savePrefs, bandColor, showCard, hideCard, amt, hm, durShort, decFor, px, canvasFont } from './state'
+import { OF, savePrefs, bandColor, bandInk, productColor, surfaceColor, showCard, hideCard, amt, hm, durShort, decFor, px, canvasFont } from './state'
 import { deltaPct, fromMidPct, signedPct, type TradeRow } from './tradeLadder'
 import { snapFine, deltaRows, rowSeries, sparkSVG, niceCeil, WIN_MS, type DeltaRow, type DeltaWin } from './depthDelta'
 import type { SplitCol } from './heatFetch'
@@ -273,7 +273,7 @@ export function drawLadder(chart: TVChart, g: ChartGeometry): void {
     }
     if (big) {
       const o = x!.orders[0]
-      c.fillStyle = bandColor(o.product, o.side, 1)
+      c.fillStyle = productColor(o.product, darkUI())
       c.fillRect(0, yT, 3, h)
       if (!delta && h >= 10) pill(c, x!, cy, o.side === 'bid')
     }
@@ -319,15 +319,18 @@ function pill(c: CanvasRenderingContext2D, x: LadderRow, y: number, bidRow: bool
   const dw = dots.length ? dots.length * 7 + 2 : 0
   const w = Math.min(room, c.measureText(t).width + 12 + dw), h = 16
   const x0 = bidRow ? R + 4 : L - 4 - w
-  c.fillStyle = bandColor(o.product, o.side, 1)
+  // 字不压实色底（规范 §5b）：方向色淡底 + 方向文字色，品类只是行尾的小点
+  const dark = darkUI()
+  c.fillStyle = surfaceColor()
   roundRect(c, x0, y - h / 2, w, h, 8); c.fill()
-  c.fillStyle = '#fff'; c.textAlign = 'left'
+  c.fillStyle = bandColor(o.product, o.side, dark ? 0.24 : 0.16)
+  roundRect(c, x0, y - h / 2, w, h, 8); c.fill()
+  c.fillStyle = bandInk(o.product, o.side); c.textAlign = 'left'
   c.save(); c.beginPath(); c.rect(x0 + 6, y - h / 2, w - 12 - dw, h); c.clip()
   c.fillText(t, x0 + 6, y); c.restore()
   dots.forEach((q, i) => {
     const cx = x0 + w - 8 - i * 7
-    c.beginPath(); c.arc(cx, y, 3, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill()
-    c.beginPath(); c.arc(cx, y, 2, 0, Math.PI * 2); c.fillStyle = bandColor(q.product, q.side, 1); c.fill()
+    c.beginPath(); c.arc(cx, y, 2.5, 0, Math.PI * 2); c.fillStyle = productColor(q.product, dark); c.fill()
   })
 }
 
@@ -451,7 +454,7 @@ function rowCard(r: LadderRow): string {
     for (const [n, v, s] of items.slice(0, 12)) lines.push(`<div class="of-card-r"><span>${n}<em class="${s === 'bid' ? 'up' : 'down'}">${s === 'bid' ? '买' : '卖'}</em></span><b class="num">${amt(v)}</b></div>`)
     if (items.length > 12) lines.push(`<div class="of-card-r faint"><span>另有 ${items.length - 12} 处</span></div>`)
   }
-  const orders = r.orders.map(o => `<div class="of-card-r"><span><i class="sw" style="background:${bandColor(o.product, o.side, 1)}"></i>${esc(venueName(exName(o.exchange), o.product))} 大单</span><b class="num">${amt(o.notional)} · ${durShort(Date.now() - o.firstSeenMs)}</b></div>`).join('')
+  const orders = r.orders.map(o => `<div class="of-card-r"><span><i class="sw" style="background:${productColor(o.product, darkUI())}"></i>${esc(venueName(exName(o.exchange), o.product))} 大单</span><b class="num">${amt(o.notional)} · ${durShort(Date.now() - o.firstSeenMs)}</b></div>`).join('')
   // 成交（中列）与距中间价
   const t = frame?.trades.get(r.row)
   const since = OF.trades.since
@@ -517,3 +520,6 @@ export function redrawLadder(): void { if (lastGeo) drawLadder(lastGeo.chart, la
 
 /** 换品种：点过的行、缓存都不要了 */
 export function resetLadder(): void { pinned = null; cache = null; tradeCache = null; deltaCache = null; nowCol = null }
+
+/** 页面是不是深色（品类分类色深浅两套） */
+function darkUI(): boolean { return document.documentElement.dataset.theme === 'dark' }

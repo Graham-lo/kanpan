@@ -19,12 +19,13 @@ export const MAX_ENDED_BANDS = 4
 export const MAX_LABELS = 8
 export const MAX_MARKS = 3
 
-/** 挂着的带：最大的一道 hi，最小的 lo（浅色皮肤 / 深色皮肤各一套） */
-export const LIVE_ALPHA = { light: { lo: 0.14, hi: 0.20 }, dark: { lo: 0.12, hi: 0.18 } } as const
+/** 挂着的带：最大的一道 hi，最小的 lo（浅色皮肤 / 深色皮肤各一套）。
+ *  带按涨跌方向着色（规范 §2 订单流：浅色 0.10、深色 0.16 上下），涨跌色比原来的品类色饱和，浅色压得更淡 */
+export const LIVE_ALPHA = { light: { lo: 0.08, hi: 0.12 }, dark: { lo: 0.13, hi: 0.19 } } as const
 /** 结束的带不铺底色（上限 0.08 的要求取 0），只画一道 1 px 细线 */
 export const ENDED_LINE = { light: 0.55, dark: 0.5 } as const
 /** 被点中的那道 */
-export const HIGHLIGHT_ALPHA = 0.3
+export const HIGHLIGHT_ALPHA = { light: 0.22, dark: 0.30 } as const
 
 export interface BandCand { id: string; live: boolean; pk: number }
 

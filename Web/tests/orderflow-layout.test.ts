@@ -53,16 +53,16 @@ describe('pickBands：图上只画峰值最大的几道', () => {
   })
 })
 
-describe('liveAlpha：挂着的带 0.14–0.20，最大的最深', () => {
-  it('浅色：第一道 0.20、最后一道 0.14，单调不增', () => {
+describe('liveAlpha：挂着的带按涨跌色铺底，浅色 0.08–0.12，最大的最深', () => {
+  it('浅色：第一道 0.12、最后一道 0.08，单调不增', () => {
     const n = 8
     const xs = Array.from({ length: n }, (_, i) => liveAlpha(i, n))
     expect(xs[0]).toBeCloseTo(LIVE_ALPHA.light.hi)
     expect(xs[n - 1]).toBeCloseTo(LIVE_ALPHA.light.lo)
-    expect(LIVE_ALPHA.light.lo).toBeGreaterThanOrEqual(0.14)
-    expect(LIVE_ALPHA.light.hi).toBeLessThanOrEqual(0.2)
+    expect(LIVE_ALPHA.light.lo).toBeGreaterThanOrEqual(0.06)
+    expect(LIVE_ALPHA.light.hi).toBeLessThanOrEqual(0.14)
     for (let i = 1; i < n; i++) expect(xs[i]).toBeLessThanOrEqual(xs[i - 1])
-    for (const x of xs) { expect(x).toBeGreaterThanOrEqual(0.14); expect(x).toBeLessThanOrEqual(0.2) }
+    for (const x of xs) { expect(x).toBeGreaterThanOrEqual(LIVE_ALPHA.light.lo); expect(x).toBeLessThanOrEqual(LIVE_ALPHA.light.hi) }
   })
   it('只有一道时取最深；深色皮肤一套自己的范围，也不超过 0.20', () => {
     expect(liveAlpha(0, 1)).toBe(LIVE_ALPHA.light.hi)

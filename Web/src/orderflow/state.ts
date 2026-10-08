@@ -145,32 +145,35 @@ export function rowsPerLine(g: ChartGeometry, step: number, iv: string): number 
 
 // ------------------------------------------------------------------ 配色
 
-/** 四种产品四个色相，买卖再各偏 ±12°（设计稿 2.3）。 */
-export const PRODUCT_HEX: Record<Product, string> = { spot: '#06B6D4', usdtPerp: '#8B5CF6', coinPerp: '#F59E0B', delivery: '#EC4899' }
-const cache = new Map<string, [number, number, number]>()
-function hexToHsl(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1, 7), 16)
-  const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255
-  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2
-  if (mx === mn) return [0, 0, l]
-  const d = mx - mn, s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn)
-  const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4
-  return [h * 60, s, l]
+/** 品类分类色（docs/design/电脑网页UI规范-2026-10-08.md §2）：同明度、同饱和度的 OKLCH，只上小记号
+ *  （带左缘细条、圆点、图例），不铺大面积。买卖方向不靠它分，靠 bandColor 的涨跌色。 */
+export const PRODUCT_HUE: Record<Product, number> = { spot: 190, usdtPerp: 280, coinPerp: 88, delivery: 330 }
+export function productColor(p: Product, dark = false): string {
+  return dark ? `oklch(0.76 0.10 ${PRODUCT_HUE[p]})` : `oklch(0.60 0.12 ${PRODUCT_HUE[p]})`
 }
-/** dark = 深色皮肤：同一色相提亮、降一点饱和，免得在深底上发刺（浓淡另由 bands.ts 按皮肤定） */
-export function bandColor(p: Product, side: 'bid' | 'ask', a: number, dark = false): string {
-  const k = p + side
-  let hsl = cache.get(k)
-  if (!hsl) { const [h, s, l] = hexToHsl(PRODUCT_HEX[p]); hsl = [(h + (side === 'bid' ? -12 : 12) + 360) % 360, s, l]; cache.set(k, hsl) }
-  const sat = dark ? hsl[1] * 0.78 : hsl[1], lig = dark ? Math.min(0.74, hsl[2] + 0.14) : hsl[2]
-  return `hsla(${hsl[0].toFixed(0)},${(sat * 100).toFixed(0)}%,${(lig * 100).toFixed(0)}%,${a})`
+/** 涨跌色从页面变量取（跟着皮肤、深浅色与「红涨 / 绿涨」走）；三个开关不变就不重读样式 */
+let dirKey = ''
+let dir = { up: [8, 153, 129], down: [242, 54, 69], upText: '#04705E', downText: '#BC2434', surface: '#F8F9FA' } as { up: number[]; down: number[]; upText: string; downText: string; surface: string }
+function dirColors(): typeof dir {
+  if (typeof document === 'undefined') return dir
+  const r = document.documentElement, k = `${r.dataset.theme}|${r.dataset.skin}|${r.dataset.updown}`
+  if (k === dirKey) return dir
+  const cs = getComputedStyle(r), v = (n: string) => cs.getPropertyValue(n).trim()
+  const up = v('--up'), down = v('--down')
+  if (up && down) dir = { up: rgbOf(up), down: rgbOf(down), upText: v('--up-text') || up, downText: v('--down-text') || down, surface: v('--surface') || dir.surface }
+  dirKey = k
+  return dir
 }
-/** 标签上的字：浅色皮肤压暗一点过对比度，深色皮肤提亮 */
-export function bandInk(p: Product, side: 'bid' | 'ask', dark = false): string {
-  bandColor(p, side, 1)
-  const hsl = cache.get(p + side)!
-  const lig = dark ? 0.8 : Math.max(0.3, hsl[2] - 0.14)
-  return `hsl(${hsl[0].toFixed(0)},${(hsl[1] * (dark ? 0.7 : 0.9) * 100).toFixed(0)}%,${(lig * 100).toFixed(0)}%)`
+/** 大单带的颜色：挂买 = 涨色、挂卖 = 跌色（规范 §2 订单流）。p、dark 留着给调用方不改签名，深浅由透明度定 */
+export function bandColor(_p: Product, side: 'bid' | 'ask', a: number, _dark = false): string {
+  const [r, g, b] = side === 'bid' ? dirColors().up : dirColors().down
+  return `rgba(${r},${g},${b},${a})`
+}
+/** 卡片底色：半透明方向底下面先垫它，别让底下的字透出来 */
+export function surfaceColor(): string { return dirColors().surface }
+/** 带上的字：涨跌文字色（面板与卡片上都 ≥ 4.5:1） */
+export function bandInk(_p: Product, side: 'bid' | 'ask', _dark = false): string {
+  return side === 'bid' ? dirColors().upText : dirColors().downText
 }
 /** 底色是不是深色（相对亮度 < 0.35） */
 export function isDarkBg(bg: string): boolean {

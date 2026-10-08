@@ -395,9 +395,9 @@ const TILE: Record<string, string> = {
   drawer: `<span class="tgi" style="background:linear-gradient(135deg,var(--accent-soft),color-mix(in srgb,var(--accent) 22%,transparent))">${svg18(
     '<rect x="2" y="10" width="14" height="6" rx="2" fill="var(--accent)"/><rect x="2" y="2" width="14" height="6" rx="2" fill="var(--accent)" opacity=".28"/>' +
     '<rect x="5" y="12.2" width="4" height="1.6" rx=".8" fill="#fff"/><rect x="10" y="12.2" width="3" height="1.6" rx=".8" fill="#fff" opacity=".7"/>')}</span>`,
-  heat: `<span class="tgi" style="background:linear-gradient(135deg,rgba(242,140,40,.16),rgba(123,108,240,.16))">${svg18(
+  heat: `<span class="tgi" style="background:linear-gradient(135deg,var(--of-wall-a),color-mix(in srgb,var(--alert-line) 14%,transparent))">${svg18(
     [0, 1, 2, 3].map(c => [0, 1, 2, 3].map(r =>
-      `<rect x="${1 + c * 4.2}" y="${1 + r * 4.2}" width="3.4" height="3.4" rx=".8" fill="${(c + r) % 3 ? 'var(--of-wall)' : '#F28C28'}" opacity="${(.25 + ((c * 3 + r * 5) % 7) / 9).toFixed(2)}"/>`).join('')).join(''))}</span>`,
+      `<rect x="${1 + c * 4.2}" y="${1 + r * 4.2}" width="3.4" height="3.4" rx=".8" fill="${(c + r) % 3 ? 'var(--of-wall)' : 'var(--alert-line)'}" opacity="${(.25 + ((c * 3 + r * 5) % 7) / 9).toFixed(2)}"/>`).join('')).join(''))}</span>`,
 }
 
 const sw = (id: string, label: string, on: boolean, tip: string): string =>
