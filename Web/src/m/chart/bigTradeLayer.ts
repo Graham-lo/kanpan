@@ -16,11 +16,11 @@
 import type { ChartView, ChartLayerHandle } from './view'
 import type { ChartRenderer } from './renderer'
 import type { BarSeries } from './series'
-import { drawingLabelBoxes, orderFlowAmount } from './renderer.orderflow'
+import { drawingLabelBoxes } from './renderer.orderflow'
 import { css, alpha, bytes, textWidth, drawCentered, type ChartFontSpec, type Hex } from './paint'
 import { dateParts, pad2 } from './format'
 import { reduceMotion } from './gesture'
-import { planSigns, hitSign, hitBox, signLabel, SIGN, type Sign, type SignBar } from './bigTradeSigns'
+import { planSigns, hitSign, hitBox, signLabel, amtShort, SIGN, type Sign, type SignBar } from './bigTradeSigns'
 import { BigBarCache, LevelCache, TIER_BARS, BUBBLE, udOf, type Levels, type LiqBars } from '../../orderflow/bigTags'
 import { LiqBarCache } from '../../orderflow/liquidation'
 import { flowOf, type SymbolFlow } from '../../chart/tradeFlow'
@@ -186,7 +186,7 @@ export class BigTradeLayer {
       top: pane.y + Math.max(SIGN.legendBand, r.mainLegendInset(L.plotW)), bottom: pane.y + pane.h, plotW: L.plotW,
       spacing: r.spacing(L.plotW),
       avoid: drawingLabelBoxes(r, pane, range, L),
-      measure: t => textWidth(t, SIGN_FONT), fmt: orderFlowAmount,
+      measure: t => textWidth(t, SIGN_FONT), fmt: amtShort,
     })
     this.signs = signs
     this.watchLive(series, data, signs)
@@ -304,7 +304,7 @@ export class BigTradeLayer {
         const b = document.createElement('button')
         b.type = 'button'
         b.className = 'm-bigtrade-aria-sign'
-        b.setAttribute('aria-label', signLabel(s, orderFlowAmount, this.when(s.t)))
+        b.setAttribute('aria-label', signLabel(s, amtShort, this.when(s.t)))
         const box = hitBox(s)
         Object.assign(b.style, {
           position: 'absolute', left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${box.h}px`,

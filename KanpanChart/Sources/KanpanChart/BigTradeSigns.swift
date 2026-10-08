@@ -81,18 +81,28 @@ public enum BigTradeBubbles {
     return 0
   }
 
-  /// 泡上的字：金额短写去掉 `M`（1.2M → 1.2），十万以上的 K 取整（860K），其余照短写。
-  public static func bubbleText(_ v: Double) -> String {
-    switch volUnit(v, decimals: 1, plainDecimals: 0) {
-    case .t: return toFixed(v / 1e12, 1) + "T"
-    case .b: return toFixed(v / 1e9, 1) + "B"
-    case .m: return toFixed(v / 1e6, 1)
-    case .k:
-      guard v >= 1e5 else { return toFixed(v / 1e3, 1) + "K" }
-      let s = toFixed(v / 1e3, 0)
-      return s == "1000" ? "1.0" : s + "K"
-    case .plain: return toFixed(v, 0)
+  /// 金额短写，三端同一口径（电脑网页 orderflow/state.ts `amt`、手机网页 bigTradeSigns.ts `amtShort`）：
+  /// K / M / B / T，不足 100 一位小数、≥ 100 取整；取整后进位到 1000 就升一档（999.7M → 1.0B）。读屏用它。
+  public static func amtShort(_ v: Double) -> String {
+    guard v.isFinite else { return "—" }
+    let units: [(Double, String)] = [(1, ""), (1e3, "K"), (1e6, "M"), (1e9, "B"), (1e12, "T")]
+    let a = abs(v)
+    var i = units.count - 1
+    while i > 0 && a < units[i].0 { i -= 1 }
+    while i < units.count {
+      let (d, u) = units[i], x = v / d
+      let t = abs(x) >= 100 || u.isEmpty ? toFixed(x, 0) : toFixed(x, 1)
+      let n = Double(t) ?? 0
+      if abs(n) < 1000 || i == units.count - 1 { return (n == 0 ? t.replacingOccurrences(of: "-", with: "") : t) + u }
+      i += 1
     }
+    return "—"
+  }
+
+  /// 泡上的字：`amtShort` 去掉末尾的 `M`（1.2M → 1.2、974M → 974），K / B / T 留着。
+  public static func bubbleText(_ v: Double) -> String {
+    let s = amtShort(v)
+    return s.hasSuffix("M") ? String(s.dropLast()) : s
   }
 
   // MARK: 摆放

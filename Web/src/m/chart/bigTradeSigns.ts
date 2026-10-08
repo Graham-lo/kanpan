@@ -45,8 +45,24 @@ export interface SignEnv {
   avoid: readonly Rect[]
   /** 量泡里的字宽（11 / 600、等宽数字） */
   measure: (text: string) => number
-  /** 金额短写（1.2M / 860K），泡里再去掉末尾的 M */
+  /** 金额短写（1.2M / 860K），泡里再去掉末尾的 M；三端同一口径用 `amtShort` */
   fmt: (usd: number) => string
+}
+
+/** 泡与读屏用的金额短写，三端同一口径（电脑网页 orderflow/state.ts amt、iOS BigTradeBubbles.amtShort）：
+ *  K / M / B / T，不足 100 一位小数、≥ 100 取整；取整后进位到 1000 就升一档（999.7M → 1.0B） */
+const AMT_UNITS: readonly [number, string][] = [[1, ''], [1e3, 'K'], [1e6, 'M'], [1e9, 'B'], [1e12, 'T']]
+export function amtShort(v: number): string {
+  if (!Number.isFinite(v)) return '—'
+  const a = Math.abs(v)
+  let i = AMT_UNITS.length - 1
+  while (i > 0 && a < AMT_UNITS[i][0]) i--
+  for (; i < AMT_UNITS.length; i++) {
+    const [d, u] = AMT_UNITS[i], x = v / d
+    const t = Math.abs(x) >= 100 || !u ? x.toFixed(0) : x.toFixed(1)
+    if (Math.abs(+t) < 1000 || i === AMT_UNITS.length - 1) return (+t === 0 ? t.replace('-', '') : t) + u
+  }
+  return '—'
 }
 
 /** 排一屏：返回按根序（同根上侧在前） */

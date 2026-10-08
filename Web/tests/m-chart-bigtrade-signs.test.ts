@@ -3,7 +3,7 @@
 // + 图层（ChartView.addLayer 上真排一屏：命中只认泡、读屏只列泡、画线文字零相交）+ 数据源（爆仓按根并进 U / D）。
 // 场地：node 里假的 DOM 元素与假画布（只记调用），帧循环不跑。
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { SIGN, planSigns, hitSign, hitBox, signLabel, type SignBar, type SignEnv } from '../src/m/chart/bigTradeSigns'
+import { SIGN, amtShort, planSigns, hitSign, hitBox, signLabel, type SignBar, type SignEnv } from '../src/m/chart/bigTradeSigns'
 import { BigTradeLayer, bigTradeSource, type BigTradeSource } from '../src/m/chart/bigTradeLayer'
 import { BUBBLE, type Levels, type Rect } from '../src/orderflow/bigTags'
 import type { LiqRow } from '../src/orderflow/liquidation'
@@ -40,6 +40,12 @@ describe('气泡 · 一根上下各至多一枚', () => {
     expect(u.cy + u.r).toBe(96)
     expect(d).toMatchObject({ side: 'down', bubble: false, text: '', anchor: 200 })
     expect(d.cy - d.r).toBeCloseTo(202)
+  })
+  it('amtShort 三端同口径：不足 100 一位小数、≥ 100 取整、进位升档；泡字去 M', () => {
+    expect(amtShort(1_234_567)).toBe('1.2M'); expect(amtShort(974_100_000)).toBe('974M'); expect(amtShort(860_400)).toBe('860K')
+    expect(amtShort(45_600)).toBe('45.6K'); expect(amtShort(999_700)).toBe('1.0M'); expect(amtShort(999_700_000)).toBe('1.0B'); expect(amtShort(800)).toBe('800')
+    const [b] = planSigns([bar({ up: 974_100_000, down: 0 })], env({ fmt: amtShort, levels: { dot: 1e6, bubble: 3e6 } }))
+    expect(b.text).toBe('974')
   })
   it('没过点线不画；没有金额线不画', () => {
     expect(planSigns([bar({ up: 99_000, down: 90_000 })], env())).toEqual([])

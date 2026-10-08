@@ -57,14 +57,17 @@ struct BigTradeBubblesTests {
     #expect(BigTradeBubbles.level(of: .nan, Self.k) == 0)
   }
 
-  @Test func 泡上的字_M去掉_十万以上K取整() {
+  @Test func 泡上的字_M去掉_三端同口径_不足100一位小数_过100取整() {
     #expect(BigTradeBubbles.bubbleText(1_234_567) == "1.2")
     #expect(BigTradeBubbles.bubbleText(12_000_000) == "12.0")
+    #expect(BigTradeBubbles.bubbleText(974_100_000) == "974", "≥ 100 取整，和电脑网页一样")
     #expect(BigTradeBubbles.bubbleText(860_400) == "860K")
     #expect(BigTradeBubbles.bubbleText(45_600) == "45.6K")
     #expect(BigTradeBubbles.bubbleText(999_700) == "1.0", "进位成一千 K 就是 1.0（M 不写）")
+    #expect(BigTradeBubbles.bubbleText(999_700_000) == "1.0B", "进位成一千 M 升到 B")
     #expect(BigTradeBubbles.bubbleText(2_500_000_000) == "2.5B")
     #expect(BigTradeBubbles.bubbleText(800) == "800")
+    #expect(BigTradeBubbles.amtShort(974_100_000) == "974M")
   }
 
   // MARK: 摆放
