@@ -15,7 +15,6 @@ const BINANCE: &str = "https://www.binance.com";
 #[derive(Clone)]
 struct Config {
     source: String,
-    gateway: String,
     symbols: Vec<String>,
     intervals: Vec<String>,
     days: i64,
@@ -50,11 +49,12 @@ fn config() -> Result<Config> {
     // 空列表 = 运行时按成交额取前 DEFAULT_TOP 只（见 `top_symbols`）。
     let symbols = csv("KANPAN_INDEX_SYMBOLS", "");
     let intervals = csv("KANPAN_INDEX_INTERVALS", "15m,1h,4h,1d");
-    // 默认 binance：找相似按记录的 venue 过滤 `source`，而复盘只收 binance / coinbase
-    // （多交易所阶段 1），okx 来源的窗口再也不会被检索到。
+    // 只导币安：找相似按记录的 venue 过滤 `source`，复盘只收注册表里标了「支持复盘」的那几家
+    // （`venues::Venue::review`），OKX 来源的窗口检索不到。以前的 `KANPAN_INDEX_SOURCE=okx` 走 Python 网关的
+    // `/market/v1/klines?source=okx`（OKX 当币安替身那一套），2026-10-08 替身整层删掉，这条路一并删了。
     let source = env("KANPAN_INDEX_SOURCE", "binance");
-    if !matches!(source.as_str(), "binance" | "okx") {
-        bail!("KANPAN_INDEX_SOURCE must be binance or okx");
+    if source != "binance" {
+        bail!("KANPAN_INDEX_SOURCE must be binance");
     }
     if intervals.is_empty() {
         bail!("index intervals cannot be empty");
@@ -69,7 +69,6 @@ fn config() -> Result<Config> {
     }
     Ok(Config {
         source,
-        gateway: env("KANPAN_MARKET_GATEWAY", "http://127.0.0.1:8792"),
         symbols,
         intervals,
         days,
@@ -115,37 +114,23 @@ fn parse_bar(row: &Value, interval: Interval) -> Result<Bar> {
 // One page of a public kline endpoint: every argument is part of that URL, and
 // wrapping them in a struct would only move the same eight values one line up.
 #[allow(clippy::too_many_arguments)]
-async fn fetch_page(client: &Client, source: &str, gateway: &str, symbol: &str, interval: &str, start: i64, end: i64, limit: usize) -> Result<Vec<Bar>> {
-    let url = if source == "binance" {
-        // `www.binance.com`, not `fapi.binance.com`: both market VPS sit in
-        // the United States, where the API host answers 451 and the website
-        // host serves the same paths with production data (`market_meta.rs`).
-        "https://www.binance.com/fapi/v1/klines".to_owned()
-    } else {
-        format!("{gateway}/market/v1/klines")
-    };
+async fn fetch_page(client: &Client, symbol: &str, interval: &str, start: i64, end: i64, limit: usize) -> Result<Vec<Bar>> {
+    // `www.binance.com`, not `fapi.binance.com`: both market VPS sit in
+    // the United States, where the API host answers 451 and the website
+    // host serves the same paths with production data (`market_meta.rs`).
+    let url = format!("{BINANCE}/fapi/v1/klines");
     let start_param = start.to_string();
     let end_param = (end - 1).to_string();
     let limit_param = limit.to_string();
-    let mut params = vec![
+    let params = vec![
         ("symbol", symbol),
         ("interval", interval),
         ("startTime", start_param.as_str()),
         ("endTime", end_param.as_str()),
         ("limit", limit_param.as_str()),
     ];
-    if source != "binance" {
-        params.insert(0, ("source", source));
-    }
     let payload = get_json(client, &url, &params).await?;
-    let rows = if source == "binance" {
-        payload.as_array().context("Binance bars missing")?
-    } else {
-        if payload["source"] != source || payload["symbol"] != symbol || payload["interval"] != interval {
-            bail!("market source identity mismatch");
-        }
-        payload["bars"].as_array().context("market gateway bars missing")?
-    };
+    let rows = payload.as_array().context("Binance bars missing")?;
     let interval = Interval::exact(interval).map_err(|_| anyhow::anyhow!("invalid interval"))?;
     let bars: Vec<Bar> = rows.iter().map(|row| parse_bar(row, interval)).collect::<Result<_>>()?;
     for pair in bars.windows(2) {
@@ -222,7 +207,7 @@ async fn fetch_range(client: &Client, cfg: &Config, symbol: &str, interval_name:
     let mut cursor = start;
     let mut all = Vec::new();
     while cursor < end {
-        let page = fetch_page(client, &cfg.source, &cfg.gateway, symbol, interval_name, ms(cursor), ms(end), if cfg.source == "binance" {1000} else {1500}).await?;
+        let page = fetch_page(client, symbol, interval_name, ms(cursor), ms(end), 1000).await?;
         if page.is_empty() {
             break;
         }
@@ -259,9 +244,6 @@ async fn main() -> Result<()> {
     let pool = PgPoolOptions::new().max_connections(4).connect(&database).await?;
     let client = Client::builder().timeout(std::time::Duration::from_secs(60)).build()?;
     if cfg.symbols.is_empty() {
-        if cfg.source != "binance" {
-            bail!("KANPAN_INDEX_SYMBOLS is required when KANPAN_INDEX_SOURCE is not binance");
-        }
         cfg.symbols = top_symbols(&client, DEFAULT_TOP).await?;
     }
     eprintln!("symbols ({}): {}", cfg.symbols.len(), cfg.symbols.join(","));

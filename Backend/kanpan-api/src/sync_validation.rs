@@ -30,7 +30,7 @@ const KINDS:&[&str]=&[
 // used to (8h, 3d), which old archives still carry.
 // Quotes: `instruments::QUOTE_ASSETS`, the client's `QuoteAssets.tradable` (both checked against contract/instruments.json). Binance
 // lists USDC-margined contracts too, so a USDT-only rule refused perfectly real favourites.
-use crate::instruments::{QUOTE_ASSETS as QUOTES,DEFAULT_VENUE,DEFAULT_MARKET,is_synced_interval};
+use crate::instruments::{DEFAULT_VENUE,DEFAULT_MARKET,is_synced_interval};
 fn intervals(v:&Value,count:usize)->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_str().is_some_and(is_synced_interval)))}
 fn color(v:&Value)->bool {v.as_object().is_some_and(|o|o.len()==1)&&v["value"].as_str().is_some_and(|s|matches!(s.len(),7|9)&&s.starts_with('#')&&s[1..].bytes().all(|c|c.is_ascii_hexdigit()))}
 fn number(v:&Value,lo:f64,hi:f64)->bool {v.as_f64().is_some_and(|v|v.is_finite()&&v>=lo&&v<=hi)}
@@ -149,25 +149,11 @@ fn learned_defaults(v:&Value)->bool {
   _=>false,
  }))
 }
+/// 一个代号字段：注册表里**某一家**认它就收（单看这一个字段不知道是哪一家；是不是那一家的，
+/// 由 [`identity`] 在整个对象上按 `venue` / `market` 再判一次）。各家的代号规则在各家目录里
+/// （币安收中文底名、Coinbase `BASE-USD`、Hyperliquid 大写 coin 名……），这里不再手抄。
 fn symbol(v:&Value)->bool {
- v.as_str().is_some_and(|s|coinbase_symbol(s)||binance_symbol(s)||macro_symbol(s))
-}
-/// 美元指数（`venues::macro_index`，2026-10-05）：`macro/index` 下只有一只 `DXY`。
-/// 只收这一个代号，不开放成「任意大写」：服务端只采得到这一只的价，别的收下了也永远判不响。
-fn macro_symbol(s:&str)->bool {s==crate::venues::macro_index::SYMBOL}
-/// 代号最长 40 个字符（按字符数，不按字节：中文代号一个字三个字节）。
-const SYMBOL_MAX_CHARS:usize=40;
-/// 币安 U 本位合约的代号：ASCII 大写字母、数字，或者**非 ASCII 的 Unicode 字母数字**，
-/// 并以一个计价资产结尾。币安上架过纯中文底名的合约（`币安人生USDT` 这类），只认 ASCII
-/// 的旧规则会把它们的自选、画线、提醒整条拒掉，同步队列从此卡在那一条上。ASCII 小写仍然
-/// 不收：币安代号永远是大写，小写只会是客户端拼错了。
-fn binance_symbol(s:&str)->bool {
- s.chars().count()<=SYMBOL_MAX_CHARS && QUOTES.iter().any(|q|s.strip_suffix(q).is_some_and(|base|!base.is_empty()))
-  && s.chars().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()||(!c.is_ascii()&&c.is_alphanumeric()))
-}
-/// Coinbase 现货：`BASE-USD`，BASE 只有 ASCII 大写与数字。
-fn coinbase_symbol(s:&str)->bool {
- s.len()<=SYMBOL_MAX_CHARS && s.strip_suffix("-USD").is_some_and(|b|!b.is_empty() && b.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))
+ v.as_str().is_some_and(|s|crate::venues::venues().iter().any(|venue|venue.symbol_ok(s)))
 }
 /// How many anchors a finished drawing of this kind carries: `Drawing.Kind.pointCount`.
 /// Checked kind by kind against `contract/drawing-fields.json`'s `anchorCounts` (generated from
@@ -200,7 +186,7 @@ fn lines(v:&Value)->bool {
 fn style(v:&Value)->bool {v.as_object().is_some_and(|o|o.iter().all(|(k,v)|field(DRAWINGS,k,v))&&o.contains_key("lineWidth")&&o.contains_key("dash")&&o.contains_key("filled")&&o.contains_key("levels"))}
 /// 「对比 K 线」的一只品种：完整身份键 `venue/market/SYMBOL`，和 favorites 的 id 同一形态。
 ///
-/// 代号段按交易所分流交给 `identity`（也就是 `binance_symbol` / `coinbase_symbol`），不另写一套：
+/// 代号段按交易所分流交给 `identity`（也就是注册表里那一家的 `symbol_ok`），不另写一套：
 /// 以前这里自己抄了一条只收 ASCII 的规则，于是自选、画线、提醒都收得下的 `币安人生USDT`，
 /// 一加进对比就让整条 settings 操作 400、同步队列卡死在那一条上。一只品种能收藏就能对比，
 /// 两处规则必须是同一条。认不得的交易所 / 市场一样拒（favorites 的 id 也是这样判的）。
@@ -302,8 +288,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   (DRAWINGS,"dash")=>v.as_str().is_some_and(|s|["solid","dashed","dotted"].contains(&s)),
   (DRAWINGS,"filled"|"locked"|"hidden")|(FAVORITES,"alerts")=>v.is_boolean(),
   (DRAWINGS,"levels")=>v.as_array().is_some_and(|a|a.len()<=24&&a.iter().all(|v|number(v,-10.0,10.0))),
-  (DRAWINGS|FAVORITES,"market")=>v=="usd_m"||v=="spot"||v==crate::venues::macro_index::MARKET,
-  (DRAWINGS|FAVORITES,"venue")=>v=="binance"||v=="coinbase"||v==crate::venues::macro_index::SOURCE,
+  (DRAWINGS|FAVORITES,"market")=>v.as_str().is_some_and(|m|crate::venues::venues().iter().any(|x|x.market()==m)),
+  (DRAWINGS|FAVORITES,"venue")=>v.as_str().is_some_and(|s|crate::venues::venue(s).is_some()),
   (DRAWINGS|FAVORITES,"symbol")=>symbol(v),
   (DRAWINGS,"created")=>number(v,0.0,9e15),
   // An anti-abuse ceiling, deliberately not a copy of the client's UX rule. The client caps a
@@ -330,7 +316,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   (ALERTS,"rule")=>crate::conditions::valid_rule(v),
   // 这个集合的 market 是整串 `binance/usd_m`（drawings / favorites 是 `usd_m` 加单独的
   // venue）。形状是文档定的，照抄，不要「统一」。
-  (ALERTS,"market")=>v=="binance/usd_m"||v=="coinbase/spot"||v==crate::alerts::MACRO,
+  (ALERTS,"market")=>v.as_str().is_some_and(|m|crate::venues::by_market_key(m).is_some()),
   (ALERTS,"symbol")=>symbol(v),
   // 画线的同步对象 id 原样，和 `drawings` 的 id 同一套形态。
   (ALERTS,"drawingID")=>string(v,180),
@@ -378,15 +364,10 @@ pub fn clear_tombstones(value:&mut Object) {
   value.body.insert("kind".into(),Value::String("condition".into()));
  }
 }
+/// `venue/market/symbol` 是不是一只真品种：`(venue, market)` 是注册表里的一家，代号是那一家的形状。
+/// 条件提醒仍只认币安（`object` 里另有一道），交易复盘的回合也只认币安 U 本位（`trade_round`）。
 pub fn identity(venue:&str,market:&str,symbol:&str)->bool {
- match (venue,market) {
-  ("binance","usd_m") => binance_symbol(symbol),
-  ("coinbase","spot") => coinbase_symbol(symbol),
-  // 美元指数：自选、画线、价格 / 画线提醒、对比都认 `macro/index/DXY`；条件提醒仍只认币安
-  // （`object` 里另有一道），交易复盘的回合也只认币安 U 本位（`trade_round`）。
-  (s,m) if s==crate::venues::macro_index::SOURCE && m==crate::venues::macro_index::MARKET => macro_symbol(symbol),
-  _ => false,
- }
+ crate::venues::listed(venue,market).is_some_and(|v|v.symbol_ok(symbol))
 }
 pub fn object(value:&Object)->Result<()> {
  if value.deleted{return Ok(())}
@@ -525,7 +506,14 @@ mod tests {
  #[test] fn venue_identity_is_not_a_route() {
   assert!(identity("binance","usd_m","BTCUSDT"));
   assert!(identity("coinbase","spot","BTC-USD"));
-  for (v,m,s) in [("okx","usd_m","BTCUSDT"),("coinbase","usd_m","BTC-USD"),("binance","spot","BTCUSDT"),("coinbase","spot","BTC-USDC")] {assert!(!identity(v,m,s))}
+  // 2026-10-08：OKX / Bybit / Hyperliquid 是自己的一家（不再是币安的替身），各认各的代号。
+  assert!(identity("okx","usd_m","BTCUSDT")&&identity("bybit","usd_m","1000PEPEUSDT")&&identity("hyperliquid","usd_m","KPEPE"));
+  for (v,m,s) in [("coinbase","usd_m","BTC-USD"),("binance","spot","BTCUSDT"),("coinbase","spot","BTC-USDC"),("okx","spot","BTCUSDT"),
+   ("okx","usd_m","BTC-USDT-SWAP"),("okx","usd_m","BTCUSDC"),("bybit","usd_m","BTCUSD"),("hyperliquid","usd_m","kPEPE"),("hyperliquid","usd_m","BTC-USD"),("ftx","usd_m","BTCUSDT")] {assert!(!identity(v,m,s),"{v}/{m}/{s}")}
+  let mut a=alert(&[("market",json!("hyperliquid/usd_m")),("symbol",json!("BTC"))]);
+  a.id="hyperliquid/usd_m/BTC/A1".into(); assert!(object(&a).is_ok());
+  assert!(field("alerts","market",&json!("okx/usd_m"))&&!field("alerts","market",&json!("okx/spot")));
+  assert!(field("favorites","venue",&json!("bybit"))&&!field("favorites","venue",&json!("ftx")));
  }
  #[test] fn spot_drawing_and_alert_roundtrip_without_prefix_collision() {
   let mut d=drawing("hline",1);
@@ -724,7 +712,10 @@ mod tests {
  }
  #[test] fn a_usdc_margined_contract_is_a_real_symbol() {
   for good in ["BTCUSDT","1000BONKUSDC","ETHFDUSD"] {assert!(field("favorites","symbol",&json!(good)),"{good} should be accepted")}
-  for bad in ["btcusdt","BTC-USDT","BTCEUR",""] {assert!(!field("favorites","symbol",&json!(bad)),"{bad} should be refused")}
+  for bad in ["btcusdt","BTC-USDT",""] {assert!(!field("favorites","symbol",&json!(bad)),"{bad} should be refused")}
+  // 单看代号字段只能问「有没有哪一家认它」（`BTCEUR` 是 Hyperliquid coin 名的形状）；是不是币安 U 本位，
+  // 由整个对象的 `identity` 判（2026-10-08 起多交易所）。
+  assert!(!identity("binance","usd_m","BTCEUR"));
  }
  /// 币安有纯中文底名的 U 本位合约；它们的自选 / 画线 / 提醒以前整条被拒。
  #[test] fn a_binance_symbol_may_carry_a_unicode_base() {
@@ -735,10 +726,12 @@ mod tests {
   // 40 个字符是上限，按字符数算：39 个汉字 + USDT 超了，36 个 + USDT 刚好。
   assert!(field("favorites","symbol",&json!(format!("{}USDT","币".repeat(36)))));
   assert!(!field("favorites","symbol",&json!(format!("{}USDT","币".repeat(37)))));
-  for bad in ["币安人生","币安人生usdt","币安 人生USDT","币安-人生USDT","USDT","😀USDT","btc币USDT"] {
+  for bad in ["币安人生","币安人生usdt","币安 人生USDT","币安-人生USDT","😀USDT","btc币USDT"] {
    assert!(!field("favorites","symbol",&json!(bad)),"{bad} should be refused");
    assert!(!identity("binance","usd_m",bad),"{bad} is not a binance usd_m identity");
   }
+  // `USDT` 单看是 Hyperliquid coin 名的形状（字段层收），但不是币安合约。
+  assert!(!identity("binance","usd_m","USDT"));
   // Coinbase 不变：底名只有 ASCII 大写与数字。
   assert!(identity("coinbase","spot","BTC-USD"));
   assert!(!identity("coinbase","spot","币安-USD"));

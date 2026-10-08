@@ -13,14 +13,17 @@
 //!    K 线，不必等下一笔成交。
 //! 3. **复盘 worker 的取数**：`candles`（K 线页）与 `trades`（逐笔，给 `trade_touch`）。
 //!
-//! 整个进程共用一道出站限速（公开端点按 IP 10 次/秒，这里取 8 次留余量）。
+//! 整个进程共用一道出站节拍 [`PACER`]（公开端点按 IP 10 次/秒，这里取 8 次留余量）。
+//! 4. 服务端提醒评估：`alerts`（逐笔拼 1 分钟 K 线）。
 pub mod orderflow;
-use axum::extract::ws::{Message,WebSocket};
-use axum::http::{HeaderValue,StatusCode,header};
-use axum::response::{IntoResponse,Response};
+use super::outbound::{self,Answers,Pacer,Reply,refuse};
+use axum::extract::ws::{Message,WebSocket,WebSocketUpgrade};
+use axum::http::StatusCode;
+use axum::response::Response;
 use futures_util::{SinkExt,StreamExt};
 use serde_json::{Value,json};
 use std::collections::{BTreeMap,BTreeSet,HashMap};
+pub mod alerts;
 use std::sync::{Arc,OnceLock};
 use std::sync::atomic::{AtomicU64,Ordering};
 use std::time::Duration;
@@ -33,69 +36,21 @@ pub const WS:&str="wss://advanced-trade-ws.coinbase.com";
 
 // ------------------------------------------------------------------ 出站
 
-/// 两次出站之间至少隔这么久（8 次/秒）。
-const GAP:Duration=Duration::from_millis(125);
-/// 排队超过这么久就不排了，直接回「忙」：客户端有自己的退避，
-/// 让它在手机上等好过让这边的连接一直挂着。
-const LONGEST_QUEUE:Duration=Duration::from_secs(8);
+/// 这一家唯一的出站节拍：公开端点按 IP 10 次/秒，这里取 8 次留余量。透传、复盘取数、订单流品种表
+/// （`api.exchange.coinbase.com`）、`market_meta` / `listing_watch` 拉的现货表都排这一队。
+/// 排队超过八秒就不排了，直接回「忙」：客户端有自己的退避，让它在手机上等好过让这边的连接一直挂着。
+pub static PACER:Pacer=Pacer::new(Duration::from_millis(125),Duration::from_secs(8),&[]);
+/// 这一家的 REST 主机。
+pub const HOSTS:&[&str]=&["api.coinbase.com","api.exchange.coinbase.com"];
 
-fn next_slot()->&'static tokio::sync::Mutex<Instant> {
- static S:OnceLock<tokio::sync::Mutex<Instant>>=OnceLock::new();
- S.get_or_init(||tokio::sync::Mutex::new(Instant::now()))
-}
-/// 排一个出站的位置；排不上（前面被罚得太久）返回 `false`。
-async fn pace()->bool {
- let mut slot=next_slot().lock().await;
- let now=Instant::now();
- let at=(*slot).max(now);
- if at-now>LONGEST_QUEUE {return false}
- *slot=at+GAP;
- drop(slot);
- tokio::time::sleep_until(at).await;
- true
-}
-/// 被 Coinbase 限流了：整个进程从现在起这么久谁都不许再出站。
-async fn penalize(span:Duration) {
- let mut slot=next_slot().lock().await;
- let until=Instant::now()+span.clamp(Duration::from_millis(500),Duration::from_secs(60));
- if *slot<until {*slot=until}
-}
-
-/// 这一次没拿到的原因。复盘那边按它分「退一步」和「去看上游」。
-#[derive(Debug,Clone,PartialEq)]
-pub enum Upstream {
- /// 被限流（或本进程的出站队列排满了）。带着对方说的秒数。
- RateLimited(Option<u64>),
- /// 连不上、5xx、正文读不出来。
- Unavailable,
- /// 4xx：这一笔本身不对（品种不存在、参数不对），重试也一样。
- Rejected(u16),
-}
-
-struct Reply {status:StatusCode,retry_after:Option<String>,body:axum::body::Bytes}
+pub use super::outbound::Upstream;
 
 async fn fetch(path:&str,query:&[(String,String)])->Result<Reply,Upstream> {
- if !pace().await {return Err(Upstream::RateLimited(Some(1)))}
- let response=crate::market_meta::http().get(format!("{REST}/{path}")).query(query).send().await.map_err(|_|Upstream::Unavailable)?;
- let status=StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
- let retry_after=response.headers().get(reqwest::header::RETRY_AFTER).and_then(|v|v.to_str().ok()).map(str::to_owned);
- if status==StatusCode::TOO_MANY_REQUESTS {
-  let secs=retry_after.as_deref().and_then(|v|v.trim().parse::<u64>().ok());
-  penalize(Duration::from_secs(secs.unwrap_or(1))).await;
- }
- let body=response.bytes().await.map_err(|_|Upstream::Unavailable)?;
- Ok(Reply{status,retry_after,body})
+ outbound::send(&PACER,&format!("{REST}/{path}"),query,None,1).await
 }
-
 /// `fetch` 再把非 200 翻成 `Upstream`。
 async fn fetch_json(path:&str,query:&[(String,String)])->Result<Value,Upstream> {
- let reply=fetch(path,query).await?;
- match reply.status.as_u16() {
-  200=>serde_json::from_slice(&reply.body).map_err(|_|Upstream::Unavailable),
-  429=>Err(Upstream::RateLimited(reply.retry_after.and_then(|v|v.trim().parse().ok()))),
-  s@400..=499=>Err(Upstream::Rejected(s)),
-  _=>Err(Upstream::Unavailable),
- }
+ outbound::json_of(&fetch(path,query).await?)
 }
 
 // ------------------------------------------------------------------ REST 透传
@@ -116,52 +71,16 @@ fn path_ok(path:&str)->bool {
 fn query_ok(key:&str)->bool {
  matches!(key,"product_type"|"product_ids"|"limit"|"offset"|"granularity"|"start"|"end"|"get_all_products")
 }
-/// 品种表缓存多久。一条就一兆多，三台手机同时启动不必各拉一遍。
+/// 品种表缓存多久。一条就一兆多，三台手机同时启动不必各拉一遍（同键合流，只出站一次）。
 const PRODUCTS_TTL:Duration=Duration::from_secs(15);
-
-fn products_cache()->&'static std::sync::Mutex<HashMap<String,(Instant,axum::body::Bytes)>> {
- static C:OnceLock<std::sync::Mutex<HashMap<String,(Instant,axum::body::Bytes)>>>=OnceLock::new();
- C.get_or_init(Default::default)
-}
-
-fn json_body(status:StatusCode,body:axum::body::Bytes,retry_after:Option<String>)->Response {
- let mut response=(status,body).into_response();
- let headers=response.headers_mut();
- headers.insert(header::CONTENT_TYPE,HeaderValue::from_static("application/json"));
- headers.insert(header::CACHE_CONTROL,HeaderValue::from_static("no-store"));
- if let Some(v)=retry_after.and_then(|v|HeaderValue::from_str(&v).ok()) {headers.insert(header::RETRY_AFTER,v);}
- response
-}
-fn refuse(status:StatusCode,error:&str)->Response {
- json_body(status,axum::body::Bytes::from(json!({"error":error}).to_string()),(status==StatusCode::TOO_MANY_REQUESTS).then(||"1".to_owned()))
-}
+static ANSWERS:Answers=Answers::new();
 
 pub async fn raw(path:&str,query:&[(String,String)])->Response {
  if !path_ok(path) {return refuse(StatusCode::NOT_FOUND,"unsupported_path")}
- let mut forward=vec![];
- for (k,v) in query {
-  if k=="source" {continue}
-  if !query_ok(k)||v.len()>200 {return refuse(StatusCode::BAD_REQUEST,"unsupported_query")}
-  forward.push((k.clone(),v.clone()));
- }
- let cache_key=(path=="products").then(||format!("{forward:?}"));
- if let Some(key)=&cache_key {
-  let hit=products_cache().lock().unwrap_or_else(|e|e.into_inner()).get(key).filter(|(at,_)|at.elapsed()<PRODUCTS_TTL).map(|(_,b)|b.clone());
-  if let Some(body)=hit {return json_body(StatusCode::OK,body,None)}
- }
- match fetch(path,&forward).await {
-  Ok(reply)=>{
-   if reply.status==StatusCode::OK&&let Some(key)=cache_key {
-    let mut cache=products_cache().lock().unwrap_or_else(|e|e.into_inner());
-    cache.retain(|_,(at,_)|at.elapsed()<PRODUCTS_TTL);
-    cache.insert(key,(Instant::now(),reply.body.clone()));
-   }
-   // 5xx 原样回：客户端据此换备用网关。
-   json_body(reply.status,reply.body,reply.retry_after)
-  }
-  Err(Upstream::RateLimited(_))=>refuse(StatusCode::TOO_MANY_REQUESTS,"upstream_rate_limited"),
-  Err(_)=>refuse(StatusCode::BAD_GATEWAY,"upstream_unavailable"),
- }
+ let Some(forward)=outbound::forward(query,|k,_|query_ok(k)) else {return refuse(StatusCode::BAD_REQUEST,"unsupported_query")};
+ // 只有品种表缓存；K 线、行情要新鲜，照旧每次都出站（仍然排节拍）。
+ let ttl=if path=="products" {PRODUCTS_TTL} else {Duration::ZERO};
+ outbound::pass(ANSWERS.get(format!("{path}?{forward:?}"),ttl,outbound::any_ok,||fetch(path,&forward)).await)
 }
 
 // ------------------------------------------------------------------ 复盘取数
@@ -552,6 +471,42 @@ pub fn parse_control(text:&str)->Result<(bool,String,Vec<String>),&'static str> 
  if products.len()>MAX_SUBS_PER_CLIENT {return Err("too many products")}
  if products.is_empty()&&channel!="heartbeats" {return Err("product_ids required")}
  Ok((subscribe,channel,products))
+}
+
+// ------------------------------------------------------------------ 注册表里的这一家
+
+/// Coinbase 现货（USD 计价）。
+pub struct Coinbase;
+pub static COINBASE:Coinbase=Coinbase;
+
+/// 看盘键里的 Coinbase 代号：`BASE-USD`，BASE 只有 ASCII 大写与数字。
+pub fn symbol_ok(s:&str)->bool {
+ s.len()<=40 && s.strip_suffix("-USD").is_some_and(|b|!b.is_empty() && b.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))
+}
+
+impl super::Venue for Coinbase {
+ fn source(&self)->&'static str {SOURCE}
+ fn short_name(&self)->&'static str {"CB"}
+ fn market(&self)->&'static str {"spot"}
+ fn market_key(&self)->&'static str {"coinbase/spot"}
+ fn symbol_ok(&self,symbol:&str)->bool {symbol_ok(symbol)}
+ fn review(&self)->bool {true}
+ /// 和界面上一样写 `BTC/USD`：「CB BTC/USD」。
+ fn display(&self,symbol:&str)->String {super::labeled(self.short_name(),&symbol.replace('-',"/"))}
+ fn pacer(&self)->Option<&'static Pacer> {Some(&PACER)}
+ fn hosts(&self)->&'static [&'static str] {HOSTS}
+ fn raw<'a>(&'a self,path:&'a str,query:&'a [(String,String)])->super::Fut<'a,Response> {Box::pin(raw(path,query))}
+ fn stream(&self,ws:WebSocketUpgrade,_query:&[(String,String)])->Option<Response> {Some(ws.on_upgrade(serve_client))}
+ fn candles<'a>(&'a self,symbol:&'a str,step:i64,start:i64,end:i64)->super::Fut<'a,Result<Vec<super::Bar>,Upstream>> {
+  Box::pin(async move {
+   let number=|s:&str|s.parse::<f64>().ok();
+   Ok(candles(symbol,step,start,end).await?.into_iter().filter_map(|c|{
+    let bar=super::Bar{open_time:c.start*1000,open:number(&c.open)?,high:number(&c.high)?,low:number(&c.low)?,close:number(&c.close)?,volume:number(&c.volume).unwrap_or(0.0)};
+    bar.sane().then_some(bar)
+   }).collect())
+  })
+ }
+ fn alert_feed(&self)->Option<&'static dyn crate::alerts::KlineFeed> {Some(&alerts::FEED)}
 }
 
 #[cfg(test)]

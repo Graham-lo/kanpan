@@ -8,11 +8,10 @@
 //! * 单价极小的币挂成 `kPEPE`（价格与数量按 1000 个币报）：`priceScale=1000`，按 base `PEPE` 列，
 //!   和币安 / Bybit 的 `1000PEPEUSDT` 落在同一只币下；
 //! * 线性，一个数量单位就是一个（`k` 的是 1000 个）币：multiplier 1。
-use crate::venues::orderflow::{ExchangeKey,Notional,Product,Table,TableSource,Venue,boxed,index,post_json};
+use crate::venues::orderflow::{ExchangeKey,Notional,Product,Table,TableSource,Venue,boxed,index};
 use serde::Deserialize;
 
 pub const KEY:ExchangeKey=ExchangeKey("hyperliquid");
-const INFO:&str="https://api.hyperliquid.xyz/info";
 
 // ------------------------------------------------------------------ 品种表
 
@@ -51,7 +50,7 @@ pub fn parse_meta(body:&[u8])->anyhow::Result<Table> {
 }
 
 pub fn tables()->Vec<TableSource> {
- vec![TableSource{name:"hyperliquid perps",exchange:KEY,scaled:false,fetch:||boxed(async {parse_meta(&post_json(INFO,&serde_json::json!({"type":"meta"})).await?)})}]
+ vec![TableSource{name:"hyperliquid perps",exchange:KEY,scaled:false,fetch:||boxed(async {parse_meta(&super::info_bytes(&serde_json::json!({"type":"meta"})).await?)})}]
 }
 
 #[cfg(test)]

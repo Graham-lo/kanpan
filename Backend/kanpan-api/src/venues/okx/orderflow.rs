@@ -3,13 +3,14 @@
 //! 取舍：只列 live 的；现货只列 `BASE-USDT`；永续列 `BASE-USDT-SWAP`（线性，面值 ctVal×ctMult 个币）
 //! 与 `BASE-USD-SWAP`（反向，面值 ctVal×ctMult 美元）；交割只列 alias 为 quarter / next_quarter 的。
 //! `-USD_UM-` 那种 USD 保证金线性合约、USDC 本位都不列。
-use crate::venues::orderflow::{ExchangeKey,Margin,Notional,Product,Table,TableSource,Venue,boxed,get_bytes,index,number};
+use crate::venues::orderflow::{ExchangeKey,Margin,Notional,Product,Table,TableSource,Venue,boxed,index,number};
 use serde::Deserialize;
 
 pub const KEY:ExchangeKey=ExchangeKey("okx");
-const SPOT:&str="https://www.okx.com/api/v5/public/instruments?instType=SPOT";
-const SWAP:&str="https://www.okx.com/api/v5/public/instruments?instType=SWAP";
-const FUTURES:&str="https://www.okx.com/api/v5/public/instruments?instType=FUTURES";
+/// 品种表经本家唯一的出站节拍（`super::PACER`）拉。
+async fn instruments(inst_type:&str)->anyhow::Result<axum::body::Bytes> {
+ crate::venues::outbound::bytes(&super::PACER,&format!("{}/api/v5/public/instruments",super::REST),&[("instType".into(),inst_type.into())],None,1).await
+}
 
 // ------------------------------------------------------------------ 品种表
 
@@ -98,9 +99,9 @@ pub fn parse_futures(body:&[u8])->anyhow::Result<Table> {
 
 pub fn tables()->Vec<TableSource> {
  vec![
-  TableSource{name:"okx spot",exchange:KEY,scaled:false,fetch:||boxed(async {parse_spot(&get_bytes(SPOT).await?)})},
-  TableSource{name:"okx swap",exchange:KEY,scaled:false,fetch:||boxed(async {parse_swap(&get_bytes(SWAP).await?)})},
-  TableSource{name:"okx futures",exchange:KEY,scaled:false,fetch:||boxed(async {parse_futures(&get_bytes(FUTURES).await?)})},
+  TableSource{name:"okx spot",exchange:KEY,scaled:false,fetch:||boxed(async {parse_spot(&instruments("SPOT").await?)})},
+  TableSource{name:"okx swap",exchange:KEY,scaled:false,fetch:||boxed(async {parse_swap(&instruments("SWAP").await?)})},
+  TableSource{name:"okx futures",exchange:KEY,scaled:false,fetch:||boxed(async {parse_futures(&instruments("FUTURES").await?)})},
  ]
 }
 

@@ -139,28 +139,13 @@ pub fn tables()->Vec<TableSource> {
 /// 拉一张表最多等多久。币安现货那张约 2.5 MB，美国 VPS 上 1–3 秒。
 pub const FETCH_TIMEOUT:Duration=Duration::from_secs(20);
 
-/// GET 一个地址拿回原文。落在币安出站闸门里的地址先看闸门（被罚着就不出站），答复记进闸门。
+/// GET 一个地址拿回原文（币安的几张表用；别家的品种表经各自的 `PACER` 拉，见 `venues::outbound`）。
+/// 落在币安出站闸门里的地址先看闸门（被罚着就不出站），答复记进闸门。
 pub async fn get_bytes(url:&str)->anyhow::Result<axum::body::Bytes> {
  let gated=crate::binance_gate::covers(url);
  if gated&&crate::binance_gate::blocked() {anyhow::bail!("egress on hold")}
  let response=crate::market_meta::http().get(url).timeout(FETCH_TIMEOUT).send().await?;
  if gated&&crate::binance_gate::note_reply(&response) {anyhow::bail!("rate limited")}
- let response=response.error_for_status()?;
- Ok(response.bytes().await?)
-}
-
-/// 同一份东西有几个主机：按先后试，第一个答成的为准；都不成给最后那个错。
-pub async fn get_bytes_any(urls:&[String])->anyhow::Result<axum::body::Bytes> {
- let mut last=anyhow::anyhow!("no host");
- for url in urls {
-  match get_bytes(url).await {Ok(body)=>return Ok(body),Err(e)=>last=e}
- }
- Err(last)
-}
-
-/// POST 一段 JSON 拿回原文（Hyperliquid 的 `info`）。
-pub async fn post_json(url:&str,body:&serde_json::Value)->anyhow::Result<axum::body::Bytes> {
- let response=crate::market_meta::http().post(url).json(body).timeout(FETCH_TIMEOUT).send().await?;
  let response=response.error_for_status()?;
  Ok(response.bytes().await?)
 }

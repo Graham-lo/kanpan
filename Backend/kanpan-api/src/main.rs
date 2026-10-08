@@ -73,10 +73,13 @@ async fn main()->anyhow::Result<()> {
   }
   // 提醒的评估器。APNs 密钥缺席时 `from_env` 只写一行 warn 并返回 None——评估照常跑、
   // 触发状态照常写回同步日志，少的只是最后那一下推送。密钥是用户要去开发者后台下载的
-  // 东西，提醒的其余部分不该等它。币安、Coinbase 各一条常驻评估循环，各自被看着。
+  // 东西，提醒的其余部分不该等它。币安一条常驻评估循环；别家（Coinbase、OKX、Bybit、Hyperliquid……）
+  // 按注册表里有 `alert_feed` 的那几家各起一条（`alerts::run_feed`），各自被看着，互不牵连。
   let apns=kanpan_api::apns::Apns::from_env().map(Arc::new);
   supervisor.spawn("alerts",Life::Forever,kanpan_api::alerts::run(s.clone(),apns.clone()));
-  supervisor.spawn("alerts-coinbase",Life::Forever,kanpan_api::alerts::run_coinbase(s.clone(),apns.clone()));
+  for venue in kanpan_api::venues::venues() {
+   if let Some(feed)=venue.alert_feed() {supervisor.spawn(feed.task(),Life::Forever,kanpan_api::alerts::run_feed(s.clone(),apns.clone(),feed));}
+  }
   // 美元指数的画线 / 价格提醒：读 api 进程写进 macro_bars 的 1 分钟 K 线来判。
   supervisor.spawn("alerts-macro",Life::Forever,kanpan_api::alerts::run_macro(s.clone(),apns.clone()));
   // 条件提醒（费率、持仓量、均线；大单在 serve 里，跟踪器在那边）与品种状态通知。

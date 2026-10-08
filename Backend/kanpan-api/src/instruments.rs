@@ -170,6 +170,11 @@ mod tests {
   assert_eq!(c["defaultMarket"]["market"],DEFAULT_MARKET);
   assert_eq!(c["defaultMarket"]["key"],DEFAULT_MARKET_KEY);
   assert_eq!(format!("{DEFAULT_VENUE}/{DEFAULT_MARKET}"),DEFAULT_MARKET_KEY);
+  // 交易所清单：服务端注册表逐项、按顺序对上（客户端那一半由 `VenueRegistry` 对）。
+  let venues:Vec<(String,String,bool)>=c["venues"].as_array().expect("contract has no venues").iter()
+   .map(|v|(v["venue"].as_str().unwrap().to_owned(),v["market"].as_str().unwrap().to_owned(),v["review"].as_bool().unwrap())).collect();
+  let ours:Vec<(String,String,bool)>=crate::venues::venues().iter().map(|v|(v.source().to_owned(),v.market().to_owned(),v.review())).collect();
+  assert_eq!(venues,ours);
  }
  /// 复盘那边的 `Interval` 是「币安 klines 能给的周期」，是另一件事；但客户端能选的周期
  /// 除了年线（复盘自己按日线聚合）都得是币安给得出的，否则那一档画不出图。

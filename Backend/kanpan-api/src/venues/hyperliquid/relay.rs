@@ -1,9 +1,11 @@
 //! `GET /v1/market/ws/hyperliquid` 的一条连接。
 //!
-//! 手机 / 网页发上来的文本帧只放行三种，其余丢掉（不转、不断开）：
+//! 手机 / 网页发上来的文本帧只放行这几种，其余丢掉（不转、不断开）：
 //! * `{"method":"ping"}`：就地答 `{"channel":"pong"}`，不上游；
 //! * `{"method":"subscribe"|"unsubscribe","subscription":{"type":"l2Book","coin":C,"nSigFigs":4}}`；
-//! * `{"method":"subscribe"|"unsubscribe","subscription":{"type":"trades","coin":C}}`。
+//! * `{"method":"subscribe"|"unsubscribe","subscription":{"type":"trades","coin":C}}`；
+//! * `{"method":"subscribe"|"unsubscribe","subscription":{"type":"candle","coin":C,"interval":I}}`（2026-10-08，行情页 K 线）；
+//! * `{"method":"subscribe"|"unsubscribe","subscription":{"type":"activeAssetCtx","coin":C}}`（标记价、费率、持仓量）。
 //!
 //! `C` 要是 `^[A-Za-z0-9]{1,16}$`，对象里多一个字段都不放。一条连接同时订着的最多 `MAX_TOPICS` 个，
 //! 超了的订阅丢掉。订退都交给进程共用的 hub：帧按 `data.coin` 分发过来，原样下发；上游断线重连由 hub
@@ -16,8 +18,9 @@ use std::collections::HashSet;
 use std::time::Duration;
 use tokio::time::Instant;
 
-/// 一条连接同时订着的最多几个：8 本簿 × （簿 + 成交）。
-pub const MAX_TOPICS:usize=16;
+/// 一条连接同时订着的最多几个：订单流 8 本簿 × （簿 + 成交），或者行情页一只品种
+/// （K 线 + 上下文 + 成交）加自选页一排上下文。给到 32。
+pub const MAX_TOPICS:usize=32;
 /// 这条连接在 hub 里的收帧通道能攒几帧。BTC 的 `l2Book` 约每 0.5 秒一帧、成交更密，
 /// 16 个订阅一秒几十帧，攒 512 帧 ≈ 十几秒跟不上才算掉队。
 const BACKLOG:usize=512;
@@ -43,6 +46,8 @@ pub fn upward(text:&str)->Option<Upward> {
  let topic=match subscription.get("type")?.as_str()? {
   "l2Book" if keys_are(subscription,&["type","coin","nSigFigs"])&&subscription.get("nSigFigs").and_then(Value::as_u64)==Some(4)=>Topic::book(coin),
   "trades" if keys_are(subscription,&["type","coin"])=>Topic::trades(coin),
+  "activeAssetCtx" if keys_are(subscription,&["type","coin"])=>Topic::asset_ctx(coin),
+  "candle" if keys_are(subscription,&["type","coin","interval"])=>Topic::candle(coin,super::hub::interval(subscription.get("interval")?.as_str()?)?),
   _=>return None,
  };
  Some(Upward::Sub{subscribe,topic})
@@ -113,6 +118,8 @@ mod tests {
   assert_eq!(upward(r#"{"method":"ping"}"#),Some(Upward::Ping));
   assert_eq!(upward(r#"{"method":"subscribe","subscription":{"type":"l2Book","coin":"BTC","nSigFigs":4}}"#),Some(Upward::Sub{subscribe:true,topic:Topic::book("BTC")}));
   assert_eq!(upward(r#"{"method":"unsubscribe","subscription":{"coin":"kPEPE","type":"trades"}}"#),Some(Upward::Sub{subscribe:false,topic:Topic::trades("kPEPE")}));
+  assert_eq!(upward(r#"{"method":"subscribe","subscription":{"type":"candle","coin":"BTC","interval":"15m"}}"#),Some(Upward::Sub{subscribe:true,topic:Topic::candle("BTC","15m")}));
+  assert_eq!(upward(r#"{"method":"subscribe","subscription":{"type":"activeAssetCtx","coin":"BTC"}}"#),Some(Upward::Sub{subscribe:true,topic:Topic::asset_ctx("BTC")}));
   for bad in [
    "ping","","{}",r#"{"method":"ping","id":1}"#,r#"{"method":"Ping"}"#,
    r#"{"method":"subscribe","subscription":{"type":"l2Book","coin":"BTC"}}"#,
@@ -124,6 +131,11 @@ mod tests {
    r#"{"method":"subscribe","subscription":{"type":"trades","coin":"@107"}}"#,
    r#"{"method":"subscribe","subscription":{"type":"userEvents","user":"0x0"}}"#,
    r#"{"method":"subscribe","subscription":{"type":"allMids"}}"#,
+   r#"{"method":"subscribe","subscription":{"type":"candle","coin":"BTC"}}"#,
+   r#"{"method":"subscribe","subscription":{"type":"candle","coin":"BTC","interval":"7m"}}"#,
+   r#"{"method":"subscribe","subscription":{"type":"candle","coin":"BTC","interval":"1m","x":1}}"#,
+   r#"{"method":"subscribe","subscription":{"type":"activeAssetCtx","coin":"BTC","user":"0x0"}}"#,
+   r#"{"method":"subscribe","subscription":{"type":"activeAssetData","coin":"BTC","user":"0x0"}}"#,
    r#"{"method":"subscribe","subscription":{"type":"trades","coin":"BTC"},"id":1}"#,
    r#"{"method":"post","id":1,"request":{"type":"info","payload":{"type":"meta"}}}"#,
    r#"{"method":"subscribe","subscription":[{"type":"trades","coin":"BTC"}]}"#,

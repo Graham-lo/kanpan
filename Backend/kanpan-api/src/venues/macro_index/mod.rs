@@ -122,6 +122,26 @@ pub async fn raw(path:&str,query:&[(String,String)])->Response {
  }
 }
 
+/// 注册表里的这一家。只有一只 `DXY`；没有供应量、没有持仓量，提醒读库（`alerts::run_macro`）。
+pub struct Macro;
+pub static MACRO:Macro=Macro;
+impl super::Venue for Macro {
+ fn source(&self)->&'static str {SOURCE}
+ /// 不带缩写：标题就是「美元指数」。
+ fn short_name(&self)->&'static str {""}
+ fn market(&self)->&'static str {MARKET}
+ fn market_key(&self)->&'static str {"macro/index"}
+ /// 只收这一个代号，不开放成「任意大写」：服务端只采得到这一只的价，别的收下了也永远判不响。
+ fn symbol_ok(&self,symbol:&str)->bool {symbol==SYMBOL}
+ fn display(&self,_symbol:&str)->String {NAME.to_string()}
+ fn meta_symbol(&self,_symbol:&str)->Option<String> {None}
+ fn raw<'a>(&'a self,path:&'a str,query:&'a [(String,String)])->super::Fut<'a,Response> {Box::pin(raw(path,query))}
+ fn stream(&self,ws:axum::extract::ws::WebSocketUpgrade,query:&[(String,String)])->Option<Response> {
+  let initial=param(query,"streams").map(|s|s.chars().take(1024).collect::<String>());
+  Some(ws.on_upgrade(move|socket|serve_client(socket,initial)))
+ }
+}
+
 #[cfg(test)]
 mod tests {
  use super::*;

@@ -1,6 +1,7 @@
 //! Bybit 中继的上行白名单：手机发上来的文本帧只放行
 //! `{"op":"ping"}`（可带 `req_id`）与 `{"op":"subscribe"|"unsubscribe","args":[…]}`，
-//! 每个 arg 要是 `^(orderbook\.(1|50|200|500|1000)|publicTrade)\.[A-Z0-9]{2,30}$`，一条 1–10 个
+//! 每个 arg 要是 `^(orderbook\.(1|50|200|500|1000)|publicTrade|tickers|kline\.(1|3|5|15|30|60|120|240|360|720|D|W|M))\.[A-Z0-9]{2,30}$`
+//! （盘口、逐笔给主力订单流；行情、K 线给行情页，2026-10-08），一条 1–10 个
 //! （Bybit 现货的硬限，三个 category 统一按 10）；一条连接同时订着的 topic 最多 `MAX_TOPICS` 个。
 //! 其余帧丢掉（不转、不断开）。放行的帧按认出来的字段重新拼，手机写进去的别的东西带不上去。
 use serde_json::{Value,json};
@@ -8,15 +9,19 @@ use std::collections::HashSet;
 
 /// 一条订阅消息里最多几个 args。
 pub const MAX_ARGS:usize=10;
-/// 一条连接同时订着的 topic 最多几个：12 本簿 × （簿 + 成交）。
-pub const MAX_TOPICS:usize=24;
+/// 一条连接同时订着的 topic 最多几个：订单流 12 本簿 × （簿 + 成交），或者行情页一只品种
+/// （行情 + 一档 K 线 + 成交）加自选页一排行情。给到 48。
+pub const MAX_TOPICS:usize=48;
+
+/// K 线周期。
+const KLINE_INTERVALS:[&str;13]=["1","3","5","15","30","60","120","240","360","720","D","W","M"];
 
 /// 一个 topic 合不合规。
 pub fn valid_topic(topic:&str)->bool {
  let (head,symbol)=match topic.rsplit_once('.') {Some(parts)=>parts,None=>return false};
  let head_ok=match head.strip_prefix("orderbook.") {
   Some(depth)=>matches!(depth,"1"|"50"|"200"|"500"|"1000"),
-  None=>head=="publicTrade",
+  None=>head=="publicTrade"||head=="tickers"||head.strip_prefix("kline.").is_some_and(|i|KLINE_INTERVALS.contains(&i)),
  };
  head_ok&&(2..=30).contains(&symbol.len())&&symbol.bytes().all(|b|b.is_ascii_uppercase()||b.is_ascii_digit())
 }
@@ -102,10 +107,11 @@ mod tests {
 
  #[test]
  fn topics() {
-  for good in ["orderbook.1.BTCUSDT","orderbook.50.BTCUSD","orderbook.200.ETHUSDT","orderbook.500.BTCUSDH26","orderbook.1000.1000PEPEUSDT","publicTrade.BTCUSDT","publicTrade.AB",&format!("publicTrade.{}","A".repeat(30))] {
+  for good in ["orderbook.1.BTCUSDT","orderbook.50.BTCUSD","orderbook.200.ETHUSDT","orderbook.500.BTCUSDH26","orderbook.1000.1000PEPEUSDT","publicTrade.BTCUSDT","publicTrade.AB",&format!("publicTrade.{}","A".repeat(30)),
+   "tickers.BTCUSDT","kline.1.BTCUSDT","kline.D.BTCUSDT","kline.240.1000PEPEUSDT"] {
    assert!(valid_topic(good),"{good}");
   }
-  for bad in ["","orderbook.BTCUSDT","orderbook.100.BTCUSDT","orderbook.1000.btcusdt","publicTrade.B","tickers.BTCUSDT","allLiquidation.BTCUSDT","kline.1.BTCUSDT",
+  for bad in ["","orderbook.BTCUSDT","orderbook.100.BTCUSDT","orderbook.1000.btcusdt","publicTrade.B","allLiquidation.BTCUSDT","kline.2.BTCUSDT","kline.1h.BTCUSDT","kline.BTCUSDT","tickers.btcusdt","liquidation.BTCUSDT",
    &format!("publicTrade.{}","A".repeat(31)),"publicTrade.BTC-USDT","publicTrade.BTCUSDT ","orderbook.1000.BTC.USDT","publictrade.BTCUSDT"] {
    assert!(!valid_topic(bad),"{bad}");
   }
@@ -130,7 +136,7 @@ mod tests {
    r#"{"op":"auth","args":["key",1,"sig"]}"#,
    r#"{"op":"subscribe","args":[]}"#,
    r#"{"op":"subscribe","args":"publicTrade.BTCUSDT"}"#,
-   r#"{"op":"subscribe","args":["tickers.BTCUSDT"]}"#,
+   r#"{"op":"subscribe","args":["kline.7.BTCUSDT"]}"#,
    r#"{"op":"subscribe","args":["allLiquidation.BTCUSDT"]}"#,
    r#"{"op":"subscribe","args":["publicTrade.BTCUSDT",{"x":1}]}"#,
    r#"{"op":"subscribe","args":["publicTrade.BTCUSDT"],"extra":1}"#,
@@ -144,13 +150,12 @@ mod tests {
  fn subscription_cap() {
   let mut subs=Subscriptions::default();
   let batch=|op:Op,from:usize,n:usize|Upward::Request{op,args:(from..from+n).map(|i|format!("publicTrade.C{i}USDT")).collect(),req_id:None};
-  assert!(subs.admit(&batch(Op::Subscribe,0,10)));
-  assert!(subs.admit(&batch(Op::Subscribe,10,10)));
-  assert!(subs.admit(&batch(Op::Subscribe,20,4)));
+  let mut filled=0;
+  while filled<MAX_TOPICS {let n=MAX_ARGS.min(MAX_TOPICS-filled);assert!(subs.admit(&batch(Op::Subscribe,filled,n)));filled+=n;}
   assert!(subs.admit(&batch(Op::Subscribe,0,10)),"已经订着的再订不占新名额");
-  assert!(!subs.admit(&batch(Op::Subscribe,24,1)),"第 25 个不放");
+  assert!(!subs.admit(&batch(Op::Subscribe,MAX_TOPICS,1)),"超了上限的不放");
   assert!(subs.admit(&Upward::Ping{req_id:None}));
   assert!(subs.admit(&batch(Op::Unsubscribe,0,2)));
-  assert!(subs.admit(&batch(Op::Subscribe,24,2)),"退订之后腾出名额");
+  assert!(subs.admit(&batch(Op::Subscribe,MAX_TOPICS,2)),"退订之后腾出名额");
  }
 }

@@ -6,8 +6,9 @@
 //! * 每个使用方 `join` 一次拿到一个 `Link`：一条收帧的通道加一个订退把手。把手（连同它的全部克隆）
 //!   丢掉就算离开，它订着的全部退掉。
 //! * 订阅按 (频道, 币) 引用计数：第一个人订时才向上游订，最后一个人退时才向上游退。
-//! * `l2Book` / `trades` 帧按 `data.coin` 只发给订了它的使用方；`l2Book` 每帧都是整本，
-//!   手上留最近一帧，后来订的人马上先拿到它，不必等下一帧。
+//! * `l2Book` / `trades` / `activeAssetCtx` 帧按 `data.coin`、`candle` 帧按 `data.s` + `data.i` 只发给订了它的使用方；
+//!   `l2Book`（整本）、`candle`（正在走的那一根）、`activeAssetCtx`（标记价、费率、持仓量）手上留最近一帧，
+//!   后来订的人马上先拿到它，不必等下一帧。
 //! * 上游的 `subscriptionResponse` 发给发起那次订阅的使用方；订的东西上游早就订着时由这里答一份
 //!   同样形状的回执。
 //! * 上游断了（或 `silence` 没有任何帧）就按退避重连，连上后把手上全部订阅重新发一遍；使用方只看到
@@ -76,8 +77,9 @@ pub const LIMITS:Limits=Limits{
 
 // ------------------------------------------------------------------ 订阅
 
+/// 频道。`Candle` 带周期（只收 [`super::INTERVALS`] 里那几档，所以是 `&'static str`）。
 #[derive(Clone,Copy,Debug,PartialEq,Eq,Hash,PartialOrd,Ord)]
-pub enum Channel {L2Book,Trades}
+pub enum Channel {L2Book,Trades,Candle(&'static str),AssetCtx}
 
 /// 一个订阅：频道 + 币。`l2Book` 一律 4 位有效数字（`nSigFigs:4`）。
 #[derive(Clone,Debug,PartialEq,Eq,Hash,PartialOrd,Ord)]
@@ -86,16 +88,25 @@ pub struct Topic {pub channel:Channel,pub coin:String}
 /// 币名：`^[A-Za-z0-9]{1,16}$`（`BTC`、`kPEPE`）。
 pub fn valid_coin(coin:&str)->bool {(1..=16).contains(&coin.len())&&coin.bytes().all(|b|b.is_ascii_alphanumeric())}
 
+/// 周期 → 静态的那一个（不认识的是 `None`）。
+pub fn interval(text:&str)->Option<&'static str> {super::INTERVALS.iter().copied().find(|i|*i==text)}
+
 impl Topic {
  pub fn book(coin:impl Into<String>)->Self {Self{channel:Channel::L2Book,coin:coin.into()}}
  pub fn trades(coin:impl Into<String>)->Self {Self{channel:Channel::Trades,coin:coin.into()}}
+ pub fn candle(coin:impl Into<String>,interval:&'static str)->Self {Self{channel:Channel::Candle(interval),coin:coin.into()}}
+ pub fn asset_ctx(coin:impl Into<String>)->Self {Self{channel:Channel::AssetCtx,coin:coin.into()}}
  /// 上游认的订阅对象。
  pub fn subscription(&self)->Value {
   match self.channel {
    Channel::L2Book=>json!({"type":"l2Book","coin":self.coin,"nSigFigs":4}),
    Channel::Trades=>json!({"type":"trades","coin":self.coin}),
+   Channel::Candle(interval)=>json!({"type":"candle","coin":self.coin,"interval":interval}),
+   Channel::AssetCtx=>json!({"type":"activeAssetCtx","coin":self.coin}),
   }
  }
+ /// 这一频道的帧要不要留最近一帧给后来者（逐笔不留：补一帧旧成交没有意义）。
+ fn keeps_last(&self)->bool {self.channel!=Channel::Trades}
  /// 一条订 / 退消息。
  pub fn message(&self,subscribe:bool)->String {
   json!({"method":if subscribe {"subscribe"} else {"unsubscribe"},"subscription":self.subscription()}).to_string()
@@ -108,6 +119,8 @@ impl Topic {
   match subscription.get("type")?.as_str()? {
    "l2Book" if subscription.get("nSigFigs").and_then(Value::as_u64)==Some(4)=>Some(Self::book(coin)),
    "trades"=>Some(Self::trades(coin)),
+   "candle"=>Some(Self::candle(coin,interval(subscription.get("interval")?.as_str()?)?)),
+   "activeAssetCtx"=>Some(Self::asset_ctx(coin)),
    _=>None,
   }
  }
@@ -203,7 +216,7 @@ struct TopicState {
  confirmed:bool,
  /// 等上游回执的使用方。
  pending:Vec<u64>,
- /// 最近一帧（只有 `l2Book` 留）。
+ /// 最近一帧（逐笔不留）。
  last:Option<Arc<str>>,
 }
 
@@ -228,6 +241,9 @@ fn refusal(topic:&Topic)->Arc<str> {
 struct Head<'a> {#[serde(borrow)] channel:Cow<'a,str>,#[serde(borrow,default)] data:Option<&'a RawValue>}
 #[derive(Deserialize)]
 struct CoinOnly {coin:String}
+/// `candle` 帧的 `data`：币在 `s`、周期在 `i`。
+#[derive(Deserialize)]
+struct CandleHead {s:String,i:String}
 #[derive(Deserialize)]
 struct Ack {method:String,subscription:Value}
 
@@ -359,18 +375,31 @@ impl State {
   self.broadcast(Feed::Down);
  }
 
+ /// 一帧发给订了 `topic` 的全部使用方；该留最近一帧的留着。
+ fn fan_out(&mut self,topic:&Topic,text:&str) {
+  let Some(state)=self.topics.get_mut(topic) else {return};
+  let text:Arc<str>=text.into();
+  if topic.keeps_last() {state.last=Some(text.clone());}
+  let ids:Vec<u64>=state.subs.iter().copied().collect();
+  self.counters.frames.fetch_add(1,Ordering::Relaxed);
+  self.deliver(ids,&text);
+ }
+
  fn upstream(&mut self,text:&str) {
   let Ok(head)=serde_json::from_str::<Head>(text) else {return};
   match head.channel.as_ref() {
-   "l2Book"=>{
+   "l2Book"|"activeAssetCtx"=>{
     let Some(coin)=head.data.and_then(|d|serde_json::from_str::<CoinOnly>(d.get()).ok()) else {return};
-    let topic=Topic::book(coin.coin);
-    let Some(state)=self.topics.get_mut(&topic) else {return};
-    let text:Arc<str>=text.into();
-    state.last=Some(text.clone());
-    let ids:Vec<u64>=state.subs.iter().copied().collect();
-    self.counters.frames.fetch_add(1,Ordering::Relaxed);
-    self.deliver(ids,&text);
+    let topic=if head.channel=="l2Book" {Topic::book(coin.coin)} else {Topic::asset_ctx(coin.coin)};
+    self.fan_out(&topic,text);
+   },
+   "candle"=>{
+    // 官方文档写的是 `Candle[]`，实际推的是单个对象：两种都认，按第一根定是哪个订阅。
+    let Some(data)=head.data else {return};
+    let first=serde_json::from_str::<CandleHead>(data.get()).ok().or_else(||serde_json::from_str::<Vec<CandleHead>>(data.get()).ok().and_then(|v|v.into_iter().next()));
+    let Some(candle)=first else {return};
+    let Some(interval)=interval(&candle.i) else {return};
+    self.fan_out(&Topic::candle(candle.s,interval),text);
    },
    "trades"=>{
     let Some(rows)=head.data.and_then(|d|serde_json::from_str::<Vec<CoinOnly>>(d.get()).ok()) else {return};
@@ -710,6 +739,32 @@ mod tests {
   assert!(got_last,"跟踪那条还在收");
  }
 
+ /// `candle` 按 `data.s` + `data.i` 分发，`activeAssetCtx` 按 `data.coin`；两种都留最近一帧给后来者。
+ #[tokio::test]
+ async fn candles_and_asset_contexts_are_routed_and_replayed() {
+  let mut f=fake().await;
+  let hub=Hub::start(format!("ws://127.0.0.1:{}",f.port),QUICK);
+  let mut a=hub.join(Class::Relay,64);
+  let one=Topic::candle("BTC","1m");
+  a.handle.subscribe(one.clone());
+  assert_eq!(heard(&mut f).await.1["subscription"],json!({"type":"candle","coin":"BTC","interval":"1m"}));
+  a.handle.subscribe(Topic::asset_ctx("BTC"));
+  heard(&mut f).await;
+  f.push.send(json!({"channel":"subscriptionResponse","data":{"method":"subscribe","subscription":{"type":"candle","coin":"BTC","interval":"1m"}}}).to_string()).unwrap();
+  assert_eq!(text(&mut a).await["channel"],"subscriptionResponse");
+  f.push.send(json!({"channel":"candle","data":{"t":1,"T":2,"s":"BTC","i":"5m","o":"1","c":"1","h":"1","l":"1","v":"1","n":1}}).to_string()).unwrap();
+  f.push.send(json!({"channel":"candle","data":{"t":1,"T":2,"s":"BTC","i":"1m","o":"1","c":"2","h":"2","l":"1","v":"1","n":1}}).to_string()).unwrap();
+  let got=text(&mut a).await;
+  assert_eq!((got["data"]["i"].as_str(),got["data"]["c"].as_str()),(Some("1m"),Some("2")),"5 分钟那根没人订，不发");
+  f.push.send(json!({"channel":"activeAssetCtx","data":{"coin":"BTC","ctx":{"markPx":"1","funding":"0.0001","openInterest":"5"}}}).to_string()).unwrap();
+  assert_eq!(text(&mut a).await["channel"],"activeAssetCtx");
+  // 后来订同一根 K 线的：回执 + 最近那一帧。
+  let mut b=hub.join(Class::Relay,64);
+  b.handle.subscribe(one);
+  assert_eq!(text(&mut b).await["channel"],"subscriptionResponse");
+  assert_eq!(text(&mut b).await["data"]["c"],"2");
+ }
+
  #[test]
  fn topics_from_acks() {
   assert_eq!(Topic::of(&json!({"type":"l2Book","coin":"kPEPE","nSigFigs":4,"mantissa":null,"fast":false})),Some(Topic::book("kPEPE")));
@@ -717,6 +772,10 @@ mod tests {
   assert_eq!(Topic::of(&json!({"type":"l2Book","coin":"BTC"})),None);
   assert_eq!(Topic::of(&json!({"type":"trades","coin":"BTC"})),Some(Topic::trades("BTC")));
   assert_eq!(Topic::of(&json!({"type":"allMids"})),None);
+  assert_eq!(Topic::of(&json!({"type":"candle","coin":"kPEPE","interval":"1m"})),Some(Topic::candle("kPEPE","1m")));
+  assert_eq!(Topic::of(&json!({"type":"candle","coin":"BTC","interval":"7m"})),None);
+  assert_eq!(Topic::of(&json!({"type":"activeAssetCtx","coin":"BTC"})),Some(Topic::asset_ctx("BTC")));
+  assert_eq!(Topic::candle("BTC","1h").message(true),r#"{"method":"subscribe","subscription":{"coin":"BTC","interval":"1h","type":"candle"}}"#);
   assert!(valid_coin("kPEPE")&&valid_coin("BTC")&&!valid_coin("")&&!valid_coin("BTC-USD")&&!valid_coin(&"A".repeat(17)));
  }
 }

@@ -13,13 +13,11 @@
 //!
 //! 合约把单价极小的币挂成 `1000PEPEUSDT`（baseCoin `1000PEPE`），和币安同一张前缀表（`scaled`）。
 //! `SHIB1000` 这种前缀在后面的、`10000` 这种不在前缀表里的，不认（列不进对应的 base）。
-use crate::venues::orderflow::{ExchangeKey,Margin,Notional,Product,Table,TableSource,Venue,boxed,get_bytes_any,index,number};
+use crate::venues::orderflow::{ExchangeKey,Margin,Notional,Product,Table,TableSource,Venue,boxed,index,number};
 use chrono::{Datelike,TimeZone,Weekday};
 use serde::Deserialize;
 
 pub const KEY:ExchangeKey=ExchangeKey("bybit");
-/// REST 主机（按先后试）。
-const REST_HOSTS:[&str;2]=["https://api.bybit.com","https://api.bytick.com"];
 /// 一张表最多翻几页（linear 现在约 900 行，一页就够；留足余量又不至于死循环）。
 const MAX_PAGES:usize=20;
 
@@ -137,8 +135,7 @@ async fn fetch(category:&str)->anyhow::Result<Vec<Instrument>> {
  let mut cursor:Option<String>=None;
  for _ in 0..MAX_PAGES {
   let query=match &cursor {Some(c)=>format!("category={category}&limit=1000&cursor={}",cursor_component(c)),None=>format!("category={category}&limit=1000")};
-  let urls:Vec<String>=REST_HOSTS.iter().map(|host|format!("{host}/v5/market/instruments-info?{query}")).collect();
-  let (page,next)=parse_page(&get_bytes_any(&urls).await?)?;
+  let (page,next)=parse_page(&super::rest_bytes(&format!("v5/market/instruments-info?{query}")).await?)?;
   rows.extend(page);
   match next {Some(next) if cursor.as_deref()!=Some(next.as_str())=>cursor=Some(next),_=>return Ok(rows)}
  }

@@ -8,8 +8,9 @@
 //!
 //!   所以一条中继按流名拆成最多三条上游：用到的几条全部连上才答 101；任一条断开或沉默，
 //!   整条中继（连同手机那头）一起断，手机重连——不存在「深度还在、成交已经断了」的半条中继。
-//! * `GET /v1/market/ws/okx`：服务端连 `wss://ws.okx.com:8443/ws/v5/public`，上游帧原样转给手机
-//!   （包括 OKX 的文本 `pong`）。手机在国内直连不了 OKX。
+//! * `GET /v1/market/ws/okx[?endpoint=business]`：服务端连 `wss://ws.okx.com:8443/ws/v5/public`
+//!   （`endpoint=business` 连 K 线所在的 `…/ws/v5/business`），上游帧原样转给手机（包括 OKX 的文本 `pong`）。
+//!   手机在国内直连不了 OKX。上行白名单见 `venues::okx::relay`。
 //! * `GET /v1/market/ws/bybit?category=spot|linear|inverse`（2026-10-08）：一条中继一条上游
 //!   `wss://stream.bybit.com/v5/public/{category}`，连不上换 `stream.bytick.com`；上游帧原样转下去
 //!   （包括 Bybit 对 `{"op":"ping"}` 的回帧）。上行白名单见 `venues::bybit::relay`。
@@ -36,11 +37,8 @@
 //! 规矩：
 //! * 流名白名单：每个都要是 `^[a-z0-9_]{2,40}@(depth@100ms|aggTrade)$`，最多 8 个，
 //!   不合规直接 400，不升级。
-//! * OKX 那条：手机发上来的文本帧只放行字面量 `ping`，或
-//!   `{"op":"subscribe"|"unsubscribe","args":[{"channel":"books"|"trades","instId":"…"}…]}`
-//!   （args 1–12 个，instId 要是 `^[A-Z0-9]{1,20}-(USDT|USD|USDC)(-SWAP|-[0-9]{6})?$`）；
-//!   其他帧丢掉（不转、不断开）。一条连接同时订着的 (channel, instId) 最多
-//!   `MAX_OKX_SUBSCRIPTIONS` 个，超了的那条订阅也丢掉。币安那条上手机发的文本帧一律丢掉
+//! * OKX / Bybit / Hyperliquid 三条的上行白名单各在那一家的 `venues::<id>::relay` 里（只认那一家的报文），
+//!   不放行的帧丢掉（不转、不断开）。币安那条上手机发的文本帧一律丢掉
 //!   ——组合流的地址就是订阅，不许再在连接里 SUBSCRIBE 别的。
 //! * 任一端断开就全部关掉。上游的 ping 由 tungstenite 自动回；对手机每 20 秒发一次 ping；
 //!   币安的每条上游也每 20 秒 ping 一次，回来的 pong 算「它还活着」——冷门交割合约一分钟可能一笔
@@ -57,7 +55,7 @@
 //!   却马上被关掉的连接。币安每条上游出站之前先看 `binance_gate`，这个出口被封着就不去敲门，
 //!   握手被 429 / 418 顶回来也记进那道闸。
 use crate::{AppState,binance_gate,error::{ApiError,Params}};
-use crate::venues::bybit;
+use crate::venues::{bybit,okx::{self,relay::Endpoint}};
 use crate::venues::hyperliquid::{self,hub::{self,Hub}};
 use axum::Router;
 use axum::extract::{ConnectInfo,FromRequestParts};
@@ -67,7 +65,7 @@ use axum::response::{IntoResponse,Response};
 use axum::routing::get;
 use futures_util::{SinkExt,StreamExt};
 use serde::Deserialize;
-use std::collections::{HashMap,HashSet};
+use std::collections::HashMap;
 use std::net::{IpAddr,Ipv4Addr,SocketAddr};
 use std::sync::{Arc,Mutex,OnceLock};
 use std::time::Duration;
@@ -85,7 +83,6 @@ const BINANCE_COIN_M:&str="wss://dstream.binance.com/stream";
 const BINANCE_USDM_PUBLIC:&str="wss://fstream.binance.com/public/stream";
 /// U 本位合约的成交 / 标记价格类组合流（aggTrade）。
 const BINANCE_USDM_MARKET:&str="wss://fstream.binance.com/market/stream";
-const OKX_UPSTREAM:&str="wss://ws.okx.com:8443/ws/v5/public";
 
 /// 整个进程同时在跑的中继连接数上限（四条中继合计）。3 位朋友、上限约 10 人；2026-10-08 接上
 /// Bybit 与 Hyperliquid 后一人开一只币走网关线路最多五六条（见下），96 条留出余量；再多就是有人在拿它
@@ -100,11 +97,6 @@ const MAX_RELAYS_PER_CLIENT:usize=24;
 /// 币安一条中继最多几路流。一只币的合约侧：U 本位永续 + 两个 U 本位交割 + 币本位永续 + 两个币本位交割，
 /// 每个要 depth 与 aggTrade——手机按需分两条连，每条不超过 8 路。
 pub const MAX_STREAMS:usize=8;
-/// OKX 一条订阅消息里最多几个 args。
-pub const MAX_OKX_ARGS:usize=12;
-/// OKX 一条连接同时订着的 (channel, instId) 最多几个。一只币：现货、U 本位永续、币本位永续、
-/// 两个交割，各 books + trades = 10 个，给到 24。
-pub const MAX_OKX_SUBSCRIPTIONS:usize=24;
 const RETRY_AFTER:&str="2";
 
 #[derive(Clone,Copy,Debug)]
@@ -172,7 +164,9 @@ type HubSource=Arc<dyn Fn()->Hub+Send+Sync>;
 
 pub struct Relay {
  binance:BinanceUpstreams,
+ /// OKX 的 public 与 business 两个端点（`?endpoint=` 选）。
  okx:String,
+ okx_business:String,
  /// Bybit 公开行情的主机，按先后试；后面拼 `/{category}`。
  bybit:Vec<String>,
  hyperliquid:HubSource,
@@ -185,12 +179,14 @@ pub struct Relay {
 impl Relay {
  fn new(binance:BinanceUpstreams,okx:impl Into<String>,max:usize,per_client:usize,timing:Timing)->Self {
   Self{
-   binance,okx:okx.into(),
+   binance,okx:okx.into(),okx_business:okx::WS_BUSINESS.into(),
    bybit:bybit::WS_BASES.iter().map(|b|b.to_string()).collect(),
    hyperliquid:Arc::new(||hub::shared().clone()),
    permits:Arc::new(Semaphore::new(max)),per_client,clients:Clients::default(),timing,
   }
  }
+ #[cfg(test)]
+ fn with_okx_business(mut self,url:String)->Self {self.okx_business=url;self}
  #[cfg(test)]
  fn with_bybit(mut self,bases:Vec<String>)->Self {self.bybit=bases;self}
  #[cfg(test)]
@@ -261,90 +257,12 @@ pub fn binance_streams(raw:&str)->Option<Vec<String>> {
  Some(out)
 }
 
-/// OKX 的 instId：`^[A-Z0-9]{1,20}-(USDT|USD|USDC)(-SWAP|-[0-9]{6})?$`。
-pub fn valid_okx_inst(inst:&str)->bool {
- let mut parts=inst.split('-');
- let (Some(base),Some(quote))=(parts.next(),parts.next()) else {return false};
- let tail=parts.next();
- if parts.next().is_some() {return false}
- (1..=20).contains(&base.len())&&base.bytes().all(|b|b.is_ascii_uppercase()||b.is_ascii_digit())
-  &&matches!(quote,"USDT"|"USD"|"USDC")
-  &&tail.is_none_or(|t|t=="SWAP"||(t.len()==6&&t.bytes().all(|b|b.is_ascii_digit())))
-}
-
-#[derive(Clone,Copy,Debug,PartialEq,Eq,Hash,Deserialize)]
-#[serde(rename_all="lowercase")]
-pub enum OkxOp {Subscribe,Unsubscribe}
-#[derive(Clone,Copy,Debug,PartialEq,Eq,Hash,Deserialize)]
-#[serde(rename_all="lowercase")]
-pub enum OkxChannel {Books,Trades}
-impl OkxChannel {fn name(self)->&'static str {match self {Self::Books=>"books",Self::Trades=>"trades"}}}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct OkxArg {channel:OkxChannel,#[serde(rename="instId")] inst_id:String}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct OkxRequest {op:OkxOp,args:Vec<OkxArg>}
-
-/// 手机发上来的一帧，放行之后长什么样。
-#[derive(Clone,Debug,PartialEq,Eq)]
-pub enum OkxUpward {
- /// 字面量 `ping`。
- Ping,
- /// 一条订阅 / 退订。
- Request {op:OkxOp,args:Vec<(OkxChannel,String)>},
-}
-impl OkxUpward {
- /// 发给上游的文本。订阅按放行后的字段重新拼，手机写进去的别的东西一个字也带不过去。
- fn text(&self)->String {
-  match self {
-   Self::Ping=>"ping".to_owned(),
-   Self::Request{op,args}=>serde_json::json!({
-    "op":match op {OkxOp::Subscribe=>"subscribe",OkxOp::Unsubscribe=>"unsubscribe"},
-    "args":args.iter().map(|(channel,inst)|serde_json::json!({"channel":channel.name(),"instId":inst})).collect::<Vec<_>>(),
-   }).to_string(),
-  }
- }
-}
-
-/// 手机发上来的一帧该不该放行；不放行就是 `None`（丢掉，不断开）。
-pub fn okx_upward(text:&str)->Option<OkxUpward> {
- if text=="ping" {return Some(OkxUpward::Ping)}
- let request:OkxRequest=serde_json::from_str(text).ok()?;
- if request.args.is_empty()||request.args.len()>MAX_OKX_ARGS {return None}
- if !request.args.iter().all(|a|valid_okx_inst(&a.inst_id)) {return None}
- Some(OkxUpward::Request{op:request.op,args:request.args.into_iter().map(|a|(a.channel,a.inst_id)).collect()})
-}
-
-/// 一条 OKX 连接上正订着的东西，用来卡「同时订着最多几个」。
-#[derive(Default)]
-pub struct OkxSubscriptions {live:HashSet<(OkxChannel,String)>}
-impl OkxSubscriptions {
- /// 这一帧能不能转上去；能转的话顺手记账。超了上限的订阅整条丢掉，账不动。
- pub fn admit(&mut self,frame:&OkxUpward)->bool {
-  match frame {
-   OkxUpward::Ping=>true,
-   OkxUpward::Request{op:OkxOp::Unsubscribe,args}=>{
-    for (channel,inst) in args {self.live.remove(&(*channel,inst.clone()));}
-    true
-   },
-   OkxUpward::Request{op:OkxOp::Subscribe,args}=>{
-    let fresh:HashSet<(OkxChannel,String)>=args.iter().filter(|a|!self.live.contains(*a)).cloned().collect();
-    if self.live.len()+fresh.len()>MAX_OKX_SUBSCRIPTIONS {return false}
-    self.live.extend(fresh);
-    true
-   },
-  }
- }
-}
-
 // ------------------------------------------------------------------ 连接与转发
 
 type Upstream=tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
-enum Kind {Binance,Okx,Bybit}
+enum Kind {Binance,Okx(Endpoint),Bybit}
 
 fn refuse(status:StatusCode,code:&'static str)->Response {
  let mut reply=ApiError(status,code).into_response();
@@ -414,7 +332,7 @@ async fn pump(client:WebSocket,upstreams:Vec<Upstream>,kind:Kind,timing:Timing,_
  let mut ping=tokio::time::interval_at(Instant::now()+timing.ping,timing.ping);
  let mut upstream_deadlines=vec![Instant::now()+timing.upstream_idle;up_txs.len()];
  let mut client_deadline=Instant::now()+timing.client_idle;
- let mut subscriptions=OkxSubscriptions::default();
+ let mut subscriptions=okx::relay::Subscriptions::default();
  let mut bybit_subscriptions=bybit::relay::Subscriptions::default();
  let end=loop {
   let upstream_deadline=upstream_deadlines.iter().min().copied().unwrap_or(client_deadline);
@@ -449,7 +367,7 @@ async fn pump(client:WebSocket,upstreams:Vec<Upstream>,kind:Kind,timing:Timing,_
     let upward=match kind {
      // 币安那条：组合流的地址就是订阅，连接里发什么都不转。
      Kind::Binance=>None,
-     Kind::Okx=>okx_upward(text.as_str()).filter(|frame|subscriptions.admit(frame)).map(|frame|frame.text()),
+     Kind::Okx(endpoint)=>okx::relay::upward(endpoint,text.as_str()).filter(|frame|subscriptions.admit(frame)).map(|frame|frame.text()),
      Kind::Bybit=>bybit::relay::upward(text.as_str()).filter(|frame|bybit_subscriptions.admit(frame)).map(|frame|frame.text()),
     };
     let Some(upward)=upward else {continue};
@@ -495,9 +413,15 @@ async fn binance(relay:Arc<Relay>,source:Source,query:StreamsQuery,ws:Result<Web
  open(&relay,Kind::Binance,source,urls,ws).await
 }
 
-async fn okx(relay:Arc<Relay>,source:Source,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>)->Response {
- let urls=vec![relay.okx.clone()];
- open(&relay,Kind::Okx,source,urls,ws).await
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OkxQuery {endpoint:Option<String>}
+
+/// OKX：`endpoint` 缺省 public；K 线类频道只在 business 上（见 `venues::okx::relay`）。
+async fn okx(relay:Arc<Relay>,source:Source,query:OkxQuery,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>)->Response {
+ let Some(endpoint)=Endpoint::of(query.endpoint.as_deref()) else {return ApiError::bad("invalid_endpoint").into_response()};
+ let urls=vec![match endpoint {Endpoint::Public=>relay.okx.clone(),Endpoint::Business=>relay.okx_business.clone()}];
+ open(&relay,Kind::Okx(endpoint),source,urls,ws).await
 }
 
 #[derive(Deserialize)]
@@ -533,9 +457,9 @@ fn routes_with<S:Clone+Send+Sync+'static>(relay:Arc<Relay>)->Router<S> {
    let relay=relay.clone();
    async move {binance(relay,source,query,ws).await}
   }))
-  .route(OKX_PATH,get(move|source:Source,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>| {
+  .route(OKX_PATH,get(move|source:Source,Params(query):Params<OkxQuery>,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>| {
    let relay=for_okx.clone();
-   async move {okx(relay,source,ws).await}
+   async move {okx(relay,source,query,ws).await}
   }))
   .route(BYBIT_PATH,get(move|source:Source,Params(query):Params<CategoryQuery>,ws:Result<WebSocketUpgrade,WebSocketUpgradeRejection>| {
    let relay=for_bybit.clone();
@@ -551,7 +475,7 @@ fn shared()->Arc<Relay> {
  static R:OnceLock<Arc<Relay>>=OnceLock::new();
  R.get_or_init(||{
   let binance=BinanceUpstreams{coin_m:BINANCE_COIN_M.into(),usdm_depth:BINANCE_USDM_PUBLIC.into(),usdm_trades:BINANCE_USDM_MARKET.into()};
-  Arc::new(Relay::new(binance,OKX_UPSTREAM,MAX_RELAYS,MAX_RELAYS_PER_CLIENT,TIMING))
+  Arc::new(Relay::new(binance,okx::WS_PUBLIC,MAX_RELAYS,MAX_RELAYS_PER_CLIENT,TIMING))
  }).clone()
 }
 pub fn routes()->Router<AppState> {routes_with(shared())}
@@ -602,58 +526,6 @@ mod tests {
    (Lane::UsdmTrades,v(&["btcusdt@aggTrade"])),
   ],"三组、顺序固定、组内保持原顺序");
   assert_eq!(binance_lanes(&v(&["btcusdt@depth@100ms"])),vec![(Lane::UsdmDepth,v(&["btcusdt@depth@100ms"]))],"用不到的上游不连");
- }
-
- #[test]
- fn okx_inst_ids() {
-  for good in ["BTC-USDT","BTC-USD","BTC-USDC","BTC-USDT-SWAP","BTC-USD-SWAP","BTC-USD-260925","BTC-USDT-261225","1INCH-USDT","ABCDEFGHIJKLMNOPQRST-USDT"] {
-   assert!(valid_okx_inst(good),"{good}");
-  }
-  for bad in ["","BTC","btc-usdt","BTC-EUR","BTC-USDT-swap","BTC-USD-2609","BTC-USD-2609250","BTC-USD_UM-261225","BTC-USD-SWAP-X","-USDT","BTC--USDT",
-   "ABCDEFGHIJKLMNOPQRSTU-USDT","BTC-USDT-SWAP ","BTC-USD-26092A"] {
-   assert!(!valid_okx_inst(bad),"{bad}");
-  }
- }
-
- #[test]
- fn okx_upward_frames() {
-  assert_eq!(okx_upward("ping"),Some(OkxUpward::Ping));
-  let sub=okx_upward(r#"{"op":"subscribe","args":[{"channel":"books","instId":"BTC-USDT"},{"channel":"trades","instId":"BTC-USD-SWAP"}]}"#).unwrap();
-  assert_eq!(sub,OkxUpward::Request{op:OkxOp::Subscribe,args:vec![(OkxChannel::Books,"BTC-USDT".into()),(OkxChannel::Trades,"BTC-USD-SWAP".into())]});
-  assert_eq!(serde_json::from_str::<serde_json::Value>(&sub.text()).unwrap(),serde_json::json!({"op":"subscribe","args":[{"channel":"books","instId":"BTC-USDT"},{"channel":"trades","instId":"BTC-USD-SWAP"}]}));
-  assert!(matches!(okx_upward(r#"{"op":"unsubscribe","args":[{"channel":"trades","instId":"BTC-USD-260925"}]}"#),Some(OkxUpward::Request{op:OkxOp::Unsubscribe,..})));
-  let twelve=(0..12).map(|i|format!(r#"{{"channel":"books","instId":"C{i}-USDT"}}"#)).collect::<Vec<_>>().join(",");
-  assert!(okx_upward(&format!(r#"{{"op":"subscribe","args":[{twelve}]}}"#)).is_some());
-  for bad in [
-   "PING","ping ","pong","","{}",
-   r#"{"op":"login","args":[{"apiKey":"x"}]}"#,
-   r#"{"op":"subscribe","args":[]}"#,
-   r#"{"op":"subscribe","args":[{"channel":"tickers","instId":"BTC-USDT"}]}"#,
-   r#"{"op":"subscribe","args":[{"channel":"books5","instId":"BTC-USDT"}]}"#,
-   r#"{"op":"subscribe","args":[{"channel":"books","instId":"BTC-EUR"}]}"#,
-   r#"{"op":"subscribe","args":[{"channel":"books","instType":"SPOT"}]}"#,
-   r#"{"op":"subscribe","args":[{"channel":"books","instId":"BTC-USDT","extra":1}]}"#,
-   r#"{"op":"subscribe","id":"1","args":[{"channel":"books","instId":"BTC-USDT"}]}"#,
-   r#"{"op":"Subscribe","args":[{"channel":"books","instId":"BTC-USDT"}]}"#,
-   r#"{"op":"subscribe","args":{"channel":"books","instId":"BTC-USDT"}}"#,
-  ] {
-   assert_eq!(okx_upward(bad),None,"{bad}");
-  }
-  let thirteen=(0..13).map(|i|format!(r#"{{"channel":"books","instId":"C{i}-USDT"}}"#)).collect::<Vec<_>>().join(",");
-  assert_eq!(okx_upward(&format!(r#"{{"op":"subscribe","args":[{thirteen}]}}"#)),None,"args 最多 12 个");
- }
-
- #[test]
- fn okx_subscription_cap() {
-  let mut subs=OkxSubscriptions::default();
-  let batch=|op:OkxOp,from:usize,n:usize|OkxUpward::Request{op,args:(from..from+n).map(|i|(OkxChannel::Books,format!("C{i}-USDT"))).collect()};
-  assert!(subs.admit(&batch(OkxOp::Subscribe,0,12)));
-  assert!(subs.admit(&batch(OkxOp::Subscribe,12,12)));
-  assert!(subs.admit(&batch(OkxOp::Subscribe,0,12)),"已经订着的再订一次不占新名额");
-  assert!(!subs.admit(&batch(OkxOp::Subscribe,24,1)),"第 25 个不放");
-  assert!(subs.admit(&OkxUpward::Ping));
-  assert!(subs.admit(&batch(OkxOp::Unsubscribe,0,2)));
-  assert!(subs.admit(&batch(OkxOp::Subscribe,24,2)),"退订之后腾出名额");
  }
 
  // ---------------------------------------------------------------- 端到端（本机假上游）
@@ -749,6 +621,9 @@ mod tests {
    // 合规但不是 WebSocket 升级请求。
    (format!("{BINANCE_PATH}?streams=btcusdt@aggTrade"),"websocket_required"),
    (OKX_PATH.to_owned(),"websocket_required"),
+   (format!("{OKX_PATH}?endpoint=business"),"websocket_required"),
+   (format!("{OKX_PATH}?endpoint=private"),"invalid_endpoint"),
+   (format!("{OKX_PATH}?x=1"),"invalid_query"),
    (BYBIT_PATH.to_owned(),"invalid_query"),
    (format!("{BYBIT_PATH}?category=option"),"invalid_category"),
    (format!("{BYBIT_PATH}?category=Linear"),"invalid_category"),
@@ -823,13 +698,28 @@ mod tests {
   assert_eq!(next_text(&mut client,Duration::from_secs(2)).await.as_deref(),Some("hello /echo?"));
   client.send(Up::Text("ping".into())).await.unwrap();
   assert_eq!(next_text(&mut client,Duration::from_secs(2)).await.as_deref(),Some("echo ping"));
-  for dropped in [r#"{"op":"login","args":[]}"#,r#"{"op":"subscribe","args":[{"channel":"tickers","instId":"BTC-USDT"}]}"#,"hello?"] {
+  for dropped in [r#"{"op":"login","args":[]}"#,r#"{"op":"subscribe","args":[{"channel":"candle1m","instId":"BTC-USDT-SWAP"}]}"#,"hello?"] {
    client.send(Up::Text(dropped.into())).await.unwrap();
   }
   client.send(Up::Text(r#"{"op":"subscribe", "args":[{"channel":"books","instId":"BTC-USD-SWAP"}]}"#.into())).await.unwrap();
   let echoed=next_text(&mut client,Duration::from_secs(2)).await.unwrap();
   let sent:serde_json::Value=serde_json::from_str(echoed.strip_prefix("echo ").unwrap()).unwrap();
   assert_eq!(sent,serde_json::json!({"op":"subscribe","args":[{"channel":"books","instId":"BTC-USD-SWAP"}]}),"前面三帧被丢掉，连接还在，合规的订阅照转");
+ }
+
+ /// `endpoint=business` 连 business 上游，只放 K 线频道上去。
+ #[tokio::test]
+ async fn okx_business_relay_carries_candles_only() {
+  let base=fake().await;
+  let relay=Relay::new(lanes(&format!("{base}/echo")),format!("{base}/echo/public"),4,4,QUICK).with_okx_business(format!("{base}/echo/business"));
+  let port=serve::<()>(routes_with(Arc::new(relay))).await;
+  let mut client=dial(port,&format!("{OKX_PATH}?endpoint=business")).await.unwrap();
+  assert_eq!(next_text(&mut client,Duration::from_secs(2)).await.as_deref(),Some("hello /echo/business?"));
+  client.send(Up::Text(r#"{"op":"subscribe","args":[{"channel":"tickers","instId":"BTC-USDT-SWAP"}]}"#.into())).await.unwrap();
+  client.send(Up::Text(r#"{"op":"subscribe","args":[{"channel":"candle1m","instId":"BTC-USDT-SWAP"}]}"#.into())).await.unwrap();
+  let echoed=next_text(&mut client,Duration::from_secs(2)).await.unwrap();
+  let sent:serde_json::Value=serde_json::from_str(echoed.strip_prefix("echo ").unwrap()).unwrap();
+  assert_eq!(sent["args"][0]["channel"],"candle1m","tickers 在 business 上不放");
  }
 
  #[tokio::test]
@@ -920,7 +810,7 @@ mod tests {
   let port=serve::<()>(routes_with(Arc::new(relay))).await;
   let mut client=dial(port,&format!("{BYBIT_PATH}?category=linear")).await.unwrap();
   assert_eq!(next_text(&mut client,Duration::from_secs(2)).await.as_deref(),Some("hello /echo/linear?"),"主机连不上换备用，category 拼在路径上");
-  for dropped in [r#"{"op":"auth","args":["k",1,"s"]}"#,r#"{"op":"subscribe","args":["allLiquidation.BTCUSDT"]}"#,r#"{"op":"subscribe","args":["tickers.BTCUSDT"]}"#,"ping"] {
+  for dropped in [r#"{"op":"auth","args":["k",1,"s"]}"#,r#"{"op":"subscribe","args":["allLiquidation.BTCUSDT"]}"#,r#"{"op":"subscribe","args":["kline.7.BTCUSDT"]}"#,"ping"] {
    client.send(Up::Text(dropped.into())).await.unwrap();
   }
   client.send(Up::Text(r#"{"op":"ping"}"#.into())).await.unwrap();
@@ -929,14 +819,20 @@ mod tests {
   let echoed=next_text(&mut client,Duration::from_secs(2)).await.unwrap();
   let sent:serde_json::Value=serde_json::from_str(echoed.strip_prefix("echo ").unwrap()).unwrap();
   assert_eq!(sent,serde_json::json!({"op":"subscribe","args":["orderbook.1000.BTCUSDT","publicTrade.BTCUSDT"],"req_id":"a1"}));
-  // 一条连接最多 24 个 topic：再订 23 个，只放到 24 为止（整条超了的那一帧丢掉）。
+  // 一条连接最多 MAX_TOPICS 个 topic：已经订着 2 个，补到正好满为止都放，再多一个的那一帧整帧丢掉。
   let batch=|from:usize,n:usize|format!(r#"{{"op":"subscribe","args":[{}]}}"#,(from..from+n).map(|i|format!(r#""publicTrade.C{i}USDT""#)).collect::<Vec<_>>().join(","));
-  for frame in [batch(0,10),batch(10,10),batch(20,3)] {
+  let room=bybit::relay::MAX_TOPICS-2;
+  let mut frames=vec![];
+  let mut from=0;
+  while from<room {let n=10.min(room-from);frames.push(batch(from,n));from+=n;}
+  let fitting=frames.len();
+  frames.push(batch(from,1));
+  for frame in frames {
    client.send(Up::Text(frame.into())).await.unwrap();
   }
   let mut forwarded=0;
   while let Some(text)=next_text(&mut client,Duration::from_millis(400)).await {assert!(text.starts_with("echo "));forwarded+=1;}
-  assert_eq!(forwarded,2,"第三帧会让这条连接订到 25 个，整帧丢掉");
+  assert_eq!(forwarded,fitting,"最后一帧会让这条连接超过上限，整帧丢掉");
  }
 
  #[tokio::test]
@@ -1007,17 +903,18 @@ mod tests {
   assert_eq!(ack["channel"],"subscriptionResponse");
   let frame:serde_json::Value=serde_json::from_str(&next_text(&mut b,Duration::from_secs(2)).await.unwrap()).unwrap();
   assert_eq!(frame["data"]["coin"],"BTC");
-  // 一条连接最多 16 个：a 再订 20 只币的成交，只上去 15 个。
-  for i in 0..20 {a.send(Up::Text(format!(r#"{{"method":"subscribe","subscription":{{"type":"trades","coin":"C{i}"}}}}"#).into())).await.unwrap();}
+  // 一条连接最多 MAX_TOPICS 个：a 再订 MAX_TOPICS+4 只币的成交，只上去 MAX_TOPICS-1 个（BTC 簿占了一个）。
+  let cap=hyperliquid::relay::MAX_TOPICS;
+  for i in 0..cap+4 {a.send(Up::Text(format!(r#"{{"method":"subscribe","subscription":{{"type":"trades","coin":"C{i}"}}}}"#).into())).await.unwrap();}
   let mut subscribed=0;
   while let Ok(Some(v))=tokio::time::timeout(Duration::from_millis(500),upstream.recv()).await {if v["method"]=="subscribe" {subscribed+=1;}}
-  assert_eq!(subscribed,15,"BTC 簿 + 15 只成交 = 16");
-  // a 关掉：它订的 15 只成交退掉，BTC 簿还有 b 订着不退。
+  assert_eq!(subscribed,cap-1,"BTC 簿 + 其余成交 = 上限");
+  // a 关掉：它订的成交全退掉，BTC 簿还有 b 订着不退。
   a.close(None).await.unwrap();
   drop(a);
   let mut unsubscribed=Vec::new();
   while let Ok(Some(v))=tokio::time::timeout(Duration::from_millis(500),upstream.recv()).await {if v["method"]=="unsubscribe" {unsubscribed.push(v["subscription"]["type"].as_str().unwrap().to_owned());}}
-  assert_eq!(unsubscribed.len(),15);
+  assert_eq!(unsubscribed.len(),cap-1);
   assert!(unsubscribed.iter().all(|t|t=="trades"));
   assert_eq!(hub.counters.topics.load(std::sync::atomic::Ordering::Relaxed),1);
  }

@@ -17,8 +17,8 @@
 //! 3. 回了 429 / 418 整进程按 `Retry-After` 冷却，`X-MBX-USED-WEIGHT-1M` 逼近上限时也先停到下一分钟。
 pub mod orderflow;
 use axum::body::Bytes;
-use axum::http::{HeaderValue,StatusCode,header};
-use axum::response::{IntoResponse,Response};
+use axum::http::StatusCode;
+use axum::response::Response;
 use serde_json::json;
 use std::collections::{HashMap,VecDeque};
 use std::sync::{Arc,OnceLock};
@@ -183,14 +183,7 @@ fn slot_for(key:String)->Slot {
  map.entry(key).or_default().clone()
 }
 
-fn json_body(status:StatusCode,body:Bytes,retry_after:Option<String>)->Response {
- let mut response=(status,body).into_response();
- let headers=response.headers_mut();
- headers.insert(header::CONTENT_TYPE,HeaderValue::from_static("application/json"));
- headers.insert(header::CACHE_CONTROL,HeaderValue::from_static("no-store"));
- if let Some(v)=retry_after.and_then(|v|HeaderValue::from_str(&v).ok()) {headers.insert(header::RETRY_AFTER,v);}
- response
-}
+use super::outbound::json_body;
 fn refuse(status:StatusCode,error:&str,retry_after:Option<u64>)->Response {
  json_body(status,Bytes::from(json!({"error":error}).to_string()),retry_after.map(|s|s.to_string()))
 }
@@ -218,6 +211,79 @@ pub async fn raw(path:&str,query:&[(String,String)])->Response {
   }
   Err(Upstream::RateLimited(secs))=>refuse(StatusCode::TOO_MANY_REQUESTS,"upstream_rate_limited",Some(secs)),
   Err(Upstream::Unavailable)=>refuse(StatusCode::BAD_GATEWAY,"upstream_unavailable",None),
+ }
+}
+
+// ------------------------------------------------------------------ 注册表里的这一家
+
+/// 币安 U 本位永续。裸代号（没带交易所前缀的老数据）都归它。
+pub struct Binance;
+pub static BINANCE:Binance=Binance;
+
+/// 代号最长 40 个字符（按字符数，不按字节：中文代号一个字三个字节）。
+const SYMBOL_MAX_CHARS:usize=40;
+/// 币安 U 本位合约的代号：ASCII 大写字母、数字，或者**非 ASCII 的 Unicode 字母数字**，
+/// 并以一个计价资产结尾。币安上架过纯中文底名的合约（`币安人生USDT` 这类），只认 ASCII
+/// 的旧规则会把它们的自选、画线、提醒整条拒掉，同步队列从此卡在那一条上。ASCII 小写仍然
+/// 不收：币安代号永远是大写，小写只会是客户端拼错了。
+pub fn symbol_ok(s:&str)->bool {
+ s.chars().count()<=SYMBOL_MAX_CHARS && crate::instruments::QUOTE_ASSETS.iter().any(|q|s.strip_suffix(q).is_some_and(|base|!base.is_empty()))
+  && s.chars().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()||(!c.is_ascii()&&c.is_alphanumeric()))
+}
+
+/// 币安 K 线走 www.binance.com：美国那台 VPS 上 fapi.binance.com 回 451（见 `sector_history::KLINES`）。
+/// 经 `market_meta::get_json`，所以落在 `binance_gate` 那道闸里。
+const KLINES:&str="https://www.binance.com/fapi/v1/klines";
+/// 一页最多多少根。
+const KLINES_PAGE:i64=1500;
+
+/// `/fapi/v1/klines` 的一页：`[[开盘时刻, "开", "高", "低", "收", "量", …], …]`。
+pub fn parse_klines(v:&serde_json::Value)->Vec<super::Bar> {
+ v.as_array().into_iter().flatten().filter_map(|row|{
+  let row=row.as_array()?;
+  let number=|i:usize|row.get(i)?.as_str()?.parse::<f64>().ok();
+  let bar=super::Bar{open_time:row.first()?.as_i64()?,open:number(1)?,high:number(2)?,low:number(3)?,close:number(4)?,volume:number(5).unwrap_or(0.0)};
+  bar.sane().then_some(bar)
+ }).collect()
+}
+
+fn interval(step:i64)->Option<&'static str> {
+ Some(match step {60=>"1m",180=>"3m",300=>"5m",900=>"15m",1800=>"30m",3600=>"1h",7200=>"2h",14_400=>"4h",21_600=>"6h",43_200=>"12h",86_400=>"1d",_=>return None})
+}
+
+impl super::Venue for Binance {
+ fn source(&self)->&'static str {SOURCE}
+ fn short_name(&self)->&'static str {"币安"}
+ fn market(&self)->&'static str {crate::instruments::DEFAULT_MARKET}
+ fn market_key(&self)->&'static str {crate::instruments::DEFAULT_MARKET_KEY}
+ fn symbol_ok(&self,symbol:&str)->bool {symbol_ok(symbol)}
+ fn review(&self)->bool {true}
+ fn bare_link(&self)->bool {true}
+ /// `BTCUSDT` → `币安 BTC`（没有这个尾巴就原样）。
+ fn webhook_name(&self,symbol:&str)->String {super::labeled(self.short_name(),super::without_usdt(symbol))}
+ fn raw<'a>(&'a self,path:&'a str,query:&'a [(String,String)])->super::Fut<'a,Response> {Box::pin(raw(path,query))}
+ fn candles<'a>(&'a self,symbol:&'a str,step:i64,start:i64,end:i64)->super::Fut<'a,Result<Vec<super::Bar>,super::Upstream>> {
+  Box::pin(async move {
+   let (Some(interval),true)=(interval(step),symbol_ok(symbol)) else {return Err(super::Upstream::Rejected(400))};
+   let (mut out,mut cursor)=(Vec::new(),start*1000);
+   let end_ms=end*1000;
+   while cursor<end_ms {
+    let limit=((end_ms-cursor)/(step*1000)).clamp(1,KLINES_PAGE);
+    let url=format!("{KLINES}?symbol={}&interval={interval}&startTime={cursor}&endTime={}&limit={limit}",crate::instruments::url_component(symbol),end_ms-1);
+    let page=parse_klines(&crate::market_meta::get_json(&url).await.map_err(|_|super::Upstream::Unavailable)?);
+    let Some(last)=page.last().map(|b|b.open_time) else {break};
+    out.extend(page.into_iter().filter(|b|b.open_time>=cursor&&b.open_time<end_ms));
+    if limit<KLINES_PAGE {break}
+    cursor=last+step*1000;
+   }
+   Ok(out)
+  })
+ }
+ fn open_interest<'a>(&'a self,symbol:&'a str)->Option<super::Fut<'a,crate::error::Result<crate::market_meta::OpenInterest>>> {
+  Some(Box::pin(async move {
+   let plain:String=symbol.chars().filter(char::is_ascii_alphanumeric).collect();
+   crate::market_meta::binance_open_interest(&plain).await
+  }))
  }
 }
 
@@ -283,6 +349,12 @@ mod tests {
   assert_eq!(l.admit(t0+WINDOW+Duration::from_secs(31),1),Ok(()),"冷却过了照常放行");
   l.cool(t0,Duration::from_secs(1));
   assert_eq!(l.admit(t0+WINDOW+Duration::from_secs(32),1),Ok(()),"更早、更短的冷却不会把已有的往回拉");
+ }
+
+ #[test] fn kline_rows_become_bars() {
+  let v=json!([[1_700_000_000_000_i64,"1","3","0.5","2","10"],[1_700_000_060_000_i64,"1","3","0","2","10"],["x"]]);
+  assert_eq!(parse_klines(&v),vec![super::super::Bar{open_time:1_700_000_000_000,open:1.0,high:3.0,low:0.5,close:2.0,volume:10.0}],"零价那根与坏行丢掉");
+  assert_eq!(interval(60),Some("1m"));assert_eq!(interval(61),None);
  }
 
  #[tokio::test] async fn unknown_paths_and_private_keys_are_refused_before_going_upstream() {

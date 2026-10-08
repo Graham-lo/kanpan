@@ -1,7 +1,7 @@
 //! Coinbase 在主力订单流里的那一截：品种表（只有现货，USD 计价）。
 //!
 //! 取舍：只列 online 且没停交易的 USD 计价现货；USDT / EUR 计价不列。
-use crate::venues::orderflow::{ExchangeKey,Notional,Product,Table,TableSource,Venue,boxed,get_bytes,index,number};
+use crate::venues::orderflow::{ExchangeKey,Notional,Product,Table,TableSource,Venue,boxed,index,number};
 use serde::Deserialize;
 
 pub const KEY:ExchangeKey=ExchangeKey("coinbase");
@@ -31,7 +31,7 @@ pub fn parse(body:&[u8])->anyhow::Result<Table> {
 }
 
 pub fn tables()->Vec<TableSource> {
- vec![TableSource{name:"coinbase spot",exchange:KEY,scaled:false,fetch:||boxed(async {parse(&get_bytes(PRODUCTS).await?)})}]
+ vec![TableSource{name:"coinbase spot",exchange:KEY,scaled:false,fetch:||boxed(async {parse(&crate::venues::outbound::bytes(&super::PACER,PRODUCTS,&[],None,1).await?)})}]
 }
 
 #[cfg(test)]

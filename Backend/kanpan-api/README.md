@@ -8,7 +8,7 @@ Build with `cargo build --release`. Copy source and binary under `/opt/kanpan-ap
 
 The API binds to `127.0.0.1:8794`; Caddy forwards `/v1/auth/*`, `/v1/sync/*`, `/v1/shares`, `/v1/shares/*`, `/v1/friends`, `/v1/friends/*`, `/v1/native-review/*`, `/v1/market/*`, `/v1/devices/*`, `/privacy`, `/terms` and `/oi/v1/metrics/*`. `/privacy` and `/terms` are the privacy policy and terms of service the app's 「关于」 row opens; their text is compiled into the binary (`src/legal.rs`). `GET /v1/auth/me/export` (under `/v1/auth/*`) returns everything the server holds for the signed-in user as one JSON document, capped at 20 MB. Operators reset a forgotten password with the CLI described in `ops/README.md`. The last of the forwarded prefixes is the historical open-interest archive, which was moved here from the Python gateway because that service read the daily zips four at a time on connections it opened per day, so a cold year of chart took 54 s. It keeps its day slices under `CacheDirectory=kanpan-api` (`KANPAN_OI_CACHE`, `KANPAN_OI_CACHE_BYTES`, 4 GiB by default, and `KANPAN_OI_CACHE_FILES`, 200 000 entries — the byte budget alone cannot bound a directory whose zero-byte "this day is not in the archive" markers are free, and those markers are what eviction drops first) in the same format the gateway wrote, so an existing `/var/cache/private/kanpan-gateway` can simply be copied in. Without a writable cache the routes still answer; they just pay the network every time. The gateway keeps the streams and `/market/v1/*`. Do not reuse ports 8790/8791: the existing image service uses them. Services `kanpan-api` and `kanpan-worker` run as dynamic, restricted users. `kanpan-backup.timer` writes daily PostgreSQL custom-format dumps with 30-day retention; it applies that retention and sweeps stale `.part` files at the top of the run, before the space check, so a filesystem already full of old dumps cannot lock the job out of ever clearing them; it then refuses up front, writing nothing, if the filesystem does not hold twice the last dump's size, and it removes its own half-written `.part` on any failure. These are local server backups, not offsite disaster recovery — that is `ops/OFFSITE.md`, including the restore drill, whose one rule is `pg_restore` first and `migrate` after.
 
-The existing Scorebook services are separate. Frozen `vendor/scorebook-core` and market adapter sources are reused without modifying those services. OKX review OHLC uses the local market gateway at port 8792 with explicit source identity. No Binance candles are substituted into OKX records. Unsupported exact trade-touch evidence remains `needs_verification`.
+The existing Scorebook services are separate. Frozen `vendor/scorebook-core` and market adapter sources are reused without modifying those services. Review OHLC covers only the venues the registry flags `review` (Binance, Coinbase); no exchange's candles are substituted into another's records. Unsupported exact trade-touch evidence remains `needs_verification`.
 
 ## Public market metadata
 
@@ -58,39 +58,67 @@ symbol to that contract's fields, inside the usual `{"data":…}` envelope. Whic
 source a figure was adopted from is kept internally (it is what stops a
 `1000`-prefixed contract from being scaled twice) and is never serialised.
 
-`open-interest` reads Binance or OKX live; `oi_archive` keeps the history on
-disk and warms its index at startup.
+`open-interest` reads the venue named by `source` live (Binance, OKX, Bybit,
+Hyperliquid; default Binance); `oi_archive` keeps the history on disk and warms
+its index at startup. `GET /v1/market/meta?source=<venue>&symbols=…` folds that
+venue's symbols onto the same coin table (Hyperliquid `BTC` → `BTCUSDT`); without
+`source` it is the old Binance / Coinbase reading.
 
-`GET /v1/market/funding?source=okx` is the funding-rate table for the gateway
-route, where OKX stands in for Binance perpetuals (Binance's `fapi` answers 451
-here, and the OKX relay carries no mark-price channel). It is one call to OKX's
-`/api/v5/public/funding-rate?instId=ANY`, cached for 30 s and served no older
-than 10 minutes, answered as `{"data":{"source":"okx","rows":[{"symbol":"BTCUSDT",
-"rate":…,"nextFundingTime":…}]}}`. Only USDT- and USDC-margined swaps are listed,
-under their Binance-style symbol; `rate` is OKX's own `fundingRate` for the
-settlement at `nextFundingTime` (OKX's `fundingTime`), never a Binance figure.
-Any other `source` is a 400. It sits in `venues::routes()`, so the standby
-metrics host answers it too.
+## Exchanges (venues)
 
-Two more gateway-route stand-ins sit beside it, same rules (only `source=okx`,
-anything else a 400; both hosts answer):
+Each exchange is one directory under `src/venues/<id>/` and one line in the
+registry `venues::venues()` — Binance, OKX, Bybit, Hyperliquid, Coinbase, the
+dollar index. `/v1/market/{raw,stream,funding,open-interest/history}` and
+`/v1/market/open-interest` dispatch on `source=` by that table only; sync
+validation (`(venue, market)` and symbol shape), the alert `market` whitelist,
+alert deep links / titles / webhook names (venue short name + symbol:
+`币安 BTCUSDT`, `OKX BTCUSDT`, `Bybit …`, `HL …`, `CB BTC/USD`; the dollar index
+is just `美元指数`), the history-search venue list (only
+venues flagged `review`: Binance, Coinbase) and the meta fold all ask it.
+Instrument identity is `venue/market/symbol`; perpetuals are `usd_m`
+(Hyperliquid's USDC-margined ones too). OKX keys are Binance-shaped
+(`okx/usd_m/BTCUSDT` ↔ `BTC-USDT-SWAP`, USDT linear swaps only), Bybit keys are
+Bybit's own, Hyperliquid keys are the upper-cased coin (`KPEPE`, translated back
+to `kPEPE` from `meta` wherever the server itself calls upstream). Every venue's
+data is its own: nothing missing is filled from another exchange. OKX is no
+longer a stand-in for Binance; `/v1/market/ticker?source=okx` is gone.
 
-- `GET /v1/market/ticker?source=okx&symbol=BTCUSDT` is one contract's rolling
-  24 h ticker in Binance's `/fapi/v1/ticker/24hr` shape inside
-  `{"data":{"source":"okx","ticker":{…}}}`. OKX gives no quote-currency volume for
-  swaps (`volCcy24h` counts coins), so `quoteVolume` is OKX's own `volCcy24h` ×
-  the 24 h average trade price from OKX's own 288 five-minute candles
-  (`Σ volCcyQuote / Σ volCcy`), never `coins × last` and never a Binance figure;
-  when it cannot be computed it is an empty string. Ticker cached 2 s, average
-  price 60 s (served no older than 10 minutes). Unknown symbol is a 404.
+**One outbound pacer per exchange** (`venues::outbound::Pacer`, a `static PACER`
+in each directory): pass-through, alert backfill, order-flow instrument tables,
+open interest / funding, and the Coinbase product lists `market_meta` and
+`listing_watch` fetch all queue on it; a 429 penalises the whole venue. Per-
+endpoint limits from the official docs are lanes on the same pacer (OKX's
+`rubik` open-interest history 5 per 2.1 s, etc.); Hyperliquid counts weight
+(1200 / min). Binance keeps its weight ledger plus `binance_gate`.
+
+- **Pass-through** `GET /v1/market/raw/<path>?source=<id>&…`: whitelisted public
+  paths and query keys only; status, body and `Retry-After` come back as-is.
+  OKX: `api/v5/public/{instruments,funding-rate,open-interest,mark-price}`,
+  `api/v5/market/{tickers,ticker,candles,history-candles}` (`instType=SWAP`).
+  Bybit: `v5/market/{instruments-info,tickers,kline,funding/history,open-interest}`
+  (`category=linear`; `api.bybit.com`, then `api.bytick.com`). Hyperliquid:
+  `POST /v1/market/raw/info?source=hyperliquid` with `type` ∈ {`meta`,
+  `metaAndAssetCtxs`, `allMids`, `candleSnapshot`, `fundingHistory`}, the body
+  rebuilt from the recognised fields. Instrument tables and whole-table tickers
+  are cached briefly with same-key coalescing; past pages longer.
+- **Relays** `/v1/market/ws/<id>`: OKX `books`/`trades`/`tickers`/`mark-price`/
+  `funding-rate`, and `candle*` with `?endpoint=business` (OKX serves klines only
+  there); Bybit `orderbook.*`/`publicTrade.*`/`tickers.*`/`kline.<i>.*`;
+  Hyperliquid `l2Book`/`trades`/`candle`/`activeAssetCtx` through the shared hub.
+  Per-connection caps: OKX 48, Bybit 48, Hyperliquid 32 subscriptions.
+- **Funding** `GET /v1/market/funding?source=okx|bybit|hyperliquid` answers
+  `{"data":{"source":…,"rows":[{"symbol","rate","nextFundingTime"}]}}` keyed by
+  the venue's own symbols. OKX: `funding-rate?instId=ANY`, cached 30 s, served
+  no older than 10 minutes. Bybit: the `fundingRate` / `nextFundingTime` of the
+  linear tickers table. Hyperliquid: `metaAndAssetCtxs`, an **hourly** rate:
+  its answer is `{"source":"hyperliquid","rows":[…],"intervalHours":1}`. The
+  other venues carry no `intervalHours` key, meaning the default 8-hour period.
 - `GET /v1/market/open-interest/history?source=okx&symbol=&period=&limit=&endTime=`
   takes Binance `openInterestHist` parameters (`period` 5m…1d, `limit` ≤ 500,
   `endTime` inclusive) and answers `{"source":"okx","rows":[[ms, coins, usd|null],…]}`
-  in ascending time — coins being the unit of Binance's `sumOpenInterest`. It pages
-  OKX's `rubik/stat/contracts/open-interest-history` 100 rows at a time behind a
-  5-per-2.1 s pacer; 6h / 12h / 1d use OKX's `…utc` bars so buckets start where
-  Binance's do. Depth is whatever OKX keeps (5m ≈ 5 days, 1H ≈ 2 months, 1D > 2
-  years); older is simply absent — the Binance archive is not spliced in.
+  in ascending time. It pages OKX's `rubik/stat/contracts/open-interest-history`
+  100 rows at a time; 6h / 12h / 1d use OKX's `…utc` bars. Depth is whatever OKX
+  keeps; older is simply absent.
 
 Every call this process makes to `binance.com` — metadata, daily closes, the
 contract list behind the archive warm-up — shares one ban deadline
@@ -150,7 +178,7 @@ set -a; . /etc/kanpan-api/service.env; set +a
 target/release/import_public_history
 ```
 
-The importer reads Binance's futures REST paths through `www.binance.com` (the `fapi.` host answers 451 from the US VPS) when `KANPAN_INDEX_SOURCE=binance`, or the local OKX market gateway when `KANPAN_INDEX_SOURCE=okx`; it validates candle continuity and the frozen `candle-geometry-v2` descriptor, and is idempotent on the public-window identity.
+The importer reads Binance's futures REST paths through `www.binance.com` (the `fapi.` host answers 451 from the US VPS) (`KANPAN_INDEX_SOURCE` may only be `binance`: the OKX path through the Python gateway's stand-in was removed on 2026-10-08, and only `review` venues are searched anyway); it validates candle continuity and the frozen `candle-geometry-v2` descriptor, and is idempotent on the public-window identity.
 
 ## Drawing shares
 
@@ -231,9 +259,16 @@ The evaluator subscribes klines for alerted symbols plus movers and `@ticker` fo
 symbols with a live activity, sharded at 200 streams per Binance connection, up to
 5 connections. Alert klines come first, then live-activity tickers, then movers;
 anything past the cap is dropped with a warn that lists the dropped streams.
-Coinbase is capped at 200 products the same way. A connection (or any one shard)
-that stays silent for 90 s (Binance) / 30 s (Coinbase) is torn down and
-reconnected. If a round's database read of movers or live symbols fails, the
+Every other venue with an `alert_feed` in the registry (Coinbase, OKX, Bybit,
+Hyperliquid) runs the same generic loop (`alerts::run_feed`, one supervisor task
+each): Coinbase builds 1-minute bars from `market_trades`, OKX subscribes
+`candle1m` on the business endpoint, Bybit `kline.1.*`, Hyperliquid `candle` 1m;
+bars a venue does not mark as closed are closed when the next one arrives or 5 s
+after the minute. Gaps after a reconnect are backfilled from that venue's own
+`candles` through its pacer. Coinbase is capped at 200 products the same way
+(Hyperliquid at 100). A connection (or any one shard) that stays silent for
+90 s (Binance) / 30 s (Coinbase) / 60 s (others, which send their own pings) is
+torn down and reconnected. If a round's database read of movers or live symbols fails, the
 error is logged and the previous round's set is kept.
 
 ## Alert live activities

@@ -149,7 +149,7 @@ mod tests {
   let e=Entry::of(&o,Some(150.0),500);
   assert_eq!(e.symbol,"coinbase/spot/BTC-USD");
   assert_eq!(e.condition,"收盘穿过 150");
-  assert_eq!(e.title,"BTC/USD 触到你画的线","没有标题就用推送的兜底标题");
+  assert_eq!(e.title,"CB BTC/USD 触到你画的线","没有标题就用推送的兜底标题");
  }
  #[test] fn macro_condition_and_review_rows() {
   let dxy=object(json!({"kind":"price","symbol":"DXY","market":"macro/index","title":"",
@@ -159,7 +159,7 @@ mod tests {
   let cond=object(json!({"kind":"condition","symbol":"ETHUSDT","market":"binance/usd_m","title":"",
    "rule":{"type":"funding","side":"above","rate":"0.001"}}));
   let e=Entry::of(&cond,Some(3000.0),2);
-  assert_eq!(e.condition,"资金费率高于 0.1%");assert_eq!(e.title,"ETHUSDT 资金费率高于 0.1%");
+  assert_eq!(e.condition,"资金费率高于 0.1%");assert_eq!(e.title,"币安 ETHUSDT 资金费率高于 0.1%");
   let review=object(json!({"kind":"reviewDue","symbol":"SOLUSDT","title":""}));
   let e=Entry::of(&review,None,2);
   assert_eq!((e.symbol.as_str(),e.condition.as_str(),e.title.as_str()),("binance/usd_m/SOLUSDT","复盘到点","SOL 到点了"),"缺 market 的老提醒按币安记");

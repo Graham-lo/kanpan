@@ -947,7 +947,10 @@ pub(crate) async fn get_json(url:&str)->Result<Value> {
  // 继续敲门换来的是几天（A-06）。这道闸门是进程级的，`sector_history` 和
  // `oi_archive` 的 exchangeInfo / ticker / klines 共用同一份截止时间。
  if binance_gate::covers(url)&&binance_gate::blocked() {return Err(upstream())}
+ // 别家的地址（Coinbase 的品种表等）排那一家唯一的出站节拍：同一家不许两套限流（`venues::outbound`）。
+ if !crate::venues::outbound::admit(url,None).await {return Err(upstream())}
  let response=http().get(url).send().await.map_err(|_|upstream())?;
+ crate::venues::outbound::note(url,response.status().as_u16(),response.headers().get(reqwest::header::RETRY_AFTER).and_then(|v|v.to_str().ok()));
  // 记闸门也要先问 covers：这个函数同时服务 CoinGecko、stockanalysis.com 和
  // open.er-api.com，而 CoinGecko 对匿名调用者是按分钟限速的。少了这道守卫，
  // CoinGecko 的一个 429 就会把币安的出口按停两分钟，连带 sector_history 与
@@ -1327,7 +1330,7 @@ async fn binance_listed(symbol:&str)->Option<bool> {
 fn listed(info:&Value,symbol:&str)->bool {
  info["symbols"].as_array().is_some_and(|rows|rows.iter().any(|row|row["symbol"].as_str()==Some(symbol)))
 }
-async fn binance_open_interest(symbol:&str)->Result<OpenInterest> {
+pub(crate) async fn binance_open_interest(symbol:&str)->Result<OpenInterest> {
  // 这条路不要登录：任意代号都会变成一次出站、占这个出口 IP 的限速权重。不在合约表里的
  // 代号币安本来就答不出来，在这里就回「没有」，不出站、也不进缓存。
  if binance_listed(symbol).await==Some(false) {return Err(ApiError::missing())}
@@ -1341,24 +1344,37 @@ async fn binance_open_interest(symbol:&str)->Result<OpenInterest> {
 
 // ------------------------------------------------------------------- handlers
 
-#[derive(Deserialize,Default)] #[serde(deny_unknown_fields)] struct MetaQuery {symbols:Option<String>}
+/// `source` 缺省是老口径（币安合约代号，带 `-` 的当 Coinbase 现货对）；给了就按那一家的
+/// [`crate::venues::Venue::meta_symbol`] 把它的代号折成这张表认得的形状（Hyperliquid 的 `BTC` → `BTCUSDT`）。
+/// 供应量是币本身的属性，不是哪家交易所的行情，所以别家永续按同一个币查同一张表；查不到就不答。
+#[derive(Deserialize,Default)] #[serde(deny_unknown_fields)] struct MetaQuery {symbols:Option<String>,source:Option<String>}
 async fn meta(Query(q):Query<MetaQuery>)->Result<Json<Value>> {
  if q.symbols.as_ref().is_some_and(|s|s.len()>16*1024) {return Err(ApiError::bad("invalid_symbols"))}
+ let venue=match q.source.as_deref() {None=>None,Some(s)=>Some(crate::venues::venue(s).ok_or(ApiError::bad("invalid_source"))?)};
  let table=supply().table().await?;
- Ok(envelope(meta_payload(&table,q.symbols.as_deref())))
+ Ok(envelope(match venue {
+  Some(venue)=>venue_meta_payload(&table,q.symbols.as_deref().unwrap_or(""),venue),
+  None=>meta_payload(&table,q.symbols.as_deref()),
+ }))
+}
+/// 按一家交易所的代号答供应量：键是问的那个代号（大写），值和 [`meta_payload`] 同形。
+pub fn venue_meta_payload(market:&Market,symbols:&str,venue:&dyn crate::venues::Venue)->Value {
+ let mut out=serde_json::Map::new();
+ for name in symbols.split(',').map(str::trim).filter(|s|!s.is_empty()).take(PAYLOAD_LIMIT) {
+  let key=name.to_ascii_uppercase();
+  if out.contains_key(&key)||!venue.symbol_ok(&key) {continue}
+  let Some(folded)=venue.meta_symbol(&key) else {continue};
+  if let Some(meta)=meta_payload(market,Some(&folded)).as_object().and_then(|m|m.values().next().cloned()) {out.insert(key,meta);}
+ }
+ Value::Object(out)
 }
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct OiQuery {symbol:String,source:Option<String>}
 async fn open_interest(Query(q):Query<OiQuery>)->Result<Json<Value>> {
  let symbol:String=q.symbol.to_ascii_uppercase();
  if symbol.is_empty()||symbol.len()>32||!symbol.chars().all(|c|c.is_ascii_alphanumeric()||c=='-') {return Err(ApiError::bad("invalid_symbol"))}
- let oi=match q.source.as_deref().unwrap_or("binance") {
-  "binance"=>{
-   let plain:String=symbol.chars().filter(char::is_ascii_alphanumeric).collect();
-   binance_open_interest(&plain).await?
-  },
-  "okx"=>crate::venues::okx::open_interest(&symbol).await?,
-  _=>return Err(ApiError::bad("invalid_source")),
- };
+ // 按注册表分发：没有持仓量的那几家（现货、指数）和不认识的一样答 `invalid_source`。
+ let venue=crate::venues::venue(q.source.as_deref().unwrap_or(crate::instruments::DEFAULT_VENUE)).ok_or(ApiError::bad("invalid_source"))?;
+ let oi=venue.open_interest(&symbol).ok_or(ApiError::bad("invalid_source"))?.await?;
  Ok(envelope(oi_payload(&symbol,&oi)))
 }
 

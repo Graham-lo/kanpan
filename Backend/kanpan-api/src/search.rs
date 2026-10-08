@@ -108,7 +108,8 @@ async fn remove(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,header
 /// 窗口数涨到百万级再回来考虑近似检索。外层按 (距离, id) 定序：同距离时谁在前是确定的。
 const PUBLIC_NEAREST_SQL:&str="WITH q AS MATERIALIZED (SELECT $1::vector AS v) SELECT * FROM (SELECT id,symbol,market,timeframe,start_at,end_at,bars_count,embedding<=>q.v AS distance FROM market_features,q WHERE published AND model_id='candle-geometry-v2' AND render_version='ohlc-geometry-resample64-v2' AND market=$2 AND timeframe=$3 AND source=$4 AND end_at<=$5 AND symbol LIKE '%USDT' AND NOT(symbol=$6 AND start_at<$7 AND end_at>$8) ORDER BY distance LIMIT 300) nearest ORDER BY distance,id";
 async fn candidates(s:&AppState,owner:Uuid,q:&NativeSearch,vector:&[f32])->Result<Vec<Candidate>> {
- if q.scope=="history" && !matches!(q.range.venue.as_str(),"binance"|"coinbase") {return Ok(vec![])}
+ // 公开历史只有注册表里标了「支持复盘」的那几家（币安、Coinbase）；别家搜不到就是空，不拿别家顶。
+ if q.scope=="history" && !crate::venues::venue(&q.range.venue).is_some_and(|v|v.review()) {return Ok(vec![])}
  let feature=format!("{vector:?}");let mut tx=s.personal(owner).await?;
  // 公开历史取候选要的是**精确**的前 300 近邻，而且不能随执行计划变。见 PUBLIC_NEAREST_SQL。
  let rows=if q.scope=="history" {
