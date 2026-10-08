@@ -37,7 +37,7 @@ h2{font-size:20px;line-height:28px;font-weight:650;margin:0 0 2px}
 h3{font-size:14px;font-weight:600;margin:28px 0 10px;color:var(--t1)}
 .lede{color:var(--t2);margin:0 0 16px;font-size:13px;max-width:980px}
 .lede b{color:var(--t1);font-weight:600}
-.stage{position:relative;width:100%}
+.stage{position:relative;width:100%;overflow:hidden}
 .stage>.scaler{transform-origin:0 0}
 
 /* ---------- 图表页 mock：共用 ---------- */
@@ -151,9 +151,6 @@ h3{font-size:14px;font-weight:600;margin:28px 0 10px;color:var(--t1)}
 .new .m-db{padding:4px 0 6px}
 .new .db-c{position:relative;width:52px;height:38px;display:flex;align-items:center;padding-left:1px}
 .new .db-b{width:40px;height:34px;display:grid;place-items:center;border-radius:6px;color:var(--t1)}
-.new .db-b svg{width:28px;height:28px}
-.new .db-c.on .db-b{background:var(--softF);color:var(--atext)}
-.new .db-c.hov .db-b{background:var(--fh)}
 .new .db-f{width:11px;height:34px;display:grid;place-items:center;color:var(--t3);border-radius:4px}
 .new .db-f svg{width:4px;height:7px}
 .new .sticky{position:absolute;left:34px;bottom:5px;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 1.5px var(--softF)}
@@ -161,9 +158,8 @@ h3{font-size:14px;font-weight:600;margin:28px 0 10px;color:var(--t1)}
 .new .m-rail{padding:4px 0 6px;gap:4px}
 .new .rl-b{position:relative;width:40px;height:40px;display:grid;place-items:center;border-radius:8px;color:var(--t1)}
 .new .rl-b svg{width:24px;height:24px}
-.new .rl-b.on{background:var(--softF);color:var(--atext)}
-.new .rl-b.on::before{content:"";position:absolute;left:-4px;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0;background:var(--accent)}
-.new .rl-b .dot{right:3px;top:3px}
+.new .rl-b .dot{right:1px;top:1px;z-index:1;box-shadow:0 0 0 2px var(--frame)}
+.new .ib .dot{right:0;top:0;z-index:1;box-shadow:0 0 0 2px var(--frame)}
 .new .foot{box-shadow:inset 0 1px 0 var(--line)}
 .new .foot .clock{color:var(--t2)}
 .new .legend .tt{font-size:14px;font-weight:650;color:var(--t1)}
@@ -399,6 +395,100 @@ table.cr{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px
 .cuw .cell{height:440px}
 .notes{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px 24px;margin-top:14px;font-size:12.5px;color:var(--t2)}
 .notes div b{color:var(--t1);font-weight:600;display:block;font-size:13px;margin-bottom:2px}
+
+/* ---------- 提案图标：C 淡彩色块 · A 彩砖 · B 彩色线稿 ---------- */
+.ic{--sz:28px;width:var(--sz);height:var(--sz);border-radius:calc(var(--sz)*.286);display:grid;place-items:center;flex:none;position:relative}
+.ic>svg{width:var(--g,calc(var(--sz)*.643))!important;height:var(--g,calc(var(--sz)*.643))!important;overflow:visible;display:block}
+.ic.C{background:linear-gradient(135deg,color-mix(in srgb,var(--it) 13%,transparent),color-mix(in srgb,var(--it) 26%,transparent))}
+.ic.C.hov{background:linear-gradient(135deg,color-mix(in srgb,var(--it) 22%,transparent),color-mix(in srgb,var(--it) 36%,transparent))}
+.ic.C.sel{background:linear-gradient(135deg,color-mix(in srgb,var(--it) 34%,transparent),color-mix(in srgb,var(--it) 42%,transparent));box-shadow:inset 0 0 0 1.5px var(--ih)}
+.ic.A{background:linear-gradient(180deg,var(--ta),var(--tb));box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -1px 0 rgba(0,0,0,.14),0 1px 2px rgba(0,0,0,.18)}
+.ic.A::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,0) 55%);pointer-events:none}
+.ic.A>svg{filter:drop-shadow(0 .5px .6px rgba(0,0,0,.3))}
+.ic.A.hov{filter:brightness(1.1) saturate(1.06)}
+.ic.A.sel{outline:2px solid var(--accent);outline-offset:2px;transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -1px 0 rgba(0,0,0,.14),0 4px 10px -3px rgba(0,0,0,.34)}
+.ic.B{--bs:var(--t1)}
+.ic.B>svg{width:var(--g,calc(var(--sz)*.857))!important;height:var(--g,calc(var(--sz)*.857))!important}
+.ic.B.hov{background:color-mix(in srgb,var(--it) 12%,transparent)}
+.ic.B.sel{background:color-mix(in srgb,var(--it) 16%,transparent);--bs:var(--ih)}
+.ic.bare{background:none;box-shadow:none}
+/* 图表页里的落点 */
+.new .db-b{width:40px;height:34px;background:none}
+.new .rl-b{background:none}
+.new .tbt .ic{margin-right:1px}
+.new .m-srch .ic{margin-left:-4px}
+.m-fly{position:absolute;left:56px;top:217px;z-index:6;width:236px;border-radius:10px;background:var(--overlay);box-shadow:0 0 0 1px var(--fline),0 16px 40px -12px rgba(0,0,0,.34);padding:6px}
+.m-fly .gt{font-size:11px;letter-spacing:.4px;color:var(--t3);padding:4px 8px 5px}
+.m-fly .r{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px 0 5px;border-radius:7px;font-size:13px;color:var(--t1)}
+.m-fly .r.h{background:color-mix(in srgb,var(--t1) 5%,transparent)}
+.m-fly .r.on{font-weight:600}
+.m-fly .r kbd{margin-left:auto;font:11px var(--sans);color:var(--t3)}
+/* 第 2 节：三个方向 */
+.dirs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+@media (max-width:1100px){.dirs{grid-template-columns:minmax(0,1fr)}}
+.dcol{min-width:0}
+.dcol .dh{display:flex;align-items:baseline;gap:8px;font-size:15px;font-weight:650;margin:0 0 4px}
+.dcol .dh em{font-style:normal;font-size:11px;font-weight:600;color:var(--atext);background:var(--soft);border-radius:4px;padding:1px 6px;align-self:center}
+.dcol .dh em.alt{color:var(--t2);background:color-mix(in srgb,var(--t1) 7%,transparent)}
+.dcol .dd{font-size:12px;color:var(--t2);margin:0 0 10px;min-height:34px}
+.dcol.main .mini{box-shadow:0 0 0 1.5px var(--accent)}
+.mini{border-radius:12px;background:var(--frame);color:var(--t1);box-shadow:0 0 0 1px var(--fline);padding:10px 10px 12px;margin-bottom:10px;min-width:0}
+.mini .mh{font-size:11px;color:var(--t3);margin:0 0 8px;display:flex;justify-content:space-between}
+.mini .mt{display:flex;align-items:center;gap:2px;flex-wrap:wrap;padding-bottom:8px;margin-bottom:10px;box-shadow:inset 0 -1px 0 var(--fline)}
+.mini .mt .tbt{height:30px;display:flex;align-items:center;gap:5px;padding:0 7px 0 4px;border-radius:6px;font-size:12.5px;color:var(--t1);white-space:nowrap}
+.mini .mt .tbt.t3{color:var(--t2)}
+.mini .mt .tbi{width:30px;height:30px;display:grid;place-items:center}
+.mini .mb{display:flex;gap:8px;align-items:flex-start}
+.mini .cl{display:flex;flex-direction:column;align-items:center;gap:6px;width:40px;flex:none;padding:4px 0}
+.mini .cl.rl{gap:8px;margin-left:auto}
+.mini .cl .sp{height:1px;width:20px;background:var(--fline);margin:2px 0}
+.mini .cl .w{position:relative}
+.mini .cl .w .dot{position:absolute;right:-3px;top:-3px;min-width:14px;height:14px;border-radius:7px;background:var(--accent);color:#fff;font-size:10px;line-height:14px;font-weight:600;text-align:center;padding:0 3px;box-shadow:0 0 0 2px var(--frame);z-index:1}
+.mini .fl{flex:1;min-width:0;max-width:220px;background:var(--overlay);border-radius:10px;box-shadow:0 0 0 1px var(--fline),0 10px 24px -10px rgba(0,0,0,.3);padding:5px;margin-top:112px}
+.mini .tsep{width:1px;height:16px;background:var(--fline);margin:0 4px}
+.mini .fl .gt{font-size:10.5px;color:var(--t3);padding:2px 6px 4px;letter-spacing:.3px}
+.mini .fl .r{display:flex;align-items:center;gap:8px;height:34px;padding:0 6px 0 3px;border-radius:7px;font-size:12.5px;white-space:nowrap;overflow:hidden}
+.mini .fl .r.h{background:color-mix(in srgb,var(--t1) 5%,transparent)}
+.mini .fl .r.on{font-weight:600}
+.states{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;padding:12px 10px;border-radius:12px;background:var(--frame);box-shadow:0 0 0 1px var(--fline);margin-bottom:10px}
+.states figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:6px}
+.states figcaption{font-size:11px;color:var(--t3)}
+.states .vs{width:1px;align-self:stretch;background:var(--fline);margin:0 2px}
+/* 全目录 */
+.catp{border-radius:12px;padding:14px 16px 16px;background:var(--frame);color:var(--t1);box-shadow:0 0 0 1px var(--fline);margin-bottom:16px;min-width:0}
+.catp .ph{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;font-size:13px;font-weight:600}
+.catp .ph small{font-weight:400;color:var(--t3);font-size:12px}
+.cat2{display:flex;flex-wrap:wrap;gap:14px 14px}
+.cg{border-radius:10px;padding:8px 8px 8px 6px;background:color-mix(in srgb,var(--t1) 3%,transparent);min-width:0}
+.cg .gh{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--t2);margin:0 0 4px 2px;white-space:nowrap}
+.cg .gh i{width:8px;height:8px;border-radius:3px;background:var(--ih)}
+.cg .gb{display:flex}
+.cg .rl{display:flex;flex-direction:column;gap:8px;padding:30px 4px 0 0}
+.cg .rl span{height:28px;line-height:28px;font-size:10px;color:var(--t3);font-weight:650;width:12px;text-align:center}
+.cg .tc{width:56px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.cg .tc .nm{height:26px;font-size:10.5px;line-height:12.5px;color:var(--t2);text-align:center;display:flex;align-items:flex-end;justify-content:center;margin-bottom:-4px;word-break:break-all;padding:0 3px;overflow:hidden}
+.cg .cur{width:28px;height:28px;display:grid;place-items:center;color:var(--t2)}
+.cg .cur svg{width:20px;height:20px}
+/* 2× 放大 */
+.mag2{display:flex;flex-direction:column;gap:12px}
+.mag2 .row{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.mag2 .row>b{width:16px;font-size:12px;color:var(--t2);padding-top:20px;flex:none}
+.mag2 figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:4px}
+.mag2 figcaption{font-size:10.5px;color:var(--t3);white-space:nowrap}
+.gx{position:relative;display:grid}
+.gx::after{content:"";position:absolute;inset:var(--gi);pointer-events:none;border-radius:2px;
+  background-image:linear-gradient(to right,color-mix(in srgb,var(--t1) 10%,transparent) 1px,transparent 1px),linear-gradient(to bottom,color-mix(in srgb,var(--t1) 10%,transparent) 1px,transparent 1px);
+  background-size:var(--gu) var(--gu);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--t1) 16%,transparent)}
+/* 对比度 */
+.crt{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.crt th{font-weight:500;color:var(--t3);font-size:11px;text-align:right;padding:4px 8px;white-space:nowrap}
+.crt th:first-child,.crt td:first-child{text-align:left}
+.crt td{padding:3px 8px;text-align:right;box-shadow:inset 0 -1px 0 var(--fline);color:var(--t1);white-space:nowrap}
+.crt td .sw{display:inline-flex;gap:6px;align-items:center;vertical-align:middle}
+.crt td.bad{color:#D0322F;font-weight:650}
+.crt td.info{color:var(--t3)}
+.crt tr.gh td{color:var(--t3);font-size:11px;box-shadow:none;padding-top:10px}
+.crwrap{overflow-x:auto}
 </style>
 </head>
 <body>
@@ -408,6 +498,8 @@ table.cr{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px
   <div class="seg" data-k="theme"><button data-v="light">浅色</button><button data-v="dark">深色</button></div>
   <span class="lab">皮肤</span>
   <div class="seg" data-k="skin"><button data-v="sage">青苔</button><button data-v="classic">经典</button><button data-v="terra">陶土</button></div>
+  <span class="lab">图标</span>
+  <div class="seg" data-k="icon"><button data-v="C">C 淡彩色块</button><button data-v="A">A 彩砖</button><button data-v="B">B 彩色线稿</button></div>
   <nav><a href="#s1">图表页</a><a href="#s2">画线图标</a><a href="#s3">材料与颜色</a><a href="#s4">订单流特写</a></nav>
 </div>
 
@@ -419,17 +511,16 @@ table.cr{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px
 </section>
 
 <section id="s2">
-  <h2>2 · 画线图标</h2>
-  <p class="lede">41 种画线，现在 vs 提案。提案：28 格、1.5 描边、坐标落在半像素上、锚点实心 r 2.5、多点形态的中间点 r 1.75、面 18% 透明、辅助线 50%、虚线续段 = 无限延伸。框架上静止就是主文字色。</p>
-  <div class="legendrow"><span><b>现在</b> 20 图标 · 36 格（左）和放到 28（右），卡片底 · 次要字色</span><span><b>提案</b> 静止 · 悬停 · 选中，框架底 · 52 列里 40×34 的按钮 · 再加 20 小号</span></div>
-  <div class="two" id="s2a"></div>
-  <h3>工具组展开</h3>
-  <div class="flys" id="s2b"></div>
-  <h3>像素格放大（28 格 × 7）</h3>
-  <div class="mag" id="s2c"></div>
-  <h3>界面图标 · 16 个</h3>
-  <div class="legendrow"><span>每行：<b>现在</b> 24 · 20 · 16 → <b>提案</b> 24 · 20 · 16（16 以下去掉衬底，只留单色主体）</span></div>
-  <div class="two" id="s2d"></div>
+  <h2>2 · 图标</h2>
+  <p class="lede">41 种画线、5 个画线栏工具、21 个界面图标（左侧画线栏、右侧功能栏、工具条），每个都画了三个方向。<b>C · 淡彩色块</b>是主推：照「主力订单流」侧栏那四个开关的画法。A、B 是备选。顶上的「图标」开关只换第 1 节图表页里的图标；这一节三个方向并排，皮肤跟着顶上切。</p>
+  <div class="legendrow"><span>分类色：<b>线</b> 蓝 · <b>通道 / 叉子</b> 青 · <b>斐波那契 / 江恩</b> 琥珀 · <b>形态</b> 紫 · <b>形状</b> 粉 · <b>预测与测量</b> 绿 · <b>注释</b> 灰蓝 · <b>成交量</b> 橙 · <b>磁吸 / 锁 / 隐藏</b> 中性灰 · <b>删除</b> 红 · 右栏 <b>自选</b> 金 · <b>提醒</b> 红橙 · <b>主力订单流</b> 强调色 · <b>大单</b> 靛 · <b>对比</b> 青</span></div>
+  <div class="dirs" id="s2a"></div>
+  <h3>全部图标 · 现在 → C · A · B</h3>
+  <div id="s2b"></div>
+  <h3>2 倍放大</h3>
+  <div class="two" id="s2c"></div>
+  <h3>对比度 · 每个分类</h3>
+  <div id="s2d"></div>
 </section>
 
 <section id="s3">
@@ -674,55 +765,6 @@ const ds = d => `<path d="${d}" stroke-dasharray="2 3.5"/>`;
 const an = (x, y, r = 2.5) => `<circle cx="${x}" cy="${y}" r="${r}" fill="currentColor" stroke="none"/>`;
 const fl = (d, o = .18) => `<path d="${d}" fill="currentColor" fill-opacity="${o}" stroke="none"/>`;
 const ar = d => fl(d) + ln(d);
-const NI = {
-  cursor: ln('M14 4.5V10.5M14 17.5V23.5M4.5 14H10.5M17.5 14H23.5') + an(14, 14, 1.75),
-  trend: ln('M6.5 21.5L21.5 6.5') + an(6.5, 21.5) + an(21.5, 6.5),
-  ray: ln('M6.5 21.5L14.5 13.5') + ds('M17.5 10.5L24.5 3.5') + an(6.5, 21.5) + an(14.5, 13.5),
-  extended: ds('M3.5 24.5L7.5 20.5') + ln('M10.5 17.5L17.5 10.5') + ds('M20.5 7.5L24.5 3.5') + an(10.5, 17.5) + an(17.5, 10.5),
-  hline: ln('M3.5 14.5H24.5') + an(14.5, 14.5),
-  hray: ln('M6.5 14.5H24.5') + an(6.5, 14.5),
-  vline: ln('M14.5 3.5V24.5') + an(14.5, 14.5),
-  crossLine: ln('M3.5 14.5H24.5M14.5 3.5V24.5') + an(14.5, 14.5),
-  arrowLine: ln('M5.5 22.5L18.5 9.5') + '<path d="M23.5 4.5L21.02 11.92L16.08 6.98Z" fill="currentColor" stroke-width="1"/>' + an(5.5, 22.5),
-  channel: fl('M4.5 15.5L23.5 5.5L23.5 12.5L4.5 22.5Z') + ln('M4.5 15.5L23.5 5.5M4.5 22.5L23.5 12.5') + an(4.5, 15.5) + an(23.5, 5.5) + an(14, 17.5),
-  regression: fl('M4.5 13.5L23.5 4.5V14.5L4.5 23.5Z', .1) + ds('M4.5 13.5L23.5 4.5') + ds('M4.5 23.5L23.5 14.5') + ln('M4.5 18.5L23.5 9.5') + an(4.5, 18.5) + an(23.5, 9.5),
-  pitchfork: fl('M12.5 8.5L24.5 4.14L24.5 17.59L16.5 20.5Z') + ln('M3.5 18.5L24.5 10.86M12.5 8.5L24.5 4.14M16.5 20.5L24.5 17.59') + gd('M12.5 8.5L16.5 20.5') + an(3.5, 18.5) + an(12.5, 8.5) + an(16.5, 20.5),
-  gannBox: ln('M4.5 4.5H23.5V23.5H4.5Z') + gd('M10.5 4.5V23.5M17.5 4.5V23.5M4.5 10.5H23.5M4.5 17.5H23.5') + ln('M4.5 23.5L23.5 4.5') + an(4.5, 23.5) + an(23.5, 4.5),
-  gannFan: gd('M4.5 4.5V23.5H23.5') + gd('M4.5 23.5L23.5 13.5M4.5 23.5L14.5 4.5M4.5 23.5L23.5 18.5M4.5 23.5L9.5 4.5') + ln('M4.5 23.5L23.5 4.5') + an(4.5, 23.5),
-  fib: fl('M3.5 12.5H24.5V16.5H3.5Z', .14) + ln('M3.5 5.5H24.5M3.5 22.5H24.5') + gd('M3.5 12.5H24.5M3.5 16.5H24.5') + ds('M6.5 22.5L21.5 5.5') + an(6.5, 22.5) + an(21.5, 5.5),
-  fibExtension: gd('M15.5 10.5H24.5') + ln('M15.5 5.5H24.5M15.5 16.5H24.5') + ln('M4.5 22.5L10.5 9.5L15.5 16.5') + an(4.5, 22.5) + an(10.5, 9.5) + an(15.5, 16.5),
-  fibChannel: fl('M4.5 13.5L13.5 4.5H18.5L4.5 18.5Z', .14) + ln('M4.5 13.5L13.5 4.5') + gd('M4.5 18.5L18.5 4.5') + ln('M8.5 23.5L23.5 8.5') + an(4.5, 13.5) + an(13.5, 4.5) + an(16, 16),
-  fibTimeZone: ln('M4.5 4.5V23.5M23.5 4.5V23.5') + gd('M7.5 4.5V23.5M10.5 4.5V23.5M15.5 4.5V23.5') + an(4.5, 23.5),
-  fibFan: gd('M23.5 4.5V23.5') + gd('M4.5 23.5L23.5 11.5M4.5 23.5L23.5 16.5') + ln('M4.5 23.5L23.5 4.5') + an(4.5, 23.5) + an(23.5, 4.5),
-  xabcd: fl('M3.5 21.5L8.5 6.5L13.5 15.5Z') + fl('M13.5 15.5L18.5 8.5L24.5 22.5Z') + gd('M3.5 21.5L13.5 15.5L24.5 22.5') + ln('M3.5 21.5L8.5 6.5L13.5 15.5L18.5 8.5L24.5 22.5') + an(3.5, 21.5) + an(8.5, 6.5, 1.75) + an(13.5, 15.5, 1.75) + an(18.5, 8.5, 1.75) + an(24.5, 22.5),
-  abcd: gd('M4.5 22.5L16.5 15.5M10.5 6.5L23.5 4.5') + ln('M4.5 22.5L10.5 6.5L16.5 15.5L23.5 4.5') + an(4.5, 22.5) + an(10.5, 6.5, 1.75) + an(16.5, 15.5, 1.75) + an(23.5, 4.5),
-  headShoulders: fl('M10.5 17.5L14.5 5.5L18.5 17.5Z') + gd('M3.5 17.5H24.5') + ln('M3.5 21.5L7.5 12.5L10.5 17.5L14.5 5.5L18.5 17.5L21.5 12.5L24.5 21.5') + an(3.5, 21.5) + an(7.5, 12.5, 1.75) + an(14.5, 5.5, 1.75) + an(21.5, 12.5, 1.75) + an(24.5, 21.5),
-  elliottImpulse: ln('M3.5 23.5L7.5 14.5L11.5 19.5L17.5 5.5L20.5 10.5L24.5 4.5') + an(3.5, 23.5) + an(7.5, 14.5, 1.75) + an(11.5, 19.5, 1.75) + an(17.5, 5.5, 1.75) + an(20.5, 10.5, 1.75) + an(24.5, 4.5),
-  elliottCorrection: ln('M3.5 4.5L10.5 18.5L15.5 11.5L24.5 23.5') + an(3.5, 4.5) + an(10.5, 18.5, 1.75) + an(15.5, 11.5, 1.75) + an(24.5, 23.5),
-  position: ar('M4.5 5.5H23.5V14.5H4.5Z') + gd('M4.5 14.5V22.5H23.5V14.5') + fl('M4.5 14.5H23.5V22.5H4.5Z', .06) + an(4.5, 14.5),
-  ptMeasure: '<g transform="rotate(-45 14 14)"><rect x="1.5" y="10" width="25" height="8" rx="1.5" fill="currentColor" fill-opacity=".18"/><rect x="1.5" y="10" width="25" height="8" rx="1.5"/>' + ln('M6.5 10V13M10.5 10V14.5M14.5 10V13M18.5 10V14.5M22.5 10V13') + '</g>',
-  priceRange: fl('M4.5 5.5H23.5V22.5H4.5Z', .12) + ln('M4.5 5.5H23.5M4.5 22.5H23.5') + ln('M14.5 9V19.5M11.5 11.5L14.5 8.5L17.5 11.5M11.5 16.5L14.5 19.5L17.5 16.5'),
-  dateRange: fl('M5.5 4.5H22.5V23.5H5.5Z', .12) + ln('M5.5 4.5V23.5M22.5 4.5V23.5') + ln('M9 14.5H19.5M11.5 11.5L8.5 14.5L11.5 17.5M16.5 11.5L19.5 14.5L16.5 17.5'),
-  datePriceRange: ar('M4.5 4.5H23.5V23.5H4.5Z') + ln('M8.5 19.5L19.5 8.5M13.5 8.5H19.5V14.5'),
-  rect: ar('M5.5 7.5H22.5V20.5H5.5Z') + an(5.5, 7.5) + an(22.5, 20.5),
-  ellipse: '<ellipse cx="14.5" cy="14.5" rx="10" ry="7" fill="currentColor" fill-opacity=".18" stroke="none"/><ellipse cx="14.5" cy="14.5" rx="10" ry="7"/>' + an(4.5, 14.5) + an(24.5, 14.5),
-  triangle: ar('M14.5 5.5L23.5 21.5H5.5Z') + an(14.5, 5.5) + an(23.5, 21.5) + an(5.5, 21.5),
-  curve: gd('M4.5 21.5L13.5 5.5L23.5 18.5') + ln('M4.5 21.5Q13.5 5.5 23.5 18.5') + an(4.5, 21.5) + an(23.5, 18.5) + an(13.5, 5.5, 1.75),
-  note: '<path d="M7.5 9V6.5H21.5V9M14.5 6.5V22.5M11.5 22.5H17.5" stroke-width="1.75"/>',
-  callout: ar('M6.5 4.5H21.5A3 3 0 0 1 24.5 7.5V15.5A3 3 0 0 1 21.5 18.5H12.5L7.5 23.5V18.5H6.5A3 3 0 0 1 3.5 15.5V7.5A3 3 0 0 1 6.5 4.5Z') + ln('M8.5 9.5H19.5M8.5 13.5H15.5'),
-  priceLabel: ar('M3.5 14.5L9.5 8.5H22.5A2 2 0 0 1 24.5 10.5V18.5A2 2 0 0 1 22.5 20.5H9.5Z') + ln('M12.5 14.5H20.5') + an(3.5, 14.5),
-  flag: ar('M7.5 5.5H21.5L18.5 9.5L21.5 13.5H7.5Z') + ln('M7.5 4.5V23.5') + an(7.5, 23.5),
-  markerUp: ar('M14.5 4.5L22.5 13.5H17.5V22.5H11.5V13.5H6.5Z'),
-  markerDown: ar('M14.5 23.5L22.5 14.5H17.5V5.5H11.5V14.5H6.5Z'),
-  avwap: gd('M5.5 3.5V24.5') + ln('M5.5 19.5C11.5 19.5 13.5 9.5 23.5 8.5') + an(5.5, 19.5),
-  fvp: gd('M4.5 4.5V23.5M23.5 4.5V23.5') + '<path d="M4.5 8H13M4.5 12H17M4.5 20H11" stroke-width="2" stroke-linecap="butt" opacity=".5"/><path d="M4.5 16H21" stroke-width="2" stroke-linecap="butt"/>',
-  anchoredVolumeProfile: ln('M4.5 4.5V23.5') + '<path d="M4.5 8H13M4.5 12H17M4.5 20H11" stroke-width="2" stroke-linecap="butt" opacity=".5"/><path d="M4.5 16H21" stroke-width="2" stroke-linecap="butt"/>' + an(4.5, 23.5),
-  magnet: ar('M6.5 5.5H11.5V14.5A3 3 0 0 0 17.5 14.5V5.5H22.5V14.5A8 8 0 0 1 6.5 14.5Z') + ln('M6.5 9.5H11.5M17.5 9.5H22.5'),
-  lock: '<rect x="7.5" y="12.5" width="14" height="11" rx="2" fill="currentColor" fill-opacity=".18" stroke="none"/><rect x="7.5" y="12.5" width="14" height="11" rx="2"/>' + ln('M10.5 12.5V9.5A4 4 0 0 1 18.5 9.5V12.5') + an(14.5, 18, 1.5),
-  eye: fl('M3.5 14.5C6.5 9 10 7 14.5 7S22.5 9 25.5 14.5C22.5 20 19 22 14.5 22S6.5 20 3.5 14.5Z') + ln('M3.5 14.5C6.5 9 10 7 14.5 7S22.5 9 25.5 14.5C22.5 20 19 22 14.5 22S6.5 20 3.5 14.5Z') + an(14.5, 14.5, 3.25),
-  trash: ar('M7.5 8.5L8.5 23.5H20.5L21.5 8.5Z') + ln('M5.5 8.5H23.5M11.5 8.5V6.5A1 1 0 0 1 12.5 5.5H16.5A1 1 0 0 1 17.5 6.5V8.5M12.5 12.5V19.5M16.5 12.5V19.5'),
-};
-const svgN = (k, cls = '') => `<svg class="${cls}" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${NI[k] || ''}</svg>`;
 const svgC = (k, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24">${CUR[k] || ''}</svg>`;
 
 /* ============================================================ 提案的界面图标：24 格，实心为主，衬底 45%，16 以下只留主体 */
@@ -766,6 +808,222 @@ const NU = {
 const svgU = (k, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24" fill="currentColor">${NU[k] ? NU[k]() : ''}</svg>`;
 const FLYCH = '<svg viewBox="0 0 4 7"><path d="M.75 .75L3.25 3.5L.75 6.25" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const FLYCH_C = '<svg viewBox="0 0 4 6"><path d="M.8 .8L3.2 3L.8 5.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+
+/* ============================================================ 提案图标：三个方向共用一份 18 格几何
+ * C · 淡彩色块（主推，照侧栏「主力订单流」四个开关图标）：28 格淡彩渐变块 + 18 格实心小图，同色分层透明度
+ * A · 彩砖：每个功能一块自己色相的渐变砖，白色字形
+ * B · 彩色线稿：无底块，主线主文字色 1.75，锚点 / 面 / 斐波那契档位用分类色
+ * 几何语言：线 = 2.2 圆头条，锚点 = 实心圆点带白内沿，面 = 淡填充，斐波那契 = 透明度递减的几根条 */
+const hex2oklch = hex => {
+  const [r, g, b] = H2R(hex).map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; });
+  const l = Math.cbrt(.4122214708 * r + .5363325363 * g + .0514459929 * b), m = Math.cbrt(.2119034982 * r + .6806995451 * g + .1073969566 * b), s = Math.cbrt(.0883024619 * r + .2817188376 * g + .6299787005 * b);
+  const L = .2104542553 * l + .7936177850 * m - .0040720468 * s, A = 1.9779984951 * l - 2.4285922050 * m + .4505937099 * s, B = .0259040371 * l + .7827717662 * m - .8086757660 * s;
+  return [L, Math.hypot(A, B), (Math.atan2(B, A) * 180 / Math.PI + 360) % 360];
+};
+/* 分类色相（同明度 OKLCH，按意义分配）；neu = 跟皮肤的中性灰，acc = 皮肤强调色 */
+const HUES = {
+  line: ['线', 258, .14], chan: ['通道 · 叉子', 212, .11], fib: ['斐波那契 · 江恩', 72, .14], pat: ['形态', 305, .14],
+  meas: ['预测与测量', 152, .13], shape: ['形状', 356, .15], note: ['注释', 255, .05], vol: ['成交量', 48, .14],
+  neu: ['工具 · 中性', 'neu'], del: ['删除', 25, .17],
+  fav: ['自选', 86, .15], alert: ['提醒', 40, .16], flow: ['主力订单流', 'acc'], trades: ['大单', 280, .15], cmp: ['对比', 212, .11], ind: ['指标', 258, .14],
+};
+const TCAT = {};
+[['line', 'trend ray extended hline hray vline crossLine arrowLine'], ['chan', 'channel regression pitchfork'], ['fib', 'gannBox gannFan fib fibExtension fibChannel fibTimeZone fibFan'],
+ ['pat', 'xabcd abcd headShoulders elliottImpulse elliottCorrection'], ['meas', 'position ptMeasure priceRange dateRange datePriceRange'], ['shape', 'rect ellipse triangle curve'],
+ ['note', 'note callout priceLabel flag markerUp markerDown u_note'], ['vol', 'avwap fvp anchoredVolumeProfile'], ['neu', 'cursor magnet lock eye u_search u_layout u_camera u_full u_undo u_redo u_set u_eye u_eyeOff u_info'],
+ ['del', 'trash'], ['fav', 'u_star u_list u_sun'], ['alert', 'u_bell'], ['flow', 'u_flow u_heat'], ['trades', 'u_trades u_moon'], ['cmp', 'u_cmp'], ['ind', 'u_ind']]
+  .forEach(([c, ks]) => ks.split(' ').forEach(k => TCAT[k] = c));
+
+const ICV = {};
+function icv(cat, t) {
+  const key = cat + t.skin + t.theme; if (ICV[key]) return ICV[key];
+  const d = t.theme === 'dark', H = HUES[cat]; let h, c, neu = false;
+  if (H[1] === 'neu') { h = hex2oklch(t.t2)[2]; c = .02; neu = true; }
+  else if (H[1] === 'acc') { const o = hex2oklch(ACC[t.skin].light[0]); h = o[2]; c = Math.min(.15, o[1]); }
+  else { h = H[1]; c = H[2]; }
+  // C：底块用亮一点的「染色」，字形用够深的「墨」——浅色下墨对框架、对静止底块都 ≥ 3:1
+  let tint, ink;
+  if (neu) { tint = t.t2; ink = d ? t.t2 : t.t2; }
+  else if (d) { tint = oklch(.70, c, h); ink = oklch(.80, Math.min(c, .13), h); }
+  else {
+    tint = oklch(.72, c, h); let L = .64; ink = oklch(L, c, h);
+    const rest = mix(t.frame, tint, .26);
+    const selT = mix(t.frame, tint, .42);
+    while ((cr(ink, rest) < 3.05 || cr(ink, t.frame) < 3.2 || cr(ink, selT) < 3.0) && L > .3) { L -= .01; ink = oklch(L, c, h); }
+  }
+  // A：砖顶色对白字 ≥ 3:1（浅色），深色整块明度 −0.05
+  const cA = neu ? .022 : Math.min(c + .01, .16); let Lt = .74;
+  while (cr(oklch(Lt, cA, h), '#FFFFFF') < 3.02 && Lt > .3) Lt -= .005;
+  if (d) Lt -= .05;
+  const ta = oklch(Lt, cA, h), tb = oklch(Lt - .085, cA + .01, h), deep = oklch(Lt - .22, cA, h);
+  const ihl = d ? oklch(.92, c * .5, h) : oklch(Math.min(.86, hex2oklch(ink)[0] + .2), c * .8, h);
+  const al = HUES.alert, ink2 = d ? oklch(.80, .13, al[1]) : oklch(.56, al[2], al[1]);
+  const iw = d ? mix(t.frame, tint, .3) : '#FFFFFF';
+  const v = { cat, name: H[0], h, c, neu, tint, ink, ta, tb, deep, ihl, ink2, iw,
+    css: `--ih:${ink};--it:${tint};--ta:${ta};--tb:${tb};--ihd:${deep};--ihl:${ihl};--ih2:${ink2};--iw:${iw};--gup:${t.upT};--gdn:${t.downT}` };
+  return ICV[key] = v;
+}
+
+/* ---------- 几何 ---------- */
+const G = (() => {
+  const l = (d, r = 'm', o, w, c) => ({ t: 'l', d, r, o, w, c });
+  const a = (x, y, s = 1) => ({ t: 'a', x, y, s });
+  const f = (d, o, c) => ({ t: 'f', d, o, c });
+  const s = (d, o, c, h) => ({ t: 's', d, o, c, h });
+  const R = (x, y, w, h, rx, o, c) => ({ t: 'r', x, y, w, h, rx, o, c });
+  const O = (cx, cy, r, o, c) => ({ t: 'o', cx, cy, r, o, c });
+  const grp = (tr, ops) => ({ t: 'g', tr, ops });
+  const cut = (d, w, ops) => ({ t: 'cut', d, w, ops });
+  const cp = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
+  const star = (cx, cy, ro, ri) => { let p = ''; for (let i = 0; i < 10; i++) { const r = i % 2 ? ri : ro, q = -Math.PI / 2 + i * Math.PI / 5; p += (i ? 'L' : 'M') + (cx + r * Math.cos(q)).toFixed(2) + ' ' + (cy + r * Math.sin(q)).toFixed(2); } return p + 'Z'; };
+  const gear = () => {
+    const n = 8, ro = 7.7, ri = 5.7, st = 2 * Math.PI / n; let p = '';
+    const P = (r, q) => `${(9 + r * Math.cos(q)).toFixed(2)} ${(9 + r * Math.sin(q)).toFixed(2)}`;
+    for (let i = 0; i < n; i++) { const q = i * st - Math.PI / 2; p += (i ? 'L' : 'M') + P(ri, q - .3) + 'L' + P(ro, q - .18) + 'L' + P(ro, q + .18) + 'L' + P(ri, q + .3) + `A${ri} ${ri} 0 0 1 ` + P(ri, q + st - .3); }
+    return p + 'Z' + cp(9, 9, 2.7).replace(/a(\S+) (\S+) 0 1 0/g, 'a$1 $2 0 1 1');
+  };
+  const EY = 'M1.4 9C3.4 5.2 5.9 3.6 9 3.6S14.6 5.2 16.6 9C14.6 12.8 12.1 14.4 9 14.4S3.4 12.8 1.4 9Z';
+  const eye = [f(EY, .26), l(EY, 'm', 1, 1.8), O(9, 9, 3.1, 1), O(10.15, 7.85, 1, 1, 'w')];
+  const E = 'M1.6 9A7.4 5.2 0 1 0 16.4 9A7.4 5.2 0 1 0 1.6 9Z';
+  const BUB = 'M4.4 2.4H13.6A2.6 2.6 0 0 1 16.2 5V10.2A2.6 2.6 0 0 1 13.6 12.8H8.6L5 15.8V12.8H4.4A2.6 2.6 0 0 1 1.8 10.2V5A2.6 2.6 0 0 1 4.4 2.4Z';
+  const undo = [l('M6.6 6.4H11A4.6 4.6 0 0 1 11 15.6H6.4', 'm', .62), s('M1.8 6.4L6.8 2.3V10.5Z', 1)];
+  const heat = []; for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++)
+    heat.push(R(1 + c * 4.2, 1 + r * 4.2, 3.4, 3.4, .8, +(.25 + ((c * 3 + r * 5) % 7) / 9).toFixed(2), (c + r) % 3 ? null : 'k2'));
+  const hist = x => [R(x, 2.4, 6, 2.6, 1.3, .45), R(x, 5.9, 9, 2.6, 1.3, .65), R(x, 9.4, 16 - x - .6 + 0, 2.6, 1.3, 1), R(x, 12.9, 7, 2.6, 1.3, .65)];
+  return {
+    cursor: [l('M9 1.8V6M9 12V16.2M1.8 9H6M12 9H16.2'), O(9, 9, 1.7, 1)],
+    trend: [l('M3 15L15 3'), a(3, 15), a(15, 3)],
+    ray: [l('M10 8L16.6 1.4', 'x'), l('M3 15L10 8'), a(3, 15), a(10, 8)],
+    extended: [l('M1.4 16.6L5.5 12.5M12.5 5.5L16.6 1.4', 'x'), l('M5.5 12.5L12.5 5.5'), a(5.5, 12.5), a(12.5, 5.5)],
+    hline: [R(3.4, 10.9, 2.6, 5.2, 1.3, .3), R(12, 2.1, 2.6, 5, 1.3, .3), l('M1.6 9H16.4'), a(9, 9)],
+    hray: [R(8.4, 10.9, 2.6, 5.2, 1.3, .3), R(12.8, 2.1, 2.6, 5, 1.3, .3), l('M3.6 9H16.4'), a(3.6, 9)],
+    vline: [R(2.6, 3.4, 2.6, 6.2, 1.3, .3), R(12.8, 8.4, 2.6, 6.2, 1.3, .3), l('M9 1.6V16.4'), a(9, 9)],
+    crossLine: [l('M1.6 9H16.4M9 1.6V16.4'), a(9, 9)],
+    arrowLine: [l('M3 15L11.4 6.6'), s('M15.9 2.1L14.6 8.4L9.6 3.4Z', 1), a(3, 15)],
+    channel: [f('M2 10.5L16 3V8L2 15.5Z'), l('M2 10.5L16 3M2 15.5L16 8'), a(2, 10.5), a(16, 3), a(9, 11.75, 0)],
+    regression: [f('M2 8.6L16 2.6V9.4L2 15.4Z', .16), l('M2 8.6L16 2.6M2 15.4L16 9.4', 's'), l('M2 12L16 6', 'k'), a(2, 12), a(16, 6)],
+    pitchfork: [f('M8 5L16.5 1.3V12.1L11 14.5Z'), l('M8 5L11 14.5', 'g'), l('M8 5L16.5 1.3M11 14.5L16.5 12.1', 's'), l('M2 13L16.5 6.7', 'k'), a(2, 13), a(8, 5, 0), a(11, 14.5, 0)],
+    gannBox: [f('M2 2H16V16H2Z', .12), l('M6.67 2V16M11.33 2V16M2 6.67H16M2 11.33H16', 'g', .32, 1.3), l('M2 2H16V16H2Z', 's'), l('M2 16L16 2', 'k'), a(2, 16), a(16, 2)],
+    gannFan: [f('M2 16L16 7.5V2H7.5Z', .16), l('M2 16L16 12M2 16L6 2', 'g'), l('M2 16L16 7.5M2 16L7.5 2', 'k', .6), l('M2 16L16 2', 'k'), a(2, 16)],
+    fib: [f('M2 6.8H16V11.2H2Z', .14), l('M2 2.6H16', 'k', 1), l('M2 6.8H16', 'k', .74), l('M2 11.2H16', 'k', .5), l('M2 15.4H16', 'k', .3), l('M4.2 15.4L13.8 2.6', 'x', .38, 1.6), a(4.2, 15.4), a(13.8, 2.6)],
+    fibExtension: [l('M12 2.6H16.6', 'k', 1), l('M12 6.8H16.6', 'k', .62), l('M12 11H16.6', 'k', .36), l('M2 15.4L6.6 4L10.4 11'), a(2, 15.4), a(6.6, 4, 0), a(10.4, 11, 0)],
+    fibChannel: [f('M1.6 9.6L9.6 1.6L12.6 4.6L4.6 12.6Z', .16), l('M1.6 9.6L9.6 1.6', 'k', 1), l('M4.6 12.6L12.6 4.6', 'k', .62), l('M7.6 15.6L15.6 7.6', 'k', .36), a(1.6, 9.6), a(9.6, 1.6), a(11.6, 11.6, 0)],
+    fibTimeZone: [l('M2 2V16', 'k', 1), l('M4.8 2V16', 'k', .8), l('M7.8 2V16', 'k', .6), l('M11.6 2V16', 'k', .42), l('M16.2 2V16', 'k', .28), a(2, 15.6)],
+    fibFan: [f('M2 16L16 2V7Z', .16), l('M16 2V16', 'g'), l('M2 16L16 11.4', 'k', .36), l('M2 16L16 7', 'k', .62), l('M2 16L16 2', 'k', 1), a(2, 16), a(16, 2)],
+    xabcd: [f('M1.8 14.6L5.6 3L9 10Z', .2), f('M9 10L12.6 4.2L16.2 15.2Z', .2), l('M1.8 14.6L9 10L16.2 15.2', 'g'), l('M1.8 14.6L5.6 3L9 10L12.6 4.2L16.2 15.2'), a(1.8, 14.6), a(5.6, 3, 0), a(9, 10, 0), a(12.6, 4.2, 0), a(16.2, 15.2)],
+    abcd: [l('M2 15.2L11 10.2M6.8 3L16 2', 'g'), l('M2 15.2L6.8 3L11 10.2L16 2'), a(2, 15.2), a(6.8, 3, 0), a(11, 10.2, 0), a(16, 2)],
+    headShoulders: [f('M6.8 11.6L9 2.6L11.2 11.6Z', .24), l('M1.4 11.6H16.6', 'k', .55, 1.6), l('M1.4 15.6L4.4 8L6.8 11.6L9 2.6L11.2 11.6L13.6 8L16.6 15.6'), a(1.4, 15.6), a(9, 2.6, 0), a(16.6, 15.6)],
+    elliottImpulse: [l('M1.6 16L4.8 9.6L7.2 12.6L11.6 2.6L13.6 6.6L16.4 1.8'), a(1.6, 16), a(4.8, 9.6, 0), a(7.2, 12.6, 0), a(11.6, 2.6, 0), a(13.6, 6.6, 0), a(16.4, 1.8)],
+    elliottCorrection: [l('M1.6 2.4L7.2 13L10.8 7.6L16.4 15.8'), a(1.6, 2.4), a(7.2, 13, 0), a(10.8, 7.6, 0), a(16.4, 15.8)],
+    position: [R(2, 2, 14, 6.6, 2, .55, 'up'), R(2, 10.6, 14, 5.4, 2, .55, 'dn'), R(4.2, 4.5, 5, 1.6, .8, 1, 'w'), l('M2 9.6H16', 'm', 1, 1.5)],
+    ptMeasure: [grp('rotate(-45 9 9)', [R(-.6, 6, 19.2, 6, 1.8, .88, null, 1), R(2, 6.6, 1.2, 2.6, .6, 1, 'w'), R(5.5, 6.6, 1.2, 3.6, .6, 1, 'w'), R(9, 6.6, 1.2, 2.6, .6, 1, 'w'), R(12.5, 6.6, 1.2, 3.6, .6, 1, 'w'), R(16, 6.6, 1.2, 2.6, .6, 1, 'w')])],
+    priceRange: [f('M2 2.6H16V15.4H2Z', .16), l('M2 2.6H16M2 15.4H16'), l('M9 7V11', 'm', 1, 1.8), s('M9 4.8L11.6 7.8H6.4Z', 1), s('M9 13.2L11.6 10.2H6.4Z', 1)],
+    dateRange: [f('M2.6 2H15.4V16H2.6Z', .16), l('M2.6 2V16M15.4 2V16'), l('M7 9H11', 'm', 1, 1.8), s('M4.8 9L7.8 6.4V11.6Z', 1), s('M13.2 9L10.2 6.4V11.6Z', 1)],
+    datePriceRange: [f('M2 2H16V16H2Z', .16), l('M2 2H16V16H2Z', 's'), l('M5 13L11 7'), s('M14 4L12.6 9.1L8.9 5.4Z', 1), a(5, 13, 0)],
+    rect: [f('M2.4 4H15.6V14H2.4Z', .22), l('M2.4 4H15.6V14H2.4Z'), a(2.4, 4), a(15.6, 14)],
+    ellipse: [f(E, .22), l(E), a(1.6, 9), a(16.4, 9)],
+    triangle: [f('M9 2.6L16 15H2Z', .22), l('M9 2.6L16 15H2Z'), a(9, 2.6), a(16, 15), a(2, 15)],
+    curve: [l('M2 15L9 2.4L16 12.6', 'g', .3, 1.4), l('M2 15Q9 2.4 16 12.6'), a(2, 15), a(16, 12.6), a(9, 2.4, 0)],
+    note: [R(2.4, 2.4, 13.2, 13.2, 3, .14), l('M4.6 4.8H13.4'), l('M9 4.8V13.4'), l('M6.8 13.4H11.2', 's', .55, 1.8)],
+    callout: [s(BUB, .9, null, 1), R(5, 5.4, 8, 1.7, .85, 1, 'w'), R(5, 8.4, 5, 1.7, .85, .7, 'w')],
+    priceLabel: [s('M1.4 9L5.4 4.4H14.4A2.2 2.2 0 0 1 16.6 6.6V11.4A2.2 2.2 0 0 1 14.4 13.6H5.4Z', .9, null, 1), R(7.4, 8.15, 6.8, 1.7, .85, 1, 'w'), O(4.8, 9, 1.15, 1, 'w')],
+    flag: [l('M3.6 2V16.4', 'm', 1, 2), s('M4.8 2.6H15.4L12.8 6.4L15.4 10.2H4.8Z', .9, null, 1)],
+    markerUp: [s('M9 1.8L15.6 8.8H11.6V16.2H6.4V8.8H2.4Z', 1, 'up', 1)],
+    markerDown: [s('M9 16.2L15.6 9.2H11.6V1.8H6.4V9.2H2.4Z', 1, 'dn', 1)],
+    avwap: [R(5.2, 8.8, 2.4, 6, 1.2, .3), R(9.2, 4.6, 2.4, 6.4, 1.2, .3), R(13.2, 2.4, 2.4, 5.2, 1.2, .3), l('M2.4 2V16', 'g'), l('M2.4 13.4C7.6 13.4 8.8 6.6 16 5.6', 'k'), a(2.4, 13.4)],
+    fvp: [l('M1.6 1.6V16.4M16.4 1.6V16.4', 'g', .32, 1.6), ...hist(3.6)],
+    anchoredVolumeProfile: [l('M2.4 1.8V13.6', 's'), ...hist(4.4).map(o => o.w > 10 ? Object.assign({}, o, { w: 12 }) : o), a(2.4, 15.6)],
+    magnet: [s('M2.6 2.6H7.4V10A1.6 1.6 0 0 0 10.6 10V2.6H15.4V10A6.4 6.4 0 0 1 2.6 10Z', .55, null, 1), R(2.6, 2.6, 4.8, 3.4, 1, 1), R(10.6, 2.6, 4.8, 3.4, 1, 1)],
+    lock: [l('M5.8 8.2V5.6A3.2 3.2 0 0 1 12.2 5.6V8.2', 'm', .6), R(3, 7.8, 12, 8.8, 2.4, 1), R(8.15, 10.6, 1.7, 3.6, .85, 1, 'w')],
+    eye,
+    trash: [s('M4.2 6.2H13.8L12.9 16.2H5.1Z', .9, null, 1), l('M2.4 4.2H15.6', 'm', 1, 2), l('M6.8 4V2.6H11.2V4', 'm', 1, 1.6), R(6.9, 8.4, 1.5, 5.4, .75, .85, 'w'), R(9.6, 8.4, 1.5, 5.4, .75, .85, 'w')],
+    // 界面
+    u_search: [f(cp(7.8, 7.8, 5.4), .22), l(cp(7.8, 7.8, 5.4)), l('M12 12L16 16', 'm', 1, 3)],
+    u_bell: [s('M9 1.6c.55 0 1 .45 1 1v.55a4.9 4.9 0 0 1 3.9 4.8v2.7l1.35 2.05a.9.9 0 0 1-.75 1.4H3.5a.9.9 0 0 1-.75-1.4L4.1 10.65V7.95A4.9 4.9 0 0 1 8 3.15V2.6c0-.55.45-1 1-1Z', .9, null, 1), s('M6.9 15.2h4.2a2.1 2.1 0 0 1-4.2 0Z', 1), R(5.9, 6.6, 1.5, 3.6, .75, .55, 'w')],
+    u_ind: [R(1.6, 1.8, 14.8, 14.4, 3, .28), l('M4.4 12.2L7.4 8.6L10 10.8L13.6 6'), a(13.6, 6, 0)],
+    u_cmp: [l('M2 11L6 13.2L10 8.8L16 10.8', 'm', .42), l('M2 14.6L6 9.6L10 12L15.4 5'), a(15.4, 5, 1)],
+    u_note: [R(1.6, 1.4, 11.4, 15.2, 2.6, .3), R(4.2, 4.8, 6.2, 1.8, .9, .85), R(4.2, 8.4, 4.2, 1.8, .9, .6), l('M16 7.4L10.8 12.6', 'm', 1, 3.2), s('M9.3 14.1L8.4 16L10.3 15.1Z', 1)],
+    u_heat: heat,
+    u_layout: [R(1.6, 2.4, 6.8, 13.2, 2, .9), R(9.6, 2.4, 6.8, 6.2, 2, .5), R(9.6, 9.8, 6.8, 5.8, 2, .3)],
+    u_camera: [s('M6.6 3.4h4.8a1 1 0 0 1 .85.47L13 5.4h1.6a2 2 0 0 1 2 2v6.6a2 2 0 0 1-2 2H3.4a2 2 0 0 1-2-2V7.4a2 2 0 0 1 2-2H5l.75-1.53a1 1 0 0 1 .85-.47Z', .9, null, 1), O(9, 10.4, 3.5, 1, 'w'), O(9, 10.4, 1.9, 1)],
+    u_full: [R(5.6, 5.6, 6.8, 6.8, 1.6, .3), l('M2 6.4V3.6A1.6 1.6 0 0 1 3.6 2H6.4M11.6 2H14.4A1.6 1.6 0 0 1 16 3.6V6.4M16 11.6V14.4A1.6 1.6 0 0 1 14.4 16H11.6M6.4 16H3.6A1.6 1.6 0 0 1 2 14.4V11.6')],
+    u_undo: undo,
+    u_redo: [grp('matrix(-1 0 0 1 18 0)', undo)],
+    u_set: [s(gear(), .9, null, 1), O(9, 9, 1.3, 1)],
+    u_eye: eye,
+    u_eyeOff: [cut('M2.6 2L16.2 15.8', 4.6, eye.map(o => Object.assign({}, o, { o: (o.o ?? 1) * .5 }))), l('M2.8 2.2L15.8 15.6')],
+    u_star: [s(star(9, 9.7, 7.9, 3.8), 1, null, 1), s(star(9, 9.7, 3.6, 1.7), .35, 'w')],
+    u_list: [R(1.6, 1.8, 14.8, 14.4, 3, .28), s(star(5.4, 6.2, 2.6, 1.2), 1), R(8.4, 5.3, 5.8, 1.8, .9, .9), O(5.4, 9.6, 1.1, .7), R(8.4, 8.7, 5.8, 1.8, .9, .65), O(5.4, 13, 1.1, .5), R(8.4, 12.1, 4.2, 1.8, .9, .45)],
+    u_flow: [R(1, 4, 16, 3, 1.5, .55), R(1, 11, 16, 3, 1.5, .85), R(5, 2, 2, 14, 1, 1, 'up'), R(11, 5, 2, 10, 1, 1, 'dn')],
+    u_trades: [O(6.6, 11, 4.8, .9, 'up'), O(13.2, 5.6, 3.4, .9, 'dn'), O(14.4, 13.8, 1.9, .45), R(4.6, 10.2, 4, 1.6, .8, 1, 'w')],
+    u_info: [O(9, 9, 7.4, .26), R(8.05, 7.8, 1.9, 6, .95, 1), O(9, 5.2, 1.25, 1)],
+    u_sun: [O(9, 9, 3.7, 1), l('M9 1.6V3.2M9 14.8V16.4M1.6 9H3.2M14.8 9H16.4M3.8 3.8L4.9 4.9M13.1 13.1L14.2 14.2M3.8 14.2L4.9 13.1M13.1 4.9L14.2 3.8', 'm', .6, 1.8)],
+    u_moon: [s('M10.2 2.2A6.9 6.9 0 1 0 15.8 11.9A5.4 5.4 0 0 1 10.2 2.2Z', .9, null, 1), O(11.6, 6.2, .9, .5)],
+  };
+})();
+const ROLE_O = { m: 1, k: 1, s: .55, g: .3, x: .32 };
+
+/* C 与 A：实心形 + 同色分层透明度（A 是同一套几何的白色版本） */
+function rCA(ops, A) {
+  const ink = A ? '#fff' : 'var(--ih)', W = A ? 'var(--ihd)' : 'var(--iw)';
+  const col = c => c === 'w' ? W : A ? '#fff' : c === 'up' ? 'var(--gup)' : c === 'dn' ? 'var(--gdn)' : c === 'k2' ? 'var(--ih2)' : ink;
+  const op = (o, def) => { let v = o.o ?? def; if (A && o.c === 'dn') v *= .55; return +v.toFixed(3); };
+  return ops.map(o => {
+    switch (o.t) {
+      case 'l': return `<path d="${o.d}" fill="none" stroke="${col(o.c)}" stroke-width="${o.w ?? 2.2}" stroke-linecap="round" stroke-linejoin="round" opacity="${op(o, ROLE_O[o.r])}"/>`;
+      case 'a': return `<circle cx="${o.x}" cy="${o.y}" r="${o.s ? 2.3 : 1.8}" fill="${A ? '#fff' : 'var(--ih)'}" stroke="${A ? 'var(--ihd)' : '#fff'}" stroke-width="${A ? .9 : 1}"/>`;
+      case 'f': return `<path d="${o.d}" fill="${col(o.c)}" opacity="${op(o, A ? .3 : .22) * (A ? 1.3 : 1)}"/>`;
+      case 's': return `<path d="${o.d}" fill="${col(o.c)}" fill-rule="evenodd" stroke="${col(o.c)}" stroke-width=".9" stroke-linejoin="round" opacity="${op(o, 1)}"/>`;
+      case 'r': return `<rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" rx="${o.rx}" fill="${col(o.c)}" opacity="${op(o, 1)}"/>`;
+      case 'o': return `<circle cx="${o.cx}" cy="${o.cy}" r="${o.r}" fill="${col(o.c)}" opacity="${op(o, 1)}"/>`;
+      case 'g': return `<g transform="${o.tr}">${rCA(o.ops, A)}</g>`;
+      case 'cut': { const id = 'm' + (++MID); return `<mask id="${id}" maskUnits="userSpaceOnUse" x="-2" y="-2" width="22" height="22"><rect x="-2" y="-2" width="22" height="22" fill="#fff"/><path d="${o.d}" stroke="#000" stroke-width="${o.w}" stroke-linecap="round"/></mask><g mask="url(#${id})">${rCA(o.ops, A)}</g>`; }
+    }
+  }).join('');
+}
+/* B：主线主文字色 1.75 px（按 24 px 显示），关键部位分类色；面用 40→28% 渐变；锚点是带 1px 白内沿的玻璃珠 */
+function rB(ops, id) {
+  if (id == null) { id = 'b' + (++MID); }
+  const K = .6; // 18 格 2.2 → 1.32 格 ≈ 24 px 显示下的 1.75 px
+  const dir = c => c === 'up' ? 'var(--gup)' : c === 'dn' ? 'var(--gdn)' : null;
+  let body = ops.map(o => {
+    switch (o.t) {
+      case 'l': {
+        const hue = o.r === 'k', c = dir(o.c) || (hue ? 'var(--ih)' : 'var(--bs)');
+        const ov = o.o ?? (o.r === 'g' ? .42 : o.r === 's' ? .7 : o.r === 'x' ? .55 : 1);
+        return `<path d="${o.d}" fill="none" stroke="${c}" stroke-width="${((o.w ?? 2.2) * K).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"${o.r === 'x' ? ' stroke-dasharray="1.5 1.9"' : ''} opacity="${hue ? Math.max(ov, .32) : (o.r === 'm' ? Math.max(ov, .5) : ov)}"/>`;
+      }
+      case 'a': { const r = o.s ? 1.95 : 1.5; return `<circle cx="${o.x}" cy="${o.y}" r="${r}" fill="url(#${id}a)"/><circle cx="${o.x}" cy="${o.y}" r="${(r - .42).toFixed(2)}" fill="none" stroke="#fff" stroke-width=".55" opacity=".9"/>`; }
+      case 'f': return dir(o.c) ? `<path d="${o.d}" fill="${dir(o.c)}" opacity=".32"/>` : `<path d="${o.d}" fill="url(#${id}f)"/>`;
+      case 's': {
+        if (dir(o.c)) return `<path d="${o.d}" fill="${dir(o.c)}" fill-opacity=".34" stroke="${dir(o.c)}" stroke-width="1.15" stroke-linejoin="round"/>`;
+        if (o.h) return `<path d="${o.d}" fill="url(#${id}s)" fill-rule="evenodd" stroke="var(--bs)" stroke-width="1.15" stroke-linejoin="round"/>`;
+        if (o.c === 'w') return `<path d="${o.d}" fill="var(--iw)" opacity=".8"/>`;
+        return `<path d="${o.d}" fill="var(--bs)" fill-rule="evenodd" stroke="var(--bs)" stroke-width=".6" stroke-linejoin="round" opacity="${o.o ?? 1}"/>`;
+      }
+      case 'r': { const c = dir(o.c) || (o.c === 'w' ? 'var(--iw)' : o.c === 'k2' ? 'var(--ih2)' : 'var(--ih)'); return `<rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" rx="${o.rx}" fill="${c}" opacity="${o.o ?? 1}"/>`; }
+      case 'o': { const c = dir(o.c) || (o.c === 'w' ? 'var(--iw)' : 'var(--ih)'); return `<circle cx="${o.cx}" cy="${o.cy}" r="${o.r}" fill="${c}" opacity="${o.o ?? 1}"/>`; }
+      case 'g': return `<g transform="${o.tr}">${rB(o.ops, id)}</g>`;
+      case 'cut': { const m = 'm' + (++MID); return `<mask id="${m}" maskUnits="userSpaceOnUse" x="-2" y="-2" width="22" height="22"><rect x="-2" y="-2" width="22" height="22" fill="#fff"/><path d="${o.d}" stroke="#000" stroke-width="${o.w * .75}" stroke-linecap="round"/></mask><g mask="url(#${m})">${rB(o.ops, id)}</g>`; }
+    }
+  }).join('');
+  return body;
+}
+const B_DEFS = id => `<defs><linearGradient id="${id}f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--ih)" stop-opacity=".42"/><stop offset="1" stop-color="var(--ih)" stop-opacity=".26"/></linearGradient>
+  <linearGradient id="${id}s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--ih)" stop-opacity=".62"/><stop offset="1" stop-color="var(--ih)" stop-opacity=".36"/></linearGradient>
+  <radialGradient id="${id}a" cx=".36" cy=".3" r=".85"><stop offset="0" stop-color="var(--ihl)"/><stop offset=".55" stop-color="var(--ih)"/><stop offset="1" stop-color="var(--ih)"/></radialGradient></defs>`;
+
+/* 一个图标：st = C / A / B；state = '' | 'hov' | 'sel'；bare = 不要底块（只用在工具条右侧这类次要按钮） */
+function icon(k, st, t, o = {}) {
+  if (o.bare && st === 'A') st = 'C';
+  const v = icv(TCAT[k] || 'neu', t), ops = G[k] || [];
+  let svg;
+  if (st === 'B') { const id = 'b' + (++MID); svg = B_DEFS(id) + rB(ops, id); }
+  else svg = rCA(ops, st === 'A');
+  return `<span class="ic ${st}${o.state ? ' ' + o.state : ''}${o.bare ? ' bare' : ''}${o.cls ? ' ' + o.cls : ''}" style="--sz:${o.sz || 28}px;${o.g ? `--g:${o.g}px;` : ''}${v.css}"><svg viewBox="0 0 18 18" aria-hidden="true">${svg}</svg></span>`;
+}
+const DIRS = [['C', 'C · 淡彩色块', '主推'], ['A', 'A · 彩砖', '备选'], ['B', 'B · 彩色线稿', '备选']];
+
 
 /* ============================================================ 画线分组（与 Web/src/chart/drawTools.ts 的 TOOL_GROUPS 一致） */
 const GROUPS = [
@@ -966,11 +1224,10 @@ function drawChart(cv, o) {
 
 /* ============================================================ 图表页 mock */
 const IV = ['1分', '5分', '15分', '1时', '4时', '日', '周'];
-function ic(t, k, cls = '') { // 按模式取图标
-  if (t.mode === 'new') return NU[k] ? svgU(k, cls) : NI[k] ? svgN(k, cls) : svgC(k, cls);
+function ic(t, k, cls = '') { // 「现在」模式取现有图标
   const map = { heat: 'layers', settings: 'gear', chev: 'chevronDown' }; return svgC(map[k] || k, cls);
 }
-function di(t, k) { return t.mode === 'new' ? svgN(k) : svgC(k); }
+const di = (t, k) => svgC(k);
 function legendHTML(t, sym, r) {
   const L = r.last, up = L.c >= L.o, d = sym === 'BTC' ? 1 : 2, ch = L.c - L.o, pct = ch / L.o * 100;
   const sg = v => (v >= 0 ? '+' : MINUS) + fmt(Math.abs(v), d), sp = v => (v >= 0 ? '+' : MINUS) + Math.abs(v).toFixed(2) + '%';
@@ -991,24 +1248,26 @@ function cellHTML(t, id, act) {
     <div class="r"><span class="clock">21:14:08 (UTC+8)</span><span>%</span><span>对</span><span class="on">自</span></div></div></div>`;
 }
 function headerHTML(t) {
-  const N = t.mode === 'new';
+  const N = t.mode === 'new', st = ST.icon;
+  const srch = N ? icon('u_search', st, t, { sz: 24, g: 16, bare: 1 }) : ic(t, 'search');
+  const bell = N ? icon('u_bell', st, t, { sz: 28 }) : ic(t, 'bell');
+  const mode = N ? icon(t.theme === 'dark' ? 'u_moon' : 'u_sun', st, t, { sz: 28 }) : ic(t, t.theme === 'dark' ? 'moon' : 'sun');
   return `<div class="m-hd"><div class="brand">${svgC('logo')}<span>Hkline</span></div>
     <div class="m-nav"><a class="on">图表</a><a>板块</a><a>复盘</a></div>
     <div style="flex:1"></div>
-    <div class="m-srch">${ic(t, 'search')}<span>搜索品种</span><kbd>/</kbd></div>
+    <div class="m-srch">${srch}<span>搜索品种</span><kbd>/</kbd></div>
     <div style="flex:1"></div>
-    <div class="hd-r"><div class="ib">${ic(t, 'bell')}<span class="dot">2</span></div><div class="ib">${ic(t, t.theme === 'dark' ? 'moon' : 'sun')}</div><div class="avatar">G</div></div></div>`;
+    <div class="hd-r"><div class="ib">${bell}<span class="dot">2</span></div><div class="ib">${mode}</div><div class="avatar">G</div></div></div>`;
 }
+/* 工具条：带字按钮配 22 格小色块；右侧撤销 / 布局这类次要按钮在 C、B 里不垫块，A 里垫中性砖 */
+const TB_MAIN = [['u_ind', '指标', 't2'], ['u_bell', '提醒', 't2'], 0, ['u_cmp', '对比', 't3'], ['u_note', '记一笔', 't3'], ['u_heat', '热力', 't3']];
+const TB_UTIL = ['u_undo', 'u_redo', 0, 'u_layout', 'u_camera', 'u_full', 'u_set'];
+function tbMain(t, st, cls = 'tbt') { return TB_MAIN.map(x => x ? `<button class="${cls} ${x[2]}">${icon(x[0], st, t, { sz: 22, g: st === 'B' ? 19 : 15 })}${x[1]}</button>` : '<span class="tsep"></span>').join(''); }
+function tbUtil(t, st) { return TB_UTIL.map(k => k ? `<div class="tbi">${icon(k, st, t, st === 'A' ? { sz: 24, g: 16 } : { sz: 28, bare: 1, g: st === 'B' ? 22 : 18 })}</div>` : '<span class="tsep"></span>').join(''); }
 function toolbarHTML(t) {
-  const N = t.mode === 'new', ivs = IV.map(s => `<button class="${s === '1时' ? 'on' : ''}">${s}</button>`).join('') + `<button>更多${ic(t, 'chev')}</button>`;
+  const N = t.mode === 'new', ivs = IV.map(s => `<button class="${s === '1时' ? 'on' : ''}">${s}</button>`).join('') + `<button>更多${N ? svgU('chev') : ic(t, 'chev')}</button>`;
   if (N) return `<div class="m-tb"><div class="sym"><span class="coin">₿</span><b>BTCUSDT</b><span class="pk">永续</span>${svgU('chev')}</div>
-    <div class="ivs">${ivs}</div>
-    <button class="tbt t2">${svgU('indicators')}指标</button><button class="tbt t2">${svgU('bell')}提醒</button>
-    <span class="tsep"></span>
-    <button class="tbt t3">${svgU('compare')}对比</button><button class="tbt t3">${svgU('note')}记一笔</button><button class="tbt t3">${svgU('heat')}热力</button>
-    <div style="flex:1"></div>
-    <div class="tbi">${svgU('undo')}</div><div class="tbi">${svgU('redo')}</div><span class="tsep"></span>
-    <div class="tbi">${svgU('layout')}</div><div class="tbi">${svgU('camera')}</div><div class="tbi">${svgU('fullscreen')}</div><div class="tbi">${svgU('settings')}</div></div>`;
+    <div class="ivs">${ivs}</div>${tbMain(t, ST.icon)}<div style="flex:1"></div>${tbUtil(t, ST.icon)}</div>`;
   return `<div class="m-tb"><div class="sym">BTCUSDT <span class="pk">永续</span>${svgC('chevronDown')}</div><span class="tsep"></span>
     <div class="ivs">${ivs}</div><span class="tsep"></span>
     <button class="tbt">${svgC('indicators')}指标</button><button class="tbt">${svgC('compare')}对比</button><button class="tbt">${svgC('bell')}提醒</button><button class="tbt">${svgC('note')}记一笔</button><button class="tbt">${svgC('layers')}热力</button>
@@ -1016,18 +1275,34 @@ function toolbarHTML(t) {
     <div class="tbi">${svgC('undo')}</div><div class="tbi">${svgC('redo')}</div><span class="tsep"></span>
     <div class="tbi">${svgC('layout')}</div><div class="tbi">${svgC('camera')}</div><div class="tbi">${svgC('fullscreen')}</div><div class="tbi">${svgC('gear')}</div></div>`;
 }
+/* 画线工具栏：每组一格，显示组里上次用的那个；选中 = 趋势线（连续画线小点），悬停 = 斐波那契并展开 */
+const DB_TOP = [['cursor', 0], ['trend', 1, 'on stk', 'sel'], ['channel', 1], ['pitchfork', 1], ['fib', 1, 'hov', 'hov'], ['xabcd', 1], ['position', 1], ['rect', 1], ['note', 1], ['avwap', 1]];
+const DB_BOT = ['magnet', 'lock', 'eye', 0, 'trash'];
 function drawbarHTML(t) {
   const N = t.mode === 'new', ch = N ? FLYCH : FLYCH_C;
+  if (N) {
+    const cell = ([k, fly, cls = '', state = '']) => `<div class="db-c ${cls}"><div class="db-b">${icon(k, ST.icon, t, { sz: 28, state })}</div>${fly ? `<div class="db-f">${ch}</div>` : ''}${cls.includes('stk') ? '<span class="sticky"></span>' : ''}</div>`;
+    return `<div class="m-db">${DB_TOP.map(cell).join('')}<div class="db-sep"></div>${DB_BOT.map(k => k ? cell([k, 0]) : '<div class="db-sep"></div>').join('')}</div>`;
+  }
   const cell = (k, fly, cls = '') => `<div class="db-c ${cls}"><div class="db-b">${di(t, k)}</div>${fly ? `<div class="db-f">${ch}</div>` : ''}${cls.includes('stk') ? '<span class="sticky"></span>' : ''}</div>`;
-  const top = cell('cursor', 0) + (N ? '' : '<div class="db-sep"></div>') +
+  const top = cell('cursor', 0) + '<div class="db-sep"></div>' +
     cell('trend', 1, 'on stk') + cell('channel', 1) + cell('pitchfork', 1) + cell('fib', 1, 'hov') + cell('xabcd', 1) + cell('position', 1) + cell('rect', 1) + cell('note', 1) + cell('avwap', 1);
-  const bot = cell('magnet', 0) + cell('lock', 0) + cell('eye', 0) + (N ? '<div class="db-sep"></div>' : '<div class="db-sep"></div>') + cell('trash', 0);
+  const bot = cell('magnet', 0) + cell('lock', 0) + cell('eye', 0) + '<div class="db-sep"></div>' + cell('trash', 0);
   return `<div class="m-db">${top}<div class="db-sep"></div>${bot}</div>`;
 }
+/* 右侧功能栏：自选列表 · 提醒 · 主力订单流 · 大单（选中）· 对比 · 记一笔 …… 说明 */
+const RAIL = [['u_list'], ['u_bell', '', '2'], ['u_flow', 'hov'], ['u_trades', 'sel'], ['u_cmp'], ['u_note'], 0, ['u_info']];
 function railHTML(t) {
+  if (t.mode === 'new') return `<div class="m-rail">${RAIL.map(x => x ? `<div class="rl-b">${icon(x[0], ST.icon, t, { sz: 32, g: ST.icon === 'B' ? 26 : 20, state: x[1] || '' })}${x[2] ? `<span class="dot">${x[2]}</span>` : ''}</div>` : '<div style="flex:1"></div>').join('')}</div>`;
   const b = (k, cls = '', dot = '') => `<div class="rl-b ${cls}">${ic(t, k)}${dot ? `<span class="dot">${dot}</span>` : ''}</div>`;
   return `<div class="m-rail">${b('list')}${b('bell', '', '2')}${b('trades', 'on')}${b('note')}${b('heat')}<div style="flex:1"></div>${b('info')}</div>`;
 }
+/* 展开的工具组（斐波那契） */
+function flyHTML(t, st, cls = 'm-fly', sz = 26) {
+  const [g, tools] = GROUPS[3];
+  return `<div class="${cls}"><div class="gt">${g}</div>${tools.map(([k, nm, kb], i) => `<div class="r ${i === 0 ? 'on' : i === 2 ? 'h' : ''}">${icon(k, st, t, { sz, state: i === 0 ? 'sel' : i === 2 ? 'hov' : '' })}${nm}${kb && cls === 'm-fly' ? `<kbd>${kb}</kbd>` : ''}</div>`).join('')}</div>`;
+}
+
 
 /* ---------- 大单列表数据 ---------- */
 const WIN = [['本根', 41.2e6, 18.6e6, -22.6e6], ['1小时', 182e6, 96.4e6, -85.6e6], ['今日', 2.32e9, 1.61e9, -705e6]];
@@ -1107,63 +1382,88 @@ function buildMock() {
   stage.innerHTML = `<div class="scaler" style="transform:scale(${k});width:${W}px"><div class="mock ${t.mode}" id="mock" style="width:${W}px;height:${H}px">
     ${headerHTML(t)}${toolbarHTML(t)}${drawbarHTML(t)}
     <div class="m-main"><div class="m-cells">${cellHTML(t, 'c1', 1)}${cellHTML(t, 'c2', 0)}</div>${drawerHTML(t, false)}</div>
-    ${railHTML(t)}</div></div>`;
+    ${railHTML(t)}${t.mode === 'new' ? flyHTML(t, ST.icon) : ''}</div></div>`;
   const m = document.getElementById('mock'); setVars(m, t);
   const vis = W >= 2000 ? 120 : 120;
   paintCell('c1', t, 'BTC', { vis, bands: 1, bubbles: 1, legendH: 84, rp: 70 });
   paintCell('c2', t, 'ETH', { vis, kl: 1, draw: 1, legendH: 84, dur: 4, rp: 40 });
   document.getElementById('s1lede').innerHTML = ST.mode === 'new'
-    ? '<b>提案</b>：框架（顶栏 · 工具条 · 左右栏 · 缝）是一整块低饱和底，图表格子和抽屉是亮一级的卡片，K 线画布与卡片同底。关键数字（最新价、净额、挂单金额）600 字重大一阶，其余数字主文字色 500，标签退成第三级小字。'
+    ? '<b>提案</b>：框架（顶栏 · 工具条 · 左右栏 · 缝）是一整块低饱和底，图表格子和抽屉是亮一级的卡片，K 线画布与卡片同底。关键数字（最新价、净额、挂单金额）600 字重大一阶，其余数字主文字色 500，标签退成第三级小字。图标现在是 <b>' + DIRS.find(d => d[0] === ST.icon)[1] + '</b>（顶上「图标」可换）：画线栏选中趋势线、悬停斐波那契并展开这一组，右栏选中「大单」、悬停「主力订单流」。'
     : '<b>现在</b>：10-08 视觉调整之前的线上样子——底、卡片、K 线画布三种颜色，左右栏图标次要字色加 30% 衬底，工具条按钮同一分量，抽屉里数字全用方向色压在彩条上。';
 }
 
-/* ============================================================ 第 2 节 */
+/* ============================================================ 第 2 节：图标 */
+const UI_ICONS = [['u_search', '搜索', 'search'], ['u_bell', '提醒', 'bell'], ['u_ind', '指标', 'indicators'], ['u_cmp', '对比', 'compare'], ['u_note', '记一笔', 'note'], ['u_heat', '热力', 'layers'],
+  ['u_layout', '布局', 'layout'], ['u_camera', '截图', 'camera'], ['u_full', '全屏', 'fullscreen'], ['u_undo', '撤销', 'undo'], ['u_redo', '重做', 'redo'], ['u_set', '设置', 'gear'],
+  ['u_eye', '显示', 'eye'], ['u_eyeOff', '隐藏', 'eyeOff'], ['u_star', '自选', 'star'], ['u_list', '自选列表', 'list'],
+  ['u_flow', '主力订单流', ''], ['u_trades', '大单', 'trades'], ['u_info', '说明', 'info'], ['u_sun', '浅色', 'sun'], ['u_moon', '深色', 'moon']];
+const DIR_TXT = {
+  C: '照「主力订单流」侧栏四个开关：淡彩渐变底块 + 18 格实心小图，同一颜色叠 .28 / .55 / .85 / 1 四层；线是 2.2 圆头条，锚点实心带白边，面是淡填充，斐波那契是一档比一档淡的条。',
+  A: 'macOS / Raycast 式：每个功能一块自己色相的渐变砖，白色字形带一点内阴影；选中外圈 2px 强调色并上浮 1px，悬停整砖提亮。',
+  B: '不要底块：主线主文字色 1.75，锚点是带白内沿的分类色玻璃珠，面是 40→28% 分类色渐变，斐波那契档位线用分类色；悬停 / 选中才垫一块 12 / 16% 的淡色。',
+};
+function miniHTML(t, st) {
+  const tb = `<div class="mt">${tbMain(t, st)}<span class="tsep"></span>${['u_undo', 'u_layout', 'u_camera', 'u_set'].map(k => `<div class="tbi">${icon(k, st, t, st === 'A' ? { sz: 24, g: 16 } : { sz: 28, bare: 1, g: st === 'B' ? 22 : 18 })}</div>`).join('')}</div>`;
+  const db = `<div class="cl">${DB_TOP.slice(0, 7).map(([k, , , state]) => icon(k, st, t, { sz: 28, state })).join('')}<span class="sp"></span>${['magnet', 'lock', 'trash'].map(k => icon(k, st, t, { sz: 28 })).join('')}</div>`;
+  const rl = `<div class="cl rl">${RAIL.filter(Boolean).map(x => `<span class="w">${icon(x[0], st, t, { sz: 32, g: st === 'B' ? 26 : 20, state: x[1] || '' })}${x[2] ? `<span class="dot">${x[2]}</span>` : ''}</span>`).join('')}</div>`;
+  return `<div class="mini" data-th="${t.theme}"><div class="mh"><span>${t.theme === 'light' ? '浅色' : '深色'}</span><span>工具条 · 画线栏 · 展开组 · 右侧栏</span></div>${tb}<div class="mb">${db}${flyHTML(t, st, 'fl', 26)}${rl}</div></div>`;
+}
+function statesHTML(t, st) {
+  const fig = (k, state, cap) => `<figure>${gx(icon(k, st, t, { sz: 56, state }), st)}<figcaption>${cap}</figcaption></figure>`;
+  return `<div class="states" data-th="${t.theme}">${fig('fib', '', '静止')}${fig('fib', 'hov', '悬停')}${fig('fib', 'sel', '选中')}<span class="vs"></span>${fig('u_trades', '', '静止')}${fig('u_trades', 'sel', '选中')}</div>`;
+}
+/* 2× 放大：在字形区上叠一层 18 格网格（每格 = 1 单位） */
+function gx(html, st, sz = 56) {
+  const g = st === 'B' ? sz * .857 : sz * .643, inset = (sz - g) / 2, u = g / 18;
+  return `<span class="gx" style="--gi:${inset.toFixed(2)}px;--gu:${(u * 2).toFixed(3)}px">${html}</span>`;
+}
 function iconPanels() {
-  const host = document.getElementById('s2a'); host.innerHTML = '';
-  for (const th of ['light', 'dark']) {
-    const n = T('new', th, ST.skin), c = T('cur', th, ST.skin);
-    const el = document.createElement('div'); el.className = 'pan'; setVars(el, n);
-    el.style.setProperty('--csurf', c.surface); el.style.setProperty('--ct2', c.t2);
-    let h = `<div class="ph">${th === 'light' ? '浅色' : '深色'}<small>提案框架底 ${n.frame} · 现在卡片底 ${c.surface}</small></div>
-      <div class="colh"><div style="width:84px">名称</div><div style="width:36px">现在</div><div style="width:40px">28</div><div style="width:10px"></div><div style="width:44px">静止</div><div style="width:44px">悬停</div><div style="width:44px">选中</div><div>20</div></div><div class="igrid">`;
-    for (const [g, tools] of GROUPS) {
-      h += `<div class="igrp">${g}</div>`;
-      for (const [k, nm] of tools) h += `<div class="icard"><span class="nm" title="${nm}">${nm}</span><span class="c36">${svgC(k)}</span><span class="c40">${svgC(k)}</span><span class="arrow">→</span><span class="n52">${svgN(k)}</span><span class="n52 h">${svgN(k)}</span><span class="n52 s">${svgN(k)}</span><span class="n20">${svgN(k)}</span></div>`;
-    }
-    h += `<div class="igrp">工具栏其他</div>`;
-    for (const [k, nm] of [['cursor', '十字光标'], ['magnet', '磁吸'], ['lock', '锁定画线'], ['eye', '隐藏画线'], ['trash', '删除画线']])
-      h += `<div class="icard"><span class="nm">${nm}</span><span class="c36">${svgC(k)}</span><span class="c40">${svgC(k)}</span><span class="arrow">→</span><span class="n52">${svgN(k)}</span><span class="n52 h">${svgN(k)}</span><span class="n52 s">${svgN(k)}</span><span class="n20">${svgN(k)}</span></div>`;
-    el.innerHTML = h + '</div>'; host.appendChild(el);
+  const sk = ST.skin, L = T('new', 'light', sk), D = T('new', 'dark', sk);
+  // 2a · 三个方向放到同一处
+  const a = document.getElementById('s2a'); a.innerHTML = '';
+  for (const [st, nm, tag] of DIRS) {
+    const col = document.createElement('div'); col.className = 'dcol' + (st === 'C' ? ' main' : '');
+    col.innerHTML = `<div class="dh">${nm}<em class="${st === 'C' ? '' : 'alt'}">${tag}</em></div><div class="dd">${DIR_TXT[st]}</div>` + miniHTML(L, st) + miniHTML(D, st) + statesHTML(L, st) + statesHTML(D, st);
+    col.querySelectorAll('[data-th]').forEach(el => setVars(el, el.dataset.th === 'dark' ? D : L));
+    a.appendChild(col);
   }
-  // 展开菜单
-  const fh = document.getElementById('s2b'); fh.innerHTML = '';
-  const n = T('new', ST.theme, ST.skin), c = T('cur', ST.theme, ST.skin);
-  for (const gi of [0, 3, 7]) {
-    const [g, tools] = GROUPS[gi];
-    const cur = `<div><div class="flycap">现在</div><div class="fly c"><div class="gt">${g}</div>${tools.map(([k, nm, kb], i) => `<div class="r ${i === 0 ? 'on' : ''}">${svgC(k)}${nm}${kb ? `<kbd>${kb}</kbd>` : ''}</div>`).join('')}</div></div>`;
-    const nw = `<div><div class="flycap">提案</div><div class="fly n"><div class="gt">${g}</div>${tools.map(([k, nm, kb], i) => `<div class="r ${i === 0 ? 'on' : i === 2 ? 'h' : ''}">${svgN(k)}${nm}${kb ? `<kbd>${kb}</kbd>` : ''}</div>`).join('')}</div></div>`;
-    const p = document.createElement('div'); p.className = 'flypair';
-    p.innerHTML = `<div class="flywrap c">${cur}</div><div class="flywrap n">${nw}</div>`;
-    setVars(p.children[0], c); setVars(p.children[1], n); p.children[0].style.background = 'transparent'; fh.appendChild(p);
+  // 2b · 全目录
+  const b = document.getElementById('s2b'); b.innerHTML = '';
+  const groups = GROUPS.concat([['工具', [['cursor', '十字光标'], ['magnet', '磁吸'], ['lock', '锁定画线'], ['eye', '隐藏画线'], ['trash', '删除画线']]], ['界面图标', UI_ICONS]]);
+  for (const t of [L, D]) {
+    const p = document.createElement('div'); p.className = 'catp'; setVars(p, t);
+    p.innerHTML = `<div class="ph">${t.theme === 'light' ? '浅色' : '深色'}<small>每列从上到下：现在 · C · A · B，全是静止态；框架底 ${t.frame}</small></div><div class="cat2">` + groups.map(([g, tools]) => {
+      const v = icv(TCAT[tools[0][0]], t);
+      const cols = tools.map(([k, nm, x]) => { const ck = typeof x === 'string' && UI_ICONS.some(u => u[0] === k) ? x : (k.startsWith('u_') ? '' : k);
+        return `<div class="tc"><span class="nm">${nm}</span><span class="cur">${ck && CUR[ck] ? svgC(ck) : '<span style="color:var(--t3)">—</span>'}</span>${icon(k, 'C', t)}${icon(k, 'A', t)}${icon(k, 'B', t)}</div>`; }).join('');
+      return `<div class="cg"><div class="gh" style="--ih:${g === '界面图标' || g === '工具' ? 'var(--t3)' : v.ink}"><i></i>${g}<span style="color:var(--t3)">${tools.length}</span></div><div class="gb"><div class="rl"><span>现</span><span>C</span><span>A</span><span>B</span></div>${cols}</div></div>`;
+    }).join('') + '</div>';
+    b.appendChild(p);
   }
-  // 放大
-  const mg = document.getElementById('s2c'); mg.innerHTML = ''; setVars(mg, n);
-  for (const [k, nm] of [['trend', '趋势线'], ['fib', '斐波那契回撤'], ['pitchfork', '安德鲁斯分叉'], ['xabcd', 'XABCD 形态'], ['position', '多空持仓框'], ['callout', '气泡标注']]) {
-    const f = document.createElement('figure');
-    f.innerHTML = `<div class="gbox">${svgN(k)}</div><figcaption>${nm}<span>28 × 7</span></figcaption>
-      <div class="act"><div style="color:var(--t1)">${svgN(k)}</div><div style="background:var(--fh);color:var(--t1)">${svgN(k)}</div><div style="background:var(--softF);color:var(--atext)">${svgN(k)}</div></div>`;
-    mg.appendChild(f);
+  // 2c · 2× 放大
+  const c = document.getElementById('s2c'); c.innerHTML = '';
+  const MAGK = [['trend', '趋势线'], ['fib', '斐波那契回撤'], ['pitchfork', '安德鲁斯分叉'], ['xabcd', 'XABCD'], ['position', '多空持仓框'], ['callout', '气泡标注'], ['u_flow', '主力订单流'], ['u_trades', '大单']];
+  for (const t of [L, D]) {
+    const p = document.createElement('div'); p.className = 'pan'; setVars(p, t);
+    p.innerHTML = `<div class="ph">${t.theme === 'light' ? '浅色' : '深色'}<small>56 格 = 2 倍，网格每格 2 单位</small></div><div class="mag2">` +
+      DIRS.map(([st]) => `<div class="row"><b>${st}</b>${MAGK.map(([k, nm]) => `<figure>${gx(icon(k, st, t, { sz: 56 }), st)}<figcaption>${nm}</figcaption></figure>`).join('')}</div>`).join('') + '</div>';
+    c.appendChild(p);
   }
-  // 界面图标
-  const ud = document.getElementById('s2d'); ud.innerHTML = '';
-  const UI = [['search', '搜索', 'search'], ['bell', '提醒', 'bell'], ['indicators', '指标', 'indicators'], ['compare', '对比', 'compare'], ['note', '记一笔', 'note'], ['heat', '热力', 'layers'], ['layout', '布局', 'layout'], ['camera', '截图', 'camera'], ['fullscreen', '全屏', 'fullscreen'], ['undo', '撤销', 'undo'], ['redo', '重做', 'redo'], ['settings', '设置', 'gear'], ['eye', '显示', 'eye'], ['eyeOff', '隐藏', 'eyeOff'], ['star', '自选', 'star'], ['list', '列表', 'list']];
-  for (const th of ['light', 'dark']) {
-    const n2 = T('new', th, ST.skin), c2 = T('cur', th, ST.skin), el = document.createElement('div'); el.className = 'pan'; setVars(el, n2);
-    el.style.setProperty('--csurf', c2.surface); el.style.setProperty('--ct2', c2.t2);
-    el.innerHTML = `<div class="ph">${th === 'light' ? '浅色' : '深色'}<small>现在：卡片底 · 次要字色　提案：框架底 · 主文字色</small></div><div class="uigrid">` +
-      UI.map(([k, nm, ck]) => `<div class="ucard"><span class="nm">${nm}</span><span class="grp c">${svgC(ck, 'i24')}${svgC(ck, 'i20')}${svgC(ck, 'i16')}</span><span class="arrow">→</span><span class="grp n">${svgU(k, 'i24')}${svgU(k, 'i20')}${svgU(k, 'i16')}</span></div>`).join('') + '</div>';
-    ud.appendChild(el);
+  // 2d · 对比度
+  const d = document.getElementById('s2d');
+  const f2 = x => x.toFixed(2), cell = (v, min, info) => `<td class="${info ? 'info' : v < min ? 'bad' : ''}">${f2(v)}</td>`;
+  let rows = '', worst = 99;
+  for (const cat of Object.keys(HUES)) {
+    const l = icv(cat, L), dk = icv(cat, D);
+    const rest = mix(L.frame, l.tint, .26), sel = mix(L.frame, l.tint, .42);
+    const vals = [cr(l.ink, L.frame), cr(l.ink, rest), cr(l.ink, sel), cr(l.ta, '#FFFFFF'), cr(l.tb, '#FFFFFF'), cr(dk.ink, D.frame), cr(dk.ink, mix(D.frame, dk.tint, .26)), cr(dk.ta, '#FFFFFF')];
+    worst = Math.min(worst, ...vals.slice(0, 5));
+    const sw = `<span class="sw">${icon(Object.keys(TCAT).find(k => TCAT[k] === cat), 'C', L, { sz: 22, g: 15 })}${icon(Object.keys(TCAT).find(k => TCAT[k] === cat), 'A', L, { sz: 22, g: 15 })}</span>`;
+    rows += `<tr><td>${sw}　${HUES[cat][0]}</td>${cell(vals[0], 3)}${cell(vals[1], 3)}${cell(vals[2], 3)}${cell(vals[3], 3)}${cell(vals[4], 3)}${cell(vals[5], 3)}${cell(vals[6], 3)}${cell(vals[7], 3, 1)}<td class="info">${l.ink}</td></tr>`;
   }
+  d.innerHTML = `<div class="catp"><div class="ph">${{ sage: '青苔', classic: '经典', terra: '陶土' }[sk]}<small>WCAG 对比度，页面里实时算；红字 = 低于 3:1。浅色最低 ${f2(worst)}</small></div><div class="crwrap"><table class="crt">
+    <tr><th>分类</th><th>C 浅 · 字形 / 框架</th><th>C 浅 · 字形 / 静止底</th><th>C 浅 · 字形 / 选中底</th><th>A 浅 · 白字 / 砖顶</th><th>A 浅 · 白字 / 砖底</th><th>C 深 · 字形 / 框架</th><th>C 深 · 字形 / 静止底</th><th>A 深 · 白字 / 砖顶</th><th>浅色墨</th></tr>${rows}</table></div></div>`;
+  setVars(d.firstChild, L);
 }
 
 /* ============================================================ 第 3 节 */
@@ -1249,8 +1549,9 @@ function closeup() {
 }
 
 /* ============================================================ 状态 */
-const ST = { mode: 'new', theme: 'light', skin: 'sage' };
+const ST = { mode: 'new', theme: 'light', skin: 'sage', icon: 'C' };
 try { Object.assign(ST, JSON.parse(localStorage.getItem('hk-visual-1008') || '{}')); } catch (e) {}
+if (!['C', 'A', 'B'].includes(ST.icon)) ST.icon = 'C';
 function save() { try { localStorage.setItem('hk-visual-1008', JSON.stringify(ST)); } catch (e) {} }
 function chrome() {
   const t = T('new', ST.theme, ST.skin); setVars(document.documentElement, t);
@@ -1266,7 +1567,7 @@ document.getElementById('ctl').addEventListener('click', e => {
   const b = e.target.closest('.seg button'); if (!b) return;
   const k = b.parentElement.dataset.k; if (ST[k] === b.dataset.v) return;
   ST[k] = b.dataset.v; save();
-  if (k === 'mode') renderAll('mock'); else renderAll();
+  if (k === 'mode' || k === 'icon') renderAll('mock'); else renderAll();
 });
 let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { buildMock(); closeup(); }, 120); });
 renderAll();
