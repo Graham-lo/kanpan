@@ -46,6 +46,11 @@ export interface DrawingInput {
   ended(ids: number[], now: number, cancelled: boolean): void
 }
 
+/** 附加图层的画法（见 ChartView.addLayer）。 */
+export type LayerPaint = (ctx: CanvasRenderingContext2D, W: number, H: number, scale: number, r: ChartRenderer) => void
+interface ChartLayer { canvas: HTMLCanvasElement; paint: LayerPaint; dirty: boolean }
+export interface ChartLayerHandle { readonly canvas: HTMLCanvasElement; redraw(): void; remove(): void }
+
 /** 视图记的一份序列指纹：原地改的 BarSeries 只能这么比。 */
 interface SeriesMark {
   ref: BarSeries
@@ -142,6 +147,8 @@ export class ChartView {
   drawingTeardown: (() => void) | null = null
   /** 一下轻点先问画线层：落在提醒线（AlertSignal）上就归它、返回真，图不再当轻点处理 */
   signalTap: ((x: number, y: number) => boolean) | null = null
+  /** 一下轻点接着问图上大单签（bigTradeLayer 赋值）：点中一枚就归它、返回真 */
+  bigTradeTap: ((x: number, y: number) => boolean) | null = null
   private _drawingKeyOf: ((s: ChartState) => string) | null = null
   private drawingKey: string | null = null
 
@@ -151,6 +158,8 @@ export class ChartView {
   private mark: SeriesMark | null = null
   private orderFlowFocus: ChartOrderFlowFocus | null = null
   private dirty: PartsMask = 0
+  /** 附加图层（图上大单签等）：各自一块画布，插在画线覆盖层下面 */
+  private readonly layers: ChartLayer[] = []
   private overlayDirty = false
   private raf = 0
   private _animation: ((nowMs: number) => boolean) | null = null
@@ -308,6 +317,7 @@ export class ChartView {
     for (const { canvas } of this.canvases) { canvas.width = pw; canvas.height = ph }
     this.overlayCanvas.width = pw
     this.overlayCanvas.height = ph
+    for (const l of this.layers) { l.canvas.width = pw; l.canvas.height = ph; l.dirty = true }
     this.onResize?.(W, H)
     this.setNeedsRedraw(Parts.all)
     this.refreshDrawingOverlay()
@@ -330,6 +340,29 @@ export class ChartView {
   refreshDrawingOverlay(): void {
     this.overlayDirty = true
     this.resume()
+  }
+
+  /**
+   * 挂一块附加图层：插在画线覆盖层下面、不接触摸。几何变了（plot 层重画：视野、价格区间、末根、画线）时跟着重画，
+   * 自己的数据变了调 redraw()。画的时候坐标系已按倍率缩放好，W / H 是点尺寸。
+   */
+  addLayer(paint: LayerPaint): ChartLayerHandle {
+    const c = document.createElement('canvas')
+    Object.assign(c.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '100%', pointerEvents: 'none' })
+    c.width = Math.max(1, Math.round(this.width * this.scale)); c.height = Math.max(1, Math.round(this.height * this.scale))
+    this.el.insertBefore(c, this.overlayCanvas)
+    const layer: ChartLayer = { canvas: c, paint, dirty: true }
+    this.layers.push(layer)
+    this.resume()
+    return {
+      canvas: c,
+      redraw: () => { layer.dirty = true; this.resume() },
+      remove: () => {
+        const i = this.layers.indexOf(layer)
+        if (i >= 0) this.layers.splice(i, 1)
+        c.remove()
+      },
+    }
   }
 
   /** 立刻把脏层画完，不等下一帧（验收截图用）。 */
@@ -376,6 +409,17 @@ export class ChartView {
         ctx.setTransform(scale, 0, 0, scale, 0, 0)
         ctx.clearRect(0, 0, W, H)
         if (this.storedState && this.renderer) this.drawingOverlayPaint?.(ctx, W, H, scale)
+      }
+    }
+    if (W > 0 && H > 0) {
+      for (const l of this.layers) {
+        if (!l.dirty && !(parts & Parts.plot)) continue
+        l.dirty = false
+        const ctx = l.canvas.getContext('2d')
+        if (!ctx) continue
+        ctx.setTransform(scale, 0, 0, scale, 0, 0)
+        ctx.clearRect(0, 0, W, H)
+        if (this.storedState && this.renderer) l.paint(ctx, W, H, scale, this.renderer)
       }
     }
   }
@@ -515,6 +559,7 @@ export class ChartView {
   get isAtLatest(): boolean { return this.gestures.isAtLatest }
   clearCrosshair(): void { this.gestures.clearCrosshair() }
   moveCrosshair(by: number): void { this.gestures.moveCrosshairBy(by) }
+  crosshairTo(index: number): void { this.gestures.crosshairTo(index) }
   resetPriceScale(): void { this.gestures.resetPriceScale() }
   nudge(dx: number): void { this.gestures.nudge(dx) }
   reveal(from: number, to: number): void { this.gestures.reveal(from, to) }

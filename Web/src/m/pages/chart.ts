@@ -44,7 +44,8 @@ import { createTopBar, createHeader, splitPair } from './chart/header'
 import { createIntervalBar } from './chart/intervalBar'
 import { createOrderFlowCard } from './chart/orderFlowCard'
 import { createPagePort, type PagePort } from './chart/data'
-import { openAnalysis, openChartSettings, openOrderFlowEditor, type PanelContext, type AxisContext } from './chart/panels'
+import { openAnalysis, openChartSettings, openOrderFlowEditor, thresholdsFor, type PanelContext, type AxisContext } from './chart/panels'
+import { BigTradeController, devForce } from './chart/bigTrade'
 import { createBench, reconcileLineAlerts, type Bench } from './chart/drawingBench'
 import { openNote, resumeNote, wireNoteRequests, flushNotes, wireNoteUploads } from './chart/note'
 import { openShare } from './chart/share'
@@ -272,6 +273,7 @@ export function initChart(root: HTMLElement): PageHandle {
     if (isLand() === landShown) return // 媒体查询与设备朝向各报一次，只按真正翻了的那一次重排
     card.set(null, '', 2)
     layout()
+    bt.sync()
   }
   mq.addEventListener('change', onOrientation)
   so?.addEventListener('change', onOrientation)
@@ -282,7 +284,19 @@ export function initChart(root: HTMLElement): PageHandle {
     onAddCompare: () => openSearch({ compare: { current: sym() } }),
     // 照 iOS：复盘回放、横屏画线台、看朋友分享的线时不能对比，整节不排
     canCompare: () => !replay && !isLand() && !bench.active && !preview?.previewing(),
+    // 「主力订单流」一节的「大单与爆仓」：宏观品种、横屏、回放里不排
+    get onBigTrade() { return isMacroSym(sym()) || isLand() || replay ? undefined : () => bt.open() },
+    bigTradeText: () => bt.summaryText(),
   }
+  // 图上大单签 + 「大单与爆仓」弹层（开关 Prefs.bigTradeSigns；点签开半屏，横屏只画签）
+  const btForce = devForce()
+  const bt = new BigTradeController({
+    chart, symbol: sym, port: () => port,
+    thresholds: () => thresholdsFor(panelCtx, baseOfSymbol(sym()).base).effective,
+    isLand: () => isLand() || !!replay, isMacro: () => isMacroSym(sym()),
+    openThreshold: back => { openOrderFlowEditor(panelCtx, back) },
+    force: btForce === 'full' ? null : btForce,
+  })
   const axisCtx: AxisContext = { mode: () => effectivePriceMode(sym()), category: () => axisCategory(sym()) }
 
   // ---- 图上的事件 → st（手指一松就落盘）
@@ -347,6 +361,7 @@ export function initChart(root: HTMLElement): PageHandle {
       chart.setDepth(depthOn)
     }
     port?.setOverride(st.orderFlowOverrides[baseOfSymbol(sym()).base] ?? null)
+    bt.sync()
     render()
   }
   indKey = ((i) => JSON.stringify([i.overlays, i.subs, st.params, st.orderFlow && i.orderFlow]))(shownInd())
@@ -410,12 +425,12 @@ export function initChart(root: HTMLElement): PageHandle {
     if (ch.drawingPreferences) bench.pullPreferences()
     if (ch.alerts) bench.refreshAlerts()
   })
-  hooks.onTheme.push(() => { topBar.invalidate(); lookKey = ''; syncChart(); bench.render() })
+  hooks.onTheme.push(() => { topBar.invalidate(); lookKey = ''; syncChart(); bench.render(); bt.layer.invalidate(); bt.refresh() })
   hooks.onForeground.push(() => { if (shown) { render(); void flushNotes() } })
 
   // ---- 深链（验收截图用）
   function deepLink(): void {
-    const v = takeOpenParam(['more', 'analysis', 'settings', 'orderflow', 'land'])
+    const v = takeOpenParam(['more', 'analysis', 'settings', 'orderflow', 'land', 'bigtrade'])
     if (!v) return
     setTimeout(() => {
       if (v === 'more') ivBar.openGrid()
@@ -423,6 +438,7 @@ export function initChart(root: HTMLElement): PageHandle {
       else if (v === 'settings') openChartSettings(axisCtx)
       else if (v === 'orderflow') openOrderFlowEditor(panelCtx)
       else if (v === 'land') startDrawing()
+      else if (v === 'bigtrade') bt.open(btForce === 'full' ? 'full' : 'half')
     }, 600)
   }
 
@@ -515,6 +531,7 @@ export function initChart(root: HTMLElement): PageHandle {
       syncChart()
       clearInterval(tick)
       tick = window.setInterval(render, 1000)
+      bt.show()
       void flushNotes()
       deepLink()
       takeIntent()
@@ -523,6 +540,7 @@ export function initChart(root: HTMLElement): PageHandle {
       shown = false
       endReplay()
       clearInterval(tick)
+      bt.hide()
       if (bench.active) bench.setActive(false)
       bench.closeSheets()
       wantDraw = false; guide.hidden = true

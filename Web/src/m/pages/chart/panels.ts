@@ -85,6 +85,10 @@ export interface PanelContext {
   onAddCompare?(): void
   /** 此刻能不能对比（复盘回放、横屏画线台、看朋友分享的线时不能）；不给当能 */
   canCompare?(): boolean
+  /** 「大单与爆仓」弹层（先关面板再调）；没有时那一行不排（宏观品种、横屏） */
+  onBigTrade?(): void
+  /** 那一行右边的实时小字（「本根 净买 +1.2M」） */
+  bigTradeText?(): string
 }
 
 /** 当前生效参数（按指标能直接下标取用的长度） */
@@ -104,6 +108,7 @@ export function openAnalysis(ctx: PanelContext): Sheet {
   let reorder: ReorderHandle | null = null
   /** 拖副图把手的途中别的设置落盘（同步、学到的周期……）会经 subscribe 重画面板：先记下，松手再画 */
   let redrawAfterDrag = false
+  let btTimer: ReturnType<typeof setInterval> | null = null
   const sheet = openSheet(body => {
     const host = el('div', 'cp-panel')
     body.append(host)
@@ -113,6 +118,11 @@ export function openAnalysis(ctx: PanelContext): Sheet {
     }
     render()
     off = subscribe(() => { if (!sheet.closed) render() })
+    // 「大单与爆仓」那一行的小字每秒跟一次（不重画整块，免得打断拖副图）
+    if (ctx.bigTradeText) btTimer = setInterval(() => {
+      const m = host.querySelector('[data-bt-meta]')
+      if (m) { const t = ctx.bigTradeText!(); if (m.textContent !== t) m.textContent = t }
+    }, 1000)
     host.addEventListener('click', e => {
       const b = (e.target as Element).closest<HTMLElement>('[data-act]')
       if (!b || b.hasAttribute('disabled')) return
@@ -138,6 +148,8 @@ export function openAnalysis(ctx: PanelContext): Sheet {
         case 'cmp-clear': st.compareSymbols = []; save(); sheet.close(); break
         case 'of': st.orderFlow = !st.orderFlow; save(); break
         case 'of-edit': openOrderFlowEditor(ctx); break
+        case 'bt-signs': st.bigTradeSigns = !st.bigTradeSigns; save(); break
+        case 'bt-open': sheet.close(); ctx.onBigTrade?.(); break
         case 'reset': resetLayout(); break
       }
     })
@@ -147,7 +159,7 @@ export function openAnalysis(ctx: PanelContext): Sheet {
       onMove(from, to, rows) { st.subs = moveSubAmong(st.subs, rows.map(r => r.dataset.sub as IndicatorId), from, to); save() },
       onEnd() { if (redrawAfterDrag) { redrawAfterDrag = false; render() } },
     })
-  }, { title: '分析', detent: 'medium', dim: 'large', id: 'analysis', className: 'cp-sheet cp-list cp-cards', onClose: () => { off?.(); reorder?.destroy() } })
+  }, { title: '分析', detent: 'medium', dim: 'large', id: 'analysis', className: 'cp-sheet cp-list cp-cards', onClose: () => { off?.(); reorder?.destroy(); if (btTimer) clearInterval(btTimer) } })
   return sheet
 }
 
@@ -244,7 +256,13 @@ export function analysisHTML(ctx: PanelContext): string {
   out.push(gt(indicatorName('ORDERFLOW')))
   const base = baseOfSymbol(ctx.symbol()).base
   const of: string[] = [`<div class="cp-row"><span class="cp-rn">${dot(swatchVar('ORDERFLOW'))}显示</span>${sw(st.orderFlow, 'of', '显示主力订单流')}</div>`]
-  if (st.orderFlow && isValidBase(base)) {
+  // 图上大单签（出厂开、跟人走，和上面「显示」互不牵连）+ 「大单与爆仓」弹层入口（照 iOS 10-08）
+  of.push(`<div class="cp-row"><span class="cp-rn">图上大单签</span>${sw(st.bigTradeSigns, 'bt-signs', '图上大单签')}</div>`)
+  if (ctx.onBigTrade) {
+    const t = ctx.bigTradeText?.() ?? ''
+    of.push(`<button type="button" class="cp-row cp-tap" data-act="bt-open"><span class="cp-rn">大单与爆仓</span><span class="cp-meta num" data-bt-meta>${esc(t)}</span>${chevron()}</button>`)
+  }
+  if ((st.orderFlow || st.bigTradeSigns) && isValidBase(base)) {
     const meta = `${base} · ${st.orderFlowOverrides[base] ? '已改门槛' : '默认门槛'}`
     of.push(`<button type="button" class="cp-row cp-tap" data-act="of-edit" aria-label="门槛，${esc(meta)}"><span class="cp-rn">门槛${termHTML('threshold')}</span><span class="cp-meta num">${esc(meta)}</span>${chevron()}</button>`)
   }
@@ -524,7 +542,7 @@ const PRODUCT_LABEL: Record<'spot' | 'usdtPerp' | 'coinPerp' | 'delivery', strin
 const PRODUCTS = ['spot', 'usdtPerp', 'coinPerp', 'delivery'] as const
 
 /** 这只的默认与生效门槛：数据口有就用它的（按成交额分过档），还没到就按品种事实查表 */
-function thresholdsFor(ctx: PanelContext, base: string): { defaults: Thresholds; effective: Thresholds } {
+export function thresholdsFor(ctx: PanelContext, base: string): { defaults: Thresholds; effective: Thresholds } {
   const port = ctx.port()
   const sym = ctx.symbol()
   const m = S.symbols.get(sym)
@@ -534,7 +552,7 @@ function thresholdsFor(ctx: PanelContext, base: string): { defaults: Thresholds;
   return { defaults, effective }
 }
 
-export function openOrderFlowEditor(ctx: PanelContext): Sheet {
+export function openOrderFlowEditor(ctx: PanelContext, onClose?: () => void): Sheet {
   ensureTerms()
   const base = baseOfSymbol(ctx.symbol()).base
   const edited: Partial<Record<OrderFlowField, number>> = {}
@@ -590,7 +608,7 @@ export function openOrderFlowEditor(ctx: PanelContext): Sheet {
       lead.replaceWith(cancel)
     }
   }, {
-    title: indicatorName('ORDERFLOW'), noBack: true, detent: 'large', className: 'cp-sheet cp-form', id: 'orderflow-editor',
+    title: indicatorName('ORDERFLOW'), noBack: true, detent: 'large', className: 'cp-sheet cp-form', id: 'orderflow-editor', onClose,
     action: {
       title: '保存', run: () => {
         host.querySelectorAll<HTMLInputElement>('input[data-f]').forEach(commit)

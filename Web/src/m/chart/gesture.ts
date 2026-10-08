@@ -750,6 +750,26 @@ export class ChartGestures {
     this.state = out
   }
 
+  /** 十字线直接落到第 index 根的收盘价上（「大单与爆仓」每根条点一根）；那根在可视区外就把图挪过去 */
+  crosshairTo(index: number): void {
+    const s = this.state
+    if (!s) return
+    const b = s.input.series
+    if (!(index >= 0 && index < b.count)) return
+    const c: Crosshair = { index, pane: null, t: null, price: b.close[index] }
+    let out = withOverlay(s, { crosshair: c })
+    const L = this.v.chartLayout
+    if (L && L.plotW > 0) {
+      const x = s.viewport.view.x(b.time(index), L.plotW)
+      const inset = Math.min(40, L.plotW * 0.1)
+      if (x < inset || x > L.plotW - inset) {
+        const dx = x < inset ? x - inset : x - (L.plotW - inset)
+        out = withViewport(out, { view: clampView(s.viewport.view.shifted(dx, L.plotW), b, L.plotW, s.input.options.anchor) })
+      }
+    }
+    this.state = out
+  }
+
   clearCrosshair(): void {
     const s = this.state
     if (!s || s.overlay.crosshair == null) return
@@ -795,6 +815,8 @@ export class ChartGestures {
     g.lastPlotTap = { ms: now, x: p.x, y: p.y }
     // 提醒线（画线删了 / 藏了还在生效的提醒）：十字线没开时点中它就开提醒，不出十字线
     if (this.state?.overlay.crosshair == null && this.v.signalTap?.(p.x, p.y)) return
+    // 图上大单签（44 × 44 命中区）：十字线没开时点中就交给宿主开「大单与爆仓」
+    if (this.state?.overlay.crosshair == null && this.v.bigTradeTap?.(p.x, p.y)) return
     const r = this.v.renderer
     if (r && OF.orderFlowHit && OF.candleHit && !OF.candleHit(r, p.x, p.y, this.v.width, this.v.height)) {
       const hit = OF.orderFlowHit(r, p.x, p.y, this.v.width, this.v.height)
