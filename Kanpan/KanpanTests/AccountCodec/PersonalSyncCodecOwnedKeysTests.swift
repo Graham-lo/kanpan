@@ -41,7 +41,7 @@ import KanpanAccount
 
   /// 三十九把工具、每一把的可选字段两种状态，一条一条编出来，一个键都不许落在表外。
   ///
-  /// `Drawing.encode(to:)` 有两条件分支（`color` 是 `encodeIfPresent`，`text` 只有
+  /// `Drawing.encode(to:)` 有几条件分支（`color` / `style` 是 `encodeIfPresent`，`text` 只有
   /// 带文字的工具或者老存档里真有文字才写），所以两种样板都要跑一遍。
   @Test("每一把工具发出去的键都在表里，并集正好是表本身")
   func everyDrawingKindStaysInsideTheTable() throws {
@@ -57,6 +57,7 @@ import KanpanAccount
       var decorated = plain
       decorated.color = Hex("#123456")
       decorated.text = "字"
+      decorated.style = .object(["text": .object(["visible": .bool(true)])])  // 网页扩展样式，手机原样带着走
       full.bySymbol["BTCUSDT", default: []].append(decorated)
       full.preferences.styles[kind.rawValue] = DrawingStyle(decorated)
     }

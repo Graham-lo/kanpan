@@ -1,0 +1,3 @@
+iPhone 15	FAIL	93/3	3145
+iPhone 16 Pro	FAIL	90/6	3155
+iPhone 16 Plus	FAIL	5/1	19292

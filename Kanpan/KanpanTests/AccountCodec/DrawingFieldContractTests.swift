@@ -62,6 +62,28 @@ struct DrawingFieldContractTests {
     #expect(Set(contract.shareRequiredFields).isSubset(of: contract.shareFields))
     #expect(!contract.shareFields.contains("id"), "id 是对象的键，不是 body 的键")
   }
+
+  /// 网页扩展样式 `style` 手机不读，但同步下来、再传上去要一字不少；不是对象的形状当没有，不能让整条线解不出来。
+  @Test("网页的 style 经手机一来一回原样保留，坏形状当没有")
+  func theWebStyleRoundTripsThroughThePhone() throws {
+    let style: RuleJSON = .object(["text": .object(["visible": .bool(true), "size": .int(14)]),
+                                   "levels": .array([.object(["v": .double(0.5), "on": .bool(false)])])])
+    var line = Drawing(id: "w1", kind: .trend, points: [DrawPoint(t: 1_800_000_000_000, p: 100), DrawPoint(t: 1_800_000_060_000, p: 101)])
+    line.style = style
+    let objects = try PersonalSyncCodec.drawings(DrawArchive(bySymbol: ["BTCUSDT": [line]]))
+    let synced = try #require(objects.first { $0.collection == "drawings" })
+    #expect(synced.body["style"] != nil)
+    let back = try PersonalSyncCodec.drawing(synced)
+    #expect(back.style == style)
+    #expect(back == line)
+    #expect(PersonalSyncCodec.ownedKeys["drawings"]?.contains("style") == true, "清掉它时的 null 要发得出去")
+
+    for bad in [#""style":[1,2]"#, #""style":"bold""#, #""style":null"#] {
+      let json = #"{"id":"w2","kind":"hline","points":[{"t":1800000000000,"p":100}],"# + bad + "}"
+      let decoded = try JSONDecoder().decode(Drawing.self, from: Data(json.utf8))
+      #expect(decoded.style == nil, "\(bad)")
+    }
+  }
 }
 
 enum DrawingFieldContract {
@@ -100,14 +122,17 @@ enum DrawingFieldContract {
   }
   static var fileURL: URL { repositoryRoot.appendingPathComponent(relativePath) }
 
-  /// 每种工具各一条、点数正好的样本。`full` 把可选键（颜色、文字）都填上，求并集得「可能出现的键」；
+  /// 每种工具各一条、点数正好的样本。`full` 把可选键（颜色、文字、网页扩展样式 `style`）都填上，求并集得「可能出现的键」；
   /// 不填时求交集得「每条都带的键」。
   private static func samples(full: Bool) -> [Drawing] {
     Drawing.Kind.allCases.map { kind in
       var drawing = Drawing(
         id: "c-\(kind.rawValue)", kind: kind,
         points: (0..<kind.pointCount).map { DrawPoint(t: 1_800_000_000_000 + Double($0) * 60_000, p: 100 + Double($0)) })
-      if full { drawing.color = Hex("#112233"); drawing.text = "x" }
+      if full {
+        drawing.color = Hex("#112233"); drawing.text = "x"
+        drawing.style = .object(["text": .object(["visible": .bool(true)])])
+      }
       return drawing
     }
   }

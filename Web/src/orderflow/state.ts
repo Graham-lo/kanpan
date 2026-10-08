@@ -227,6 +227,11 @@ export function amt(v: number | null | undefined): string {
   }
   return '—'
 }
+/** 放不下时的金额：≥ 10 的不带小数（15.2M → 15M、176M 照旧），< 10 的保留一位（5.6M）——梯子胶囊、抽屉对撞条用 */
+export function amtTight(v: number | null | undefined): string {
+  const t = amt(v), m = /^(-?)(\d+)\.\d([A-Za-z]*)$/.exec(t)
+  return m && +m[2] >= 10 ? m[1] + m[2] + m[3] : t
+}
 /** 上海时间 时:分:秒 */
 export function hms(t: number): string { const d = sh(t); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}` }
 /** 上海时间 时:分 */

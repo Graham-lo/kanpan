@@ -164,3 +164,41 @@ describe('exchangeInfo / ticker/24hr 全站共用', () => {
     stopFeed()
   })
 })
+
+/** 够 rest.ts 用的最小 IndexedDB：open → onupgradeneeded/onsuccess，transaction(store).objectStore().get/put，tx.oncomplete */
+function fakeIdb() {
+  const data = new Map<string, unknown>()
+  const later = (f: () => void) => queueMicrotask(f)
+  const os = (tx: { oncomplete?: () => void }) => ({
+    get(k: string) { const q: { result?: unknown; onsuccess?: () => void } = {}; later(() => { q.result = data.get(k); q.onsuccess?.() }); return q },
+    put(v: unknown, k: string) { data.set(k, v); later(() => tx.oncomplete?.()); return {} },
+  })
+  const db = {
+    objectStoreNames: { contains: () => true },
+    createObjectStore() {},
+    transaction() { const tx: { oncomplete?: () => void; objectStore?: unknown } = {}; tx.objectStore = () => os(tx); return tx },
+  }
+  return { data, api: { open() { const r: { result?: unknown; onsuccess?: () => void } = {}; later(() => { r.result = db; r.onsuccess?.() }); return r } } }
+}
+
+describe('全市场表放 IndexedDB，不占 localStorage 存档', () => {
+  it('网络取到后写进 IndexedDB、localStorage 不长；老版本留在 localStorage 的那份读一次后搬走', async () => {
+    const idb = fakeIdb()
+    vi.stubGlobal('indexedDB', idb.api)
+    const m = await import('../src/market')
+    // 老版本留下的一份
+    m.saveUniverse(new Map([['BTCUSDT', { symbol: 'BTCUSDT', base: 'BTC', code: 'BTC', kind: 'crypto' as const, cn: '', dec: 1, color: '#000', price: 90, chg: 0, pct: 1, vol: 1, fr: null, nextFunding: null }]]), store as unknown as Storage)
+    await m.loadUniverse()
+    expect(m.S.symbols.get('BTCUSDT')!.price).toBe(90)   // 老的那份照样先摆
+    await settle(); await answerAll(105, 5000); await settle()
+    await vi.advanceTimersByTimeAsync(2000); await settle()
+    expect(typeof idb.data.get(m.UNIVERSE_CACHE_KEY)).toBe('string')
+    expect(store.getItem(m.UNIVERSE_CACHE_KEY)).toBeNull()
+    // 下次冷启动从 IndexedDB 读回来
+    vi.resetModules()
+    const m2 = await import('../src/market')
+    await m2.loadUniverse()
+    expect(m2.S.symbols.get('BTCUSDT')!.price).toBe(105)
+    expect(m2.S.live).toBeNull()
+  })
+})

@@ -1,0 +1,6 @@
+iPhone 15	FAIL	64/1	2629
+iPad mini (A17 Pro)	FAIL	100/4	3766
+iPad (A16)	FAIL	97/7	3761
+iPad Air 11-inch (M4)	FAIL	97/7	3583
+iPad Pro 11-inch (M5)	FAIL	96/8	3873
+iPad Pro 13-inch (M5)	FAIL	93/11	3909

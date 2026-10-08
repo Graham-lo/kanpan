@@ -8,6 +8,9 @@
  * · 只管「取最新一段」（没有 endTime）；往前翻页、回放取历史不走这里。
  * · 进出都拷一份：图会就地改最后一根（推送），缓存里的那份不能跟着变。
  * · 有上限（条数）与有效期；过期的、尾巴断得太长（超过 TAIL_MAX 根）的整段重取。
+ * · 刚记下（FRESH_MS 内）而且最后一根还没收线的那份连尾巴也不补，直接出图：期间没有收线的根可缺，
+ *   走着的那一根由下一条 K 线推送整根（开高低收）盖掉。格子销毁时（十六图收回一图）把图上跟着推送走到现在的那段记回来，
+ *   1↔16 来回切就不再每轮 15 格各打一次尾巴（2026-10-09 十六图专项 B10）。
  * 纯逻辑（不碰网络），单测见 tests/kline-cache.test.ts；取数在 pages/chart.ts barsFor。
  */
 import type { Bar } from '../chart/calc'
@@ -17,6 +20,8 @@ import { TAIL_MAX, tailFrom, tailNeed } from './tail'
 export const CACHE_MAX = 32
 /** 多久之内的算「刚取过」 */
 export const CACHE_TTL_MS = 10 * 60_000
+/** 多久之内记下的、最后一根还在走的那份算「还新」：不补尾巴直接用 */
+export const FRESH_MS = 60_000
 
 const copy = (bars: readonly Bar[]): Bar[] => bars.map(b => ({ ...b }))
 
@@ -32,13 +37,25 @@ export class KlineCache {
     while (this.m.size > this.max) this.m.delete(this.m.keys().next().value as string)
   }
 
-  /** 还能用的那份要补几根尾巴；没有、过期、断得太长回 null（整段重取） */
+  /** 还能用的那份要补几根尾巴：0 = 还新（FRESH_MS 内记下、最后一根还没收线），直接 take；没有、过期、断得太长回 null（整段重取） */
   need(key: string, ivMs: number, now: number): number | null {
     const e = this.m.get(key)
     if (!e) return null
-    if (now - e.at > this.ttl) { this.m.delete(key); return null }
-    const n = tailNeed(e.bars[e.bars.length - 1].t, ivMs, now)
+    const age = now - e.at
+    // 时钟往回拨（age < 0）不算新，照常补尾巴
+    if (age > this.ttl) { this.m.delete(key); return null }
+    const lastT = e.bars[e.bars.length - 1].t
+    if (age >= 0 && age < FRESH_MS && ivMs > 0 && now < lastT + ivMs) return 0
+    const n = tailNeed(lastT, ivMs, now)
     return n > TAIL_MAX ? null : n
+  }
+
+  /** 原样拿一份（拷贝）：need 回 0 时用；没有回 null */
+  take(key: string): Bar[] | null {
+    const e = this.m.get(key)
+    if (!e) return null
+    this.m.delete(key); this.m.set(key, e)
+    return copy(e.bars)
   }
 
   /** 把新取的尾巴并进缓存那份，返回拼好的整段（拷一份给图）。尾巴接不上（第一根比缓存最后一根还晚）回 null */

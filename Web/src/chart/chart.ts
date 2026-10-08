@@ -26,8 +26,9 @@ import { mainOn } from './mainIndicators'
 import { drawMoreMain, pivotPColor } from './overlaysMore'
 import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } from './overlays'
 import { AXIS_H, FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
-import { COMPUTED, SNAP_LINE, bbox, dashPattern, drawComputed, fitRegression, handlePixels, hitComputed, levelsOf, moveHandle, placeCount, setDraftEnd, snap45, usesText, widenPosition } from './drawTools'
-import { GEOM, drawGeom, geomHandles, geomOf, hitGeom } from './drawGeom'
+import { COMPUTED, SNAP_LINE, bbox, drawComputed, fitRegression, handlePixels, hitComputed, moveHandle, placeCount, setDraftEnd, snap45, usesText, widenPosition } from './drawTools'
+import { GEOM, TVK, drawGeom, geomHandles, geomOf, hitGeom } from './drawGeom'
+import { visibleAt } from './drawSpec'
 import type { DrawStyle } from './drawStyle'
 import { drawKeyLevels, drawKeyAxis } from './keyLevels'
 import { detachFlows } from './tradeFlow'
@@ -37,6 +38,7 @@ import { COMPARE_COLORS, alignCompare, compareBaseIndexFrom, comparePercentAt, c
 
 // 间距上下限、默认间距、右侧留白与滚轮手感都照 TradingView，见 ./wheel
 import { DEFAULT_SPACING, anchoredRightBar, clampRightBar, clampSpacing, isWinChromium, panPx, pinchFactor, timeAxisDragSpacing, wheelDelta, wheelSpeed, zoomFactor, zoomScale, zoomStart, zoomStep, type ZoomAnim } from './wheel'
+import { pulseSlot } from './domPulse'
 const SEP_HIT = 3 // 窗格分隔线上下各 3 px，热区 6 px
 
 // 线条规格（网页版自己的一套，和手机端无关）。基准屏 1 CSS px = 1 物理像素：
@@ -199,10 +201,12 @@ export interface ChartOptions {
   onSelectDrawing?: (d: Drawing | null) => void
   /** 双击带字的画线（文字注释 / 标注框 / 旗标），或刚放下一条：在图上原地改字；at = 字块在画布里的位置 */
   onEditText?: (d: Drawing, at: { x: number; y: number; w: number; h: number }) => void
+  /** 双击不带字的画线：打开这条线的设置框（照 TradingView） */
+  onDrawSettings?: (d: Drawing) => void
   onDrawingsChanged?: () => void
   drawColor?: () => string | null | undefined
   /** 新画一条时的样式（同族工具记住上次改过的颜色、粗细、线型）；给了就不看 drawColor */
-  drawStyle?: (t: DrawingType) => Partial<Pick<Drawing, 'color' | 'width' | 'dash'>>
+  drawStyle?: (t: DrawingType) => Partial<Pick<Drawing, 'color' | 'width' | 'dash' | 'filled' | 'levels' | 'style'>>
   /** 再加这几条还在每只品种的上限以内吗；返回 false 就不加（由页面提示） */
   canAdd?: (add: Drawing[]) => boolean
   /** 开始 / 结束拖一条画线（选中快捷条拖动时淡出） */
@@ -340,6 +344,8 @@ export class TVChart {
   onScreen = true
   /** 图例要在下一帧重写（逐笔更新不再每笔都重写一次 innerHTML） */
   legendDirty = false
+  /** 推送改了最新一根、图例要跟着改：不赶这一帧，等下一拍（./domPulse）和十六格一起写；交互引起的走 legendDirty 当帧写 */
+  legendPush = false
   private _series: Partial<Record<CalcId, Series[]>> = {}
   /** 指标要重算但还没算：真正读到（这一帧要画、图例要读数、调试钩子）时才算一遍。
    *  一帧里来几条推送只算一次；不在屏幕上的格子（十六图滚出去的、切到别的标签页）不算 */
@@ -577,7 +583,7 @@ export class TVChart {
       if (atEdge) { this.rightBar += 1; if (this.drag?.kind === 'pan') this.drag.right0 += 1 }
     } else return
     this.recalcTail(); this.dirty = true
-    if (!this.cross) this.legendDirty = true
+    if (!this.cross) this.legendPush = true
   }
   setIndicators(ind: Partial<IndState>): void { this.indWanted = Object.assign({}, this.indWanted, ind); this.ind = indFor(this.indWanted, this.meta.symbol); this.recalc(); this.dirty = true; this.renderLegend() }
   setParams(id: IndicatorId, p: IndParams): void { this.params[id] = p; this.recalc(); this.dirty = true; this.renderLegend() }
@@ -1096,9 +1102,13 @@ export class TVChart {
   /** 共用的那一帧里、所有格子的画布都画完之后调：写图例 DOM。
    *  画布与 DOM 交错着来的话，前一格刚改了图例文字（样式变脏），后一格一设 ctx.font 浏览器就得先把样式重算一遍——
    *  十六格联动十字线时每帧重算十几次；先画后写，一帧只重算一次 */
-  frameDom(): void {
+  /** due：这一帧是不是 DOM 节拍（./domPulse）的拍点。交互要写的（legendDirty）当帧写；推送引起的（legendPush、
+   *  推送重画出来的副图读数）攒到拍点、各格同一帧写——不然十六格的推送错开着到，几乎每帧都有一格在改字、每帧一次排版 */
+  frameDom(due = true): void {
     if (this.dead || !this.onScreen) { this.paneLegendQ = null; return }
-    if (this.legendDirty) { this.legendDirty = false; this.paneLegendQ = null; this.renderLegend() }
+    if (this.legendDirty) { this.legendDirty = false; this.legendPush = false; this.paneLegendQ = null; this.renderLegend() }
+    else if (!due) return
+    else if (this.legendPush) { this.legendPush = false; this.paneLegendQ = null; this.renderLegend() }
     else if (this.paneLegendQ) { const p = this.paneLegendQ; this.paneLegendQ = null; this.renderPaneLegends(p) }
   }
   /** 画完一帧要更新副图读数：在共用帧里就排到 frameDom，别处（同步重画）直接写 */
@@ -1772,7 +1782,10 @@ export class TVChart {
   drawDrawings(p: Pane, r: PriceRange): void {
     const all = this.draft ? this.drawings.concat([this.draft]) : this.drawings
     if (this.drawingsHidden) return
-    for (const d of all) if (!this.drawingShown || d === this.draft || this.drawingShown(d)) this.drawOne(d, p, r, d === this.selected || d === this.draft)
+    for (const d of all) {
+      if (d !== this.draft && ((this.drawingShown && !this.drawingShown(d)) || !visibleAt(d, this.iv))) continue
+      this.drawOne(d, p, r, d === this.selected || d === this.draft)
+    }
   }
   pt(q: DrawPoint, p: Pane, r: PriceRange): XY { return { x: this.indexToX(this.indexAt(q.t)), y: this.priceToY(q.p, p, r) } }
   drawOne(d: Drawing, p: Pane, r: PriceRange, sel: boolean): void {
@@ -1780,37 +1793,15 @@ export class TVChart {
     if (!d.pts.length) return
     if (drawComputed(this, d, p, r, sel)) return
     const pts = d.pts.map(q => this.pt(q, p, r))
-    if (offPlot(d.type, pts, p, PW)) return
+    // 延伸到图边的（矩形 / 斐波那契的左右延伸）锚点在屏外也看得见
+    if (!(d.style && (d.style.extL === true || d.style.extR === true)) && offPlot(d.type, pts, p, PW)) return
     if (drawGeom(this, d, p, r, sel)) return
-    c.strokeStyle = col; c.lineWidth = d.width || LINE.draw; c.fillStyle = col; c.lineCap = d.dash === 'dotted' ? 'round' : d.dash ? 'butt' : 'round'; c.lineJoin = 'round'
-    if (d.type !== 'fib' && d.type !== 'measure') c.setLineDash(dashPattern(d))
+    // 剩下的只有临时测量（⇧ 拖的尺子）
+    c.strokeStyle = col; c.lineWidth = d.width || LINE.draw; c.fillStyle = col; c.lineCap = 'round'; c.lineJoin = 'round'
     const a = pts[0], b = pts[1] || pts[0]
     const q0 = d.pts[0], q1 = d.pts[1] || d.pts[0]
     c.beginPath()
-    if (d.type === 'trend') { c.moveTo(a.x, a.y); c.lineTo(b.x, b.y) }
-    else if (d.type === 'ray') { const k = extend(a, b, PW * 3); c.moveTo(a.x, a.y); c.lineTo(k.x, k.y) }
-    else if (d.type === 'hline') { c.moveTo(0, a.y); c.lineTo(PW, a.y) }
-    else if (d.type === 'vline') { c.moveTo(a.x, p.y); c.lineTo(a.x, p.y + p.h) }
-    else if (d.type === 'rect') { c.rect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y)); if (d.filled !== false) { c.save(); c.fillStyle = hexA(col, .12); c.fill(); c.restore() } }
-    else if (d.type === 'fib') {
-      // 刻度跟画线走（同步过来的自定义刻度也照画）；颜色按位置轮着用，首尾灰
-      const lv = levelsOf(d), pal = ['#F23645', '#FF9800', '#4CAF50', '#089981', '#00BCD4', '#2962FF', '#9C27B0']
-      const cols = lv.map((L, k) => L === 0 || L === 1 || k === 0 || k === lv.length - 1 ? '#787B86' : pal[(k - 1) % pal.length])
-      const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x) + 0
-      c.stroke(); c.lineWidth = LINE.band
-      lv.forEach((L, k) => {
-        const pr = q1.p + (q0.p - q1.p) * L, y = Math.round(this.priceToY(pr, p, r)) + .5
-        c.strokeStyle = cols[k]; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke()
-        c.fillStyle = cols[k]; c.textAlign = 'right'; c.textBaseline = 'bottom'; c.font = `11px ${this.fontFamily()}`
-        const ft = `${L} (${fmt(pr, this.meta.dec)})`, fw = c.measureText(ft).width
-        c.fillText(ft, x0 - 4, y + 5)
-        this.textRects.push({ x: x0 - 4 - fw, y: y + 5 - 13, w: fw, h: 13 })
-      })
-      c.font = this.font; c.textBaseline = 'middle'
-      c.setLineDash([3, 3]); c.strokeStyle = hexA('#787B86', .8); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); c.setLineDash([])
-      c.beginPath()
-    }
-    else if (d.type === 'measure') {
+    if (d.type === 'measure') {
       const up = q1.p >= q0.p, mc = up ? '#2962FF' : '#F23645'
       c.fillStyle = hexA(mc, .12); c.fillRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y))
       c.strokeStyle = mc; c.lineWidth = LINE.measure; c.beginPath()
@@ -1831,34 +1822,27 @@ export class TVChart {
     if (sel) {
       for (const q of pts) { c.fillStyle = this.colors.bg; c.strokeStyle = col; c.lineWidth = LINE.handle; c.beginPath(); c.arc(q.x, q.y, 4.5, 0, Math.PI * 2); c.fill(); c.stroke() }
     }
-    if (d.alert && d.type !== 'fib') { const e = pts[pts.length - 1]; c.fillStyle = this.colors.alert; c.beginPath(); c.arc(e.x + 10, e.y - 10, 4, 0, Math.PI * 2); c.fill() }
   }
   /** 手柄在屏上的位置（命中、拖动、验收脚本都认这一份）：算出来的工具（锚定均价线、成交量分布、持仓）手柄不一定在锚点价位上 */
   private handlesAt(d: Drawing, p: Pane, r: PriceRange): { x: number; y: number }[] {
-    return COMPUTED.has(d.type) ? handlePixels(this, d, p, r) : GEOM.has(d.type) ? geomHandles(this, d, p, r) : d.pts.map(q => this.pt(q, p, r))
+    return COMPUTED.has(d.type) ? handlePixels(this, d, p, r) : TVK.has(d.type) ? geomHandles(this, d, p, r) : d.pts.map(q => this.pt(q, p, r))
   }
   handlesOf(d: Drawing): { x: number; y: number }[] {
     return this._panes ? this.handlesAt(d, this._panes[0], this._ranges.main) : []
   }
   hitDrawing(x: number, y: number): DrawingHit | null {
     if (!this._panes || this.drawingsHidden) return null // 隐藏着的画线不能被点中、拖动
-    const p = this._panes[0], r = this._ranges.main, PW = this.plotW()
+    const p = this._panes[0], r = this._ranges.main
     for (let k = this.drawings.length - 1; k >= 0; k--) {
       const d = this.drawings[k]
-      if (!d.pts.length || (this.drawingShown && !this.drawingShown(d))) continue
-      const geo = GEOM.has(d.type)
+      if (!d.pts.length || (this.drawingShown && !this.drawingShown(d)) || !visibleAt(d, this.iv)) continue
+      const geo = TVK.has(d.type)
       const pts = this.handlesAt(d, p, r), a = pts[0], b = pts[1] || a
       for (let j = 0; j < pts.length; j++) if (Math.hypot(pts[j].x - x, pts[j].y - y) < 8) return { d, handle: j }
       let dist = geo ? hitGeom(this, d, x, y, p, r) : hitComputed(this, d, x, y, p, r) ?? Infinity
-      if (d.type === 'trend') dist = segDist(x, y, a, b)
-      else if (d.type === 'ray') dist = segDist(x, y, a, extend(a, b, PW * 3))
-      else if (d.type === 'hline') dist = Math.abs(y - a.y)
-      else if (d.type === 'vline') dist = Math.abs(x - a.x)
-      else if (d.type === 'rect' || d.type === 'measure' || d.type === 'fib') {
+      if (d.type === 'measure') {
         const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y)
         if (x >= x0 - 4 && x <= x1 + 4 && y >= y0 - 4 && y <= y1 + 4) dist = 0
-        // 关了底色的矩形只认四条边（框里是空的，点进去该落到下面的 K 线 / 别的线上）
-        if (dist === 0 && d.type === 'rect' && d.filled === false) dist = Math.min(x - x0, x1 - x, y - y0, y1 - y) <= 5 ? 0 : Infinity
       }
       if (dist < 6) return { d, handle: null }
     }
@@ -2252,6 +2236,10 @@ export class TVChart {
         const hit = this.hitDrawing(x, y)
         if (hit && usesText(hit.d.type) && !hit.d.locked) { const at = this.textRectOf(hit.d); if (at) { this.o.onEditText(hit.d, at); return } }
       }
+      if (reg === 'plot' && !this.tool && this.editable() && this.o.onDrawSettings) {
+        const hit = this.hitDrawing(x, y)
+        if (hit && hit.d.type !== 'measure' && !hit.d.locked) { this.o.onDrawSettings(hit.d); return }
+      }
       if (reg === 'price') this.setAuto(true)
       else if (reg === 'time') { this.resetView(); this.emitView() }
       else if (reg.startsWith('sep:')) { this.paneR = null; this.paneLegendKeys.fill(null); this.dirty = true; this.o.onPaneResize?.(null) }
@@ -2290,12 +2278,15 @@ export class TVChart {
     }, { signal })
   }
   finishTool(d: Drawing, keep?: boolean): void { this.o.onToolDone?.(d, keep); this.o.onDrawingsChanged?.(); if (!keep && this.selected === d) this.o.onSelectDrawing?.(d); this.dirty = true }
-  /** 新画一条的样式：测量固定蓝细线，其它问页面（同族记忆），没有就用默认 */
-  styleFor(t: DrawingType): Pick<Drawing, 'color' | 'width' | 'dash'> {
+  /** 新画一条的样式：测量固定蓝细线，其它问页面（存为默认的、同族记忆、出厂），没有就用默认 */
+  styleFor(t: DrawingType): Pick<Drawing, 'color' | 'width' | 'dash' | 'filled' | 'levels' | 'style'> {
     if (t === 'measure') return { color: '#2962FF', width: LINE.measure }
     const s = this.o.drawStyle?.(t) ?? {}
-    const out: Pick<Drawing, 'color' | 'width' | 'dash'> = { color: s.color || this.o.drawColor?.() || '#2962FF', width: s.width || LINE.draw }
+    const out: Pick<Drawing, 'color' | 'width' | 'dash' | 'filled' | 'levels' | 'style'> = { color: s.color || this.o.drawColor?.() || '#2962FF', width: s.width || LINE.draw }
     if (s.dash) out.dash = s.dash
+    if (s.filled === false) out.filled = false
+    if (s.levels) out.levels = [...s.levels]
+    if (s.style) out.style = structuredClone(s.style)
     return out
   }
   /** 草稿的最后一点跟到 (x, y)；⇧ 按着时两点直线一族吸 45°。回归通道边画边按圈住的收盘价拟合 */
@@ -2336,8 +2327,16 @@ export class TVChart {
    *  给验收脚本按图表自己的几何取样，免得脚本里再抄一份 41 种的形状 */
   inkOf(d: Drawing): { segments: { a: { x: number; y: number }; b: { x: number; y: number }; tint: string; dashed: boolean }[]; handles: { x: number; y: number }[]; labels: { left: number; top: number; right: number; bottom: number; plate: string; tint: string }[] } | null {
     if (!this._panes) return null
+    if (!GEOM.has(d.type)) return null // 最早的六种验收脚本有自己的取样
     const b = geomOf(this, d, this._panes[0], this._ranges.main); if (!b) return null
-    return { segments: b.g.segments, handles: b.g.handles, labels: b.placed.map(q => ({ ...q.box, plate: q.label.plate, tint: q.label.tint })) }
+    const main = b.g.segments.some(q => q.main)
+    const own = (c: string | undefined) => !!c && c.slice(0, 7).toUpperCase() === (d.color || '#2962FF').slice(0, 7).toUpperCase()
+    return {
+      segments: b.g.segments.map(q => ({ a: q.a, b: q.b, tint: q.tint ?? 'line', dashed: !q.main })),
+      handles: b.g.handles,
+      labels: b.placed.filter(q => main || q.label.tint || (q.label.plate === 'chip' ? own(q.label.bg) : own(q.label.col)))
+        .map(q => ({ ...q.box, plate: q.label.plate === 'chip' && !q.label.tint && !own(q.label.bg) ? 'none' : q.label.plate, tint: q.label.tint ?? 'line' })),
+    }
   }
   /** 这条画线的字块（画布坐标）；没有字块的种类退回第一点 */
   textRectOf(d: Drawing): { x: number; y: number; w: number; h: number } | null {
@@ -2391,27 +2390,24 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(naviga
 // ------------------------------------------------------------ 共用的一帧
 // 十六格各自挂一个 requestAnimationFrame 循环，每帧就是十六次回调；合成一个循环，挨个问脏没脏。
 const frames = new Set<TVChart>()
-let frameId = 0, inTick = false
-function tick(): void {
+let frameId = 0, inTick = false, domSlot = -1
+function tick(ts: number): void {
   frameId = 0
   // 先推进滚轮缩放（会经 emitView 把时间段套到联动的格子上），再统一画：联动的格子同一帧跟上
   const now = performance.now()
   for (const ch of frames) ch.stepZoom(now)
   inTick = true
   try { for (const ch of frames) ch.frame() } finally { inTick = false }
-  for (const ch of frames) ch.frameDom()
+  // 推送攒下的图例读数：进了新的一拍才写（第一帧），和详情、自选行（pages/chart.ts flushQuotes）落在同一帧
+  const slot = pulseSlot(ts), due = slot !== domSlot
+  domSlot = slot
+  for (const ch of frames) ch.frameDom(due)
   if (frames.size) frameId = requestAnimationFrame(tick)
 }
 function kick(): void { if (!frameId && typeof requestAnimationFrame !== 'undefined') frameId = requestAnimationFrame(tick) }
 
 // ------------------------------------------------------------ 小工具
 function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath() }
-function segDist(x: number, y: number, a: XY, b: XY): number {
-  const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy
-  const t = L ? clamp(((x - a.x) * dx + (y - a.y) * dy) / L, 0, 1) : 0
-  return Math.hypot(x - (a.x + t * dx), y - (a.y + t * dy))
-}
-function extend(a: XY, b: XY, len: number): XY { const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1; return { x: a.x + dx / L * len, y: a.y + dy / L * len } }
 let _u = 0; function uid(): string { return 'd' + Date.now().toString(36) + (_u++) }
 
 /** 提醒线右端的小铃铛（钟罩 + 锤子），以 (x, y) 为中心，约 9px */

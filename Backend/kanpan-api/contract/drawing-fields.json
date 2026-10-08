@@ -64,6 +64,7 @@
     "lineWidth",
     "locked",
     "points",
+    "style",
     "text"
   ],
   "shareFieldsNote" : "分享（POST /v1/shares）里每条画线可能出现的键，就是 Drawing 编码会写的键去掉 id（id 服务端单独校验）。share.rs 的 SHARE_FIELDS 必须逐字等于它：多一个编码键而服务端不认，整次分享 400。",
@@ -89,6 +90,7 @@
     "lineWidth",
     "locked",
     "market",
+    "style",
     "symbol",
     "text",
     "venue"

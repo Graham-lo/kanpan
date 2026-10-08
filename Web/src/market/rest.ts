@@ -150,24 +150,69 @@ function decodeSym(r: unknown, now: number): Sym | null {
   if (s.supply == null) { const sup = supplyOf(symbol); if (sup != null) s.supply = sup }
   return s
 }
-/** 把全市场表写进本机（写不下就算了：它只是让下次开得快一点） */
-export function saveUniverse(map: Map<string, Sym> = S.symbols, store: Storage | null = lsOf()): boolean {
-  if (!store || !map.size) return false
+const encodeUniverse = (map: Map<string, Sym>): string => JSON.stringify({ v: 1, at: Date.now(), rows: [...map.values()].map(encodeSym) })
+function decodeUniverse(raw: string | null | undefined, now: number): Map<string, Sym> | null {
   try {
-    store.setItem(UNIVERSE_CACHE_KEY, JSON.stringify({ v: 1, at: Date.now(), rows: [...map.values()].map(encodeSym) }))
-    return true
-  } catch { return false }
-}
-/** 读本机的全市场表；没有、坏了、太老都是 null */
-export function readUniverse(store: Storage | null = lsOf(), now = Date.now()): Map<string, Sym> | null {
-  if (!store) return null
-  try {
-    const v = JSON.parse(store.getItem(UNIVERSE_CACHE_KEY) ?? 'null') as { v?: unknown; at?: unknown; rows?: unknown } | null
+    const v = JSON.parse(raw ?? 'null') as { v?: unknown; at?: unknown; rows?: unknown } | null
     if (!v || v.v !== 1 || typeof v.at !== 'number' || now - v.at > UNIVERSE_CACHE_MAX_AGE || !Array.isArray(v.rows)) return null
     const m = new Map<string, Sym>()
     for (const r of v.rows) { const s = decodeSym(r, now); if (s) m.set(s.symbol, s) }
     return m.size ? m : null
   } catch { return null }
+}
+/** 把全市场表写进 localStorage（浏览器不给 IndexedDB 时才走这条；写不下就算了：它只是让下次开得快一点） */
+export function saveUniverse(map: Map<string, Sym> = S.symbols, store: Storage | null = lsOf()): boolean {
+  if (!store || !map.size) return false
+  try { store.setItem(UNIVERSE_CACHE_KEY, encodeUniverse(map)); return true } catch { return false }
+}
+/** 读 localStorage 里的全市场表；没有、坏了、太老都是 null */
+export function readUniverse(store: Storage | null = lsOf(), now = Date.now()): Map<string, Sym> | null {
+  if (!store) return null
+  try { return decodeUniverse(store.getItem(UNIVERSE_CACHE_KEY), now) } catch { return null }
+}
+
+// 盘：这张表一两百 KB，是缓存不是存档——放 IndexedDB（和 K 线留底同一个道理，见 klineStore.ts），
+// 不占自选、画线、布局那份 localStorage 存档（同源 5 MB，关页时整份同步序列化也卡主线程）。
+// 浏览器不给 IndexedDB（隐私模式等）才退回 localStorage。老版本留在 localStorage 的那份读一次就搬走。
+const UNI_DB = 'hkline-universe', UNI_STORE = 'kv'
+let uniDbP: Promise<IDBDatabase | null> | null = null
+function uniDb(): Promise<IDBDatabase | null> {
+  return uniDbP ??= new Promise(res => {
+    if (typeof indexedDB === 'undefined') { res(null); return }
+    try {
+      const r = indexedDB.open(UNI_DB, 1)
+      r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains(UNI_STORE)) r.result.createObjectStore(UNI_STORE) }
+      r.onsuccess = () => res(r.result)
+      r.onerror = r.onblocked = () => res(null)
+    } catch { res(null) }
+  })
+}
+async function readUniverseDisk(now = Date.now()): Promise<Map<string, Sym> | null> {
+  const db = await uniDb()
+  const ls = lsOf()
+  if (!db) return readUniverse(ls, now)
+  const raw = await new Promise<string | null>(res => {
+    try {
+      const q = db.transaction(UNI_STORE, 'readonly').objectStore(UNI_STORE).get(UNIVERSE_CACHE_KEY)
+      q.onsuccess = () => res(typeof q.result === 'string' ? q.result : null)
+      q.onerror = () => res(null)
+    } catch { res(null) }
+  })
+  const got = decodeUniverse(raw, now)
+  if (got) return got
+  // 老版本写在 localStorage 的那份：认一次，下回写盘时搬进 IndexedDB
+  return readUniverse(ls, now)
+}
+function writeUniverseDisk(map: Map<string, Sym> = S.symbols): void {
+  if (!map.size) return
+  void uniDb().then(db => {
+    if (!db) { saveUniverse(map); return }
+    try {
+      const tx = db.transaction(UNI_STORE, 'readwrite')
+      tx.objectStore(UNI_STORE).put(encodeUniverse(map), UNIVERSE_CACHE_KEY)
+      tx.oncomplete = () => { try { lsOf()?.removeItem(UNIVERSE_CACHE_KEY) } catch { /* 隐私模式 */ } }
+    } catch { /* 写不进去就算了 */ }
+  })
 }
 /** 关页、切走时把手里（推送刷过的）最新价写一份；10 秒内只写一次 */
 let savedAt = 0
@@ -177,30 +222,35 @@ function hookSave(): void {
   saveHooked = true
   const flush = (): void => {
     if (!S.symbols.size || S.live === false && !S.universeAt || ago(savedAt) < 10_000) return
-    savedAt = Date.now(); saveUniverse()
+    savedAt = Date.now(); writeUniverseDisk()
   }
   addEventListener('pagehide', flush)
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush() })
 }
 
 /** 全市场：exchangeInfo（品种与分类）+ ticker/24hr（价与量）+ premiumIndex（费率、标记价、指数价）。
- *  本会话第一次取、手里还没有表时：本机有上次的表就先用它（S.live 仍是 null、照常发 universe 事件）、马上返回，
+ *  本会话第一次取、手里还没有表时：先读一次盘（IndexedDB，几毫秒），有上次的表就先用它（S.live 仍是 null、照常发 universe 事件）、马上返回，
  *  网络那一份在后台取，回来再发一次 universe；后台这次失败了自己隔一会儿再试（冷却或 30 秒起、逐次加长）。
  *  同一时刻多处要表只取一次（在途的共用）。 */
 let netP: Promise<Map<string, Sym>> | null = null
 let diskTried = false
 let diskRetry = 0
+let diskP: Promise<Map<string, Sym>> | null = null
 export function loadUniverse(): Promise<Map<string, Sym>> {
   hookSave()
+  if (diskP) return diskP   // 正在读盘：同一时刻要表的都等这一次
   if (!diskTried) {
     diskTried = true
-    const disk = !S.symbols.size && S.live == null ? readUniverse() : null
-    if (disk) {
-      S.symbols = disk
-      S.error = ''
-      emit({ type: 'universe' })
-      void fetchUniverse().then(retryAfterDisk)
-      return Promise.resolve(S.symbols)
+    if (!S.symbols.size && S.live == null) {
+      return diskP = readUniverseDisk().catch(() => null).then(disk => {
+        diskP = null
+        if (!disk || S.symbols.size || S.live != null) return fetchUniverse()
+        S.symbols = disk
+        S.error = ''
+        emit({ type: 'universe' })
+        void fetchUniverse().then(retryAfterDisk)
+        return S.symbols
+      })
     }
   }
   return fetchUniverse()
@@ -256,7 +306,7 @@ async function netUniverse(): Promise<Map<string, Sym>> {
     S.limited = false
     S.error = ''
     savedAt = Date.now()
-    setTimeout(() => saveUniverse(), 1500)   // 不和首屏抢这一拍
+    setTimeout(() => writeUniverseDisk(), 1500)   // 不和首屏抢这一拍
   } catch (e) {
     console.warn('[hkline] 币安合约接口不可达', e)
     S.live = false

@@ -107,3 +107,18 @@ button:hover > svg.q.q-del { --q1: var(--qdn); }
   --ofq-d: oklch(from var(--down) l calc(c * .6) h);
 }
 .of-p-row .tgi svg { overflow: visible; }
+
+/* ---- 「我的」左栏七项、空状态的大记号：同一块磨砂底（2026-10-09 质感收尾） ---- */
+:is(.me-nav a, .empty) > svg.q {
+  --q1: var(--qr); --qw: var(--qtm);
+  background: linear-gradient(180deg, var(--qt0), var(--qt1));
+  box-shadow: inset 0 0 0 .5px var(--qline), inset 0 1px 0 var(--qhi), 0 1px 1.5px var(--qsh);
+}
+.me-nav a > svg.q { width: 28px; height: 28px; padding: 5px; border-radius: 8px; }
+.me-nav a:hover > svg.q { --q1: var(--qh); --qw: var(--qhm); background: linear-gradient(180deg, var(--qh0), var(--qh1)); }
+.me-nav a[aria-current="page"] > svg.q {
+  --q1: #fff; --qa: #fff; --qw: var(--qsm);
+  background: linear-gradient(180deg, var(--qs0), var(--qs1));
+  box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .18), inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 6px var(--qsg);
+}
+.empty > svg.q.icon-24 { width: 44px; height: 44px; padding: 10px; border-radius: 12px; }

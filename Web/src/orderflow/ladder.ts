@@ -16,7 +16,7 @@ import { I, esc } from '../ui/dom'
 import { hexA } from '../util/format'
 import { bucketIndex, mergeFactor } from './bucket'
 import { ladderRows, rowOf, type LadderRow, venueName, exName } from './aggregate'
-import { OF, savePrefs, bandColor, bandInk, productColor, surfaceColor, showCard, hideCard, amt, hm, durShort, decFor, px, canvasFont } from './state'
+import { OF, savePrefs, bandColor, bandInk, productColor, surfaceColor, showCard, hideCard, amt, amtTight, hm, durShort, decFor, px, canvasFont } from './state'
 import { deltaPct, fromMidPct, signedPct, type TradeRow } from './tradeLadder'
 import { snapFine, deltaRows, rowSeries, sparkSVG, niceCeil, WIN_MS, type DeltaRow, type DeltaWin } from './depthDelta'
 import type { SplitCol } from './heatFetch'
@@ -308,16 +308,24 @@ function pill(c: CanvasRenderingContext2D, x: LadderRow, y: number, bidRow: bool
   const o = x.orders[0]
   const room = L - 8
   c.font = canvasFont(11, 600)
-  // 胶囊只有半边宽：放不下「交易所产品 金额」就只留金额，存活时长与其余细节在悬停卡片里
-  const full = `${venueName(exName(o.exchange), o.product)} ${amt(o.notional)}`
-  const t = c.measureText(full).width + 12 + (x.orders.length > 1 ? 23 : 0) <= room ? full : amt(o.notional)
+  // 胶囊只有半边宽：先丢「交易所产品」只留金额，再丢行尾小点，再把金额收成整数（15.2M → 15M）——
+  // 一律整段放得下才画，不再出现被裁成「15.」的半截字；存活时长与其余细节在悬停卡片里
   // 同一行还有别家 / 别的产品的大单：胶囊后面跟几个小点（最多三个），悬停卡片里全列
   const seen = new Set([o.venueID + o.side])
   const others: typeof x.orders = []
   for (const q of x.orders) if (!seen.has(q.venueID + q.side)) { seen.add(q.venueID + q.side); others.push(q) }
-  const dots = others.slice(0, 3)
-  const dw = dots.length ? dots.length * 7 + 2 : 0
-  const w = Math.min(room, c.measureText(t).width + 12 + dw), h = 16
+  const dotW = (n: number): number => n ? n * 7 + 2 : 0
+  const texts = [`${venueName(exName(o.exchange), o.product)} ${amt(o.notional)}`, amt(o.notional), amtTight(o.notional)]
+  let t = texts[2], nd = 0
+  const maxD = Math.min(3, others.length)
+  pick: for (let i = 0; i < texts.length; i++) {
+    const tw = c.measureText(texts[i]).width + 12
+    // 带交易所名那一档只在小点也放得下时用（小点比名字更要紧：同一价位还有别家）
+    for (let n = maxD; n >= (i ? 0 : maxD); n--) if (tw + dotW(n) <= room) { t = texts[i]; nd = n; break pick }
+  }
+  const dots = others.slice(0, nd)
+  const dw = dotW(nd)
+  const w = Math.max(16, c.measureText(t).width + 12 + dw), h = 16
   const x0 = bidRow ? R + 4 : L - 4 - w
   // 字不压实色底（规范 §5b）：方向色淡底 + 方向文字色，品类只是行尾的小点
   const dark = darkUI()
@@ -326,8 +334,7 @@ function pill(c: CanvasRenderingContext2D, x: LadderRow, y: number, bidRow: bool
   c.fillStyle = bandColor(o.product, o.side, dark ? 0.24 : 0.16)
   roundRect(c, x0, y - h / 2, w, h, 8); c.fill()
   c.fillStyle = bandInk(o.product, o.side); c.textAlign = 'left'
-  c.save(); c.beginPath(); c.rect(x0 + 6, y - h / 2, w - 12 - dw, h); c.clip()
-  c.fillText(t, x0 + 6, y); c.restore()
+  c.fillText(t, x0 + 6, y)
   dots.forEach((q, i) => {
     const cx = x0 + w - 8 - i * 7
     c.beginPath(); c.arc(cx, y, 2.5, 0, Math.PI * 2); c.fillStyle = productColor(q.product, dark); c.fill()

@@ -23,7 +23,7 @@ import { FeedKeeper } from './keep'
 import { recordFeedTrade, feedBeat, tierFloor } from './flowTap'
 import { recordFootprintTrade, footprintWanted } from '../chart/footprint'
 import { heatFetchSent } from './heatFetch'
-import { createLayer } from './layer'
+import { createLayer, type OrderFlowLayer } from './layer'
 import { mountLadder, ladderVisible, drawLadder, resetLadder, ladderDebug } from './ladder'
 import { mountDrawer, updateDrawer } from './drawer'
 import { widgetHTML, mountWidgets, isOfWidget, updateWidgets, resetTape, scheduleTape, markWall, tapeDebug } from './widgets'
@@ -47,7 +47,8 @@ const HEAT_BACK_MAX_MS = 3 * 86_400_000
 const HEAT_RETRY_MS = 20_000
 
 let api: Api | null = null
-const attached = new WeakSet<TVChart>()
+/** 挂了图上层的图 → 那一层（图拆了在 sync 里 dispose 并摘掉：层挂在爆仓表 / 逐笔表上的回调攥着整张图） */
+const attached = new Map<TVChart, OrderFlowLayer>()
 let overrideSig = ''
 /** 离开图表页、或标签页藏到后台一分钟就停掉数据层（一分钟内切回来不用重连），见 idle.ts */
 const idle = new IdleGate()
@@ -87,11 +88,13 @@ function needed(): boolean {
 /** 每半秒：挂图上层、开 / 关 / 换数据层、告诉它可见窗口、同步线路与门槛、要热力回填。 */
 export function sync(): void {
   if (!api) return
+  for (const [chart, layer] of attached) if (chart.dead) { layer.dispose(); attached.delete(chart) }
   for (const c of api.charts()) {
     if (attached.has(c.chart)) continue
-    attached.add(c.chart)
     const chart = c.chart
-    chart.layers.push(createLayer(chart, () => api!.charts().find(x => x.chart === chart) ?? { symbol: '', iv: '1h' }))
+    const layer = createLayer(chart, () => api!.charts().find(x => x.chart === chart) ?? { symbol: '', iv: '1h' })
+    attached.set(chart, layer)
+    chart.layers.push(layer)
   }
   const act = api.activeChart()
   const away = st.page !== 'chart' || document.visibilityState === 'hidden'

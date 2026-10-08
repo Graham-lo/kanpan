@@ -7,7 +7,7 @@
 import type { VpvrMode } from './overlays'
 import { PROFILE, profileDefaults, type LineDash, type ProfileLine, type ProfileLook } from './volumeProfile'
 
-export type StyleValue = boolean | number | string | StyleObject
+export type StyleValue = boolean | number | string | StyleObject | StyleValue[]
 export interface StyleObject { [k: string]: StyleValue }
 export type DrawStyle = StyleObject
 

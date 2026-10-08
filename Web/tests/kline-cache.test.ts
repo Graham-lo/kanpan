@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { KlineCache, CACHE_TTL_MS } from '../src/market/klineCache'
+import { KlineCache, CACHE_TTL_MS, FRESH_MS } from '../src/market/klineCache'
 import { TAIL_MAX } from '../src/market/tail'
 import type { Bar } from '../src/chart/calc'
 
@@ -50,5 +50,22 @@ describe('最近取过的 K 线（换布局集只补尾巴）', () => {
     expect(k.size).toBe(2)
     expect(k.need('a', M, 3 * M)).toBeNull()
     expect(k.need('c', M, 3 * M)).not.toBeNull()
+  })
+
+  it('刚记下、最后一根还在走：不补尾巴（0），take 原样拿一份拷贝；收了线 / 记下太久 / 时钟往回拨照常补', () => {
+    const k = new KlineCache()
+    const t0 = 1_000 * M, bars = run(t0, 500), last = t0 + 499 * M
+    k.put('A|1m', bars, last + 10_000)
+    expect(k.need('A|1m', M, last + 30_000)).toBe(0)
+    const got = k.take('A|1m')!
+    expect(got).toHaveLength(500)
+    expect(got[499]).toMatchObject({ t: last, c: bars[499].c })
+    got[499].c = -1
+    expect(k.take('A|1m')![499].c).toBe(bars[499].c)
+    expect(k.need('A|1m', M, last + M)).toBe(3)                    // 收线了：补那一根 + 余量
+    k.put('B|1h', run(t0, 10, 1).map((b, i) => ({ ...b, t: t0 + i * 60 * M })), t0 + 9 * 60 * M)
+    expect(k.need('B|1h', 60 * M, t0 + 9 * 60 * M + FRESH_MS + 1)).toBe(3) // 记下太久：补（走着那根 + 余量）
+    expect(k.need('B|1h', 60 * M, t0 + 9 * 60 * M - 5_000)).toBe(2)        // 往回拨：补
+    expect(k.take('nope')).toBeNull()
   })
 })

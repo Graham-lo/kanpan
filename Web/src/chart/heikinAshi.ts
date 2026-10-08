@@ -77,6 +77,9 @@ function paint(c: TVChart, ...args: Parameters<TVChart['drawCandles']>): void {
   try { c.drawCandles(...args) } finally { c.bars = real }
 }
 
+/** 格子销毁时放掉（bound 按格号记，布局从十六图收回一图时 1…15 号格不会再 bind，不删就一直攥着死图的整块 DOM 与 K 线） */
+export function unbindHeikinAshi(chart: TVChart): void { for (const [i, c] of bound) if (c === chart) bound.delete(i) }
+
 /** pages/chart.ts 建格子时挂上（在 bindFootprint 之后）：接在足迹那个槽后面——足迹画了就不画，没画且开着平均 K 线就画平均值 */
 export function bindHeikinAshi(chart: TVChart, idx: number): void {
   bound.set(idx, chart)

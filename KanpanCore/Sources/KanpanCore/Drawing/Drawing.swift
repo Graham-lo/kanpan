@@ -280,6 +280,12 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
   /// 由这里说了算多长才好看；别拿字节数反过来把这个 60 改小。
   public var text: String = ""
   public static let textLimit = 60
+  /// 电脑网页那一侧照 TradingView 扩出来的样式（文字、背景、各级显隐、延伸……），一个 JSON 对象。
+  ///
+  /// **手机端不读、不画，只原样带着走**：网页画的线同步到手机、在手机上挪一下再传回去，
+  /// 这一块要一字不少地回到云端，不能因为手机不认识就丢掉。所以只收对象（别的形状当没有），
+  /// 有就原样编码回去；服务端 `sync_validation.rs` 的 `(DRAWINGS,"style")` 卡大小与嵌套深度。
+  public var style: RuleJSON? = nil
   public var a: DrawPoint {
     get { points.first ?? DrawPoint(t: 0, p: 0) }
     set { if points.isEmpty { points = [newValue] } else { points[0] = newValue } }
@@ -306,7 +312,7 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
       && text.count <= Self.textLimit
   }
   private enum CodingKeys: String, CodingKey {
-    case id, kind, points, a, b, color, lineWidth, dash, filled, locked, hidden, levels, text
+    case id, kind, points, a, b, color, lineWidth, dash, filled, locked, hidden, levels, text, style
   }
   public init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -325,6 +331,8 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
     hidden = try c.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
     levels = try c.decodeIfPresent([Double].self, forKey: .levels) ?? kind.defaultLevels
     text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+    // 认不得的形状（数组、字符串、null）当没有：这是网页的扩展，坏一块不该让整条线解不出来。
+    if let raw = (try? c.decodeIfPresent(RuleJSON.self, forKey: .style)) ?? nil, case .object = raw { style = raw }
     guard isValid else { throw DecodingError.dataCorruptedError(forKey: .points, in: c, debugDescription: "Invalid drawing") }
   }
   public func encode(to encoder: Encoder) throws {
@@ -346,6 +354,7 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
     // 给每一条线都塞一个 `"text":""` 只会让存档和线上白白多一个字段和一份字段时间戳。
     // `|| !text.isEmpty` 是给老存档兜底——真有非空文字就别在重新编码时弄丢。
     if kind.usesText || !text.isEmpty { try c.encode(text, forKey: .text) }
+    try c.encodeIfPresent(style, forKey: .style)
   }
 }
 

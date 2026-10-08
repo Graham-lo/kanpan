@@ -56,7 +56,11 @@ export const bubblesOf = new WeakMap<TVChart, () => readonly Bubble[]>()
 /** 一根的数据（悬停卡用）：大单合计（没有大单 null）与爆仓（这只没有爆仓项时 undefined） */
 interface BarCardData { t: number; t1: number; d: BarBig | null; l: BarLiq | null | undefined }
 
-export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: string }): ChartLayer {
+/** 图上层另带一个 dispose：图拆了（切布局收掉格子）由 index.ts 摘掉它挂在全局表上的回调，
+ *  不然爆仓表、逐笔表的监听集合一直攥着这张图，整格 DOM 与 K 线都放不掉（十六图 1↔16 ×20 节点 +4.7 万） */
+export type OrderFlowLayer = ChartLayer & { dispose(): void }
+
+export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: string }): OrderFlowLayer {
   let bands: BandHit[] = []
   let bubbles: Bubble[] = []
   /** 鼠标停在哪枚泡上（那根的开盘时间 + 哪一侧）：泡放大加深，图上给那根铺一道淡竖带，不然泡比根宽、十字线又停在旁边那根，看不出卡上的数是哪根的 */
@@ -73,12 +77,14 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
   drawerLiq.listeners.add(onLiq)
   // 图例是 DOM（左上角），尺寸变了 ResizeObserver 推过来，画气泡时不去读布局
   let legend: BubbleRect | null = null
+  let legendRO: ResizeObserver | null = null
   if (typeof ResizeObserver !== 'undefined' && chart.legendEl) {
-    new ResizeObserver(() => {
+    legendRO = new ResizeObserver(() => {
       const el = chart.legendEl
       const P = LEGEND_PAD
       legend = el.offsetWidth && el.offsetHeight ? { x: el.offsetLeft - P, y: el.offsetTop - P, w: el.offsetWidth + 2 * P, h: el.offsetHeight + 2 * P } : null
-    }).observe(chart.legendEl)
+    })
+    legendRO.observe(chart.legendEl)
   }
   let heat: HeatDraw | null = null
   let geo: ChartGeometry | null = null
@@ -493,6 +499,14 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
   }
 
   return {
+    dispose() {
+      drawerLiq.listeners.delete(onLiq)
+      if (flowSym) flowOf(flowSym).listeners.delete(onHistory)
+      flowSym = ''
+      legendRO?.disconnect(); legendRO = null
+      bubbles = []; bands = []; barData = new Map(); hoverB = null; heat = null; geo = null; img = null
+      bubblesOf.delete(chart)
+    },
     // 热力铺在成交量柱与蜡烛、均线之下；同一帧里所有列（回填 + 实时）用同一个 p95 归一
     back(c, g) {
       geo = g

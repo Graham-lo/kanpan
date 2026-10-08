@@ -36,6 +36,30 @@ const INSTR = () => {
   addEventListener('unhandledrejection', e => window.__errs.push('rej: ' + String(e.reason?.message || e.reason)))
 }
 
+// 连接分两类数：行情推送（K 线 / 报价那一条，任何时候只许一条）与主力订单流的逐笔 / 盘口连接。
+// 订单流是 2026-10-08 起大单气泡出厂开、五家交易所都接之后的设计：每只按交易所注册表开几条（币安按品种拼进 URL，
+// OKX / Coinbase / Bybit 各 category / Hyperliquid 一家一条），换走的那只由 orderflow/keep.ts 留着最多 KEEP_LIMIT（2）只、3 分钟。
+// 所以断言写成：行情 = 1 条；订单流涉及的品种 ≤ 1 + 2 只，且每家的连接条数 ≤ 品种数（同一只不重建、不叠）。
+const KEEP_LIMIT = 2
+const WS_SNAP = () => {
+  const flowRe = /\/v1\/market\/ws\/|@depth|@aggTrade|coinbase\.com|okx\.com|bybit\.com|hyperliquid\.xyz/
+  const all = [...window.__ws.live], mk = all.filter(s => !flowRe.test(s.url)), flow = all.filter(s => flowRe.test(s.url))
+  const syms = new Set(), perVenue = {}
+  for (const s of flow) {
+    const u = new URL(s.url), m = /streams=([a-z0-9_]+)@/.exec(s.url)
+    if (m) syms.add(m[1].replace(/(usdt|usdc|usd_perp|usd)$/, ''))
+    const k = m ? `${u.host}${u.pathname}|${m[1]}` : `${u.host}${u.pathname}${u.searchParams.get('category') ? '?' + u.searchParams.get('category') : ''}`
+    perVenue[k] = (perVenue[k] || 0) + 1
+  }
+  return {
+    live: all.length, open: all.filter(s => s.readyState === 1).length,
+    mkLive: mk.length, mkOpen: mk.filter(s => s.readyState === 1).length,
+    flowLive: flow.length, flowSyms: syms.size, flowDup: Object.entries(perVenue).filter(([k, n]) => n > (k.includes('|') ? 1 : Math.max(1, syms.size))).map(([k, n]) => `${k}×${n}`),
+    subs: window.__ws.subs, unsubs: window.__ws.unsubs,
+  }
+}
+const flowOk = w => w.flowSyms <= 1 + KEEP_LIMIT && !w.flowDup.length
+
 const browser = await chromium.launch({ executablePath: CHROME, headless: true })
 async function page() {
   const ctx = await browser.newContext({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
@@ -78,17 +102,18 @@ if (want('panels')) {
 if (want('offline')) {
   const { ctx, p } = await page()
   await p.goto(URL_ + '#chart'); await p.waitForSelector('.cp-price'); await sleep(6000)
-  const snap = () => p.evaluate(() => ({ price: document.querySelector('.cp-price')?.textContent, stale: document.querySelector('.cp-price')?.classList.contains('stale'), open: [...window.__ws.live].filter(s => s.readyState === 1).length, live: window.__ws.live.size, opened: window.__ws.opened }))
+  const snap = async () => ({ ...(await p.evaluate(WS_SNAP)), ...(await p.evaluate(() => ({ price: document.querySelector('.cp-price')?.textContent, stale: document.querySelector('.cp-price')?.classList.contains('stale'), opened: window.__ws.opened }))) })
+  const brief = w => JSON.stringify({ price: w.price, stale: w.stale, 行情: `${w.mkOpen}/${w.mkLive}`, 订单流: `${w.flowLive} 条 ${w.flowSyms} 只`, 重复: w.flowDup.join(',') || undefined, opened: w.opened })
   const s0 = await snap()
-  ok('联网时价格是实时的', !s0.stale && s0.open === 1, JSON.stringify(s0))
+  ok('联网时价格是实时的、行情推送一条', !s0.stale && s0.mkOpen === 1 && s0.mkLive === 1 && flowOk(s0), brief(s0))
   await ctx.setOffline(true)
   await sleep(8000)
   const s1 = await snap()
-  ok('断网 8 秒价格变灰', s1.stale === true, JSON.stringify(s1))
+  ok('断网 8 秒价格变灰', s1.stale === true, brief(s1))
   await ctx.setOffline(false)
   let s2 = s1
-  for (let i = 0; i < 20 && !(s2.open === 1 && !s2.stale); i++) { await sleep(500); s2 = await snap() }
-  ok('联网后 10 秒内连上、不再灰', s2.open === 1 && !s2.stale && s2.live === 1, JSON.stringify(s2))
+  for (let i = 0; i < 20 && !(s2.mkOpen === 1 && !s2.stale); i++) { await sleep(500); s2 = await snap() }
+  ok('联网后 10 秒内连上、不再灰、连接不叠', s2.mkOpen === 1 && s2.mkLive === 1 && !s2.stale && flowOk(s2) && s2.flowLive <= s0.flowLive, brief(s2))
   // 切后台：只留核心几路；回前台补回来
   const subsOf = () => p.evaluate(() => ({ subs: window.__ws.subs, unsubs: window.__ws.unsubs }))
   await p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')) })
@@ -97,12 +122,12 @@ if (want('offline')) {
   await sleep(4000)
   const s3 = await snap(), n3 = await subsOf()
   const p0 = s3.price; await sleep(6000); const s4 = await snap()
-  ok('切后台再回来连接只有一条、价格照常走', s3.live === 1 && s3.open === 1 && !s4.stale, `${JSON.stringify(s3)} 订/退 ${JSON.stringify(n3)} 6 秒后 ${s4.price}（之前 ${p0}）`)
+  ok('切后台再回来行情连接只有一条、订单流不叠、价格照常走', s3.mkLive === 1 && s3.mkOpen === 1 && flowOk(s3) && s3.flowLive <= s0.flowLive && !s4.stale, `${brief(s3)} 订/退 ${JSON.stringify(n3)} 6 秒后 ${s4.price}（之前 ${p0}）`)
   ok('断网段无报错', !(await p.evaluate(() => window.__errs.length)), (await p.evaluate(() => window.__errs.join(' | '))).slice(0, 300))
   await ctx.close()
 }
 
-// ───────── 换品种（顶栏价格区横滑）、换周期各 40 次：连接始终一条、订阅不累积、DOM 不涨
+// ───────── 换品种（顶栏价格区横滑）、换周期各 40 次：行情连接始终一条、订单流不叠、订阅不累积、DOM 不涨
 // 横滑扫图只在「从自选 / 板块列表点进来」时有名单（照 iOS ScanList：直接开图、搜索进来都不冻结名单），
 // 所以从自选页点第一行进图，不能直接开 #chart。
 if (want('switch')) {
@@ -111,7 +136,8 @@ if (want('switch')) {
   const rows = await p.evaluate(() => document.querySelectorAll('.lr[data-sym]').length)
   await p.click('.lr[data-sym]'); await p.waitForSelector('.cp-head'); await sleep(6000)
   const box = await p.locator('.cp-head').boundingBox()
-  const ws = () => p.evaluate(() => ({ live: window.__ws.live.size, open: [...window.__ws.live].filter(s => s.readyState === 1).length, subs: window.__ws.subs, unsubs: window.__ws.unsubs }))
+  const ws = () => p.evaluate(WS_SNAP)
+  const brief = w => JSON.stringify({ 行情: `${w.mkOpen}/${w.mkLive}`, 订单流: `${w.flowLive} 条 ${w.flowSyms} 只`, 重复: w.flowDup.join(',') || undefined, subs: w.subs, unsubs: w.unsubs })
   const m0 = await p.metrics(), w0 = await ws()
   let dir = -1, done = 0, bounce = 0
   while (done < 40 && bounce < 80) {
@@ -121,6 +147,9 @@ if (want('switch')) {
     await sleep(80)
     if (await p.evaluate(() => document.querySelector('.cp-base')?.textContent) === before) { dir = -dir; bounce++ } else done++
   }
+  // 换完品种等新那只的订单流连齐，再量换周期前后（同一只，周期换来换去不该新开任何连接）
+  await sleep(8000)
+  const wA = await ws()
   const ivs = await p.evaluate(() => [...document.querySelectorAll('.cp-chip[data-iv]')].map(b => b.dataset.iv))
   for (let i = 0; i < 40; i++) { await p.evaluate(iv => document.querySelector(`.cp-chip[data-iv="${iv}"]`)?.click(), ivs[i % ivs.length]); await sleep(60) }
   await sleep(4000)
@@ -128,7 +157,8 @@ if (want('switch')) {
   // 在场的订阅 = 净订阅；换来换去之后应当和开始时同一个量级（只剩当前这一只的几路）
   const net0 = w0.subs - w0.unsubs, net1 = w1.subs - w1.unsubs
   ok(`换品种 ${done} 次（自选 ${rows} 只来回扫）`, done >= 20, `撞到头 ${bounce} 次`)
-  ok('换周期 40 次后连接只有一条', w1.live === 1 && w1.open === 1, JSON.stringify(w1))
+  ok(`换品种后行情一条、订单流只连着正在看的 + 留着的 ≤ ${KEEP_LIMIT} 只`, wA.mkLive === 1 && wA.mkOpen === 1 && flowOk(wA), brief(wA))
+  ok('换周期 40 次连接不涨（同一只不重建行情 / 订单流连接）', w1.mkLive === 1 && w1.mkOpen === 1 && w1.live <= wA.live && flowOk(w1), `${brief(wA)} → ${brief(w1)}`)
   ok('订阅不累积', net1 <= net0 + 4, `开始净订阅 ${net0}，结束 ${net1}（订 ${w1.subs} / 退 ${w1.unsubs}）`)
   ok('DOM 不涨', m1.nodes - m0.nodes < 300, `节点 ${m1.nodes - m0.nodes >= 0 ? '+' : ''}${m1.nodes - m0.nodes}、堆 ${m0.heap.toFixed(1)}→${m1.heap.toFixed(1)} MB`)
   ok('换品种段无报错', !(await p.evaluate(() => window.__errs.length)), (await p.evaluate(() => window.__errs.join(' | '))).slice(0, 300))

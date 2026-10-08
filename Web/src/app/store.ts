@@ -5,6 +5,7 @@
  */
 import type { Drawing } from '../chart/chart'
 import { cleanDrawing } from '../chart/drawTools'
+import { cleanDefaults, cleanTemplates, type DrawPreset, type DrawTemplate } from '../chart/drawPreset'
 import { MAX_SUBS, CATALOG, type IndParams, type IndicatorId, type SubId } from '../chart/calc'
 import { isMoreMain } from '../chart/mainIndicators'
 import { migrateAlert, type Alert } from '../alerts/shape'
@@ -93,6 +94,8 @@ export interface State {
   /** 画线：同族工具上次改过的样式（族 → 颜色 / 粗细 / 线型）、最近用过的颜色（新的在前）、
    *  工具栏每组上次用的那把、侧栏上一次开的是哪块（⌥⇧W 收起再打开） */
   drawStyles: Record<string, DrawStyle>; recentColors: string[]; toolLast: Record<string, string>; lastPanel: PanelId | null
+  /** 画线设置里「存为默认」的样式与存下的模板（工具 → …）；随账号同步（drawingPreferences 的 webStyles / templates） */
+  drawDefaults: Record<string, DrawPreset>; drawTemplates: Record<string, DrawTemplate[]>
   alertScope: 'symbol' | 'all'
   meSection: string
   slots: Slots
@@ -136,7 +139,7 @@ function defaults(): State {
     ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] }, params: null,
     drawings: {}, alerts: [], notes: [],
     magnet: false, drawHidden: false, drawLocked: false, drawColor: '#2962FF',
-    drawStyles: {}, recentColors: [], toolLast: {}, lastPanel: 'watch',
+    drawStyles: {}, recentColors: [], toolLast: {}, lastPanel: 'watch', drawDefaults: {}, drawTemplates: {},
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
     vpvrMode: 'split', linkCross: true, linkSymbol: false, linkIv: false, linkTime: false, customIvs: [],
@@ -289,6 +292,8 @@ export function hydrate(saved: Partial<State>): State {
   s.drawStyles = ds
   s.recentColors = Array.isArray(s.recentColors) ? s.recentColors.filter(c => typeof c === 'string' && /^#[0-9A-Fa-f]{6}$/.test(c)).slice(0, 3) : []
   s.toolLast = strMap(s.toolLast)
+  s.drawDefaults = cleanDefaults(s.drawDefaults)
+  s.drawTemplates = cleanTemplates(s.drawTemplates)
   s.orderFlow = s.orderFlow === true
   const ofo: Record<string, Override> = {}
   if (s.orderFlowOverrides && typeof s.orderFlowOverrides === 'object') {

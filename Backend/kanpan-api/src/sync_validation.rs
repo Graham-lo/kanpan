@@ -197,6 +197,40 @@ fn lines(v:&Value)->bool {
     && ps.iter().all(|p|p.as_object().is_some_and(|o|o.len()==2)&&number(&p["t"],0.0,9e15)&&number(&p["p"],-1e15,1e15)))
  }))
 }
+/// 电脑网页照 TradingView 扩出来的画线样式（`drawings.style`、`drawingPreferences` 的 `webStyles/<KIND>`、
+/// 模板里的 `style`）：一个对象，序列化 ≤ 8 KB，对象 / 数组最多套四层（顶层那个对象算第一层）。
+/// 里面的键由网页自己清洗，服务端只卡形状与体量；手机端不读，原样带着走（`Drawing.style`）。
+const WEB_STYLE_MAX_BYTES:usize=8192;
+const WEB_STYLE_MAX_DEPTH:usize=4;
+fn nesting(v:&Value)->usize {
+ match v {
+  Value::Object(o)=>1+o.values().map(nesting).max().unwrap_or(0),
+  Value::Array(a)=>1+a.iter().map(nesting).max().unwrap_or(0),
+  _=>0,
+ }
+}
+fn web_style(v:&Value)->bool {
+ v.is_object()&&nesting(v)<=WEB_STYLE_MAX_DEPTH&&serde_json::to_string(v).is_ok_and(|s|s.len()<=WEB_STYLE_MAX_BYTES)
+}
+/// `drawingPreferences` 的 `templates/<KIND>`：网页上这把工具存下的样式模板，最多 16 个，整份 ≤ 16 KB。
+/// 每个模板必须有 `name`（非空、≤ 64 个字符）；`color` / `lineWidth` / `dash` / `filled` / `levels` / `text`
+/// 可有可无，有就和画线本身同一条值规则；`style` 同 `web_style`。别的键不收。
+const TEMPLATES_MAX:usize=16;
+const TEMPLATES_MAX_BYTES:usize=16_384;
+const TEMPLATE_NAME_MAX_CHARS:usize=64;
+fn templates(v:&Value)->bool {
+ fn template(t:&Value)->bool {
+  t.as_object().is_some_and(|o|o.get("name").and_then(Value::as_str).is_some_and(|s|!s.trim().is_empty()&&s.chars().count()<=TEMPLATE_NAME_MAX_CHARS)
+   && o.iter().all(|(k,v)|match k.as_str() {
+    "name"=>true,
+    "color"|"lineWidth"|"dash"|"filled"|"levels"|"text"=>field(DRAWINGS,k,v)&&!v.is_null(),
+    "style"=>web_style(v),
+    _=>false,
+   }))
+ }
+ v.as_array().is_some_and(|a|a.len()<=TEMPLATES_MAX&&a.iter().all(template))
+  && serde_json::to_string(v).is_ok_and(|s|s.len()<=TEMPLATES_MAX_BYTES)
+}
 fn style(v:&Value)->bool {v.as_object().is_some_and(|o|o.iter().all(|(k,v)|field(DRAWINGS,k,v))&&o.contains_key("lineWidth")&&o.contains_key("dash")&&o.contains_key("filled")&&o.contains_key("levels"))}
 /// 「对比 K 线」的一只品种：完整身份键 `venue/market/SYMBOL`，和 favorites 的 id 同一形态。
 ///
@@ -224,7 +258,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
  // 提醒里那几个可空字段同理：「再次提醒」把一条已触发的提醒重新武装，客户端把
  // firedAt / firedPrice 清掉；`kind` 从 drawing 改成别的时 drawingID 也会被清。
  // 客户端的 diff 把「这次不写这个 key」发成 null，拒收它就等于整条 op 400。
- if v.is_null(){return p.len()==1&&matches!(path,"color"|"groupId"|"text")
+ if v.is_null(){return p.len()==1&&matches!(path,"color"|"groupId"|"text"|"style")
   // note / webhook / webhookText（从图上加提醒）：客户端永远写出这三个键，空就是 null。
   || collection==ALERTS&&p.len()==1&&matches!(path,"drawingID"|"firedAt"|"firedPrice"|"dueAt"|"reviewID"|"note"|"webhook"|"webhookText"|"rule")
   || collection==SETTINGS&&p.len()>=2 || collection==DRAWING_PREFERENCES&&p.len()==2}
@@ -291,7 +325,9 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   }
  }
  if collection==DRAWING_PREFERENCES {return match path {"favorites"=>names(v,KINDS.len(),KINDS),"magnet"|"continuous"=>v.is_boolean(),
-  _=>p.len()==2&&KINDS.contains(&p[1])&&match p[0] {"styles"=>style(v),"variants"=>v.as_str().is_some_and(|s|KINDS.contains(&s)),_=>false}}}
+  _=>p.len()==2&&KINDS.contains(&p[1])&&match p[0] {"styles"=>style(v),"variants"=>v.as_str().is_some_and(|s|KINDS.contains(&s)),
+   // 网页专用（crate::sync::DRAWING_PREFERENCE_FIELDS 的注释）：这把工具的样式模板、照 TradingView 的默认样式。
+   "templates"=>templates(v),"webStyles"=>web_style(v),_=>false}}}
  if p.len()!=1 {return false}
  match (collection,path) {
   (DRAWINGS,"kind")=>v.as_str().is_some_and(|s|KINDS.contains(&s)),
@@ -316,6 +352,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   // still stops someone pasting a novel; the per-field 64 KB rule in `Operation::validate` is
   // the real backstop. Whatever the client accepts, the server must be able to store.
   (DRAWINGS,"text")=>string(v,4096),
+  // 网页扩展样式（`web_style`）：手机端原样带着走，null 是「删掉」（见上面的可空名单）。
+  (DRAWINGS,"style")=>web_style(v),
   (FAVORITES,"groupId")=>string(v,100),
   (FAVORITES|GROUPS,"order")=>number(v,0.0,1e9),
   (GROUPS,"name")=>string(v,100),
@@ -712,6 +750,76 @@ mod tests {
   assert!(!field("drawingPreferences","variants/telekinesis",&json!("trend")));
   assert!(!field("drawingPreferences","variants",&json!({"trend":"extended"})),"only the flattened path is a field");
   assert!(!field("drawingPreferences","variants/trend/x",&json!("extended")));
+ }
+ /// 网页照 TradingView 扩出来的画线样式（`drawings.style`）：对象收、别的形状拒、超大超深拒，
+ /// null 是「删掉」；收下的那份放在画线上整条照样过 `object`。
+ #[test] fn a_drawing_carries_the_web_style_object() {
+  let good=json!({"text":{"visible":true,"size":14,"color":"#ffffff"},"levels":[{"v":0.5,"on":true,"color":"#26C6DA"}],"extendLeft":false});
+  assert!(field("drawings","style",&good));
+  assert!(field("drawings","style",&json!({})));
+  assert!(field("drawings","style",&json!(null)),"null = the web cleared its extension");
+  let mut d=drawing("trend",2);d.body.insert("style".into(),good);
+  assert!(object(&d).is_ok());
+  d.body.insert("style".into(),json!(null));
+  assert!(object(&d).is_ok(),"a cleared style is stored as a tombstone");
+  for bad in [json!([1,2]),json!("dashed"),json!(1),json!(true)] {
+   assert!(!field("drawings","style",&bad),"{bad} should be refused");
+  }
+  // 四层（顶层对象算第一层）收，五层拒。
+  assert!(field("drawings","style",&json!({"a":{"b":{"c":{"d":1}}}})));
+  assert!(field("drawings","style",&json!({"a":[{"c":[1]}]})));
+  assert!(!field("drawings","style",&json!({"a":{"b":{"c":{"d":{"e":1}}}}})));
+  assert!(!field("drawings","style",&json!({"a":[[[[1]]]]})));
+  // ≤ 8 KB。
+  assert!(field("drawings","style",&json!({"t":"x".repeat(8000)})));
+  assert!(!field("drawings","style",&json!({"t":"x".repeat(8200)})));
+  // 分享那条路走的是同一套值规则。
+  assert!(!field("drawings","style/text",&json!({})),"only the whole object is a field");
+ }
+ /// 网页专用的两条工具偏好：`webStyles/<KIND>`（照 TradingView 的默认样式）与
+ /// `templates/<KIND>`（存下的样式模板）。名字与值两头都要认，否则网页一改就整条 400。
+ #[test] fn web_tool_templates_and_default_styles_travel_with_the_account() {
+  // webStyles：同 drawings.style。
+  assert!(field("drawingPreferences","webStyles/trend",&json!({"text":{"visible":true}})));
+  assert!(field("drawingPreferences","webStyles/fibonacci",&json!({})));
+  assert!(field("drawingPreferences","webStyles/trend",&json!(null)),"null = back to the default");
+  for bad in [json!([]),json!("x"),json!({"a":{"b":{"c":{"d":{"e":1}}}}}),json!({"t":"x".repeat(8200)})] {
+   assert!(!field("drawingPreferences","webStyles/trend",&bad),"webStyles {bad} should be refused");
+  }
+  assert!(!field("drawingPreferences","webStyles/telekinesis",&json!({})));
+  assert!(!field("drawingPreferences","webStyles",&json!({"trend":{}})),"only the flattened path is a field");
+  // templates：≤ 16 个，每个要 name，其余键和画线同一套规则。
+  let full=json!({"name":"粗红线","color":{"value":"#ff0000"},"lineWidth":2,"dash":"dashed","filled":false,
+   "levels":[0,0.5,1],"text":"x","style":{"text":{"visible":true}}});
+  assert!(field("drawingPreferences","templates/trend",&json!([full.clone(),{"name":"只有名字"}])));
+  assert!(field("drawingPreferences","templates/trend",&json!([])));
+  assert!(field("drawingPreferences","templates/trend",&json!(null)));
+  let many:Vec<Value>=(0..16).map(|i|json!({"name":format!("t{i}")})).collect();
+  assert!(field("drawingPreferences","templates/trend",&json!(many)));
+  let too_many:Vec<Value>=(0..17).map(|i|json!({"name":format!("t{i}")})).collect();
+  assert!(!field("drawingPreferences","templates/trend",&json!(too_many)),"17 templates");
+  let big:Vec<Value>=(0..3).map(|i|json!({"name":format!("t{i}"),"style":{"t":"x".repeat(7000)}})).collect();
+  assert!(!field("drawingPreferences","templates/trend",&json!(big)),"whole array over 16 KB");
+  for bad in [
+   json!({"name":"x"}),                                   // 不是数组
+   json!([{"lineWidth":2}]),                              // 没有名字
+   json!([{"name":""}]),                                  // 空名字
+   json!([{"name":"x".repeat(65)}]),                      // 名字太长
+   json!([{"name":"x","lineWidth":99}]),                  // 线宽越界
+   json!([{"name":"x","dash":"wavy"}]),                   // 虚线样式不认
+   json!([{"name":"x","color":"#ff0000"}]),               // 颜色形状不对
+   json!([{"name":"x","levels":[99]}]),                   // 级别越界
+   json!([{"name":"x","style":[1]}]),                     // style 不是对象
+   json!([{"name":"x","color":null}]),                    // 模板里没有墓碑
+   json!([{"name":"x","telekinesis":1}]),                 // 不认的键
+   json!(["x"]),                                          // 元素不是对象
+  ] {
+   assert!(!field("drawingPreferences","templates/trend",&bad),"templates {bad} should be refused");
+  }
+  assert!(field("drawingPreferences","templates/trend",&json!([{"name":"x".repeat(64)}])));
+  assert!(field("drawingPreferences","templates/trend",&json!([{"name":"六十四个字以内的中文名字"}])));
+  assert!(!field("drawingPreferences","templates/telekinesis",&json!([])));
+  assert!(!field("drawingPreferences","templates",&json!({"trend":[]})),"only the flattened path is a field");
  }
  /// A seven-point head and shoulders used to fail the 1..=3 anchor rule outright.
  #[test] fn a_many_pointed_pattern_keeps_all_its_anchors() {

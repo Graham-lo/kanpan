@@ -10,7 +10,7 @@
  */
 import { udOf, type BarBig, type BarLiq } from './bigTags'
 import type { LiqRow } from './liquidation'
-import { amt } from './state'
+import { amt, amtTight } from './state'
 import { BT, fill } from '../terms'
 import { EXCHANGE_COLORS, EXCHANGE_NAMES } from '../venues'
 
@@ -42,7 +42,8 @@ export interface BfIn { s: number; b: number; max: number; half: number; tw: (t:
 export function bfHtml({ s, b, max, half, tw }: BfIn): string {
   const m = Math.max(1, max)
   const side = (v: number, cls: 's' | 'b'): string => {
-    const t = v > 0 ? amt(v) : '0'
+    // 半边放不下完整金额就收成整数（15.2M → 15M），不让字溢出到中线另一侧或旁边的净额列
+    const t0 = v > 0 ? amt(v) : '0', t = tw(t0) + 10 > half ? amtTight(v) : t0
     const p = barText(v > 0 ? Math.max(2, v / m * half) : 0, tw(t) + 10, half)
     const mg = p.shift ? ` style="margin-${cls === 's' ? 'right' : 'left'}:${p.shift.toFixed(1)}px"` : ''
     return `<div class="h ${cls}"><i style="width:${p.bar.toFixed(1)}px"></i><span class="num${v > 0 ? '' : ' z'}"${mg}>${t}</span></div>`
@@ -67,7 +68,7 @@ export function srcHtml(tot: number, spot: number | null, ex: readonly number[] 
   const a = `<div class="of-sr"><div class="tx"><span>${BT.spot}<b class="num">${sp == null ? '—' : pct(sp, tot)}</b></span><span>${BT.contract}<b class="num">${sp == null ? '—' : pct(tot - sp, tot)}</b></span></div>` +
     seg3(sp == null ? null : [[sp, 'var(--of-spot)'], [Math.max(0, tot - sp), 'var(--of-perp)']]) + '</div>'
   const e = ex && has ? ex : null
-  const b = `<div class="of-sr"><div class="tx">${VENUES.map(([n, c], j) => `<span><i style="background:${c}"></i>${n}<b class="num">${e ? pct(e[j], tot) : '—'}</b></span>`).join('')}</div>` +
+  const b = `<div class="of-sr"><div class="tx vn">${VENUES.map(([n, c], j) => `<span><i style="background:${c}"></i>${n}<b class="num">${e ? pct(e[j], tot) : '—'}</b></span>`).join('')}</div>` +
     seg3(e ? VENUES.map(([, c], j) => [e[j], c] as [number, string]) : null) + '</div>'
   return a + b
 }
@@ -193,8 +194,11 @@ export function levelsSvg(o: LvIn): { svg: string; hits: { y0: number; y1: numbe
     const y = ys[i], ty = (y + 4).toFixed(1), yt = (y - 8).toFixed(1)
     if (x.k === 'wall') {
       hits.push({ y0: y - 9, y1: y + 9, ask: x.s === 'a' })
-      const lab = `${x.s === 'a' ? BT.sellWall : BT.buyWall} ${amt(x.usd)}`, ago = `${Math.max(1, Math.round(x.age / MIN))}分`
-      // 「N分」放不下（和墙的金额撞上）就只留圆环
+      const word = x.s === 'a' ? BT.sellWall : BT.buyWall, ago = `${Math.max(1, Math.round(x.age / MIN))}分`
+      // 窄卡（1366 下价位卡只有 160）：先省「N分」只留圆环，再把金额收短，再省「卖墙 / 买墙」两字（墙在现价上 / 下自明）——字不许压到圆环底下
+      const room = w - 15 - PX - 9
+      const labs = [`${word} ${amt(x.usd)}`, `${word} ${amtTight(x.usd)}`, amt(x.usd), amtTight(x.usd)]
+      const lab = !o.tw ? labs[0] : labs.find(t => o.tw!(t) + 2 <= room) ?? labs[3]
       const fits = !o.tw || PX + 9 + o.tw(lab) + 6 <= w - 18 - o.tw(ago)
       g += `<g class="wall" data-wall="${x.s}"><rect x="${PX}" y="${yt}" width="${w - PX}" height="16" rx="5" fill="var(--of-wall-a)"/>` +
         `<rect x="${PX}" y="${yt}" width="2.5" height="16" rx="1" fill="var(--of-wall)"/>` +

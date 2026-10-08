@@ -307,6 +307,8 @@ enum PersonalSyncCodec {
       var drawing = Drawing(id: "d", kind: kind, points: Array(repeating: DrawPoint(t: 0, p: 0), count: kind.pointCount))
       drawing.color = Hex("#ffffff")
       drawing.text = "x"
+      // 网页扩展样式：手机不读，原样带着走；给个值它才进 `ownedKeys`，网页清掉它时那一下的 null 才发得出去。
+      drawing.style = .object(["text": .object(["visible": .bool(true)])])
       items.append(drawing)
       archive.preferences.styles[kind.rawValue] = DrawingStyle(drawing)
     }

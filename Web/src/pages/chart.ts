@@ -53,9 +53,10 @@ import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
 import { TAIL_MAX, tailNeed, tailFrom, TailResync } from '../market/tail'
 import { KlineCache } from '../market/klineCache'
 import { installCompare, openCompare, refreshCompare, removeCompare } from './compare'
-import { bindFootprint, setFootprintSource } from '../chart/footprint'
-import { bindHeikinAshi, setHeikinAshiSource } from '../chart/heikinAshi'
-import { baseBars, bindRangeBars, setRangeBarsSource, syncRangeBars } from '../chart/rangeBars'
+import { bindFootprint, setFootprintSource, unbindFootprint } from '../chart/footprint'
+import { bindHeikinAshi, setHeikinAshiSource, unbindHeikinAshi } from '../chart/heikinAshi'
+import { baseBars, bindRangeBars, setRangeBarsSource, syncRangeBars, unbindRangeBars } from '../chart/rangeBars'
+import { DOM_MS, ROW_MS, PulseDebt } from '../chart/domPulse'
 import { styleMenuItems } from '../chart/mainStyle'
 import { setsMenu, switchNth, setButtonHTML, paintSetButtons } from './layoutSets'
 import type { CellFlag } from '../app/layouts'
@@ -175,7 +176,7 @@ function buildCells(): void {
   const area = $('#chartArea'); area.dataset.layout = st.layout
   hideQuick()
   zoomed = null  // 换布局 = 还原放大
-  while (cells.length > n) { const c = cells.pop(); if (c) { cellRO?.unobserve(c.el); c.chart.destroy(); c.el.remove() } }
+  while (cells.length > n) { const c = cells.pop(); if (c) { stashBars(c); cellRO?.unobserve(c.el); unbindFootprint(c.chart); unbindHeikinAshi(c.chart); unbindRangeBars(c.chart); c.chart.destroy(); c.el.remove() } }
   for (let i = cells.length; i < n; i++) cells.push(makeCell(i))
   cells.forEach((c, i) => c.el.classList.toggle('active', i === st.active))
   layoutGrid()
@@ -365,7 +366,10 @@ async function barsFor(symbol: string, iv: string, endTime?: number, alive?: () 
   if (endTime != null) return klines(symbol, iv, endTime, 1500, withOI, false, alive)
   // 最新一段：刚取过同一只同一周期的（换布局集、切格数再切回来）只补尾巴（market/klineCache.ts）
   const key = `${symbol}|${iv}`, need = recentKlines.need(key, IV_MS[iv], Date.now())
-  if (need != null) {
+  if (need === 0) {
+    const bars = recentKlines.take(key)
+    if (bars) { if (withOI) void attachOI(symbol, iv, bars); return { bars, ok: true } }
+  } else if (need != null) {
     const r = await klines(symbol, iv, undefined, need, false, false, alive, undefined, onWait)
     const bars = r.ok ? recentKlines.merge(key, r.bars, Date.now()) : null
     if (bars) { if (withOI) void attachOI(symbol, iv, bars); return { bars, ok: true } }
@@ -376,10 +380,30 @@ async function barsFor(symbol: string, iv: string, endTime?: number, alive?: () 
   if (r.ok) recentKlines.put(key, r.bars, Date.now())
   return r
 }
+/** 格子要销毁了：图上这段跟着推送一路走到现在，记回会话缓存（market/klineCache.ts），同一只同一周期再开时不用再补尾巴。
+ *  只记靠得住的：推送连着、页面亮着、这一格没在取数 / 补尾巴 / 回放，图上确是这一格配置的品种与周期 */
+const STASH_MAX = 1500
+function stashBars(cell: Cell): void {
+  const c = cfg(cell), ch = cell.chart
+  if (!diskable(cell, c) || !cacheable(c.iv) || cell.hold || tailing.has(cell) || ch.pendingMeta || ch.meta.symbol !== c.symbol || ch.iv !== IV_MS[c.iv]) return
+  if (S.wsState !== 'open' || st.stale || document.visibilityState !== 'visible') return
+  const bars = baseBars(ch)
+  if (bars.length) recentKlines.put(`${c.symbol}|${c.iv}`, bars.length > STASH_MAX ? bars.slice(-STASH_MAX) : bars, Date.now())
+}
 /** 进本会话 K 线缓存的周期：交易所原生周期（秒级在内存里攒、自定义分钟由原生周期并，都不进） */
 const cacheable = (iv: string): boolean => !isSecondIv(iv) && !isCustomIv(iv) && IV_MS[iv] > 0
-/** 首次取数的根数：多格布局里不是当前格的只取 SIDE_LIMIT 根（权重 2，1500 根是 10），往左翻再由 loadMore 补 */
-const firstLimit = (idx: number): number => (LAYOUT_N[st.layout] || 1) > 1 && idx !== st.active ? SIDE_LIMIT : 1500
+/** 首次取数的根数：一律先取 SIDE_LIMIT 根（权重 2，1500 根是 10；压缩后 24 KB，1500 根 75 KB），往左翻再由 loadMore 补；
+ *  当前格停稳后再静悄悄补一页（见 loadCell 的 backfill）。2026-10-09 实测新加坡出口单条连接被丢包压到 100–200 KB/s，
+ *  切一只冷门品种 1500 根要 1–6 秒，首屏只要一屏的根数 */
+const firstLimit = (_idx: number): number => SIDE_LIMIT
+/** 首屏只取了 SIDE_LIMIT 根的当前格：K 线摆上后再等一会儿、品种停稳了，往前静悄悄补一页（不和首屏的行情、详情、订单流快照抢出口）；
+ *  非当前格照旧往左翻才补——十六格一起补就是 16 × 75 KB */
+const BACKFILL_DELAY = 1500
+function backfill(cell: Cell, token: number): void {
+  setTimeout(() => settle.whenSettled(`more:${cell.idx}`, () => {
+    if (token === cell.loadToken && !cell.chart.dead && cell.idx === st.active && cell.chart.bars.length <= SIDE_LIMIT) void loadMore(cell, true)
+  }), BACKFILL_DELAY)
+}
 /** 在限流闸里排队、格子上写着「排队取数…」的格子：断线重连那一下的 retryLoad 不去打断它（打断 = 重新排到队尾） */
 const queued = new WeakSet<Cell>()
 
@@ -503,6 +527,7 @@ async function loadCell(cell: Cell, then?: () => void): Promise<void> {
   // 持仓量副图不在首屏：品种停稳再取（连切时中间划过的品种不取）
   if (ok && bars.length && !isSecondIv(c.iv) && !isCustomIv(c.iv)) {
     settle.whenSettled(`oi:${cell.idx}`, () => { if (token === cell.loadToken) ensureOI(cell) })
+    backfill(cell, token)
   }
   finishLoad(cell, c, then)
 }
@@ -1525,17 +1550,21 @@ function flushSeconds(): void {
   pendingSec.clear()
 }
 
-const pendingTick = new Map<string, number>()
-let tickRAF = 0
-function flushTicks(): void {
-  tickRAF = 0
-  const cur = cfg(active())?.symbol
-  for (const [k, dir] of pendingTick) {
-    patchWatchRow(k, dir)
-    if (k === cur && sym(k)) { patchDetail(); syncTitle() }
+// 推送来的报价写 DOM：不赶推送到的那一帧，攒到节拍边界（chart/domPulse.ts）——详情跟图例一拍（250 ms）、同一帧写；
+// 自选 / 板块行一秒一批（闪色是主线程动画，一批一起播完）。当前品种的逐笔一秒几十笔，原来几乎每帧都在改字、重排
+const pendingRow = new Map<string, number>()
+const rowDebt = new PulseDebt(ROW_MS), detailDebt = new PulseDebt(DOM_MS)
+let quoteRAF = 0
+function oweQuote(): void { if (!quoteRAF) quoteRAF = requestAnimationFrame(flushQuotes) }
+function flushQuotes(ts: number): void {
+  quoteRAF = 0
+  if (detailDebt.due(ts)) { patchDetail(); syncTitle() }
+  if (rowDebt.due(ts)) {
+    for (const [k, dir] of pendingRow) patchWatchRow(k, dir)
+    pendingRow.clear()
+    hooks.onTicks.forEach(f => f())
   }
-  pendingTick.clear()
-  hooks.onTicks.forEach(f => f())
+  if (detailDebt.owing || rowDebt.owing) oweQuote()
 }
 
 let staleTimer: ReturnType<typeof setTimeout> | undefined
@@ -1667,10 +1696,12 @@ export async function initChart(): Promise<void> {
       else if (isCustomIv(cc.iv) && customBase(cc.iv) === e.iv && c.chart.bars.length) c.chart.updateBar(customTick(cc.symbol, cc.iv, e.bar))
     })
     else if (e.type === 'ticker') {
-      pendingTick.set(e.symbol, e.dir || pendingTick.get(e.symbol) || 0)
-      if (!tickRAF) tickRAF = requestAnimationFrame(flushTicks)
+      const now = performance.now()
+      pendingRow.set(e.symbol, e.dir || pendingRow.get(e.symbol) || 0); rowDebt.owe(now)
+      if (e.symbol === cfg(active())?.symbol) detailDebt.owe(now)
+      oweQuote()
     }
-    else if (e.type === 'mark') { if (e.symbol === cfg(active())?.symbol) patchDetail() }
+    else if (e.type === 'mark') { if (e.symbol === cfg(active())?.symbol) { detailDebt.owe(performance.now()); oweQuote() } }
     else if (e.type === 'oi') cells.forEach(c => { const cc = cfg(c); if (cc.symbol === e.symbol && cc.iv === e.iv) { c.chart.recalc(); c.chart.dirty = true } })
     else if (e.type === 'universe') afterUniverse()
     else if (e.type === 'detail' || e.type === 'meta') { if (st.panel === 'watch' && (e.type === 'meta' || e.symbol === cfg(active())?.symbol)) renderDetail() }

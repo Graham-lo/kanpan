@@ -57,6 +57,7 @@ async function baseState(over = {}) {
 }
 
 let browser, URL_
+const KLF = {}
 async function open(state, opt = PC, mock = { delay: 120, local: true, depth: 6000 }, q = '#chart') {
   const { ctx, count } = await newCtx(browser, opt, { [KEY]: JSON.stringify(state) }, mock)
   await ctx.addInitScript(DRAWCOUNT)
@@ -67,6 +68,10 @@ async function open(state, opt = PC, mock = { delay: 120, local: true, depth: 60
   page.on('request', r => { if (/\/klines\?/.test(r.url())) kl.push({ u: r.url(), t0: Date.now(), t1: null, req: r }) })
   page.on('requestfinished', r => { const x = kl.find(k => k.req === r); if (x) x.t1 = Date.now() })
   page.on('requestfailed', r => { const x = kl.find(k => k.req === r); if (x) x.t1 = Date.now() })
+  // 行情线路上每路 K 线流收到几帧（C15 有格子不动时对账：是推送没来，还是来了没上图）
+  page.on('websocket', w => { if (/market\/stream|binance\.me\/stream/.test(w.url())) w.on('framereceived', f => { const p = typeof f.payload === 'string' ? f.payload : '', m = /"stream":"([^"]*@kline_[^"]*)"/.exec(p); if (!m) return
+    const k = (KLF[m[1]] ||= { n: 0, t: 0, c: '', seen: [] }), t = /"t":(\d+)/.exec(p)?.[1], c = /"c":"([^"]*)"/.exec(p)?.[1]
+    k.n++; k.t = +t; k.c = c; if (k.seen.at(-1) !== c) k.seen.push(c); if (k.seen.length > 50) k.seen.shift() }) })
   const cdp = await ctx.newCDPSession(page); await cdp.send('Performance.enable')
   await page.goto(URL_ + q, { waitUntil: 'domcontentloaded' })
   return { ctx, page, cdp, count, errs, kl }
@@ -654,13 +659,16 @@ async function b12() {
       await waitCells(page, 16, 60000); await sleep(1500)
       const a = await page.evaluate(() => window.__arrive.slice())
       const fcp = await page.evaluate(() => performance.getEntriesByType('paint').find(x => x.name === 'first-contentful-paint')?.startTime)
-      // 当前格取 1500 根、其他格取 SIDE_LIMIT = 499 根（rest.ts）；带 endTime 的是补历史，不算
-      const ks = kl.filter(x => /limit=(1500|499)\b/.test(x.u) && !/endTime/.test(x.u))
+      // 当前格取 1500 根、其他格取 SIDE_LIMIT = 499 根（rest.ts）；带 endTime 的是补历史，不算。
+      // 本机留着上一段（market/klineStore.ts，2026-10-07 78aec4f8 起）的那几格是先摆本机那段、再只补尾巴（limit 几根）：
+      // 这一轮整段请求是 0，要看的是补尾巴那批是不是一起发的（不是一格等一格）
+      const full = kl.filter(x => /limit=(1500|499)\b/.test(x.u) && !/endTime/.test(x.u))
+      const ks = full.length ? full : kl.filter(x => !/endTime/.test(x.u))
       // 最大并发：K 线请求在飞的最多条数
       const ev = ks.flatMap(x => [[x.t0 - tNav, 1], [(x.t1 || x.t0) - tNav, -1]]).sort((p, q) => p[0] - q[0] || p[1] - q[1])
       let cur = 0, mx = 0; for (const [, d] of ev) { cur += d; mx = Math.max(mx, cur) }
       const starts = ks.map(x => x.t0 - tNav).sort((p, q) => p - q)
-      runs.push({ 场景: tag, 轮: r + 1, FCP: Math.round(fcp), 首格K线: Math.min(...a), 末格K线: Math.max(...a), 中位格: med(a), K线请求: ks.length, 最大并发: mx, 发起跨度ms: starts.length ? starts[starts.length - 1] - starts[0] : 0, 逐格到达: a.join(',') })
+      runs.push({ 场景: tag, 轮: r + 1, FCP: Math.round(fcp), 首格K线: Math.min(...a), 末格K线: Math.max(...a), 中位格: med(a), K线请求: ks.length, 取法: full.length ? '整段' : '本机先摆 + 补尾巴', 最大并发: mx, 发起跨度ms: starts.length ? starts[starts.length - 1] - starts[0] : 0, 逐格到达: a.join(',') })
       console.log('  ', JSON.stringify(runs[runs.length - 1]))
     }
     await shot(page, `B12-刷新后十六图-${tag.split(' ')[0]}`)
@@ -670,7 +678,7 @@ async function b12() {
   DATA.b12 = runs
   const r0 = runs.filter(r => r.场景.startsWith('延迟 120'))
   ok('B12', '刷新恢复十六图（120 ms）：16 格 K 线 ≤ 2 秒内到齐（F 线冷启动基线 1568 ms）', med(r0.map(r => r.末格K线)) <= 2000, r0.map(r => `末格 ${r.末格K线} ms、并发 ${r.最大并发}`).join('；'))
-  ok('B12', '刷新恢复十六图：K 线请求并行发出（16 个、并发 ≥ 8、发起跨度 ≤ 50 ms，不是一格等一格）', runs.every(r => r.K线请求 >= 16 && r.最大并发 >= 8 && r.发起跨度ms <= 50), runs.map(r => `${r.场景}#${r.轮} 请求 ${r.K线请求} 并发 ${r.最大并发} 跨度 ${r.发起跨度ms}ms`).join('；'))
+  ok('B12', '刷新恢复十六图：K 线请求并行发出（16 个、并发 ≥ 8、发起跨度 ≤ 50 ms，不是一格等一格）', runs.every(r => r.K线请求 >= 16 && r.最大并发 >= 8 && r.发起跨度ms <= 50), runs.map(r => `${r.场景}#${r.轮}（${r.取法}）请求 ${r.K线请求} 并发 ${r.最大并发} 跨度 ${r.发起跨度ms}ms`).join('；'))
 }
 
 // ═════════════════ C13 性能：对照 F 线 big；C15 挂机 3 分钟
@@ -716,18 +724,27 @@ async function c13(idleMin = 3) {
   if (idleMin > 0) {
     await away(page); await sleep(2000)
     const r0 = await page.evaluate(() => window.__redraw()), f0 = await metrics(cdp, page, false), raf0 = f0.raf
-    const last0 = (await cellsOf(page)).map(c => c.lastT + ':' + c.last)
+    const cells0 = await cellsOf(page), last0 = cells0.map(c => c.lastT + ':' + c.last), klf0 = Object.fromEntries(Object.entries(KLF).map(([k, v]) => [k, v.n]))
     const ms = await measure(page, cdp, () => sleep(idleMin * 60000))
     const r1 = await page.evaluate(() => window.__redraw()), f1 = await metrics(cdp, page, false)
     const per = r1.per.map((v, i) => v - (r0.per[i] || 0))
     const last1 = (await cellsOf(page)).map(c => c.lastT + ':' + c.last), sv = await streamsVsCells(page)
     const moved = last1.filter((v, i) => v !== last0[i]).length
-    ok('C15', `挂机 ${idleMin} 分钟：16 格的最新一根都在跟推送走`, moved >= 15, `${moved}/16 格的最新价变过；K 线流 ${sv.have}/${sv.want}、订阅总数 ${sv.total}、连接 ${JSON.stringify(sv.conns)}`)
+    const klfOf = c => { const k = `${c.symbol.toLowerCase()}@kline_${c.iv}`, v = KLF[k]; return v ? `收到 K 线 ${v.n - (klf0[k] || 0)} 帧、最后一帧 ${v.t}:${v.c}、近来收盘价 ${v.seen.slice(-8).join('→')}` : '没收到 K 线' }
+    const still = cells0.filter((c, i) => last1[i] === last0[i]).map(c => `${c.symbol} ${c.iv} ${last0[cells0.indexOf(c)]} ${klfOf(c)}`)
+    const why = still.length ? await page.evaluate(() => ({ stale: document.body.classList.contains('stale'), conn: window.__stream().state })) : null
+    const fetched = Object.fromEntries(Object.entries(f1.fetch).map(([k, n]) => [k, n - (f0.fetch[k] || 0)]).filter(([, n]) => n))
+    ok('C15', `挂机 ${idleMin} 分钟：16 格的最新一根都在跟推送走`, moved >= 15, `${moved}/16 格的最新价变过${still.length ? `（没变：${still.join('、')}；行情断线态 ${JSON.stringify(why)}；挂机期间请求 ${JSON.stringify(fetched)}）` : ''}；K 线流 ${sv.have}/${sv.want}、订阅总数 ${sv.total}、连接 ${JSON.stringify(sv.conns)}`)
     const secs = idleMin * 60
     DATA.c15 = { ...ms, 秒: secs, 重画总: r1.all - r0.all, 每格重画: per, raf: f1.raf - raf0, interval: f1.iv, ivBy: f1.ivBy, timeout: f1.to, toBy: f1.toBy, msgs: f1.ws.msgs - f0.ws.msgs, WS活: f1.ws.live, 写盘次: f1.ls.n - f0.ls.n, 写盘KB: Math.round((f1.ls.bytes - f0.ls.bytes) / 1024), 写盘按键: Object.fromEntries(Object.entries(f1.ls.byKey).map(([k, v]) => [k, v.n - (f0.ls.byKey[k]?.n || 0)]).filter(([, n]) => n)) }
     console.log('  ', JSON.stringify(DATA.c15))
     ok('C15', `挂机 ${idleMin} 分钟（十六图 + 订单流 + 300 只自选）：主线程占用 ≤ 15%`, ms.cpu <= 15, `CPU ${ms.cpu}%、脚本 ${ms.script}%、布局 ${ms.layouts}（${(ms.layouts / secs).toFixed(1)}/s）、重算 ${ms.recalcs}、长任务 ${ms.lt}（最长 ${ms.ltMax} ms）、负载 ${ms.机器负载}`)
-    ok('C15', '挂机：interval 数量稳定（≤ 8）', f1.iv <= 8, `${f1.iv} 个：${JSON.stringify(f1.ivBy)}`)
+    // 订单流交易所连接的心跳（orderflow/feed.ts Conn 在 ws.onopen 里起：OKX、Bybit 20 秒、Hyperliquid 30 秒发一次 ping，不发对面会断）
+    // 一条要心跳的连接一个、跟连接同生同灭，不是挂机涨出来的：2026-10-07 e26e3ae0 接上 Bybit（线性 / 现货 / 反向三条）与 Hyperliquid 后从 1 个变成 5 个。
+    // 应用自己起的仍按 ≤ 8 卡；心跳单独对账：不多于此刻开着的 OKX / Bybit / Hyperliquid 连接数
+    const beat = Object.entries(f1.ivBy).filter(([k]) => /\.onopen \(/.test(k)).reduce((a, [, n]) => a + n, 0)
+    const needBeat = f1.ws.urls.filter(u => /okx|bybit|hyperliquid/.test(u)).length
+    ok('C15', '挂机：interval 数量稳定（应用自己的 ≤ 8；订单流心跳不多于要心跳的连接数）', f1.iv - beat <= 8 && beat <= needBeat, `应用 ${f1.iv - beat} 个、心跳 ${beat} 个（要心跳的连接 ${needBeat} 条）：${JSON.stringify(f1.ivBy)}`)
     note('C15', '挂机：画布重画', `${r1.all - r0.all} 次（${((r1.all - r0.all) / secs).toFixed(1)}/s），每格 ${per.join(',')}；rAF 回调 ${f1.raf - raf0}（${((f1.raf - raf0) / secs).toFixed(1)}/s）；推送 ${f1.ws.msgs - f0.ws.msgs} 条；写盘 ${f1.ls.n - f0.ls.n} 次 ${Math.round((f1.ls.bytes - f0.ls.bytes) / 1024)} KB ${JSON.stringify(DATA.c15.写盘按键)}`)
   }
   ok('C13', '性能段：控制台无报错', !errs.length, errs.slice(0, 3).join(' | '))

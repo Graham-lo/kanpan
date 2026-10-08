@@ -68,7 +68,7 @@ fn share_identity(symbol:&str)->(&str,&str,&str) {
 /// 分享里每条画线可能出现的键（去掉 `id`，它单独校验）：就是客户端 `Drawing` 编码会写的那些。
 /// 和 `SHARE_REQUIRED`、`SHARE_RENAMED` 一起逐项对着 `contract/drawing-fields.json`
 /// （由 Swift 那边拿真实编码生成）——测试 `share_fields_are_what_drawing_encodes`。
-pub const SHARE_FIELDS:[&str;10]=["color","dash","filled","hidden","kind","levels","lineWidth","locked","points","text"];
+pub const SHARE_FIELDS:[&str;11]=["color","dash","filled","hidden","kind","levels","lineWidth","locked","points","text","style"];
 /// 每条画线都一定会写的键：`color` 只在设过颜色时写、`text` 只有带文字的工具写，所以不在这里。
 pub const SHARE_REQUIRED:[&str;8]=["dash","filled","hidden","kind","levels","lineWidth","locked","points"];
 /// 分享用 `Drawing` 自己的键名，个人同步用线上的名字；改完名交给同一套值规则。
@@ -265,7 +265,7 @@ async fn kept(State(s):State<AppState>,who:Identity,Route(id):Route<String>)->Re
    let n=count.as_u64().expect("count") as i64;
    let points:Vec<Value>=(0..n).map(|i|json!({"t":1_800_000_000_000i64+i*60_000,"p":100+i})).collect();
    let mut v=good();
-   v["drawings"][0]=json!({"id":"line1","kind":kind,"points":points,"color":{"value":"#112233"},"text":"x","lineWidth":1.3,"dash":"solid","filled":true,"hidden":false,"locked":false,"levels":[]});
+   v["drawings"][0]=json!({"id":"line1","kind":kind,"points":points,"color":{"value":"#112233"},"text":"x","style":{"text":{"visible":true}},"lineWidth":1.3,"dash":"solid","filled":true,"hidden":false,"locked":false,"levels":[]});
    assert!(validate(&serde_json::from_value(v.clone()).unwrap()).is_ok(),"{kind}");
    for key in SHARE_REQUIRED {
     let mut w=v.clone();w["drawings"][0].as_object_mut().unwrap().remove(key);

@@ -1,0 +1,4 @@
+iPhone 17e	FAIL	92/4	3140
+iPhone 17 Pro Max	FAIL	94/2	3124
+iPhone Air	FAIL	91/5	3090
+iPad mini (A17 Pro)	FAIL	6/0	16175

@@ -1,0 +1,4 @@
+iPhone 15	PASS	101	3555
+iPhone 16 Pro	PASS	101	3653
+iPhone 16 Plus	FAIL	100/1	3527
+iPhone 17	FAIL	98/3	3478

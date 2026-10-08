@@ -66,8 +66,8 @@ let wallHits: { y0: number; y1: number; ask: boolean }[] = []
 const onData = (): void => updateDrawer(true)
 liq.onUpdate = onData
 
-const GROW = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7l3-3 3 3M5 12l3-3 3 3"/></svg>'
-const SHRINK = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4l3 3 3-3M5 9l3 3 3-3"/></svg>'
+const GROW = I('grow', 'icon-16')
+const SHRINK = I('shrink', 'icon-16')
 const EMPTY_BARS_ICON = svgWrap(64, 28, '<rect x="2" y="10" width="26" height="8" rx="4" fill="var(--of-down-a)"/><rect x="36" y="10" width="26" height="8" rx="4" fill="var(--of-up-a)"/><rect x="31.5" y="4" width="1" height="20" fill="var(--line-strong)"/>')
 const EMPTY_LIQ_ICON = svgWrap(46, 30, `<g fill="var(--line-strong)">${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<rect x="${i * 6}" y="${14 - (i % 3) * 2}" width="4" height="${2 + (i % 3) * 2}" rx="1"/><rect x="${i * 6}" y="16" width="4" height="${2 + ((i + 1) % 3) * 2}" rx="1" opacity=".6"/>`).join('')}</g>`)
 

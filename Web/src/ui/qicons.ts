@@ -151,6 +151,44 @@ Object.assign(G, {
   layout6: qGrid(3, 2), layout8: qGrid(4, 2), layout9: qGrid(3, 3), layout12: qGrid(4, 3), layout16: qGrid(4, 4),
 })
 
+/* 补（2026-10-09 质感收尾）：原先 ui/icons.ts 里 24 格实心双调（衬底 30%）的杂项小记号整套改画成 18 格分层字形，
+ * 同一套几何语言——主体 1、次要 .55、面 .22–.3，挖空走 --qw；电脑网页除品牌记号外不再有双调老图标。 */
+{
+  const O = (cx: number, cy: number, r: number, o = 1, c?: string): Op => ({ t: 'o', cx, cy, r, o, c })
+  const R = (x: number, y: number, w: number, h: number, rx: number, o = 1, c?: string): Op => ({ t: 'r', x, y, w, h, rx, o, c })
+  const l = (d: string, r = 'm', o?: number, w?: number): Op => ({ t: 'l', d, r, o, w })
+  const s = (d: string, o = 1, c?: string): Op => ({ t: 's', d, o, c })
+  const f = (d: string, o = .22): Op => ({ t: 'f', d, o })
+  const back = (x: number): string => `M${x + 7} 4.2v9.6a.8.8 0 0 1-1.3.62L${x + .5} 9.62a.8.8 0 0 1 0-1.24l5.2-4.8A.8.8 0 0 1 ${x + 7} 4.2Z`
+  Object.assign(G, {
+    u_chevD: [l('M5 7.2L9 11.2L13 7.2')],
+    u_plus: [l('M9 3.4V14.6M3.4 9H14.6')],
+    u_close: [l('M4.6 4.6L13.4 13.4M13.4 4.6L4.6 13.4')],
+    u_check: [l('M3.4 9.6L7.2 13.2L14.6 4.8')],
+    u_more: [O(3.6, 9, 1.65), O(9, 9, 1.65), O(14.4, 9, 1.65)],
+    u_drag: [O(6.6, 4, 1.35), O(11.4, 4, 1.35), O(6.6, 9, 1.35), O(11.4, 9, 1.35), O(6.6, 14, 1.35), O(11.4, 14, 1.35)],
+    u_play: [s('M5.2 3.3v11.4a.9.9 0 0 0 1.38.76l8.7-5.7a.9.9 0 0 0 0-1.52l-8.7-5.7A.9.9 0 0 0 5.2 3.3Z', .9)],
+    u_pause: [R(4, 3, 3.8, 12, 1.5, .9), R(10.2, 3, 3.8, 12, 1.5, .9)],
+    u_toStart: [R(2.6, 3.4, 2.6, 11.2, 1.3), s(back(7.4), .9)],
+    u_replay: [s(back(.8), .9), s(back(8.6), .55)],
+    u_refresh: [f('M9 3.6a5.4 5.4 0 1 0 0 10.8a5.4 5.4 0 1 0 0-10.8Z', .14), l('M15.2 9.8A6.2 6.2 0 1 1 13.2 4.4'), s('M15.9 2.2L15.7 7.1L10.9 6.3Z', 1)],
+    u_download: [l('M3 11.2V13.6A2.2 2.2 0 0 0 5.2 15.8H12.8A2.2 2.2 0 0 0 15 13.6V11.2', 'm', .55), l('M9 2.2V9'), s('M9 12.6L12.8 8.4H5.2Z')],
+    u_user: [O(9, 5.6, 3.4, .9), s('M2.4 15.2C2.4 12 5.4 10.4 9 10.4S15.6 12 15.6 15.2a1 1 0 0 1-1 1H3.4a1 1 0 0 1-1-1Z', .45)],
+    u_key: [s('M9 7.9H15.4a1.1 1.1 0 0 1 1.1 1.1V12.4a1.1 1.1 0 0 1-2.2 0V10.1H9Z', .55), O(5.6, 9, 4.2, .9), O(5.6, 9, 1.5, 1, 'w')],
+    u_device: [R(1.4, 3, 11.8, 8.8, 2, .3), R(4.2, 13.2, 6.2, 1.8, .9, .3), R(10.6, 5, 6.8, 11.8, 2.2, 1, 'w'), R(11.3, 5.7, 5.4, 10.4, 1.6, .9), R(13.1, 13.6, 1.8, 1, .5, 1, 'w')],
+    u_palette: [s('M9 2.2a6.8 6.8 0 0 0 0 13.6c.9 0 1.35-.7 1.05-1.45-.4-.9.2-1.95 1.2-1.95H12.8a3 3 0 0 0 3-3C15.8 5.4 12.8 2.2 9 2.2Z', .3), O(5.4, 8.6, 1.35), O(7.6, 5.2, 1.35), O(11.4, 5.4, 1.35, 1, 'a')],
+    u_link: [l('M7.8 10.2a2.7 2.7 0 0 0 3.8 0l2.5-2.5a2.7 2.7 0 0 0-3.8-3.8l-.8.8'), l('M10.2 7.8a2.7 2.7 0 0 0-3.8 0L3.9 10.3a2.7 2.7 0 0 0 3.8 3.8l.8-.8', 's')],
+    u_logout: [R(1.8, 2.4, 8, 13.2, 2.2, .3), l('M6.6 9H13.4'), s('M16.4 9L12.6 5.4V12.6Z')],
+    u_spec: [R(1.8, 1.8, 6.2, 6.2, 1.9, .9), O(13, 4.9, 3.1, .55), s('M4.9 10.2L8 15.8H1.8Z', .55), R(10, 10, 6.2, 6.2, 3.1, .9)],
+    u_wifiOff: [{ t: 'cut', d: 'M3 3L15 15', w: 4.4, ops: [l('M1.8 7.4a10.2 10.2 0 0 1 14.4 0M4.6 10.4a6.2 6.2 0 0 1 8.8 0', 's'), O(9, 14.2, 1.6)] }, l('M3 3L15 15')],
+    u_candles: [R(4.4, 1.8, 1.3, 13.6, .65), R(2.9, 4.6, 4.3, 7.6, 1.3), s('M11.75 4.2h1.3v2.4h.65a1.3 1.3 0 0 1 1.3 1.3v4.2a1.3 1.3 0 0 1-1.3 1.3h-.65v2.4h-1.3v-2.4h-.65a1.3 1.3 0 0 1-1.3-1.3V7.9a1.3 1.3 0 0 1 1.3-1.3h.65Z', .55)],
+    // 大单列表抽屉的「拉高 / 收回」：两道折线，靠近要去的方向那道是主体
+    u_grow: [l('M4.6 8.2L9 3.8L13.4 8.2'), l('M4.6 14L9 9.6L13.4 14', 's')],
+    u_shrink: [l('M4.6 4L9 8.4L13.4 4', 's'), l('M4.6 9.8L9 14.2L13.4 9.8')],
+    u_layers: [s('M9 2.3l6.3 3.3a.6.6 0 0 1 0 1.06L9 9.9 2.7 6.66a.6.6 0 0 1 0-1.06Z', .9), s('M3.6 9.2L9 12l5.4-2.8.9.46a.6.6 0 0 1 0 1.06L9 13.95 2.7 10.72a.6.6 0 0 1 0-1.06Z', .55)],
+  })
+}
+
 const QO: Record<string, number> = { m: 1, k: 1, s: .55, g: .28, x: .3 }
 const hasKey = (ops: Op[]): boolean => ops.some(o => (o.t === 'a' && o.s) || (o.ops && hasKey(o.ops)))
 let MID = 0
@@ -183,6 +221,10 @@ export const UI_Q: Record<string, string> = {
   gear: 'u_set', eye: 'eye', eyeOff: 'u_eyeOff', star: 'u_star', starOff: 'u_starOff', starLine: 'u_starLine', list: 'u_list',
   trades: 'u_trades', info: 'u_info', sun: 'u_sun', moon: 'u_moon', share: 'u_share', pencil: 'u_pencil',
   cursor: 'cursor', magnet: 'magnet', lock: 'lock', trash: 'trash', measure: 'measure',
+  chevronDown: 'u_chevD', plus: 'u_plus', close: 'u_close', check: 'u_check', more: 'u_more', drag: 'u_drag', play: 'u_play',
+  pause: 'u_pause', toStart: 'u_toStart', replay: 'u_replay', refresh: 'u_refresh', download: 'u_download', user: 'u_user',
+  key: 'u_key', device: 'u_device', palette: 'u_palette', link: 'u_link', logout: 'u_logout', spec: 'u_spec', wifiOff: 'u_wifiOff',
+  candles: 'u_candles', layers: 'u_layers', grow: 'u_grow', shrink: 'u_shrink',
 }
 
 /** 质感字形的 svg（18 格）；cls 照旧决定尺寸 */

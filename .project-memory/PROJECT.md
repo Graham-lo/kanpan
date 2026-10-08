@@ -2053,6 +2053,30 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **验收脚本踩坑**（都在脚本里改了根因，app 没改）：① scroll-zoom 横向滚轮朝旧 K 线平移把线推出视野 → 改朝新方向；② bulk 先找空地再滚轮，空地变成了竖线 → 滚完重找；③ 十六格 ⌘⌥H 取样偶发撞到别的线颜色 → 期待隐藏时失败重取一次；④ 线上竖线 / 趋势线锚点早 9 根：品种表没到时价格精度按 K 线小数位猜（合成 K 线长小数 → 8 位、价格轴宽 107 px），表一到收成 56 px、整图右挪，正好落在「算落点 → 点」中间 → `ready()` 等价格轴宽度连续三次不变；⑤ 线上切 ETHUSDT 偶发没切过去：搜索结果按实时成交额排、品种表走真网络晚到 → `switchSymbol` 等到 `data-w="ETHUSDT"` 那一行、方向键挪过去再回车，等 30 秒，不行整套重来一次。
 - **留意**：品种表没到之前价格轴精度按 K 线小数位猜，真数据冷启动时价格轴可能先宽后窄一下（合成数据放大了它，真行情小数位短、影响小，没改）；旧画线条 CSS 还留在共享的 `app.css` 里由 `drawbar.css` 覆盖（`app.css` 多窗口共用没动）；draw-cross 的跨场景段（layouts / intervals / theme / reload…）仍用原 9 把工具，新 32 种由 kinds / kinds16 两段专测。
 
+## 69. 10-08：主力订单流接 Bybit + Hyperliquid（三端 + 服务端，统一展示模型；订单流抽成独立模块、交易所接入全放进多交易所模块）
+
+- **用户原话**：「统一展示模型即可，现在直接开始实现，注意实现完成后，要做一次压测，最好把订单流单独抽出来，交易所接入放到多交易所中，限流断网这些重点注意，最后要交叉验证通过」「凡是和订单流整个功能模块有关的都要接进去，三端都是」「用户更关心的是品种和有用的数据，交易所分类的权重并不大」「接的两个交易所都进了深度，订单流，大单和爆仓吗」。
+- **模块 × 交易所（五家：币安 / OKX / Coinbase / Bybit / Hyperliquid）**：
+
+  | 模块 | iOS | 手机网页 | 电脑网页 | 服务端 |
+  |---|---|---|---|---|
+  | 盘口深度 / 挂单墙 / 挂单带 | 五家 | 五家 | 五家 | 五家常驻跟踪（ce0a892a） |
+  | 逐笔成交 / 图上大单泡 / 大单分钟账 | 五家 | 五家 | 五家 | 五家（`/flow`、`/history`、热力） |
+  | 大单与爆仓页 / 抽屉 | 五家分簿 | 五家 | 五家 | — |
+  | 爆仓 `/liq` | 读 | 读 | 读 | 币安 / OKX / Bybit U 本位 + 币本位（db67127c，「哪家」2 = Bybit） |
+  | 墙条件提醒 | — | — | — | 五家的墙都摊进来（b1b60745） |
+  | 行情中继 | 走网关时用 | 走网关时用 | 走网关时用 | `/v1/market/ws/bybit?category=spot\|linear\|inverse`、`/v1/market/ws/hyperliquid`（2804fb0e） |
+
+  Coinbase 现货、Bybit 现货、Hyperliquid 没有公开强平流，爆仓这一列就是没有（运维手册写明，不是待办）。
+- **订单流 / 交易所分层**：订单流通用代码只查注册表、不出现任何交易所名——服务端 `src/venues/{binance,okx,coinbase,bybit,hyperliquid}/{mod,orderflow,relay}.rs` + `venues/orderflow.rs`（品种表 / 缩放 / 注册，bca05018）；iOS `KanpanNetwork/{Bybit,Hyperliquid}/<X>OrderFlow.swift` + `OrderFlow/OrderFlowExchange.swift` 注册表（`VenueRegistry.orderFlow` 五家，`DepthFeedFactory` 删掉，2b9e020d）；网页 `Web/src/venues/{binance,okx,coinbase,bybit,hyperliquid,common,index}.ts`（e26e3ae0）。隔离由测试守：`tests/venues-isolation.test.ts`、`OrderFlowAdapterTests` / `BybitHyperliquidAdapterTests`、服务端 `venues::` 各家真表样本。接法写在 `docs/多交易所-接入指南.md` §2b / §2c / §3b。
+- **限流与断网（重点）**：Bybit 节流组 250 ms、100 连接 / 5 分钟；`api.bybit.com` 连不上换 `api.bytick.com`，`stream.bybit.com` 换 `stream.bytick.com`；Hyperliquid 进程共用一条 hub（`venues/hyperliquid/hub.rs`：按 (频道, 币) 引用计数、按 `data.coin` 分发、断线退避重连后全部重订且对客户端透明、上行 34 ms 一条、新连接 ≥2 秒、订阅 ≤900 其中常驻 ≤600、收帧跟不上的中继踢 1013）；Bybit 序列模型 SnapshotOnly；资源闸门超线先卸 Bybit 现货那一本，再热点 → 山寨 → 固定（3217fa2c）；四条中继共用名额 MAX_RELAYS 96 / 每客户端 24。
+- **主次与用词**：标题 / 副标题只写品种（现货带「现货」），交易所收成一行小字「Bybit永续 1.2M · 币安永续 0.9M」最多三家、不写「N 本」；状态词三端只在 `KanpanCore/Terms/terms.json`（挂单中 / 成交中 X% / 已成交 / 成交 X% · 撤单 Y% / 已撤单 / 已失联 / 已结束 / 持续），iOS `BigTradeTerm`、网页 `BT`；`TermsTests` 口语禁词表守着（4572f96e / 278035a6 / 43b956f1）。
+- **验收**：线上截图 `docs/acceptance/多交易所-Bybit-HL-2026-10-08/`（pc-1…3、m-1…3，各一组「五家含HL」）；`Web/scripts/venues-live.mjs` 线上五家实测全过；KanpanNetwork 五家深度流压测、KanpanCore 五家大单账、cargo `--lib` 全绿。
+- **交叉验证与压测（整批做完后）**：画线 `draw-cross.mjs` 本地 411 / 411（684 秒）；电脑 `stress.mjs` 线上 89 / 89；KanpanCore / KanpanNetwork / chart-test（287）/ app-logic-test 绿；web tsc + vitest 190 文件 2426 条绿。压测翻出来并从根因修掉的：
+  - **KanpanData 全量跑才红的 7 处**（888233b0）：大单分钟账「每秒最多挂一次」的时刻被晚到的一拍用拨过的虚拟钟重置、后到的大单永远挂不上（测试改成先等 feed 记进去再拨钟，`tradesForTests` 钩子）；顺带翻出 3 处生产时序 bug——`FeedComposer.merge` 快照跑在推送前面时末根停在半截、`MarketFeed.loadMore` 翻页回来左沿已右移仍并进去留洞、`CompareFeed` 最后一页与「已取到」不同拍导致整段重拉——与 3 处测试竞态；16 个满载进程下连跑 15 次 0 红。
+  - **服务端慢语句（ea211781，迁移 0053–0057）**：压测期间线上每小时二十多条 1–2 秒慢语句，根因是十几 GB 的 `orderflow_heat` 按行删过期 / 超预算（VACUUM 跟读、并段抢磁盘）与 `orderflow_flow` 冷读 3 天逐行回表。热力原始快照改按 `bucket_ms` 6 小时 RANGE 分区（NOT VALID CHECK → VALIDATE → 一个事务把旧表挂成 `[MINVALUE, T)`，不扫表、不挡读写），过期与超预算整张 DROP、每分钟预建此刻与下一张；预聚合段自己按 3 天删；预算按 `pg_partition_tree` 合计。`orderflow_flow` 加 `(base, minute_ms) INCLUDE 四个数` 覆盖索引 + autovacuum 0.02，读成 Index Only Scan。上线后 15 分钟慢语句 0 条、无重启。一次性代价：legacy 那 19 GB 过了 6 小时且总量超线时整张 DROP，之后原始快照约留两天多，3 天的段不受影响（`ops/README.md` 写明）。上线 20 分钟稳态复查：IO 压力回到基线（some avg300 2.17 / full 0.85）、NRestarts 0、只剩 1 条 rollup 慢语句（legacy 分区到 02:00 CST 前还在收行）；预算 26.02 / 30 GiB，`orderflow_heat` 21.43 / 20，legacy 分区按闸门约 10-09 08:00 CST 整张 DROP。
+  - **iOS app-logic 全跑 2 红（734ca4aa）**：`ShareInbox` 两个用例按墙钟等 10 秒 `busy` 没清就红，单跑绿。用 `sample` 抓测试宿主主线程证实根因是**主 actor 被同步重活用例饿死**——Swift Testing 并行跑所有 suite，`DrawingSyncDiffTests.measureFullVersusIncremental`（20×50 画线整份 vs 增量编码 + 记账）在主线程头 9 秒里占了约 6 秒，`FavoritesStressTests` 的纯值随机搬动也在主 actor 上；第 2、3 趟虽绿但 367 个用例时长都卡在 ~9 秒那簇。修法：ShareInbox 的 pull 任务对测试可见、`settle` 改成等任务本身跑完；FavoritesStress 纯值用例、DrawingSyncDiff 编码那半改 `nonisolated async` 跑到主 actor 外（SE-0338：只有 nonisolated async 才离开调用方 actor），记账那半 3 轮塞进 `MainActor.run`。第四趟 848 / 848 + 冒烟 5 / 5，直方图 0s:471 / 1s:135 / 2s:361、~9 秒那簇没了。量到的数：20×50 画线改一条，编码整份 359498 B / 187.83 ms、增量 17889 B / 9.66 ms；连记账整份 133.50 ms、增量 9.82 ms（增量 < 1/10 的断言照旧）。
+
 ## 70. 10-08：电脑网页图标整套换成定版「质感」一套 + 冷启动价格轴不再跳宽度
 
 - **来源**：用户定版原型 `docs/prototypes/web-visual-2026-10-08.html` 第 2 节「质感」。只动电脑网页（`Web/src`，不含 `Web/src/m`）。

@@ -23,7 +23,8 @@ import { DRAWING_TEXT_LIMIT, DrawKind, type DrawingKind } from '../m/chart/draw/
 import { graphemeCount } from '../m/chart/draw/fmt'
 import { fittedRegression } from '../m/chart/draw/regression'
 import type { BarSeries } from '../m/chart/series'
-import { GEOM, geomBox, geomHandles } from './drawGeom'
+import { TVK, geomBox, geomHandles } from './drawGeom'
+import { cleanStyle, rgbaOf, sv, svn, svs } from './drawSpec'
 
 export interface XY { x: number; y: number }
 type Ctx = CanvasRenderingContext2D
@@ -101,6 +102,7 @@ export function cleanDrawing(raw: unknown): Drawing | null {
   if ('text' in x && !textOk(x.text)) delete d.text
   if ('levels' in x && !levelsOk(x.levels)) delete d.levels
   if ('filled' in x && typeof x.filled !== 'boolean') delete d.filled
+  if ('style' in x) { const s = cleanStyle(x.type, x.style); if (s) d.style = s; else delete d.style }
   return d
 }
 
@@ -335,10 +337,10 @@ export function moveHandle(d: Drawing, k: number, now: DrawPoint): void {
 export function bbox(ch: TVChart, d: Drawing, p: Pane, r: PriceRange): { x0: number; y0: number; x1: number; y1: number } | null {
   if (!d.pts.length) return null
   const PW = ch.plotW()
-  let pts = GEOM.has(d.type) ? geomHandles(ch, d, p, r) : handlePixels(ch, d, p, r)
+  let pts = TVK.has(d.type) ? geomHandles(ch, d, p, r) : handlePixels(ch, d, p, r)
   if (d.type === 'hline') pts = [{ x: 0, y: pts[0].y }, { x: PW, y: pts[0].y }]
   if (d.type === 'vline') pts = [{ x: pts[0].x, y: p.y }, { x: pts[0].x, y: p.y + p.h }]
-  if (GEOM.has(d.type)) { const g = geomBox(ch, d, p, r); if (g.length) pts = g }
+  if (TVK.has(d.type)) { const g = geomBox(ch, d, p, r); if (g.length) pts = g }
   if (isProfile(d.type)) { const s = fvpShape(ch, d, p, r); if (s) pts = [{ x: s.x0, y: ch.priceToY(s.v.hi, p, r) }, { x: s.x1, y: ch.priceToY(s.v.lo, p, r) }] }
   if (d.type === 'avwap') { const b = avwapPixels(ch, d, p, r); if (b.length) pts = pts.concat(b.filter((_, i) => i % 8 === 0 || i === b.length - 1)) }
   if (d.type === 'position') pts = pts.concat(d.pts.map(q => ({ x: ch.indexToX(ch.indexAt(d.pts[0].t)), y: ch.priceToY(q.p, p, r) })))
@@ -395,8 +397,8 @@ function drawAvwap(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col:
     c.stroke(); c.setLineDash([])
   }
   line(b.mid, col, d.width || 1.5, dashPattern(d))
-  if (end - from >= 0) {
-    // 线尾标读数
+  if (end - from >= 0 && sv(d, 'priceLbl') !== false) {
+    // 线尾标读数（设置「价格标签」）
     const v = b.mid[end - i0], x = X(end), y = Y(v)
     c.font = `11px ${ch.font.split('px ')[1] || 'sans-serif'}`; c.textBaseline = 'middle'; c.textAlign = 'left'
     const t = `VWAP ${fmt(v, ch.meta.dec)}`, w = c.measureText(t).width + 8
@@ -432,23 +434,25 @@ function drawPosition(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, c
   const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx), W = Math.max(1, x1 - x0)
   const ay = ch.priceToY(ea.p, p, r), by = ch.priceToY(ta.p, p, r), cy = ch.priceToY(sa.p, p, r)
   const up = ch.colors.up || '#089981', down = ch.colors.down || '#F23645'
-  const box = (y0: number, y1: number, tint: string) => {
+  // 设置里改过盈利 / 亏损背景就照改的（带透明度），没改跟图表涨跌色
+  const box = (y0: number, y1: number, tint: string, bg: unknown) => {
     const top = Math.min(y0, y1), h = Math.abs(y1 - y0)
-    c.fillStyle = hexA(tint, 0.14); c.fillRect(x0, top, W, h)
+    c.fillStyle = typeof bg === 'string' && /^#[0-9a-f]{6,8}$/i.test(bg) ? rgbaOf(bg) : hexA(tint, 0.14); c.fillRect(x0, top, W, h)
     c.strokeStyle = hexA(tint, 0.7); c.lineWidth = 1; c.strokeRect(Math.round(x0) + .5, Math.round(top) + .5, Math.round(W), Math.round(h))
   }
-  box(ay, by, up)   // 入场 → 目标：赚的那一半
-  box(ay, cy, down) // 入场 → 止损：亏的那一半
+  box(ay, by, up, d.style?.tgtBg)   // 入场 → 目标：赚的那一半
+  box(ay, cy, down, d.style?.stopBg) // 入场 → 止损：亏的那一半
   c.strokeStyle = col; c.lineWidth = d.width || 2; c.setLineDash(dashPattern(d))
   c.beginPath(); c.moveTo(x0, Math.round(ay) + .5); c.lineTo(x1, Math.round(ay) + .5); c.stroke(); c.setLineDash([])
   const s = positionStats(ea.p, ta.p, sa.p)
   const fam = ch.font.split('px ')[1] || 'sans-serif'
-  c.font = `600 11px ${fam}`; c.textBaseline = 'middle'
+  const size = svn(d, 'txtSize', 12) - 1, tc = svs(d, 'txtColor', '#FFFFFF')
+  c.font = `600 ${size}px ${fam}`; c.textBaseline = 'middle'
   const chip = (text: string, x: number, y: number, bg: string, align: 'right' | 'center') => {
-    const w = c.measureText(text).width + 12, h = 18
+    const w = c.measureText(text).width + 12, h = Math.round(size * 1.3) + 4
     const left = align === 'right' ? x - w : x - w / 2
     c.fillStyle = bg; roundRect(c, left, y - h / 2, w, h, 4); c.fill()
-    c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText(text, left + w / 2, y)
+    c.fillStyle = tc; c.textAlign = 'center'; c.fillText(text, left + w / 2, y)
     ch.textRects.push({ x: left, y: y - h / 2, w, h })
   }
   // 三个读数各贴各的线：目标、止损甩到框外那一侧，盈亏比压在入场线中间（照手机，三条线两两不同高不会撞）

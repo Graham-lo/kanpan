@@ -207,11 +207,15 @@ pub const SERVER_AHEAD_SETTINGS_FIELDS:&[&str]=&[];
 pub const WEB_SETTINGS_FIELDS:&[&str]=&["webChart"];
 // `variants/<palette tool>` is the drawing method last picked for that family in the style sheet
 // (trend → extended, hline → hray, vline → crossLine): the next line from that tool is drawn that way.
-pub const DRAWING_PREFERENCE_FIELDS:[&str;5]=["favorites","magnet","continuous","styles","variants"];
-// `text` is the note/callout/flag caption; `created` only old archives carry.
+// `templates/<KIND>` / `webStyles/<KIND>` (2026-10-09) are web-only: the PC browser's saved style
+// templates per tool and its TradingView-style defaults per tool. iOS never sends them; it keeps
+// them untouched because a client only speaks for the keys it owns (`PersonalSyncCodec.ownedKeys`).
+pub const DRAWING_PREFERENCE_FIELDS:[&str;7]=["favorites","magnet","continuous","styles","variants","templates","webStyles"];
+// `text` is the note/callout/flag caption; `created` only old archives carry; `style` is the web's
+// TradingView-style extension object, which iOS carries through untouched (`Drawing.style`).
 // Checked against `contract/drawing-fields.json` (`syncFields` + `legacySyncFields`, generated from what
 // the client's `PersonalSyncCodec.drawings` really sends) by `drawing_fields_are_what_the_codec_sends`.
-pub const DRAWING_FIELDS:[&str;14]=["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"];
+pub const DRAWING_FIELDS:[&str;15]=["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text","style"];
 pub const FAVORITE_FIELDS:[&str;6]=["symbol","market","venue","groupId","order","alerts"];
 pub const GROUP_FIELDS:[&str;3]=["name","order","members"];
 // 提醒（方案文档 2.2 的整张表）。`condition` 的两档（`touch` / `close`）两侧评估器都判。
@@ -616,8 +620,11 @@ mod tests {
     regenerating — run `make sync-contract` from the repo root first.");
 
   let expected=[
-   ("drawingPreferences",&["favorites","magnet","continuous","styles","variants"][..]),
-   ("drawings",&["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"][..]),
+   // `templates` / `webStyles` are web-only roots (the PC browser's per-tool templates and
+   // TradingView-style defaults); iOS never sends them and leaves them alone, but the server
+   // must accept them or every web edit of a tool template is dropped as an unknown field.
+   ("drawingPreferences",&["favorites","magnet","continuous","styles","variants","templates","webStyles"][..]),
+   ("drawings",&["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text","style"][..]),
    ("favorites",&["symbol","market","venue","groupId","order","alerts"][..]),
    ("groups",&["name","order","members"][..]),
    ("alerts",&["kind","symbol","market","drawingID","lines","condition","armedAt","once","status","firedAt","firedPrice","dueAt","reviewID","title","created",
@@ -678,6 +685,23 @@ mod tests {
   assert_eq!(object.body["variants/trend"],json!("extended"));
   assert_eq!(object.body["variants/vline"],json!("crossLine"));
   assert!(op("drawingPreferences",&[("variants/trend",json!("telekinesis"))]).validate().is_err());
+ }
+ /// 网页的工具模板与默认样式（`templates/<KIND>`、`webStyles/<KIND>`）、画线上的网页扩展样式（`style`）：
+ /// 过白名单（不被当成未知字段丢掉）、过值校验、真的合并进对象。
+ #[test] fn the_web_drawing_extensions_are_stored() {
+  let template=json!([{"name":"粗红线","color":{"value":"#ff0000"},"lineWidth":2,"style":{"text":{"visible":true}}}]);
+  let fields=[("templates/trend",template.clone()),("webStyles/trend",json!({"text":{"visible":true}}))];
+  let operation=op("drawingPreferences",&fields);
+  assert!(operation.validate().is_ok());
+  assert!(operation.unknown_fields().is_empty());
+  let object=applied("drawingPreferences",&fields);
+  assert_eq!(object.body["templates/trend"],template);
+  assert!(op("drawingPreferences",&[("webStyles/trend",json!([1]))]).validate().is_err());
+  let style=op("drawings",&[("style",json!({"text":{"visible":true}}))]);
+  assert!(style.validate().is_ok());
+  assert!(style.unknown_fields().is_empty());
+  assert!(op("drawings",&[("style",json!(null))]).validate().is_ok(),"null = the web cleared it");
+  assert!(op("drawings",&[("style",json!("bold"))]).validate().is_err());
  }
  /// 指标按周期分组记忆（2026-09-27）：分了叉的那一组整份布局走 `indicatorLayouts/<组>`，
  /// 过白名单、过值校验、真的合并；null 是「这一组并回共用」；组名、布局里的键与值都按规则拒。
