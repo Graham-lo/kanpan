@@ -156,8 +156,18 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
 `GET /v1/market/orderflow/heat` 读。设计与接口见 `docs/主力订单流-方案-2026-09-24.md`「深度热力快照」。
 
 - 日志（info）：每 10 分钟 `Orderflow heat: last 600s wrote N bands / M buckets (… bands/s, ~… MB/day of rows) in K statements, …s busy; dropped a (queue full), b (write failed)`；
-  每小时 `Orderflow heat: purge deleted …; table … bytes`。`dropped` 不为 0 说明库跟不上；原始表与三张预聚合表合计超过热力的预算（20 GiB，见下「磁盘预算」）会 warn `size gate trimmed to …`。
-- 看体积：`SELECT pg_size_pretty(pg_total_relation_size('orderflow_heat'))`；看写入：`SELECT count(*)/12.0 FROM orderflow_heat WHERE bucket_ms > (SELECT max(bucket_ms)-60000 FROM orderflow_heat)`（每 5 秒几行）。
+  每小时 `Orderflow heat: purge dropped N partitions, rollup rows deleted M; raw P partitions X bytes`；建 / 删分区时 info `created partitions [...]` / `dropped partitions [...]`。
+  `dropped`（写库那行）不为 0 说明库跟不上；原始表与三张预聚合表合计超过热力的预算（20 GiB，见下「磁盘预算」）时闸门删分区，每删一张 warn `size gate dropped partition orderflow_heat_p… (… bytes, budget …)`。
+- **分区（2026-10-08，迁移 0053–0057）**：`orderflow_heat` 按 `bucket_ms` RANGE 分区，6 小时一张（UTC 0/6/12/18 点起），名字 `orderflow_heat_pYYYYMMDD_HH`，列与主键不变。
+  - 清理每分钟一次（`heat::purge`）：预建此刻与下一张分区（写库撞上没有分区也会现建再写一次）；上沿早于「此刻 − 3 天」的分区整张 DROP（不逐行删、不留死元组、不招 VACUUM）。
+  - 体积闸门：按各分区实际大小（`pg_partition_tree` 合计）判断，超 20 GiB 从最旧的分区整张 DROP 到 18 GiB 以下；最近 6 小时与此刻所在那张永远不删。
+  - 预聚合段（`_30s/_150s/_900s`）自己按 3 天删，不跟闸门走：原始快照被闸门删短了，读几天照样有段（读接口最早时刻取原始与段里最早的，段兜底最近一个快照）。进度两行：`orderflow_purged` 的 `heat`（原始删到哪）与 `heat_rollup`（段删到哪）。
+  - 建 / 删分区要父表属主，服务的 `kanpan_app` 不是，所以走 0057 建的两个 SECURITY DEFINER 函数 `orderflow_heat_ensure(name,lo,hi)` / `orderflow_heat_drop(name)`（只认 6 小时对齐、名字合规、属于 `orderflow_heat` 的分区；DROP 锁等不到 2 秒放弃、下分钟再来）。
+  - 迁移怎么切的：0053 给旧表加 `CHECK (bucket_ms < T) NOT VALID`（T = 迁移时刻 + 1 小时后的第一个 6 小时边界）→ 0056 `VALIDATE`（扫一遍旧表，只拿 SHARE UPDATE EXCLUSIVE，不挡读写）→ 0057 一个事务里把旧表改名 `orderflow_heat_legacy`、建分区父表与 T 起两张分区、把旧表挂成 `[MINVALUE, T)` 那一张（有已验证的 CHECK，不再扫）。旧二进制在迁移期间一直能写（T 之前的落旧表），不丢拍；只要 migrate 在 T 之前跑完（否则 T 以后的快照被 CHECK 拒，见 0053 注释里的补救）。
+  - 一次性的代价：`orderflow_heat_legacy`（迁移前约 19 GB 的原始快照）一旦整张早于「此刻 − 6 小时」（部署后约 6–12 小时），总量又超线，闸门就会把它整张 DROP——之后原始快照按每天约 6 GB 涨，闸门大约留两天多（不到 3 天的保留期），3 天的段不受影响。
+  - 看分区：`\d+ orderflow_heat`，或 `SELECT c.relname, pg_get_expr(c.relpartbound,c.oid), pg_size_pretty(pg_total_relation_size(c.oid)) FROM pg_inherits i JOIN pg_class c ON c.oid=i.inhrelid WHERE i.inhparent='orderflow_heat'::regclass ORDER BY 1`。
+- 看体积：`SELECT pg_size_pretty(sum(pg_total_relation_size(relid))) FROM pg_partition_tree('orderflow_heat')`（父表自己是 0，要按分区合计）；
+  看写入：`SELECT tableoid::regclass, count(*)/12.0 FROM orderflow_heat WHERE bucket_ms > (extract(epoch from now())*1000)::bigint - 60000 GROUP BY 1`（每 5 秒几行，落在此刻那张分区；查询都带 `bucket_ms` 范围，只碰相关分区）。
 - 2026-09-29 线上稳态（154 只）：每 5 秒约 460 行 / 1.85 万桶，一行约 626 字节（含索引约 713），一天约 5.6 GB，3 天约 17 GB；满额 220 只约 24 GB。
   写库 10 分钟忙约 8 秒。冷启动头几分钟币安快照还在排队，行数从几十爬到稳态。
 - 读（2026-09-29 瘦身）：带 `lo`/`hi`、`around`/`pct` 或 `bucketMs` 的是网页版的收窄请求，上限 1.4 万行、最多抽 720 张快照；抽样按主键点查 `bucket_ms = ANY(…)`。同参数 5 秒内只读一次库，答复 `Cache-Control: public, max-age=5`。热力与 `/history` 共用两个读名额（`HISTORY_READS`）。
@@ -168,10 +178,10 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
   再把 30 秒段并成 150 秒、150 秒并成 900 秒。读的时候格宽是哪几档段的整数倍就从粗到细用这几档，段没盖到的头尾照旧读原始快照；
   段里存的是「总和 + 快照数」，出答复时相除，和原来「格里各快照取平均」同一个口径（并好的那截是每个快照都算进去的精确平均，不再抽样）。
   部署后第一次起来会从原始表最早的快照一截十分钟往前追（每截之间歇 0.5 秒），追完之前没盖到的部分照旧读原始快照，接口不受影响。
-  清理跟原始快照同一个截止时刻（`purge`）。每条并段语句拿一个写名额（`WRITE_SLOTS`）、`work_mem` 64 MB、死线 2 分钟；连着失败 5 次跳过那一截并 warn。
+  清理按段自己的 3 天保留期（2026-10-08 起不再跟原始快照的截止时刻走）。每条并段语句拿一个写名额（`WRITE_SLOTS`）、`work_mem` 64 MB、死线 2 分钟；连着失败 5 次跳过那一截并 warn。
   看进度：`SELECT width_ms, count(*), to_timestamp(max(bucket_ms)/1000) FROM orderflow_heat_rollup GROUP BY 1`（三档的最后一段应在此刻前 1 分钟 / 3 分钟 / 15 分钟左右）；
   看体积：`SELECT pg_size_pretty(pg_total_relation_size('orderflow_heat_rollup_30s'))` 等。段表可以随时 `TRUNCATE`（读会退回原始快照，后台从原始表重新追）。
-- 删表回退：这张表只给热力图用，停掉只要回滚二进制；表可以 `TRUNCATE orderflow_heat` 腾空间，不影响大单历史。
+- 删表回退：这张表只给热力图用；表可以 `TRUNCATE orderflow_heat` 腾空间（连同各分区），不影响大单历史。分区之后回滚到旧二进制要连 0053–0057 一起考虑：旧二进制照样能读写分区表、逐行删也删得动，但它的闸门把父表算成 0、不会再删，sqlx 也会因为库里有它不认识的 0053–0057 而拒绝 `migrate`。
 
 ### 大单与散户的分钟成交（2026-09-29，`flow.rs`、表 `orderflow_flow`）
 
@@ -182,6 +192,9 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
 - 日志（info）：每小时 `Orderflow flow: last 3600s wrote N base-minutes; dropped a (queue full), b (write failed)` 与 `Orderflow flow: purge deleted …; table … bytes`；写失败一分钟最多 warn 一行。
 - 体积：220 只 3 天最多约 95 万行、几十 MB，不设闸门。看写入：`SELECT count(*) FROM orderflow_flow WHERE minute_ms = (SELECT max(minute_ms) FROM orderflow_flow)`（约等于在跟的只数）。
 - 同参数 20 秒内只读一次库，答复 `Cache-Control: public, max-age=20`；和 `/history`、热力共用两个读名额。没在跟的 base 回 `tracked:false`、空 `rows`，不起跟。
+- 读走覆盖索引（2026-10-08，0054 `orderflow_flow_cover (base, minute_ms) INCLUDE (big_buy, big_sell, small_buy, small_sell)`，0055 `autovacuum_vacuum_scale_factor=0.02` 让可见性图常新）：
+  原来每只每分钟一行散在各个堆页，冷读 3 天要碰三千多个堆页（慢语句里 1–1.5 秒）；现在是 Index Only Scan，`Heap Fetches` 接近 0。
+  核对：`EXPLAIN (ANALYZE,BUFFERS) SELECT minute_ms,big_buy,big_sell,small_buy,small_sell FROM orderflow_flow WHERE base='BTC' AND minute_ms BETWEEN … ORDER BY minute_ms`。
 - 删表回退：只给这张副图用，回滚二进制即可；`TRUNCATE orderflow_flow` 不影响别的。
 
 ### 爆仓分钟聚合（2026-10-08，`liq.rs`、表 `orderflow_liq`，迁移 0052）
@@ -238,8 +251,9 @@ Coinbase（只接现货）没有强平；Bybit 现货没有仓位、没有强平
 | 找相似 | `market_features` | 3 GiB |
 | 大单 | `orderflow_orders` + `orderflow_live` | 4 GiB |
 
-两道删法沿用原来的：各自按保留期滚动删（订单流几张 3 天、找相似 365 天）；表文件（`pg_total_relation_size`，含索引与 TOAST）超过线才动手，
+两道删法沿用原来的：各自按保留期滚动删（订单流几张 3 天、找相似 365 天）；表文件（`pg_total_relation_size`，含索引与 TOAST，分区表按 `pg_partition_tree` 合计各分区）超过线才动手，
 按「行数 × 每行占用」估实际占用、从最旧的一截一截删到线下 10%。删掉的空间留给以后的插入，表文件不缩。
+热力原始快照例外（2026-10-08 起分区）：不估算，直接整张 DROP 最旧的 6 小时分区，按分区实际大小扣到线下 10%，最近 6 小时不动，文件当场还给系统；段表不在闸门里删。
 找相似的闸门删到哪儿记在 `orderflow_purged`（target `market_features`），回填不再往前补。每小时清理后打一行 `Storage budget: market history X/30 GiB (…)`，合计超过 30 GiB 记 warn。
 
 ### 上线

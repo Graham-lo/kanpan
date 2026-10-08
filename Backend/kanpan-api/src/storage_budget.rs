@@ -7,6 +7,7 @@
 //! 2. 体积闸门：表文件（`pg_total_relation_size`，含索引与 TOAST）超过这一条线才动手，
 //!    按「行数 × 每行占用」估出来的实际占用删到线下 10%（[`TARGET_PERCENT`]），从最旧的一截一截往后删（[`trim`]）。
 //!    删掉的空间留给以后的插入用，表文件不缩，所以只拿文件大小判断「要不要删」，删到哪儿看估算。
+//!    热力的原始快照（`orderflow_heat`）是按 6 小时分区的（2026-10-08）：不走估算，整张 DROP 最旧的分区，按实际大小往下扣（`heat::purge`）。
 //!
 //! 每小时订单流清理之后打一行合计（[`report`]），合计超过总闸记一条 warn。
 use sqlx::PgPool;
@@ -21,7 +22,7 @@ pub struct Budget {pub name:&'static str,pub tables:&'static [&'static str],pub 
 /// 行情历史合起来的总闸（GiB）。
 pub const TOTAL_GIB:u64=30;
 
-/// 唯一一张预算表。热力的预聚合段跟原始快照同一个截止时刻删，算在热力头上；
+/// 唯一一张预算表。热力的预聚合段算在热力头上（闸门只删原始快照的分区，段照自己的 3 天删）；
 /// 订单流的大单（历史表 + 挂着的）分到总闸剩下的那 4 GiB（原来单独一条 20 GB 的闸门）。
 pub const BUDGETS:[Budget;5]=[HEAT,FOOTPRINT,SECONDS,FEATURES,ORDERS];
 pub const HEAT:Budget=Budget{name:"orderflow_heat",tables:&["orderflow_heat","orderflow_heat_rollup_30s","orderflow_heat_rollup_150s","orderflow_heat_rollup_900s"],gib:20};
@@ -45,9 +46,12 @@ impl Budget {
 }
 
 /// 这条预算名下几张表此刻的文件大小（含索引与 TOAST）合计。表还没建（迁移没跑）算 0。
+/// 分区表（`orderflow_heat`，0057）的父表自己是 0：按 `pg_partition_tree` 把各分区一起算上。
+/// 普通表的 `pg_partition_tree` 是空的（一行都不回，不是回它自己），所以再 UNION 上表本身——
+/// 只用分区树的话，除了深度热力以外的每条预算都量成 0，闸门永远不动（2026-10-08 上线后从预算行看出来的）。
 pub async fn size(pool:&PgPool,budget:&Budget)->sqlx::Result<i64> {
  let names:Vec<&str>=budget.tables.to_vec();
- sqlx::query_scalar("SELECT COALESCE(sum(pg_total_relation_size(to_regclass(t))),0)::bigint FROM unnest($1::text[]) t")
+ sqlx::query_scalar("SELECT COALESCE(sum(pg_total_relation_size(r)),0)::bigint FROM unnest($1::text[]) t CROSS JOIN LATERAL (SELECT relid FROM pg_partition_tree(to_regclass(t)) UNION SELECT to_regclass(t)) p(r) WHERE r IS NOT NULL")
   .bind(names).fetch_one(pool).await
 }
 

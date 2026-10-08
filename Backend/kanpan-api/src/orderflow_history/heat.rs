@@ -4,7 +4,8 @@
 //!   同一交易所同一产品的几本簿（交割好几期）合成一条带子；名义不到该产品门槛 5% 的那一侧记 0，两侧都是 0 的桶不写，
 //!   空带子不写。交给全进程一个写库任务，攒一批用一条多行 INSERT 写进 `orderflow_heat`（一条带子一行，桶在数组里，见 0033）。
 //!   写库占 `WRITE_SLOTS` 的一条；通道满了（库慢）就丢这一拍的快照，不堵跟踪任务。
-//! * 清理：每小时和订单流的滚动清理一起，逐只 base 按主键删 3 天以前的；表（连同预聚合的段）超过预算（`storage_budget::HEAT`）再按时间往前删到线下 10%。
+//! * 清理（2026-10-08 改分区）：原始表按 `bucket_ms` 6 小时一张分区（0053–0057），每分钟预建此刻与下一张、整张 DROP 上沿已在 3 天以前的；
+//!   原始快照连同预聚合的段超过预算（`storage_budget::HEAT`）再从最旧的分区整张 DROP 到线下 10%（最近 6 小时不动）。段表自己按 3 天删。
 //! * 接口 `GET /v1/market/orderflow/heat?base=&from=&to=&step=` → `{"step","bucketMs","rows":[[t_ms,price,bid_usd,ask_usd],…]}`：
 //!   三家合起来；价格按 `max(step, 存储步长)` 向下取整合并（同一时刻各桶相加）；时间按 `bucketMs` 合并（取这一格里各快照的平均，
 //!   某个快照里没有这个桶按 0 算）。`to` 缺省此刻、`from` 缺省 `to` 前 1 小时，超过 3 天把 `from` 夹到 `to` 前 3 天。
@@ -71,12 +72,10 @@ const QUEUE:usize=1024;
 const INSERT_ROWS:usize=1_000;
 /// 写库任务一次最多攒多少行。
 const PENDING_CAP:usize=20_000;
-/// 清理一批删多少行（一行几 KB）：只用在不知道上次删到哪的那一遍（`delete_before`）。
+/// 段表清理一批删多少行：只用在不知道上次删到哪的那一遍（`delete_rollups_before`）。
 const DELETE_BATCH:i64=5_000;
-/// 原始快照的清理每分钟一次（`PURGE_EVERY`），一条语句删一截这么宽、所有 base 一起删：一分钟的快照
-/// 线上约 5.6 千行、落在五百来页上（2026-10-06，157 只在跟），一条 0.2–0.5 秒。
+/// 清理每分钟一次（`purge`）：预建分区、DROP 过期与超预算的分区、删过期的段。
 pub(super) const PURGE_EVERY:Duration=Duration::from_secs(60);
-const PURGE_SLICE_MS:i64=60_000;
 /// 段的清理一条语句删多少个段宽（每只 base 每个步长至多这么多行）。
 const ROLLUP_PURGE_SLICES:i64=60;
 const ROLLUP_PURGE_SLACK_MS:i64=10*60_000;
@@ -189,7 +188,7 @@ async fn writer(pool:PgPool,mut rx:mpsc::Receiver<Vec<Band>>) {
   let Ok(_slot)=WRITE_SLOTS.acquire().await else {return};
   let started=tokio::time::Instant::now();
   for chunk in rows.chunks(INSERT_ROWS) {
-   match insert(&pool,chunk).await {
+   match insert_extending(&pool,chunk).await {
     Ok(())=>{
      stats.rows+=chunk.len() as u64;stats.statements+=1;
      for b in chunk {stats.buckets+=b.offsets.len() as u64;stats.bytes+=row_bytes(b) as u64;}
@@ -214,6 +213,23 @@ async fn writer(pool:PgPool,mut rx:mpsc::Receiver<Vec<Band>>) {
 
 /// 一行在堆里大约多大：行头与定长列约 60 字节，三个数组各 24 字节头，每桶 12 字节；另加主键索引一项约 50 字节。
 fn row_bytes(b:&Band)->usize {60+b.base.len()+b.exchange.len()+b.product.len()+3*24+12*b.offsets.len()+50}
+
+/// 写一批；撞上「没有对应的分区」（清理任务每分钟预建此刻与下一张，正常碰不到：刚迁移完、进程卡了很久）就现建这几张再写一次。
+async fn insert_extending(pool:&PgPool,rows:&[Band])->sqlx::Result<()> {
+ match insert(pool,rows).await {
+  Err(e) if missing_partition(&e)=>{
+   let made=ensure(pool,&rows.iter().map(|b|b.bucket_ms).collect::<Vec<_>>()).await?;
+   if !made.is_empty() {tracing::info!("Orderflow heat: created partitions {made:?} for incoming snapshots");}
+   insert(pool,rows).await
+  },
+  done=>done,
+ }
+}
+
+/// Postgres 的「no partition of relation … found for row」（23514）。
+fn missing_partition(e:&sqlx::Error)->bool {
+ e.as_database_error().is_some_and(|d|d.code().as_deref()==Some("23514")&&d.message().contains("no partition"))
+}
 
 async fn insert(pool:&PgPool,rows:&[Band])->sqlx::Result<()> {
  let mut q=sqlx::QueryBuilder::<sqlx::Postgres>::new("INSERT INTO orderflow_heat(base,exchange,product,bucket_ms,step,price_lo,price_bucket,bid_notional,ask_notional) ");
@@ -277,16 +293,15 @@ async fn roll_range(pool:&PgPool,k:usize,bases:&[String],a:i64,b:i64)->sqlx::Res
 /// 起来时从哪接着并：每档已有的最后一段之后；一段都没有就从原始快照最早的那格起（刚部署时把已有的都追上），
 /// 表是空的就从此刻起。3 天以前的（已经清掉的）不追。
 ///
-/// 最早那格只在某档一段都没有时才去查：每只 base 的 `min(bucket_ms)` 落在主键里这只 base 最旧的那一头，
-/// 正是每小时清理刚删掉的那一截（死索引项要逐条回表确认），平时各档都有段，用不着它。
+/// 最早那格只在某档一段都没有时才去查，带着「此刻 − 保留期」的下沿（只碰保留期里的分区），平时各档都有段，用不着它。
 async fn resume(pool:&PgPool,bases:&[String],now:i64)->sqlx::Result<[i64;3]> {
  let mut lasts=[None;3];
  for (k,&w) in ROLLUPS.iter().enumerate() {
   lasts[k]=sqlx::query_scalar::<_,Option<i64>>(&format!("SELECT max(bucket_ms) FROM {} WHERE width_ms={w}",rollup_table(w))).fetch_one(pool).await?;
  }
  let first:Option<i64>=if lasts.iter().all(Option::is_some) {None} else {
-  sqlx::query_scalar("SELECT min(m) FROM unnest($1::text[]) b(base) CROSS JOIN LATERAL (SELECT min(bucket_ms) AS m FROM orderflow_heat WHERE base=b.base) x")
-   .bind(bases).fetch_one(pool).await?
+  sqlx::query_scalar("SELECT min(m) FROM unnest($1::text[]) b(base) CROSS JOIN LATERAL (SELECT min(bucket_ms) AS m FROM orderflow_heat WHERE base=b.base AND bucket_ms>=$2) x")
+   .bind(bases).bind(now-store::RETENTION_MS).fetch_one(pool).await?
  };
  let mut done=[0;3];
  for (k,&w) in ROLLUPS.iter().enumerate() {
@@ -381,7 +396,98 @@ fn pieces(lo:i64,hi:i64,width:i64,covered:&[Option<i64>;3])->(Vec<(i64,i64,i64)>
  (rolled,raw)
 }
 
-/// 段的清理：和原始快照同一个截止时刻，按分区逐张删。`floor` 是上一次删到的截止时刻（`None` = 不知道）：
+// ------------------------------------------------------------------ 清理
+
+/// 原始快照的分区：6 小时一张（UTC 0 / 6 / 12 / 18 点起），名字 `orderflow_heat_pYYYYMMDD_HH`（迁移 0053–0057）。
+pub(super) const PARTITION_MS:i64=6*3_600_000;
+/// 体积闸门最少留最近这么久的原始快照（此刻所在的那张分区也一定留着）。
+const GATE_KEEP_MS:i64=6*3_600_000;
+/// `orderflow_purged` 里的两行：原始快照的分区删到哪（这个上沿以前的分区都已 DROP）、预聚合段删到哪。
+const RAW_TARGET:&str="heat";
+const ROLLUP_TARGET:&str="heat_rollup";
+
+/// 这一刻所在分区的起点。
+pub(super) fn block_start(ms:i64)->i64 {ms.div_euclid(PARTITION_MS)*PARTITION_MS}
+
+/// 从起点起的那张分区叫什么（UTC）：`orderflow_heat_p20261008_12`。
+pub(super) fn partition_name(start:i64)->String {
+ let at=chrono::DateTime::from_timestamp_millis(start).unwrap_or_default();
+ format!("orderflow_heat_p{}",at.format("%Y%m%d_%H"))
+}
+
+/// 一张分区：名字、[下沿, 上沿)（`None` 是 MINVALUE / MAXVALUE）、含索引与 TOAST 的大小。
+#[derive(Clone,Debug,PartialEq)]
+pub(super) struct Partition {pub name:String,pub lo:Option<i64>,pub hi:Option<i64>,pub bytes:i64}
+
+/// 解析 `pg_get_expr(relpartbound)`：`FOR VALUES FROM ('1') TO ('2')`、`FOR VALUES FROM (MINVALUE) TO ('2')`；
+/// 别的形状（DEFAULT、多列）回 `None`。
+pub(super) fn parse_bound(expr:&str)->Option<(Option<i64>,Option<i64>)> {
+ let rest=expr.trim().strip_prefix("FOR VALUES FROM (")?.strip_suffix(')')?;
+ let (lo,hi)=rest.split_once(") TO (")?;
+ let value=|v:&str,open:&str|->Option<Option<i64>> {
+  let v=v.trim();
+  if v.eq_ignore_ascii_case(open) {return Some(None)}
+  let v=v.strip_prefix('\'').and_then(|v|v.strip_suffix('\'')).unwrap_or(v);
+  v.parse::<i64>().ok().map(Some)
+ };
+ Some((value(lo,"MINVALUE")?,value(hi,"MAXVALUE")?))
+}
+
+/// `starts` 这几张 6 小时分区里还没被任何已有分区盖到的（旧表那张 [MINVALUE, T) 盖到的不另建）。
+pub(super) fn missing(parts:&[Partition],starts:&[i64])->Vec<i64> {
+ let mut out:Vec<i64>=starts.iter().map(|&s|block_start(s)).filter(|&s|!parts.iter().any(|p|p.lo.is_none_or(|lo|lo<s+PARTITION_MS)&&p.hi.is_none_or(|hi|hi>s))).collect();
+ out.sort();out.dedup();
+ out
+}
+
+/// 过期的分区：上沿不晚于 `cutoff`（整张都在保留期以前）。
+pub(super) fn expired(parts:&[Partition],cutoff:i64)->Vec<&Partition> {
+ parts.iter().filter(|p|p.hi.is_some_and(|hi|hi<=cutoff)).collect()
+}
+
+/// 体积闸门：合计 `total` 超过 `target` 时从最旧的分区删起，删到线下为止；上沿晚于 `now − GATE_KEEP_MS` 的
+/// （最近 6 小时、此刻所在的）一张都不动。按分区的实际大小往下扣——DROP 是整个文件还给系统，不用估。
+pub(super) fn gate_victims(parts:&[Partition],mut total:i64,target:f64,now:i64)->Vec<&Partition> {
+ let mut old:Vec<&Partition>=parts.iter().filter(|p|p.hi.is_some_and(|hi|hi<=now-GATE_KEEP_MS)).collect();
+ old.sort_by_key(|p|p.hi);
+ let mut out=Vec::new();
+ for p in old {
+  if total as f64<=target {break}
+  total-=p.bytes;
+  out.push(p);
+ }
+ out
+}
+
+/// orderflow_heat 名下此刻的分区（按下沿排好）。迁移之前（不是分区表）是空的。
+pub(super) async fn partitions(pool:&PgPool)->sqlx::Result<Vec<Partition>> {
+ let rows:Vec<(String,Option<String>,i64)>=sqlx::query_as("SELECT c.relname::text,pg_get_expr(c.relpartbound,c.oid),pg_total_relation_size(c.oid) \
+  FROM pg_inherits i JOIN pg_class c ON c.oid=i.inhrelid WHERE i.inhparent=to_regclass('orderflow_heat')").fetch_all(pool).await?;
+ let mut out:Vec<Partition>=rows.into_iter().filter_map(|(name,bound,bytes)|{
+  let (lo,hi)=parse_bound(bound.as_deref()?)?;
+  Some(Partition{name,lo,hi,bytes})
+ }).collect();
+ out.sort_by_key(|p|(p.lo.is_some(),p.lo));
+ Ok(out)
+}
+
+/// 把 `starts` 所在的 6 小时分区建好（已经盖到的跳过）。回新建了哪几张。建分区要父表属主，走 SECURITY DEFINER 的 `orderflow_heat_ensure`（0057）。
+pub(super) async fn ensure(pool:&PgPool,starts:&[i64])->sqlx::Result<Vec<String>> {
+ let mut made=Vec::new();
+ for start in missing(&partitions(pool).await?,starts) {
+  let name=partition_name(start);
+  let created:bool=sqlx::query_scalar("SELECT orderflow_heat_ensure($1,$2,$3)").bind(&name).bind(start).bind(start+PARTITION_MS).fetch_one(pool).await?;
+  if created {made.push(name);}
+ }
+ Ok(made)
+}
+
+/// 删一张分区（`orderflow_heat_drop`，0057）：拿父表的 ACCESS EXCLUSIVE，等不到 2 秒就报错，下一分钟再来。
+async fn drop_partition(pool:&PgPool,name:&str)->sqlx::Result<bool> {
+ sqlx::query_scalar("SELECT orderflow_heat_drop($1)").bind(name).fetch_one(pool).await
+}
+
+/// 段的清理：截止时刻 `cutoff`（此刻 − 保留期），按分区逐张删。`floor` 是上一次删到的截止时刻（`None` = 不知道）：
 /// 知道就只删 [floor − 段宽 − `ROLLUP_PURGE_SLACK_MS`, cutoff) 这一截——并段最早从「它那一轮的此刻 − 保留期」往下取整到段宽写起，
 /// 那一轮可能比这次清理早开始（一条并段语句最长 2 分钟），所以下沿再让出十分钟；不知道才退回不设下限、按批删。
 async fn delete_rollups_before(pool:&PgPool,floor:Option<i64>,cutoff:i64)->sqlx::Result<u64> {
@@ -408,87 +514,78 @@ async fn delete_rollups_before(pool:&PgPool,floor:Option<i64>,cutoff:i64)->sqlx:
  Ok(deleted)
 }
 
-// ------------------------------------------------------------------ 清理
+/// 清理删到哪了（`orderflow_purged`，0047）：`heat` 是原始快照——这个上沿以前的分区都已 DROP；`heat_rollup` 是预聚合段——这个时刻以前的段都已删掉。
+/// 进程重启接着用。`heat_rollup` 是分区之后才有的：还没有时段的进度退回 `heat` 那一行（分区之前两边同一个截止时刻删）。
+pub(super) async fn purged(pool:&PgPool)->sqlx::Result<(Option<i64>,Option<i64>)> {
+ let rows:Vec<(String,i64)>=sqlx::query_as("SELECT target,before_ms FROM orderflow_purged WHERE target=ANY($1)")
+  .bind([RAW_TARGET,ROLLUP_TARGET].map(String::from).to_vec()).fetch_all(pool).await?;
+ let of=|t:&str|rows.iter().find(|(k,_)|k==t).map(|r|r.1);
+ Ok((of(RAW_TARGET),of(ROLLUP_TARGET).or(of(RAW_TARGET))))
+}
 
-/// 不知道上次删到哪时的删法：逐只 base、不设下限、按批删。
+async fn set_purged(pool:&PgPool,target:&str,before:i64)->sqlx::Result<()> {
+ sqlx::query("INSERT INTO orderflow_purged(target,before_ms) VALUES($1,$2) ON CONFLICT(target) DO UPDATE SET before_ms=EXCLUDED.before_ms")
+  .bind(target).bind(before).execute(pool).await.map(|_|())
+}
+
+/// 一次清理做了什么。
+#[derive(Debug,Default,PartialEq)]
+pub(super) struct Purged {
+ /// DROP 掉的分区（过期的与闸门删的）。
+ pub dropped:Vec<String>,
+ /// 新建的分区。
+ pub created:Vec<String>,
+ /// 删掉的段行数。
+ pub rollup_rows:u64,
+ /// 原始快照删到哪（下一次的 `raw_floor`）、段删到哪（下一次的 `rollup_floor`）；已经存进 `orderflow_purged`。
+ pub raw_floor:i64,
+ pub rollup_floor:i64,
+}
+
+/// 每分钟一次（`PURGE_EVERY`）：
+/// 1. 预建此刻与下一张 6 小时分区（写库那头遇到没有分区的快照也会现建，见 `insert_extending`）；
+/// 2. 上沿不晚于 max(此刻 − 3 天, `raw_floor`) 的分区整张 DROP；
+/// 3. 原始快照连同三张段表超过预算（`storage_budget::HEAT`）时，从最旧的分区整张 DROP 到线下 10%，最近 6 小时与此刻那张不动，
+///    每删一张 warn `size gate dropped partition …`；
+/// 4. 段表照自己的保留期（3 天）删，不跟闸门走：原始快照被闸门删短了，读几天的热力照样有段可读。
 ///
-/// 只在没有记下进度时用（新库、进度行被删）。原来每小时都这样删：`bucket_ms < 截止` 没有下限，
-/// 索引从这只 base 最旧的一头走起，前几个小时删掉、还没被 VACUUM 收走的死索引项每一条都要回表确认
-/// （位图扫描不会给死项打标记，下一次照样再走一遍），离上次 VACUUM 越久越慢——
-/// 2026-10-06 线上 LTC 一条选 3668 行要走 2.4 万个索引项、读 6 千页，1.7 秒；一次清理 27 条慢语句。
-async fn delete_before(pool:&PgPool,base:&str,cutoff:i64)->sqlx::Result<u64> {
- let mut deleted=0;
- loop {
-  let n=sqlx::query("DELETE FROM orderflow_heat WHERE ctid=ANY(ARRAY(SELECT ctid FROM orderflow_heat WHERE base=$1 AND bucket_ms<$2 LIMIT $3))")
-   .bind(base).bind(cutoff).bind(DELETE_BATCH).execute(pool).await?.rows_affected();
-  deleted+=n;
-  if n<DELETE_BATCH as u64 {return Ok(deleted)}
- }
-}
-
-/// 删 [floor, cutoff) 的原始快照：所有 base 一条语句、一截 `PURGE_SLICE_MS`。
-/// 有下沿，索引只走这一截里的项：上一次删掉的死项全在下沿以下，碰都不碰。
-/// `floor` 是 `None`（不知道上次删到哪）或者落后得比保留期还多（不像是真的进度），退回 `delete_before`。
-async fn delete_span(pool:&PgPool,bases:&[String],floor:Option<i64>,cutoff:i64)->sqlx::Result<u64> {
- let mut deleted=0;
- match floor.filter(|&f|cutoff-f<=store::RETENTION_MS) {
-  None=>for base in bases {deleted+=delete_before(pool,base,cutoff).await?;},
-  Some(mut a)=>while a<cutoff {
-   let b=(a+PURGE_SLICE_MS).min(cutoff);
-   deleted+=sqlx::query("DELETE FROM orderflow_heat WHERE base=ANY($1) AND bucket_ms>=$2 AND bucket_ms<$3")
-    .bind(bases).bind(a).bind(b).execute(pool).await?.rows_affected();
-   a=b;
-  },
- }
- Ok(deleted)
-}
-
-/// 清理删到哪了（`orderflow_purged` 的 `heat` 那一行，迁移见 0047）：这个时刻以前的原始快照与段都已经删掉。
-/// 进程重启接着用，不必回头不设下限地再走一遍。
-pub(super) async fn purged(pool:&PgPool)->sqlx::Result<Option<i64>> {
- sqlx::query_scalar("SELECT before_ms FROM orderflow_purged WHERE target='heat'").fetch_optional(pool).await
-}
-
-pub(super) async fn set_purged(pool:&PgPool,before:i64)->sqlx::Result<()> {
- sqlx::query("INSERT INTO orderflow_purged(target,before_ms) VALUES('heat',$1) ON CONFLICT(target) DO UPDATE SET before_ms=EXCLUDED.before_ms")
-  .bind(before).execute(pool).await.map(|_|())
-}
-
-/// 表（含索引）此刻多大。
-pub(super) async fn size(pool:&PgPool)->sqlx::Result<i64> {
- sqlx::query_scalar("SELECT pg_total_relation_size('orderflow_heat')").fetch_one(pool).await
-}
-
-/// 每分钟一次：删 3 天以前的（预聚合的段同一个截止时刻一起删）；`floor` 是上一次删到的截止时刻（见 `purged`），
-/// 返回（两边合计删了几行，这一次删到的截止时刻——下一次的 `floor`）。原始快照连同三张段表的文件超过预算（`storage_budget::HEAT`）时
-/// 按「行数 × 最近一分钟一行的平均大小（含索引）+ 段表的文件大小」估实际占用，超过线下 10% 就把截止时刻往后挪（每次 6 小时）接着删。
-/// 删掉的空间留给以后的插入用，文件不缩，所以不能直接拿文件大小判断删到哪儿。
-///
-/// 原来每小时一次、逐只 base 不设下限地删（见 `delete_before`）：一小时攒下 30 多万行，每批都要先走一遍前几次删掉的死索引项，
-/// 2026-10-06 线上一次清理 2–27 条 1–2.3 秒的慢语句、而且越攒越多。现在每分钟只删刚过期的那一分钟（约 5.6 千行、一条语句）。
-pub(super) async fn purge(pool:&PgPool,now:i64,floor:Option<i64>)->sqlx::Result<(u64,i64)> {
- let bases=store::bases(pool).await?;
- let mut cutoff=now-store::RETENTION_MS;
- // 进度不会往回退：闸门挪过的截止时刻比保留期还靠后。
- if let Some(f)=floor {cutoff=cutoff.max(f);}
- let mut deleted=delete_span(pool,&bases,floor,cutoff).await?;
+/// 原来按行删（每分钟删刚过期的一分钟、超预算再按 6 小时一截删），十几 GB 的表上删除与随后的 VACUUM 跟读、并段抢磁盘；
+/// 分区之后删除就是 DROP 一个文件，不扫、不留死元组。`raw_floor` / `rollup_floor` 来自 `purged`。
+pub(super) async fn purge(pool:&PgPool,now:i64,raw_floor:Option<i64>,rollup_floor:Option<i64>)->sqlx::Result<Purged> {
+ let mut out=Purged{created:ensure(pool,&[now,now+PARTITION_MS]).await?,..Purged::default()};
+ let cutoff=(now-store::RETENTION_MS).max(raw_floor.unwrap_or(i64::MIN));
  let mut done=cutoff;
- let budget=crate::storage_budget::HEAT;
- if crate::storage_budget::over(pool,&budget).await?.is_some() {
-  let average:Option<f64>=sqlx::query_scalar("SELECT avg(pg_column_size(h.*))::float8 FROM orderflow_heat h WHERE base=ANY($1) AND bucket_ms>=$2")
-   .bind(&bases).bind(now-60_000).fetch_one(pool).await?;
-  let (raw,per_row)=crate::storage_budget::estimate(pool,"orderflow_heat",average.unwrap_or(2_000.0)).await?;
-  let rollups=crate::storage_budget::size(pool,&crate::storage_budget::Budget{tables:&budget.tables[1..],..budget}).await? as f64;
-  let live=raw-deleted as f64*per_row+rollups;
-  let (next,n)=crate::storage_budget::trim(live,budget.target(),per_row,done,now-store::DAY_MS/4,store::DAY_MS/4,|from,to|{
-   let bases=&bases;
-   async move {delete_span(pool,bases,Some(from),to).await}
-  }).await?;
-  deleted+=n;done=next;
-  if done>cutoff {tracing::warn!("Orderflow heat: size gate trimmed to bucket_ms >= {done}");}
+ let parts=partitions(pool).await?;
+ for p in expired(&parts,cutoff) {
+  match drop_partition(pool,&p.name).await {
+   Ok(true)=>out.dropped.push(p.name.clone()),
+   Ok(false)=>{},
+   // 锁等不到（有条长读）：下一分钟它还过期，再来。
+   Err(e)=>tracing::warn!("Orderflow heat: dropping expired partition {} failed: {e}",p.name),
+  }
  }
- deleted+=delete_rollups_before(pool,floor,done).await?;
- Ok((deleted,done))
+ let budget=crate::storage_budget::HEAT;
+ if let Some(total)=crate::storage_budget::over(pool,&budget).await? {
+  let parts=partitions(pool).await?;
+  for p in gate_victims(&parts,total,budget.target(),now) {
+   match drop_partition(pool,&p.name).await {
+    Ok(true)=>{
+     tracing::warn!("Orderflow heat: size gate dropped partition {} ({} bytes, budget {:.2}/{} GiB)",p.name,p.bytes,total as f64/(1u64<<30) as f64,budget.gib);
+     out.dropped.push(p.name.clone());
+     if let Some(hi)=p.hi {done=done.max(hi);}
+    },
+    Ok(false)=>{},
+    Err(e)=>{tracing::warn!("Orderflow heat: size gate could not drop partition {}: {e}",p.name);break},
+   }
+  }
+ }
+ let rollup_cutoff=now-store::RETENTION_MS;
+ out.rollup_rows=delete_rollups_before(pool,rollup_floor,rollup_cutoff).await?;
+ out.raw_floor=done;
+ out.rollup_floor=rollup_cutoff.max(rollup_floor.unwrap_or(i64::MIN));
+ set_purged(pool,RAW_TARGET,out.raw_floor).await?;
+ set_purged(pool,ROLLUP_TARGET,out.rollup_floor).await?;
+ Ok(out)
 }
 
 // ------------------------------------------------------------------ 接口
@@ -657,9 +754,19 @@ const COLUMNS:&str="h.bucket_ms,h.step,h.price_lo,h.price_bucket,h.bid_notional,
 /// `scope` 是收窄的请求（价格范围、时间格提示）；带了它时挑时间格从提示那一档起、快照数有上限。
 #[allow(clippy::too_many_arguments)]
 async fn read(pool:&PgPool,base:&str,from:i64,to:i64,requested:Option<f64>,current:Option<f64>,cap:usize,scope:Option<Scope>)->sqlx::Result<(f64,i64,Vec<(i64,f64,f64,f64)>)> {
- // 最近一个快照：拿存储步长、估每格有几个价格桶。
- let latest=sqlx::query(&format!("SELECT {COLUMNS} FROM orderflow_heat h WHERE h.base=$1 AND h.bucket_ms=(SELECT max(bucket_ms) FROM orderflow_heat WHERE base=$1 AND bucket_ms BETWEEN $2 AND $3)"))
-  .bind(base).bind(from).bind(to).fetch_all(pool).await?;
+ // 最近一个快照：拿存储步长、估每格有几个价格桶。原始快照被体积闸门删短了（段照样留 3 天）、这段里一个原始快照都没有时，
+ // 退回最细的一档段里最近的那一段（同样的列；它的最后一个快照按段尾算）。外层也带着区间：分区表按它裁掉不相干的分区。
+ let latest_in=|table:&str,width:Option<i64>|{
+  let only=width.map(|w|format!(" AND width_ms={w}")).unwrap_or_default();
+  format!("SELECT {COLUMNS} FROM {table} h WHERE h.base=$1{only} AND h.bucket_ms BETWEEN $2 AND $3 AND h.bucket_ms=(SELECT max(bucket_ms) FROM {table} WHERE base=$1{only} AND bucket_ms BETWEEN $2 AND $3)")
+ };
+ let mut latest=sqlx::query(&latest_in("orderflow_heat",None)).bind(base).bind(from).bind(to).fetch_all(pool).await?;
+ let mut tail=0;
+ for w in ROLLUPS {
+  if !latest.is_empty() {break}
+  latest=sqlx::query(&latest_in(rollup_table(w),Some(w))).bind(base).bind(from).bind(to).fetch_all(pool).await?;
+  tail=w-BUCKET_MS;
+ }
  let stored=latest.iter().map(|r|r.get::<f64,_>("step")).fold(None,|m:Option<f64>,s|Some(m.map_or(s,|m|m.max(s))));
  let Some(stored)=stored else {
   let step=match (requested,current) {(Some(r),Some(c))=>r.max(c),(r,c)=>r.or(c).unwrap_or(0.0)};
@@ -676,9 +783,11 @@ async fn read(pool:&PgPool,base:&str,from:i64,to:i64,requested:Option<f64>,curre
   }
  }
  // 挑时间格按这段里真有数据的那一截算（刚部署、刚开始跟的 base 只有最近一小段，别因为问了 3 天就给 5 分钟一格）。
- let first:Option<i64>=sqlx::query_scalar("SELECT min(bucket_ms) FROM orderflow_heat WHERE base=$1 AND bucket_ms BETWEEN $2 AND $3")
+ // 最早的数据取原始快照与三档段里最早的：原始快照被闸门删短了，段还在的那截照样要读。
+ let first:Option<i64>=sqlx::query_scalar(&format!("SELECT least((SELECT min(bucket_ms) FROM orderflow_heat WHERE base=$1 AND bucket_ms BETWEEN $2 AND $3),{})",
+  ROLLUPS.map(|w|format!("(SELECT min(bucket_ms) FROM {} WHERE base=$1 AND width_ms={w} AND bucket_ms BETWEEN $2 AND $3)",rollup_table(w))).join(",")))
   .bind(base).bind(from).bind(to).fetch_one(pool).await?;
- let last:i64=latest[0].get("bucket_ms");
+ let last:i64=latest[0].get::<i64,_>("bucket_ms")+tail;
  let (from,to)=(first.unwrap_or(from).max(from),last.min(to));
  let span=to-from;
  let level=match scope {
@@ -704,7 +813,8 @@ async fn read(pool:&PgPool,base:&str,from:i64,to:i64,requested:Option<f64>,curre
  let all=format!("SELECT {COLUMNS} FROM orderflow_heat h WHERE h.base=$1 AND h.bucket_ms BETWEEN $2 AND $3 ORDER BY h.bucket_ms");
  // 隔 `stride` 取一个快照：按主键逐个点查（`bucket_ms = ANY(数组)` 进索引条件），不把这段整个扫一遍。
  // 原来用 generate_series 连接，计划器只按 base 走位图扫描，BTC 3 天几十万行过一遍，并发时一条要 1.6–2.1 秒。
- let sampled=format!("SELECT {COLUMNS} FROM orderflow_heat h WHERE h.base=$1 AND h.bucket_ms=ANY($2::bigint[]) ORDER BY h.bucket_ms");
+ // 再带上这一截的上下沿：`ANY(参数)` 计划器裁不了分区（通用计划里数组不是常量），区间可以。
+ let sampled=format!("SELECT {COLUMNS} FROM orderflow_heat h WHERE h.base=$1 AND h.bucket_ms=ANY($2::bigint[]) AND h.bucket_ms BETWEEN $3 AND $4 ORDER BY h.bucket_ms");
  for (a,b) in raw {
   let (a,b)=(a,b-1);
   // 隔几个快照取一个，但这一截里至少取 8 个（比时间格还短时别一个都取不到）；段都没有时这一截就是整个区间，和原来一样。
@@ -713,7 +823,7 @@ async fn read(pool:&PgPool,base:&str,from:i64,to:i64,requested:Option<f64>,curre
    sqlx::query(&all).bind(base).bind(a).bind(b).fetch(pool)
   } else {
    let at:Vec<i64>=((a+stride-1).div_euclid(stride)*stride..=b).step_by(stride as usize).collect();
-   sqlx::query(&sampled).bind(base).bind(at).fetch(pool)
+   sqlx::query(&sampled).bind(base).bind(at).bind(a).bind(b).fetch(pool)
   };
   while let Some(r)=rows.try_next().await? {
    let (offsets,bids,asks)=(r.get::<Vec<i32>,_>("price_bucket"),r.get::<Vec<f32>,_>("bid_notional"),r.get::<Vec<f32>,_>("ask_notional"));
@@ -880,9 +990,9 @@ mod tests {
   let band=|exchange:&'static str,t:i64,bid:f32|Band{base:base.into(),exchange,product:"usdtPerp",bucket_ms:t,step:100.0,lo:600,offsets:vec![0,3],bids:vec![bid,0.0],asks:vec![0.0,7.0]};
   let now=10*store::DAY_MS;
   let old=now-store::RETENTION_MS-BUCKET_MS;
-  insert(&pool,&[band("binance",now-10_000,100.0),band("okx",now-10_000,50.0),band("binance",now-5_000,300.0),band("binance",old,1.0)]).await.unwrap();
+  insert_extending(&pool,&[band("binance",now-10_000,100.0),band("okx",now-10_000,50.0),band("binance",now-5_000,300.0),band("binance",old,1.0)]).await.unwrap();
   // 同一格再来一拍：留先到的。
-  insert(&pool,&[band("binance",now-5_000,999.0)]).await.unwrap();
+  insert_extending(&pool,&[band("binance",now-5_000,999.0)]).await.unwrap();
   let (step,bucket_ms,rows)=read(&pool,base,now-60_000,now,None,None,MAX_ROWS,None).await.unwrap();
   assert_eq!((step,bucket_ms),(100.0,5_000));
   assert_eq!(rows,vec![(now-10_000,60_000.0,150.0,0.0),(now-10_000,60_300.0,0.0,14.0),(now-5_000,60_000.0,300.0,0.0),(now-5_000,60_300.0,0.0,7.0)]);
@@ -899,34 +1009,124 @@ mod tests {
   assert_eq!((bucket_ms,rows.len()),(5_000,4));
   // 这一段没有快照：空行，步长取客户端的与跟踪器此刻的较大者。
   assert_eq!(read(&pool,base,0,1_000,Some(5.0),Some(100.0),MAX_ROWS,None).await.unwrap(),(100.0,BUCKET_MS,vec![]));
-  // 清理按 orderflow_bases 走：还没登记的 base 不动（起跟时 start 写库失败的情形）……
-  let cutoff=now-store::RETENTION_MS;
-  assert_eq!(purge(&pool,now,None).await.unwrap(),(0,cutoff));
-  // ……跟踪器每分钟报活时补上这一行，下一次清理就收得到：3 天以前的删掉，其余留着。
-  // 记着上次删到哪时只删 [上次, 这次) 这一截：比上次还早的（照理早删掉了）不碰——
-  let ancient=cutoff-10*60_000;
-  insert(&pool,&[band("binance",ancient,1.0)]).await.unwrap();
-  store::alive(&pool,base,now).await.unwrap();
-  assert_eq!(purge(&pool,now,Some(cutoff-60_000)).await.unwrap(),(1,cutoff));
-  let count=||sqlx::query_scalar::<_,i64>("SELECT count(*) FROM orderflow_heat WHERE base=$1").bind(base).fetch_one(&pool);
-  assert_eq!(count().await.unwrap(),4);
-  // ……一分钟后再删，下沿接着上次的截止时刻、什么都不剩可删；不知道上次删到哪才不设下限，连更早的一起删。
-  assert_eq!(purge(&pool,now+60_000,Some(cutoff)).await.unwrap(),(0,cutoff+60_000));
-  assert_eq!(purge(&pool,now,None).await.unwrap(),(1,cutoff));
-  assert_eq!(count().await.unwrap(),3);
-  // 进度落后得比保留期还多不像真的，同样退回不设下限；进度不往回退（闸门挪过的截止时刻比此刻 − 保留期还靠后时）。
-  insert(&pool,&[band("binance",ancient,1.0)]).await.unwrap();
-  assert_eq!(purge(&pool,now,Some(cutoff-store::RETENTION_MS-1)).await.unwrap(),(1,cutoff));
-  assert_eq!(purge(&pool,now,Some(cutoff+5_000)).await.unwrap(),(0,cutoff+5_000));
-  assert_eq!(count().await.unwrap(),3);
-  // 进度存在库里，重启接着用。
-  sqlx::query("DELETE FROM orderflow_purged WHERE target='heat'").execute(&pool).await.unwrap();
-  assert_eq!(purged(&pool).await.unwrap(),None);
-  set_purged(&pool,cutoff).await.unwrap();
-  set_purged(&pool,cutoff+60_000).await.unwrap();
-  assert_eq!(purged(&pool).await.unwrap(),Some(cutoff+60_000));
   sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(base).execute(&pool).await.unwrap();
   sqlx::query("DELETE FROM orderflow_bases WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+ }
+
+ #[test] fn partitions_are_six_utc_hours_named_by_their_start() {
+  assert_eq!(PARTITION_MS,21_600_000);
+  assert_eq!(block_start(0),0);
+  assert_eq!(block_start(PARTITION_MS-1),0);
+  assert_eq!(block_start(PARTITION_MS),PARTITION_MS);
+  assert_eq!(block_start(-1),-PARTITION_MS,"往下取整，不往 0 靠");
+  assert_eq!(partition_name(0),"orderflow_heat_p19700101_00");
+  // 2026-10-08 12:00 UTC = 1791460800000；同一张分区里任何时刻取起点都是它。
+  assert_eq!(partition_name(block_start(1_791_460_800_000+5*3_600_000+59_999)),"orderflow_heat_p20261008_12");
+  assert_eq!(partition_name(1_791_460_800_000+PARTITION_MS),"orderflow_heat_p20261008_18");
+  assert_eq!(partition_name(1_791_460_800_000+2*PARTITION_MS),"orderflow_heat_p20261009_00");
+  // 名字要过 orderflow_heat_ensure 的校验（0057）：p + 8 位日期 + _ + 2 位小时。
+  let name=partition_name(1_791_460_800_000);
+  let tail=name.strip_prefix("orderflow_heat_p").unwrap();
+  assert!(tail.len()==11&&tail.as_bytes()[8]==b'_'&&tail.chars().filter(|c|c.is_ascii_digit()).count()==10,"{name}");
+ }
+
+ #[test] fn partition_bounds_are_parsed_from_pg_get_expr() {
+  assert_eq!(parse_bound("FOR VALUES FROM ('1791460800000') TO ('1791482400000')"),Some((Some(1_791_460_800_000),Some(1_791_482_400_000))));
+  assert_eq!(parse_bound("FOR VALUES FROM (MINVALUE) TO ('1791482400000')"),Some((None,Some(1_791_482_400_000))));
+  assert_eq!(parse_bound("FOR VALUES FROM ('5') TO (MAXVALUE)"),Some((Some(5),None)));
+  assert_eq!(parse_bound("FOR VALUES FROM (-21600000) TO (0)"),Some((Some(-21_600_000),Some(0))));
+  assert_eq!(parse_bound("DEFAULT"),None);
+  assert_eq!(parse_bound("FOR VALUES IN ('a')"),None);
+  assert_eq!(parse_bound("FOR VALUES FROM ('x') TO ('1')"),None);
+ }
+
+ fn part(name:&str,lo:Option<i64>,hi:Option<i64>,bytes:i64)->Partition {Partition{name:name.into(),lo,hi,bytes}}
+
+ #[test] fn missing_skips_blocks_any_partition_already_covers() {
+  let p=PARTITION_MS;
+  // 旧表那张 [MINVALUE, 2p) 盖着前两张；[2p, 3p) 已有；3p 起没有。
+  let parts=[part("legacy",None,Some(2*p),0),part("b",Some(2*p),Some(3*p),0)];
+  assert_eq!(missing(&parts,&[p+5,2*p,3*p+1,3*p+2,4*p]),vec![3*p,4*p],"按所在分区的起点去重、排好");
+  assert_eq!(missing(&[],&[7,p-1]),vec![0]);
+  assert!(missing(&[part("all",None,None,0)],&[0,9*p]).is_empty());
+ }
+
+ #[test] fn expired_partitions_end_at_or_before_the_cutoff() {
+  let p=PARTITION_MS;
+  let parts=[part("legacy",None,Some(2*p),0),part("b",Some(2*p),Some(3*p),0),part("c",Some(3*p),Some(4*p),0),part("open",Some(4*p),None,0)];
+  let names=|v:Vec<&Partition>|v.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
+  assert_eq!(names(expired(&parts,3*p-1)),vec!["legacy"]);
+  assert_eq!(names(expired(&parts,3*p)),vec!["legacy","b"],"上沿正好等于截止时刻：整张都在保留期以前");
+  assert!(expired(&parts,0).is_empty());
+  assert_eq!(names(expired(&parts,i64::MAX)),vec!["legacy","b","c"],"没有上沿的不删");
+ }
+
+ #[test] fn the_gate_drops_oldest_first_down_to_the_target_and_keeps_six_hours() {
+  let p=PARTITION_MS;
+  let now=10*p+1_000;
+  let parts=[part("c",Some(6*p),Some(7*p),30),part("legacy",None,Some(6*p),100),part("d",Some(7*p),Some(8*p),30),part("e",Some(8*p),Some(9*p),30),
+   part("f",Some(9*p),Some(10*p),30),part("now",Some(10*p),Some(11*p),30)];
+  let names=|v:Vec<&Partition>|v.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
+  // 合计 250、目标 200：删最旧的 legacy（100）就够了。
+  assert_eq!(names(gate_victims(&parts,250,200.0,now)),vec!["legacy"]);
+  // 目标 100：legacy、c 删了还超，接着删 d。
+  assert_eq!(names(gate_victims(&parts,250,100.0,now)),vec!["legacy","c","d"]);
+  // 目标 0：最近 6 小时（上沿晚于 now − 6 小时的 f）与此刻那张都不动。
+  assert_eq!(names(gate_victims(&parts,250,0.0,now)),vec!["legacy","c","d","e"]);
+  // 没超：一张不删。
+  assert!(gate_victims(&parts,250,250.0,now).is_empty());
+ }
+
+ #[test] fn a_missing_partition_is_recognized_only_by_its_sqlstate_and_message() {
+  assert!(!missing_partition(&sqlx::Error::RowNotFound));
+ }
+
+ /// 分区的整套：写到没有分区的时刻现建、每分钟预建下一张、过期的整张 DROP、进度存库里不往回退。
+ /// 跑在测试库的非属主角色上，建删都经 SECURITY DEFINER 的 orderflow_heat_ensure / orderflow_heat_drop（0057），和线上 kanpan_app 一样。
+ #[tokio::test] async fn partitions_are_created_on_demand_and_dropped_whole_when_expired() {
+  let Some(pool)=store::tests::isolated_pool().await else {return};
+  let base="HEATPART";
+  sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  let real=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+  // 一年以后：0057 挂上去的旧表只盖到迁移时刻往后几小时，这里的分区都得现建。
+  let now=block_start(real)+400*store::DAY_MS+3_600_000;
+  let old=now-store::RETENTION_MS-PARTITION_MS;
+  let band=|t:i64|Band{base:base.into(),exchange:"binance",product:"usdtPerp",bucket_ms:t,step:100.0,lo:600,offsets:vec![0],bids:vec![1.0],asks:vec![0.0]};
+  // 直接写会撞上「没有分区」；insert_extending 现建再写。
+  let err=insert(&pool,&[band(old)]).await.unwrap_err();
+  assert!(missing_partition(&err),"{err}");
+  insert_extending(&pool,&[band(old),band(now-5_000)]).await.unwrap();
+  let names=||{let pool=pool.clone();async move {partitions(&pool).await.unwrap().into_iter().map(|p|p.name).collect::<Vec<_>>()}};
+  let before=names().await;
+  assert!(before.contains(&partition_name(block_start(old)))&&before.contains(&partition_name(block_start(now))),"{before:?}");
+  // 新行落进各自的分区。
+  let homes:Vec<String>=sqlx::query_scalar("SELECT tableoid::regclass::text FROM orderflow_heat WHERE base=$1 ORDER BY bucket_ms").bind(base).fetch_all(&pool).await.unwrap();
+  assert_eq!(homes,vec![partition_name(block_start(old)),partition_name(block_start(now))]);
+  // 清理：预建下一张；整张在 3 天以前的 DROP（旧表那张、别的测试摆在 1970 年的也一起）；此刻那张留着。
+  let cutoff=now-store::RETENTION_MS;
+  let done=purge(&pool,now,None,None).await.unwrap();
+  assert_eq!(done.created,vec![partition_name(block_start(now)+PARTITION_MS)]);
+  assert!(done.dropped.contains(&partition_name(block_start(old))),"{done:?}");
+  assert_eq!((done.raw_floor,done.rollup_floor),(cutoff,cutoff));
+  let after=names().await;
+  assert!(!after.contains(&partition_name(block_start(old)))&&after.contains(&partition_name(block_start(now))),"{after:?}");
+  assert!(partitions(&pool).await.unwrap().iter().all(|p|p.hi.is_some_and(|hi|hi>cutoff)),"没有过期的分区留下");
+  let left:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_heat WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
+  assert_eq!(left,1);
+  // 再来一次：什么都不用建、不用删。进度存在库里，重启接着用。
+  assert_eq!(purged(&pool).await.unwrap(),(Some(cutoff),Some(cutoff)));
+  let again=purge(&pool,now,Some(cutoff),Some(cutoff)).await.unwrap();
+  assert!(again.created.is_empty()&&again.dropped.is_empty(),"{again:?}");
+  // 进度不往回退（闸门删过的上沿比此刻 − 保留期还靠后时）。
+  let ahead=cutoff+5_000;
+  assert_eq!(purge(&pool,now,Some(ahead),Some(ahead)).await.unwrap().raw_floor,ahead);
+  assert_eq!(purged(&pool).await.unwrap(),(Some(ahead),Some(ahead)));
+  // 函数只认 6 小时对齐、名字合规的分区，只删 orderflow_heat 名下的。
+  assert!(sqlx::query_scalar::<_,bool>("SELECT orderflow_heat_ensure('orderflow_heat_p20261008_12',1,21600001)").fetch_one(&pool).await.is_err());
+  assert!(sqlx::query_scalar::<_,bool>("SELECT orderflow_heat_ensure('x; DROP TABLE orderflow_flow',0,21600000)").fetch_one(&pool).await.is_err());
+  assert!(!sqlx::query_scalar::<_,bool>("SELECT orderflow_heat_drop('orderflow_flow')").fetch_one(&pool).await.unwrap());
+  sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  sqlx::query("DELETE FROM orderflow_purged WHERE target=ANY($1)").bind(vec![RAW_TARGET.to_string(),ROLLUP_TARGET.to_string()]).execute(&pool).await.unwrap();
  }
 
  fn query(lo:Option<f64>,hi:Option<f64>,around:Option<f64>,pct:Option<f64>,bucket_ms:Option<i64>)->HeatQuery {
@@ -1023,7 +1223,7 @@ mod tests {
    let t=from+k*BUCKET_MS;
    ["binance","okx"].map(|exchange|Band{base:base.into(),exchange,product:"usdtPerp",bucket_ms:t,step:100.0,lo:600,offsets:vec![0,3,10],bids:vec![100.0,0.0,0.0],asks:vec![0.0,40.0,8.0]})
   }).collect();
-  for chunk in bands.chunks(INSERT_ROWS) {insert(&pool,chunk).await.unwrap();}
+  for chunk in bands.chunks(INSERT_ROWS) {insert_extending(&pool,chunk).await.unwrap();}
   let last=from+719*BUCKET_MS;
   // 老请求：一小时 × 3 个桶，5 秒格全读。
   let (_,bucket_ms,rows)=read(&pool,base,from,last,None,None,MAX_ROWS,None).await.unwrap();
@@ -1052,6 +1252,7 @@ mod tests {
   for b in bases {sqlx::query("DELETE FROM orderflow_heat WHERE base=$1").bind(b).execute(&pool).await.unwrap();}
   let now=20*store::DAY_MS;
   let from=now-store::DAY_MS;
+  ensure(&pool,&(from..=now).step_by(PARTITION_MS as usize).chain([now]).collect::<Vec<_>>()).await.unwrap();
   sqlx::query("INSERT INTO orderflow_heat(base,exchange,product,bucket_ms,step,price_lo,price_bucket,bid_notional,ask_notional) \
    SELECT b,v.ex,v.pr,t,100,600,ARRAY(SELECT generate_series(0,39)),array_fill(1e6::real,ARRAY[40]),array_fill(2e5::real,ARRAY[40]) \
    FROM unnest($1::text[]) b,generate_series($2::bigint,$3::bigint,5000) t, \
@@ -1128,7 +1329,7 @@ mod tests {
     else {Band{base:base.into(),exchange:"binance",product:"usdtPerp",bucket_ms:t,step:100.0,lo:600,offsets:vec![0],bids:vec![100.0],asks:vec![0.0]}};
    [binance,Band{base:base.into(),exchange:"okx",product:"spot",bucket_ms:t,step:100.0,lo:603,offsets:vec![0],bids:vec![10.0],asks:vec![0.0]}]
   }).collect();
-  for chunk in bands.chunks(INSERT_ROWS) {insert(&pool,chunk).await.unwrap();}
+  for chunk in bands.chunks(INSERT_ROWS) {insert_extending(&pool,chunk).await.unwrap();}
   let last=from+719*BUCKET_MS;
   let at=|rows:&[(i64,f64,f64,f64)],price:f64|rows.iter().filter(|r|r.1==price).map(|r|(r.0,r.2+r.3)).collect::<Vec<_>>();
   let s60=Scope{prices:None,hint:60_000};
@@ -1166,8 +1367,9 @@ mod tests {
   // 价格范围照样只留范围里的桶。
   let (_,_,narrow)=read(&pool,base,from,last,None,None,SCOPED_ROWS,Some(Scope{prices:Some((60_100.0,60_150.0)),hint:900_000})).await.unwrap();
   assert!(!narrow.is_empty()&&narrow.iter().all(|r|r.1==60_100.0));
-  // 清理：段和原始快照同一个截止时刻删；记着进度时只删进度以来的一截（下沿让出段宽与十分钟，并段可能落在进度前一点）。
-  purge(&pool,now+store::RETENTION_MS+1,Some(from)).await.unwrap();
+  // 清理：段照自己的保留期删；记着进度时只删进度以来的一截（下沿让出段宽与十分钟，并段可能落在进度前一点）。
+  let done=purge(&pool,now+store::RETENTION_MS+1,None,Some(from)).await.unwrap();
+  assert!(done.rollup_rows>=111,"{done:?}");
   let left:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_heat_rollup WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
   assert_eq!(left,0);
   wipe().await;
