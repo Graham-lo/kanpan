@@ -155,7 +155,7 @@
 /* ---------------------------------------------------------------- 底部抽屉：大单列表（2026-10-08 改版，照 docs/prototypes/web-bigtrade-drawer-2026-10-08.html）
  * 四张卡横排：汇总 / 每根 / 价位 / 爆仓。颜色全从皮肤变量调出来（color-mix），三套皮肤、深浅色都跟着走；
  * 卡片自带一层由浅到深的底、1 px 边与一道内高光；条形一律「淡 → 实」渐变，金额写在条里。 */
-.of-dr, .of-card {
+.of-dr, .of-card, .of-p {
   --of-bn: #E8A800; --of-okx: #7C8596; --of-cb: #2EA3F2; --of-bybit: #EE7A2C; --of-hl: #B957AE; --of-spot: #8F7CF0; --of-perp: #55637D;
   --of-wall: #7B6CF0; --of-wall-a: rgba(123, 108, 240, .13);
   --of-up-a: color-mix(in srgb, var(--up) 12%, transparent); --of-down-a: color-mix(in srgb, var(--down) 10%, transparent);
@@ -165,7 +165,7 @@
   --of-card-bg: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 45%, var(--surface)) 0%, var(--surface-2) 100%);
   --of-card-line: color-mix(in srgb, var(--line) 75%, var(--surface)); --of-card-hi: rgba(255, 255, 255, .9);
 }
-[data-theme="dark"] .of-dr, [data-theme="dark"] .of-card {
+[data-theme="dark"] .of-dr, [data-theme="dark"] .of-card, [data-theme="dark"] .of-p {
   --of-okx: #9AA3B5; --of-hl: #D07AC6; --of-perp: #7D8AA6; --of-wall: #9C90FF; --of-wall-a: rgba(156, 144, 255, .14);
   --of-up-a: color-mix(in srgb, var(--up) 18%, transparent); --of-down-a: color-mix(in srgb, var(--down) 16%, transparent);
   --of-up-b: color-mix(in srgb, var(--up) 42%, transparent); --of-down-b: color-mix(in srgb, var(--down) 40%, transparent);
@@ -324,7 +324,10 @@
 /* ---------------------------------------------------------------- 侧栏「主力订单流」面板 */
 .of-p { flex: 1; min-height: 0; padding-bottom: var(--s4); }
 .of-p .sec-title .faint { font-weight: 400; }
-.of-p-row { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 var(--s4); font-size: var(--t13); }
+.of-p-row { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 var(--s4); font-size: var(--t13); }
+.of-p-row .l { flex: 1; }
+/* 开关行前的小图标块：渐变底在行内联样式里（按皮肤变量调），这里只定尺寸与圆角 */
+.of-p-row .tgi { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; flex: none; }
 .of-p-row:hover { background: var(--surface-2); }
 .of-p-chips { display: flex; flex-wrap: wrap; gap: var(--s1) 6px; padding: 0 var(--s4); align-items: center; }
 .of-p-chips .chip { background: var(--surface-2); }

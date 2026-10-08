@@ -382,8 +382,26 @@ export function indicatorRowClick(t: HTMLElement): boolean {
 
 // ------------------------------------------------------------------ 侧栏「主力订单流」面板
 
+/** 四行开关前面的小图标（照 docs/prototypes/web-bigtrade-drawer-2026-10-08.html）：
+ *  一块 28 px 的渐变底 + 18 px 的小图，颜色全走皮肤变量（墙紫 / 涨跌 / 强调色 / 热力橙紫）。 */
+const svg18 = (body: string): string => `<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">${body}</svg>`
+const TILE: Record<string, string> = {
+  flow: `<span class="tgi" style="background:linear-gradient(135deg,var(--of-wall-a),color-mix(in srgb,var(--of-wall) 26%,transparent))">${svg18(
+    '<rect x="1" y="4" width="16" height="3" rx="1.5" fill="var(--of-wall)" opacity=".55"/><rect x="1" y="11" width="16" height="3" rx="1.5" fill="var(--of-wall)" opacity=".85"/>' +
+    '<rect x="5" y="2" width="2" height="14" rx="1" fill="var(--up)"/><rect x="11" y="5" width="2" height="10" rx="1" fill="var(--down)"/>')}</span>`,
+  ladder: `<span class="tgi" style="background:linear-gradient(135deg,var(--of-up-a),var(--of-down-a))">${svg18(
+    '<rect x="3" y="2" width="12" height="2.4" rx="1.2" fill="var(--down)" opacity=".55"/><rect x="6" y="5.6" width="9" height="2.4" rx="1.2" fill="var(--down)"/>' +
+    '<rect x="7" y="10" width="8" height="2.4" rx="1.2" fill="var(--up)"/><rect x="2" y="13.6" width="13" height="2.4" rx="1.2" fill="var(--up)" opacity=".55"/>')}</span>`,
+  drawer: `<span class="tgi" style="background:linear-gradient(135deg,var(--accent-soft),color-mix(in srgb,var(--accent) 22%,transparent))">${svg18(
+    '<rect x="2" y="10" width="14" height="6" rx="2" fill="var(--accent)"/><rect x="2" y="2" width="14" height="6" rx="2" fill="var(--accent)" opacity=".28"/>' +
+    '<rect x="5" y="12.2" width="4" height="1.6" rx=".8" fill="#fff"/><rect x="10" y="12.2" width="3" height="1.6" rx=".8" fill="#fff" opacity=".7"/>')}</span>`,
+  heat: `<span class="tgi" style="background:linear-gradient(135deg,rgba(242,140,40,.16),rgba(123,108,240,.16))">${svg18(
+    [0, 1, 2, 3].map(c => [0, 1, 2, 3].map(r =>
+      `<rect x="${1 + c * 4.2}" y="${1 + r * 4.2}" width="3.4" height="3.4" rx=".8" fill="${(c + r) % 3 ? 'var(--of-wall)' : '#F28C28'}" opacity="${(.25 + ((c * 3 + r * 5) % 7) / 9).toFixed(2)}"/>`).join('')).join(''))}</span>`,
+}
+
 const sw = (id: string, label: string, on: boolean, tip: string): string =>
-  `<div class="of-p-row" data-tip="${tip}"><span>${label}</span><button class="switch" role="switch" data-ofp="${id}" aria-checked="${on}" aria-label="${label}"></button></div>`
+  `<div class="of-p-row" data-tip="${tip}">${TILE[id] ?? ''}<span class="l">${label}</span><button class="switch" role="switch" data-ofp="${id}" aria-checked="${on}" aria-label="${label}"></button></div>`
 
 /** 图表页 panelFlow 调：整块重画。 */
 export function flowPanel(el: HTMLElement): void {
