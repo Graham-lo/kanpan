@@ -21,7 +21,7 @@ import { CATALOG, Calc, MAIN_IDS, paramText } from './calc'
 import type { Bar, CalcEnv, CalcId, IndParams, IndicatorId, MainId, Series, SubId } from './calc'
 import { TIME_TICK_MIN_PX, timeTicks } from './timeAxis'
 import type { TimeTick } from './timeAxis'
-import { oscLevels, subBand, subFixed, subStyles, type SubStyle } from './indicators'
+import { subBandFills, subFixed, subLevelLines, subStyles, type LevelLine, type SubStyle } from './indicators'
 import { mainOn } from './mainIndicators'
 import { drawMoreMain, pivotPColor } from './overlaysMore'
 import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } from './overlays'
@@ -38,12 +38,14 @@ import { DEFAULT_SPACING, anchoredRightBar, clampRightBar, clampSpacing, isWinCh
 const SEP_HIT = 3 // 窗格分隔线上下各 3 px，热区 6 px
 
 // 线条规格（网页版自己的一套，和手机端无关）。基准屏 1 CSS px = 1 物理像素：
-// 横竖线一律整数宽、落在半像素上才锐利；曲线允许 1.5 px，靠抗锯齿显得顺滑又不压过 K 线。
+// 横竖线一律整数宽、落在半像素上才锐利；指标曲线照 TradingView 内置指标默认 linewidth 1。
 // K 线是主体：照 TradingView——影线 1 物理像素，实体宽按 TV optimalCandlestickWidth（间距越大占比越高，6 px 间距 5 px 实体），
 // 实体奇偶跟影线走，让影线永远正好居中。
+/** 不在价格轴上挂最新值的主图指标：它们画的是图形 / 档位，不是一条随 K 线走的线 */
+const NO_AXIS_TAG = new Set<MainId>(['vpvr', 'keys', 'pivots', 'fractals', 'zigzag'])
 export const LINE = {
   hair: 1,      // 网格、窗格分隔、轴线、RSI 参考线、最新价点线、提醒线、十字线
-  plot: 1.5,    // 主图叠加线（MA / EMA / BOLL 中轨）、副图曲线（MACD / RSI / KDJ / 持仓量）
+  plot: 1,      // 主图叠加线（MA / EMA / BOLL / 通道 / 均线族）、副图曲线：TV 内置指标默认都是 1 px
   band: 1,      // BOLL 上下轨、斐波那契各档、复盘的进出场连线
   draw: 2,      // 画线工具默认粗细（用户可改 1 / 2 / 3）
   measure: 1,   // 测量十字
@@ -681,8 +683,9 @@ export class TVChart {
   /** 比例尺与线：指标最新值、最高最低价、前收盘价的轴标签（主图）。最新价标签最后画，压在最上面 */
   private drawSettingLabels(p: Pane, r: PriceRange): void {
     const S = this.cs(), C = this.colors, i = this.lastIndex()
-    if (S.indLabels) for (const id of ['ma', 'ema', 'boll', 'vwap'] as MainId[]) {
-      if (!mainOn(this.ind, id) || this.hidden.has(id)) continue
+    // TV showStudyLastValue：每个主图指标的每条线都在价格轴上挂当前值（成交量分布、关键位、枢轴、分形、之字转向是图形，不挂）
+    if (S.indLabels) for (const id of MAIN_IDS) {
+      if (NO_AXIS_TAG.has(id) || !mainOn(this.ind, id) || this.hidden.has(id)) continue
       const ser = this.series[id]; if (!ser) continue
       const cols = CATALOG[id].colors ?? []
       ser.forEach((s, k) => { const v = s[i]; if (v != null && Number.isFinite(v)) this.axisTag(p, this.priceToY(v, p, r), this.mainAxisText(v), cols[k % cols.length] || C.text2) })
@@ -690,7 +693,7 @@ export class TVChart {
     if (S.hiloLabel) { const hl = this.visibleHiLo(); if (hl) { this.axisTag(p, this.priceToY(hl.hi, p, r), this.mainAxisText(hl.hi), C.text2); this.axisTag(p, this.priceToY(hl.lo, p, r), this.mainAxisText(hl.lo), C.text2) } }
     if (S.prevClose) { const v = this.prevDayClose(); if (v != null) this.axisTag(p, this.priceToY(v, p, r), this.mainAxisText(v), C.text3) }
   }
-  /** 副图指标线的最新值标签（柱状的不挂） */
+  /** 副图指标每条线 / 柱的最新值标签（TV showStudyLastValue），柱子的标签色就是这根柱子的颜色 */
   private drawSubLabels(panes: Pane[]): void {
     if (!this.cs().indLabels) return
     const i = this.lastIndex()
@@ -698,10 +701,11 @@ export class TVChart {
       const id = p.id as SubId, r = this._ranges[p.id], ser = this.series[id]; if (!r || !ser || this.hidden.has(id)) continue
       const styles: readonly SubStyle[] = id === 'macd' ? ['line', 'line', 'hist4'] : subStyles(id) ?? []
       const cols = CATALOG[id]?.colors ?? []
+      const h4 = this.hist4Colors()
       ser.forEach((s, k) => {
-        if ((styles[k] ?? 'line') !== 'line') return
-        const v = s[i]; if (v == null || !Number.isFinite(v)) return
-        this.axisTag(p, this.priceToY(v, p, r), this.subFmt(id, v), cols[k % cols.length] || this.colors.text2)
+        const st = styles[k] ?? 'line', v = s[i]; if (v == null || !Number.isFinite(v)) return
+        const col = st === 'hist' || st === 'hist4' || st === 'histTrend' ? this.histColor(st, v, s[i - 1] ?? v, h4) : cols[k % cols.length] || this.colors.text2
+        this.axisTag(p, this.priceToY(v, p, r), this.subFmt(id, v), col)
       })
     }
   }
@@ -1410,7 +1414,7 @@ export class TVChart {
     const c = this.ctx, cols = CATALOG[id].colors ?? [], ser = this.series[id]
     if (!ser) return
     if (id === 'boll') {
-      c.fillStyle = hexA('#2962FF', 0.05); c.beginPath()
+      c.fillStyle = 'rgba(33,150,243,0.05)'; c.beginPath() // TV 布林 Background：color.rgb(33, 150, 243, 95)
       let started = false
       for (let i = from; i <= to; i++) { const v = ser[1][i]; if (v == null) continue; const x = this.indexToX(i), y = this.priceToY(v, p, r); if (started) c.lineTo(x, y); else { c.moveTo(x, y); started = true } }
       for (let i = to; i >= from; i--) { const v = ser[2][i]; if (v == null) continue; c.lineTo(this.indexToX(i), this.priceToY(v, p, r)) }
@@ -1418,7 +1422,7 @@ export class TVChart {
     }
     c.lineJoin = 'round'; c.lineCap = 'round'
     ser.forEach((s, k) => {
-      c.lineWidth = id === 'boll' && k > 0 ? LINE.band : LINE.plot
+      c.lineWidth = LINE.plot
       c.strokeStyle = cols[k % cols.length]; c.beginPath()
       let started = false
       for (let i = Math.max(0, from - 1); i <= to; i++) {
@@ -1436,32 +1440,41 @@ export class TVChart {
     const n = parseInt(m[1], 16)
     return (n >> 8 & 255) >= (n >> 16 & 255)
   }
-  /** TradingView MACD 柱的四色：[零上变长, 零上变短, 零下变长, 零下变短] */
+  /** TradingView MACD 柱的四色（STD;MACD 的 hColor）：[零上变长, 零上变短, 零下变长, 零下变短] */
   hist4Colors(): [string, string, string, string] {
-    const g: [string, string] = ['#26A69A', '#B2DFDB'], rd: [string, string] = ['#EF5350', '#FFCDD2']
+    const g: [string, string] = ['#26A69A', '#B2DFDB'], rd: [string, string] = ['#FF5252', '#FFCDD2']
     const [pos, neg] = this.greenUp() ? [g, rd] : [rd, g]
     return [pos[0], pos[1], neg[0], neg[1]]
   }
-  /** 副图参考线：横贯的灰色虚线 */
-  private levelLines(p: Pane, r: PriceRange, vals: number[], alpha = 0.7): void {
+  /** 副图柱子一根的颜色：零轴柱看正负（涨跌色）、升降柱看比上一根（TV AO 的 #009688 / #F44336）、四色柱照 TV MACD */
+  histColor(st: SubStyle, v: number, prev: number, h4 = this.hist4Colors()): string {
+    if (st === 'hist') return v >= 0 ? this.colors.up : this.colors.down
+    if (st === 'histTrend') { const [u, d] = this.greenUp() ? ['#009688', '#F44336'] : ['#F44336', '#009688']; return v >= prev ? u : d }
+    // TV：hist >= 0 ? (hist > hist[1] ? 深绿 : 浅绿) : (hist > hist[1] ? 浅红 : 深红)
+    return v >= 0 ? (v > prev ? h4[0] : h4[1]) : (v > prev ? h4[3] : h4[2])
+  }
+  /** 副图参考线：照 TV hline——#787B86（中线 50% 透明）、1 px、style_dashed 用 TV 的 [5, 6] 虚线（威廉 −50 是点线） */
+  private levelLines(p: Pane, r: PriceRange, lines: readonly LevelLine[]): void {
     const c = this.ctx, PW = this.plotW()
-    c.setLineDash([4, 4]); c.strokeStyle = hexA(this.colors.text3 || '#888', alpha); c.lineWidth = LINE.hair; c.beginPath()
-    for (const v of vals) { const yy = Math.round(this.priceToY(v, p, r)) + .5; c.moveTo(0, yy); c.lineTo(PW, yy) }
-    c.stroke(); c.setLineDash([])
+    c.lineWidth = LINE.hair
+    for (const l of lines) {
+      const yy = Math.round(this.priceToY(l.v, p, r)) + .5
+      c.setLineDash(dashOf(l.dash, LINE.hair)); c.strokeStyle = l.color; c.beginPath(); c.moveTo(0, yy); c.lineTo(PW, yy); c.stroke()
+    }
+    c.setLineDash([])
   }
   /** 副图：参考带底色 → 参考线 → 柱 / 面 → 线 → 点。画法照 TradingView 各指标默认样式 */
   drawSub(p: Pane, r: PriceRange, from: number, to: number): void {
     const c = this.ctx, C = this.colors, id = p.id as SubId, ser = this.series[id], cols = CATALOG[id].colors ?? []
     if (!ser || this.hidden.has(id)) return
     const y = (v: number) => this.priceToY(v, p, r), PW = this.plotW()
-    // 上下轨之间 10% 底色（RSI 70 / 30，随机 RSI、CCI、威廉指标与第三批里有的），色取主线
-    const band: [number, number] | undefined = id === 'rsi' ? [70, 30] : subBand(id)
-    if (band) { const ya = y(band[0]), yb = y(band[1]); c.fillStyle = hexA(cols[0] || '#7E57C2', 0.1); c.fillRect(0, Math.min(ya, yb), PW, Math.abs(yb - ya)) }
-    if (id === 'rsi') { this.levelLines(p, r, [70, 30]); this.levelLines(p, r, [50], 0.4) }
-    else {
-      drawSubLevels(this, p, r, id)
-      const lv = oscLevels(id); if (lv) this.levelLines(p, r, lv)
+    // 上下轨之间的底色（TV 的 hline 间 fill：RSI 等紫 10%、随机等 #2196F3 10%），夹在窗格里
+    for (const f of subBandFills(id)) {
+      const ya = clamp(y(f.a), p.y, p.y + p.h), yb = clamp(y(f.b), p.y, p.y + p.h)
+      if (ya !== yb) { c.fillStyle = f.color; c.fillRect(0, Math.min(ya, yb), PW, Math.abs(yb - ya)) }
     }
+    drawSubLevels(this, p, r, id)
+    this.levelLines(p, r, subLevelLines(id))
     const styles: readonly SubStyle[] = id === 'macd' ? ['line', 'line', 'hist4'] : subStyles(id) ?? []
     const style = (k: number): SubStyle => styles[k] ?? 'line'
     const bw = this.candleW(), half = Math.floor(bw * this.pr / 2) / this.pr, y0 = y(0)
@@ -1472,10 +1485,7 @@ export class TVChart {
       if (st === 'hist' || st === 'hist4' || st === 'histTrend') {
         for (let i = Math.max(0, from); i <= to; i++) {
           const v = s[i]; if (v == null) continue
-          const prev = s[i - 1] ?? v
-          c.fillStyle = st === 'hist' ? (v >= 0 ? C.up : C.down)
-            : st === 'histTrend' ? (v >= prev ? C.up : C.down)
-            : v >= 0 ? (v >= prev ? h4[0] : h4[1]) : (v <= prev ? h4[2] : h4[3])
+          c.fillStyle = this.histColor(st, v, s[i - 1] ?? v, h4)
           bar(i, v)
         }
       } else if (st === 'area') {
@@ -1942,12 +1952,11 @@ export class TVChart {
         const val = ser[i], lab = labels?.[j]
         // 带前缀的线（现货 / 合约、大单 / 散户）这一根没值就不列
         if (lab && val == null) return null
-        // 柱的读数跟柱色走：四色柱取两种深色，零轴柱取涨跌色，升降柱看比上一根高还是低
+        // 柱的读数跟这一根柱子的颜色完全一样（TV 图例值随 plot 当根颜色）；零轴柱用文字涨跌色保证浅底可读
         const st = id === 'macd' ? (j === 2 ? 'hist4' : 'line') : subStyles(id)?.[j] ?? 'line'
         const v0 = val ?? 0, prev = ser[i - 1] ?? v0
-        const col = st === 'hist4' ? (v0 >= 0 ? h4[0] : h4[2])
-          : st === 'hist' ? (v0 >= 0 ? 'var(--up-text)' : 'var(--down-text)')
-          : st === 'histTrend' ? (v0 >= prev ? 'var(--up-text)' : 'var(--down-text)')
+        const col = st === 'hist' ? (v0 >= 0 ? 'var(--up-text)' : 'var(--down-text)')
+          : st === 'hist4' || st === 'histTrend' ? this.histColor(st, v0, prev, h4)
           : cols[j % cols.length]
         return [col, lab ?? '', val == null ? '—' : this.subFmt(id, val)]
       }).filter((v): v is LegVal => v != null)

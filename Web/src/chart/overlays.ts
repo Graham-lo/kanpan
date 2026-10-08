@@ -1,5 +1,7 @@
 /* Hkline Web · 主图第二批叠加的画法：VWAP 带、超级趋势、一目均衡表、成交量分布（VPVR）
  *
+ * 线色、线宽、填充照 TradingView 内置指标默认（pine-facade STD 元信息）：线一律 1 px，填充色与透明度逐个对过。
+ *
  * 成交量分布按「可见区间」现算：缩放、平移一动就重算（算量是可见根数 × 行数，2K 屏上几百根、几十行，可以每帧算）。
  * 照 TradingView 的样子贴价格轴画在右侧、最长一行占绘图区 30% 宽（画法在 volumeProfile.ts，与固定区间成交量分布共用）。
  * 三种看法一个下拉切：买卖分开、净差、合计。
@@ -8,7 +10,7 @@
  */
 import { hexA } from '../util/format'
 import type { Bar, Series } from './calc'
-import { SUB_LEVELS, barInterval, vwapAnchor, type ExtraSubId } from './indicators'
+import { EXTRA_CATALOG, barInterval, vwapAnchor } from './indicators'
 import type { Pane, PriceRange, TVChart } from './chart'
 import { fineSplit } from './fineVolume'
 import { drawProfile, profileRows } from './volumeProfile'
@@ -107,15 +109,15 @@ function fillBetween(ch: TVChart, a: Series, b: Series, p: Pane, r: PriceRange, 
 /** 主图上第二批叠加（在均线之后、最新价线之前画） */
 export function drawExtraMain(ch: TVChart, p: Pane, r: PriceRange, from: number, to: number): void {
   const on = (id: 'vwap' | 'st' | 'ichi' | 'vpvr') => !!ch.ind[id] && !ch.hidden.has(id)
-  const C = ch.colors
   if (on('vpvr')) drawVpvr(ch, p, r, from, to)
   if (on('ichi')) {
     const s = ch.series.ichi
     if (s && s.length === 5) {
       const far = Math.min(s[2].length - 1, Math.ceil(ch.rightBar))
-      fillBetween(ch, s[2], s[3], p, r, from, far, (a, b) => hexA(a >= b ? '#43A047' : '#F44336', 0.1))
-      const cols = ['#2962FF', '#B71C1C', '#43A047', '#F44336', '#9C27B0']
-      path(ch, s[0], p, r, from, to, cols[0], 1.5); path(ch, s[1], p, r, from, to, cols[1], 1.5)
+      // TV 云：先行 A 在上 rgba(67,160,71,0.1)，先行 B 在上 rgba(244,67,54,0.1)
+      fillBetween(ch, s[2], s[3], p, r, from, far, (a, b) => a >= b ? 'rgba(67,160,71,0.1)' : 'rgba(244,67,54,0.1)')
+      const cols = EXTRA_CATALOG.ichi.colors ?? [] // [转换, 基准, 先行 A, 先行 B, 迟行]
+      path(ch, s[0], p, r, from, to, cols[0], 1); path(ch, s[1], p, r, from, to, cols[1], 1)
       path(ch, s[2], p, r, from, far, cols[2], 1); path(ch, s[3], p, r, from, far, cols[3], 1)
       path(ch, s[4], p, r, from, to, cols[4], 1)
     }
@@ -125,20 +127,23 @@ export function drawExtraMain(ch: TVChart, p: Pane, r: PriceRange, from: number,
     if (s && s.length === 5) {
       const iv = ch.iv || barInterval(ch.bars)
       const brk = (i: number) => i > 0 && !!ch.bars[i] && !!ch.bars[i - 1] && vwapAnchor(ch.bars[i].t, iv) !== vwapAnchor(ch.bars[i - 1].t, iv)
-      fillBetween(ch, s[1], s[2], p, r, from, to, () => hexA('#26A69A', 0.06), brk)
-      path(ch, s[3], p, r, from, to, hexA('#FF9800', 0.8), 1, brk); path(ch, s[4], p, r, from, to, hexA('#FF9800', 0.8), 1, brk)
-      path(ch, s[1], p, r, from, to, '#26A69A', 1, brk); path(ch, s[2], p, r, from, to, '#26A69A', 1, brk)
-      path(ch, s[0], p, r, from, to, '#2962FF', 1.5, brk)
+      // TV：±1σ 带 #4CAF50、带间 rgba(76,175,80,0.05)；±2σ 带 #808000（TV 默认藏起，这里照旧画出、不铺底）
+      const cols = EXTRA_CATALOG.vwap.colors ?? []
+      fillBetween(ch, s[1], s[2], p, r, from, to, () => 'rgba(76,175,80,0.05)', brk)
+      path(ch, s[3], p, r, from, to, cols[3], 1, brk); path(ch, s[4], p, r, from, to, cols[4], 1, brk)
+      path(ch, s[1], p, r, from, to, cols[1], 1, brk); path(ch, s[2], p, r, from, to, cols[2], 1, brk)
+      path(ch, s[0], p, r, from, to, cols[0], 1, brk)
     }
   }
   if (on('st')) {
     const s = ch.series.st
     if (s && s.length === 2) {
-      // 线与收盘之间淡淡铺一层，多头涨色、空头跌色
-      const close: Series = ch.bars.map(b => b.c)
-      fillBetween(ch, s[0], close, p, r, from, to, () => hexA(C.up || '#089981', 0.07))
-      fillBetween(ch, s[1], close, p, r, from, to, () => hexA(C.down || '#F23645', 0.07))
-      path(ch, s[0], p, r, from, to, C.up || '#089981', 1.5); path(ch, s[1], p, r, from, to, C.down || '#F23645', 1.5)
+      // TV：线与实体中点 (开 + 收) / 2 之间铺 10%，多头 #4CAF50、空头 #F23645；红涨绿跌时两色对调，跟 K 线一致
+      const mid: Series = ch.bars.map(b => (b.o + b.c) / 2)
+      const [u, d] = ch.greenUp() ? EXTRA_CATALOG.st.colors ?? [] : [...EXTRA_CATALOG.st.colors ?? []].reverse()
+      fillBetween(ch, s[0], mid, p, r, from, to, () => hexA(u, 0.1))
+      fillBetween(ch, s[1], mid, p, r, from, to, () => hexA(d, 0.1))
+      path(ch, s[0], p, r, from, to, u, 1); path(ch, s[1], p, r, from, to, d, 1)
     }
   }
 }
@@ -167,15 +172,9 @@ function drawVpvr(ch: TVChart, p: Pane, r: PriceRange, from: number, to: number)
 /** 可见区间成交量分布的价值区上下沿线色（固定区间那把用画线自己的工具色，默认也是这个蓝） */
 const VPVR_VA_LINE = '#2962FF'
 
-/** 副图参考线（随机 RSI 80/20、CCI ±100、威廉 −20/−80） */
-export function drawSubLevels(ch: TVChart, p: Pane, r: PriceRange, id: string): void {
+/** 副图上参考线之外的附加画法（累计量差的分界）；横向参考线统一由 chart.ts 照 subLevelLines 画 */
+export function drawSubLevels(ch: TVChart, p: Pane, _r: PriceRange, id: string): void {
   if (id === 'cvd') drawCvdSeams(ch, p)
-  const lv = SUB_LEVELS[id as ExtraSubId]
-  if (!lv) return
-  const c: Ctx = ch.ctx, PW = ch.plotW()
-  c.setLineDash([4, 4]); c.strokeStyle = hexA(ch.colors.text3 || '#888', 0.7); c.lineWidth = 1; c.beginPath()
-  for (const v of lv) { const y = Math.round(ch.priceToY(v, p, r)) + .5; c.moveTo(0, y); c.lineTo(PW, y) }
-  c.stroke(); c.setLineDash([])
 }
 
 /** 累计量差的历史段（只有币安）/ 实时段（三家）分界：竖虚线，线两边底部各一个小字 */

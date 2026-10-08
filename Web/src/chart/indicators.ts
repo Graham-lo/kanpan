@@ -225,9 +225,9 @@ export const EXTRA_CALC: Record<ExtraMainId | ExtraSubId, Fn> = {
 }
 
 export const EXTRA_CATALOG: Record<ExtraMainId | ExtraSubId, CatalogEntry> = {
-  vwap: { name: '成交均价', cn: '', place: 'main', params: {}, colors: ['#2962FF', '#26A69A', '#26A69A', '#FF9800', '#FF9800'] },
-  st: { name: '超级趋势', cn: '', place: 'main', params: { n: 10, k: 3 }, colors: ['#089981', '#F23645'] },
-  ichi: { name: '一目均衡表', cn: '', place: 'main', params: { tenkan: 9, kijun: 26, senkou: 52 }, colors: ['#2962FF', '#B71C1C', '#43A047', '#F44336', '#9C27B0'] },
+  vwap: { name: '成交均价', cn: '', place: 'main', params: {}, colors: ['#2962FF', '#4CAF50', '#4CAF50', '#808000', '#808000'] },
+  st: { name: '超级趋势', cn: '', place: 'main', params: { n: 10, k: 3 }, colors: ['#4CAF50', '#F23645'] },
+  ichi: { name: '一目均衡表', cn: '', place: 'main', params: { tenkan: 9, kijun: 26, senkou: 52 }, colors: ['#2962FF', '#B71C1C', '#A5D6A7', '#EF9A9A', '#43A047'] },
   vpvr: { name: '成交量分布', cn: '', place: 'main', params: {}, colors: [] },
   keys: { name: '关键价位', cn: '', place: 'main', params: {}, colors: [] },
   cvd: { name: '累计量差', cn: '', place: 'sub', params: {}, colors: ['#2962FF', '#06B6D4', '#8B5CF6'], labels: ['', '现货', '合约'] },
@@ -250,7 +250,7 @@ export const SUB_LEVELS: Partial<Record<ExtraSubId, number[]>> = {
   wr: [-20, -50, -80],
   cci: [100, 0, -100],
 }
-/** 两条参考线之间铺一层底色（照 TradingView：随机 RSI、CCI、威廉指标的上下轨之间 10% 填充，色取主线） */
+/** 两条参考线之间铺一层底色（照 TradingView：随机 RSI、CCI、威廉指标的上下轨之间 10% 填充，色在 subBandFills 里查） */
 export const SUB_BAND: Partial<Record<ExtraSubId, [number, number]>> = {
   stochrsi: [80, 20],
   wr: [-20, -80],
@@ -264,8 +264,40 @@ export type SubStyle = 'line' | 'hist' | 'hist4' | 'histTrend' | 'area' | 'dots'
 type Lookup<T> = Partial<Record<string, T>>
 // OSC_BAND 是 oscillators.ts 后加的表：没有它时当空表（另一路还在写那个文件）
 export const subFixed = (id: string): { min: number; max: number } | undefined => (SUB_FIXED as Lookup<{ min: number; max: number }>)[id] ?? (Osc.OSC_FIXED as Lookup<{ min: number; max: number }>)[id]
-/** 第三批副图的参考线（第二批的由 overlays.ts 的 drawSubLevels 画） */
+/** 第二、三批副图的参考线数值（样式由 subLevelLines 定） */
 export const oscLevels = (id: string): number[] | undefined => (Osc.OSC_LEVELS as Lookup<number[]>)[id]
 export const subLevels = (id: string): number[] | undefined => (SUB_LEVELS as Lookup<number[]>)[id] ?? oscLevels(id)
 export const subBand = (id: string): [number, number] | undefined => (SUB_BAND as Lookup<[number, number]>)[id] ?? (Osc.OSC_BAND as Lookup<[number, number]>)[id]
 export const subStyles = (id: string): readonly SubStyle[] | undefined => (Osc.OSC_STYLE as Lookup<readonly SubStyle[]>)[id]
+
+// ------------------------------------------------------------ 副图参考线与底色的样式：照 TradingView 内置指标（pine-facade STD;*）的默认 hline / fill
+/** TV hline 的默认色；中线（50 / 0）多是它的 50% 透明 */
+export const TV_HLINE = '#787B86'
+const MID = { color: 'rgba(120,123,134,0.5)' }
+export interface LevelLine { v: number; color: string; dash: 'dashed' | 'dotted' }
+/** 核心副图（calc.ts 的 RSI / MACD）的参考线，和第二、三批的表放在一起查 */
+const CORE_LEVELS: Lookup<number[]> = { rsi: [70, 50, 30], macd: [0] }
+const CORE_BAND: Lookup<[number, number]> = { rsi: [70, 30] }
+/** 个别 hline 的样式例外（其余一律 #787B86、hline.style_dashed 1 px） */
+const LEVEL_STYLE: Lookup<Record<string, Partial<Omit<LevelLine, 'v'>>>> = {
+  rsi: { 50: MID }, macd: { 0: MID }, stoch: { 50: MID }, stochrsi: { 50: MID }, cci: { 0: MID }, mfi: { 50: MID },
+  chop: { 50: MID }, rvi: { 50: MID }, crsi: { 50: MID }, smi: { 0: MID }, ppo: { 0: MID },
+  wr: { [-50]: { dash: 'dotted' } },
+  fisher: { 1.5: { color: '#E91E63' }, 0: { color: '#E91E63' }, [-1.5]: { color: '#E91E63' } },
+  bbpct: { 1: { color: 'rgba(242,54,69,0.5)' }, 0.5: { color: 'rgba(41,98,255,0.5)' }, 0: { color: 'rgba(8,153,129,0.5)' } },
+}
+/** 一个副图要画的参考线（值、色、虚实） */
+export const subLevelLines = (id: string): LevelLine[] =>
+  (CORE_LEVELS[id] ?? subLevels(id) ?? []).map(v => ({ v, color: TV_HLINE, dash: 'dashed' as const, ...LEVEL_STYLE[id]?.[String(v)] }))
+/** TV 的两种带底色：#2196F3 10%（随机、随机 RSI、CCI、波动指数、康纳 RSI）与 #7E57C2 10%（RSI、资金流量、相对波动、威廉） */
+const BLUE_BAND = 'rgba(33,150,243,0.1)', PURPLE_BAND = 'rgba(126,87,194,0.1)'
+const BAND_COLOR: Lookup<string> = { rsi: PURPLE_BAND, mfi: PURPLE_BAND, rvi: PURPLE_BAND, wr: PURPLE_BAND, smi: 'rgba(41,98,255,0.1)', bbpct: 'rgba(41,98,255,0.1)' }
+export interface BandFill { a: number; b: number; color: string }
+/** 一个副图要铺的底色带：[a, b] 两个值之间。布林 %B 照 TV 三段：1 以上红、0–1 蓝、0 以下绿（TV 用藏起来的 ±100 hline 当外沿） */
+export function subBandFills(id: string): BandFill[] {
+  const band = CORE_BAND[id] ?? subBand(id)
+  if (!band) return []
+  const out: BandFill[] = [{ a: band[0], b: band[1], color: BAND_COLOR[id] ?? BLUE_BAND }]
+  if (id === 'bbpct') out.push({ a: 100, b: band[0], color: 'rgba(242,54,69,0.1)' }, { a: band[1], b: -100, color: 'rgba(8,153,129,0.1)' })
+  return out
+}

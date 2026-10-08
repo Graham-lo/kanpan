@@ -126,7 +126,7 @@ describe('CATALOG / paramText', () => {
     // 第二批主图叠加（mainIndicators.ts）与第三批副图（oscillators.ts）接在后面，这里只认第一批都还在
     expect(Object.keys(CATALOG).slice(8, 20)).toEqual(['vwap', 'st', 'ichi', 'vpvr', 'keys', 'cvd', 'atr', 'obv', 'stochrsi', 'cci', 'wr', 'whale'])
     expect(Object.keys(CATALOG)).toEqual(expect.arrayContaining(['wma', 'hma', 'kc', 'sar', 'pivots', 'stoch', 'dmi', 'ao', 'ppo']))
-    expect(CATALOG.ma).toEqual({ name: 'MA', cn: '均线', place: 'main', params: { periods: [10, 30, 120, 256] }, colors: ['#F7A600', '#2962FF', '#AB47BC', '#0EA5B7'] })
+    expect(CATALOG.ma).toEqual({ name: 'MA', cn: '均线', place: 'main', params: { periods: [10, 30, 120, 256] }, colors: ['#F6C309', '#FB9800', '#FB6500', '#F60C0C'] })
     expect(CATALOG.boll.params).toEqual({ n: 20, k: 2 })
     expect(CATALOG.vol).toEqual({ name: '成交量', cn: '成交量', place: 'overlay' })
     expect(CATALOG.macd.params).toEqual({ fast: 10, slow: 30, signal: 9 })
@@ -145,13 +145,13 @@ describe('CATALOG / paramText', () => {
 })
 
 describe('默认参数与手机 / iOS 同一组', () => {
-  it('没改过参数时 MACD / EMA / BOLL / KDJ / MA 与 DEFAULT_PARAMS 相同，RSI 取手机第一条', () => {
+  it('没改过参数时 MACD / EMA / BOLL / KDJ / MA 与 DEFAULT_PARAMS 相同，RSI 各端统一 14', () => {
     const toList = (id: string): number[] => { const p = CATALOG[id as keyof typeof CATALOG].params!; return p.periods ?? Object.values(p) as number[] }
     expect(toList('ma')).toEqual(M_DEFAULT.MA)
     expect(toList('ema')).toEqual(M_DEFAULT.EMA)
     expect(toList('boll')).toEqual(M_DEFAULT.BOLL)
     expect(toList('macd')).toEqual(M_DEFAULT.MACD)
     expect(toList('kdj')).toEqual(M_DEFAULT.KDJ)
-    expect(toList('rsi')).toEqual(M_DEFAULT.RSI!.slice(0, 1))
+    expect(toList('rsi')).toEqual([14]) // 2026-10-08 用户定：RSI 默认 14（与 TradingView 相同），各端统一
   })
 })

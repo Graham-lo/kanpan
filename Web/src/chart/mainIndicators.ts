@@ -326,30 +326,31 @@ export const MORE_MAIN_CALC: Record<MoreMainId, Fn> = {
   pivots: (b, _p, env) => pivots(b, env?.iv || guessIv(b)),
 }
 
-// 线色：照 TradingView 各指标的默认色。均线族在 TV 里默认都是同一个蓝（#2962FF），
-// 但几条同时开时分不出谁是谁，所以各取 TV 调色板里一个不同的颜色（避开 MA / EMA 已经用掉的几种）。
-const BLUE = '#2962FF', ORANGE = '#FF6D00', TV_RED = '#F23645', TV_GREEN = '#089981'
+// 线色：逐个照 TradingView 内置指标（pine-facade STD;*）的默认色。均线族在 TV 里多数就是同一个蓝 #2962FF
+// （HMA / LSMA / ALMA / 麦金利脚本里没写色，取 Pine 默认 plot 色，也是这个蓝），DEMA 绿、SMMA 紫；
+// 枢轴点 P / R / S 全是 #FB8C00；分形上绿下红、波动止损多绿空红用的是 TV 的 #009688 / #F44336
+const BLUE = '#2962FF', ORANGE = '#FF6D00', PIVOT = '#FB8C00'
 const BAND3 = ['中', '上', '下']
 export const MORE_MAIN_CATALOG: Record<MoreMainId, CatalogEntry> = {
-  wma: { name: '加权均线', cn: '', place: 'main', params: { n: 20 }, colors: ['#00BCD4'] },
-  hma: { name: '赫尔均线', cn: '', place: 'main', params: { n: 20 }, colors: ['#9C27B0'] },
-  dema: { name: '双重指数均线', cn: '', place: 'main', params: { n: 20 }, colors: ['#4CAF50'] },
-  tema: { name: '三重指数均线', cn: '', place: 'main', params: { n: 20 }, colors: ['#E91E63'] },
+  wma: { name: '加权均线', cn: '', place: 'main', params: { n: 20 }, colors: [BLUE] },
+  hma: { name: '赫尔均线', cn: '', place: 'main', params: { n: 20 }, colors: [BLUE] },
+  dema: { name: '双重指数均线', cn: '', place: 'main', params: { n: 20 }, colors: ['#43A047'] },
+  tema: { name: '三重指数均线', cn: '', place: 'main', params: { n: 20 }, colors: [BLUE] },
   smma: { name: '平滑均线', cn: '', place: 'main', params: { n: 7 }, colors: ['#673AB7'] },
-  vwma: { name: '量加权均线', cn: '', place: 'main', params: { n: 20 }, colors: ['#FF9800'] },
-  lsma: { name: '最小二乘均线', cn: '', place: 'main', params: { n: 25 }, colors: ['#795548'] },
-  alma: { name: '阿诺·勒古均线', cn: '', place: 'main', params: { n: 9 }, colors: ['#26A69A'] },
-  mcg: { name: '麦金利动态线', cn: '', place: 'main', params: { n: 14 }, colors: ['#F06292'] },
+  vwma: { name: '量加权均线', cn: '', place: 'main', params: { n: 20 }, colors: [BLUE] },
+  lsma: { name: '最小二乘均线', cn: '', place: 'main', params: { n: 25 }, colors: [BLUE] },
+  alma: { name: '阿诺·勒古均线', cn: '', place: 'main', params: { n: 9 }, colors: [BLUE] },
+  mcg: { name: '麦金利动态线', cn: '', place: 'main', params: { n: 14 }, colors: [BLUE] },
   kc: { name: '肯特纳通道', cn: '', place: 'main', params: { n: 20, k: 2 }, colors: [BLUE, BLUE, BLUE], labels: BAND3 },
   dc: { name: '唐奇安通道', cn: '', place: 'main', params: { n: 20 }, colors: [ORANGE, BLUE, BLUE], labels: BAND3 },
-  env: { name: '包络线', cn: '', place: 'main', params: { n: 20, k: 10 }, colors: [BLUE, BLUE, BLUE], labels: BAND3 },
+  env: { name: '包络线', cn: '', place: 'main', params: { n: 20, k: 10 }, colors: [ORANGE, BLUE, BLUE], labels: BAND3 },
   sar: { name: '抛物线 SAR', cn: '', place: 'main', params: {}, colors: [BLUE] },
-  vstop: { name: '波动止损', cn: '', place: 'main', params: { n: 20, k: 2 }, colors: [TV_GREEN, TV_RED], labels: ['多', '空'] },
+  vstop: { name: '波动止损', cn: '', place: 'main', params: { n: 20, k: 2 }, colors: ['#009688', '#F44336'], labels: ['多', '空'] },
   alligator: { name: '鳄鱼线', cn: '', place: 'main', params: {}, colors: [BLUE, '#E91E63', '#66BB6A'], labels: ['颚', '齿', '唇'] },
-  fractals: { name: '威廉分形', cn: '', place: 'main', params: { n: 2 }, colors: [TV_RED, TV_GREEN], labels: ['上', '下'] },
+  fractals: { name: '威廉分形', cn: '', place: 'main', params: { n: 2 }, colors: ['#009688', '#F44336'], labels: ['上', '下'] },
   zigzag: { name: '之字转向', cn: '', place: 'main', params: { n: 10, k: 5 }, colors: [BLUE] },
   // P 线深色底白、浅色底黑：目录里留空，画与图例时按主题取
-  pivots: { name: '枢轴点', cn: '', place: 'main', params: {}, colors: ['', TV_RED, TV_GREEN, TV_RED, TV_GREEN, TV_RED, TV_GREEN], labels: PIVOT_LABELS },
+  pivots: { name: '枢轴点', cn: '', place: 'main', params: {}, colors: Array(7).fill(PIVOT), labels: PIVOT_LABELS },
 }
 /** 参数框里各项的叫法（同一个键在不同指标里意思不一样时用这张表） */
 export const MORE_PARAM_NAME: Partial<Record<MoreMainId, Partial<Record<keyof IndParams, string>>>> = {

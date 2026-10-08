@@ -137,14 +137,14 @@ export const Calc: Record<CalcId, CalcFn> = {
 
 // 指标目录：名字、默认参数、线色。副图最多 MAX_SUBS 个。
 // 默认参数与 iOS / 手机网页（m/app/prefs DEFAULT_PARAMS）同一组：同一个人没改过参数时，电脑和手机上的 MACD / EMA / RSI 读数一样
-// （RSI 网页只画一条，取手机那组的第一条 6）。
+// （RSI 2026-10-08 起各端统一 14，与 TradingView 默认相同）。线色照 TradingView 内置指标默认（见 tests/tvDefaults.test.ts）。
 export const CATALOG: Record<IndicatorId, CatalogEntry> = {
-  ma: { name: 'MA', cn: '均线', place: 'main', params: { periods: [10, 30, 120, 256] }, colors: ['#F7A600', '#2962FF', '#AB47BC', '#0EA5B7'] },
-  ema: { name: 'EMA', cn: '指数均线', place: 'main', params: { periods: [12, 144, 169, 200] }, colors: ['#FF6D00', '#00897B', '#E91E63', '#5C6BC0'] },
-  boll: { name: 'BOLL', cn: '布林带', place: 'main', params: { n: 20, k: 2 }, colors: ['#FF6D00', '#2962FF', '#2962FF'] },
+  ma: { name: 'MA', cn: '均线', place: 'main', params: { periods: [10, 30, 120, 256] }, colors: ['#F6C309', '#FB9800', '#FB6500', '#F60C0C'] },
+  ema: { name: 'EMA', cn: '指数均线', place: 'main', params: { periods: [12, 144, 169, 200] }, colors: ['#2962FF', '#FF6D00', '#43A047', '#E91E63'] },
+  boll: { name: 'BOLL', cn: '布林带', place: 'main', params: { n: 20, k: 2 }, colors: ['#2962FF', '#F23645', '#089981'] },
   vol: { name: '成交量', cn: '成交量', place: 'overlay' },
   macd: { name: 'MACD', cn: '平滑异同', place: 'sub', params: { fast: 10, slow: 30, signal: 9 }, colors: ['#2962FF', '#FF6D00'] },
-  rsi: { name: 'RSI', cn: '相对强弱', place: 'sub', params: { n: 6 }, colors: ['#7E57C2'] },
+  rsi: { name: 'RSI', cn: '相对强弱', place: 'sub', params: { n: 14 }, colors: ['#7E57C2'] },
   kdj: { name: 'KDJ', cn: '随机指标', place: 'sub', params: { n: 9, m1: 3, m2: 3 }, colors: ['#2962FF', '#FF6D00', '#AB47BC'] },
   oi: { name: '持仓量', cn: '持仓量', place: 'sub', params: {}, colors: ['#2962FF'] },
   ...EXTRA_CATALOG,

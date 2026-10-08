@@ -1,14 +1,14 @@
 /* Hkline Web · 第三批主图叠加的画法（算法与目录在 mainIndicators.ts）
  *
- * 画法照 TradingView 各内置指标的默认样式：
- *   均线族一条 1.5 px 线；肯特纳 / 唐奇安 / 包络线三条线 + 5% 蓝色填充；抛物线 SAR 小蓝点；
- *   波动止损多头绿、空头红的小十字；鳄鱼线三条往右推的线（画到最新一根之后）；
- *   威廉分形高点上方红三角、低点下方绿三角；之字转向蓝线 1.5 px，最后一段虚线连到最新收盘；
- *   枢轴点每段一组水平虚线，P 深色底白 / 浅色底黑、R 红、S 绿，段尾标名字。
+ * 画法照 TradingView 各内置指标的默认样式（pine-facade STD 元信息逐个对过，线一律 1 px）：
+ *   均线族一条线；肯特纳 / 唐奇安 / 包络线三条线 + rgba(33,150,243,0.05) 填充；抛物线 SAR 蓝色小十字；
+ *   波动止损多头 #009688、空头 #F44336 的小十字；鳄鱼线三条往右推的线（画到最新一根之后）；
+ *   威廉分形高点上方 #009688 尖朝上三角、低点下方 #F44336 尖朝下三角；之字转向蓝线，最后一段虚线连到最新收盘；
+ *   枢轴点每段一组 #FB8C00 实线，段首左侧标「P (价)」「R1 (价)」…
  *
  * 只从 chart.ts 拿类型，运行时不反向依赖（chart.ts 调这里的函数）。
  */
-import { hexA } from '../util/format'
+import { fmt } from '../util/format'
 import type { Series } from './calc'
 import type { Pane, PriceRange, TVChart } from './chart'
 import { MORE_MAIN_CATALOG, mainOn, pivotPeriodStart, type MoreMainId } from './mainIndicators'
@@ -59,24 +59,24 @@ export function drawMoreMain(ch: TVChart, p: Pane, r: PriceRange, from: number, 
   for (const id of ['kc', 'dc', 'env'] as const) {
     if (!on(id)) continue
     const s = ch.series[id]!, cols = MORE_MAIN_CATALOG[id].colors!
-    fillBetween(ch, s[1], s[2], p, r, from, to, hexA(BLUE, 0.05))
+    fillBetween(ch, s[1], s[2], p, r, from, to, 'rgba(33,150,243,0.05)')
     path(ch, s[1], p, r, from, to, cols[1], 1); path(ch, s[2], p, r, from, to, cols[2], 1)
     path(ch, s[0], p, r, from, to, cols[0], 1)
   }
   if (on('pivots')) drawPivots(ch, p, r, from, to)
-  for (const id of MA_FAMILY) if (on(id)) path(ch, ch.series[id]![0], p, r, from, to, MORE_MAIN_CATALOG[id].colors![0], 1.5)
+  for (const id of MA_FAMILY) if (on(id)) path(ch, ch.series[id]![0], p, r, from, to, MORE_MAIN_CATALOG[id].colors![0], 1)
   if (on('alligator')) {
     const s = ch.series.alligator!, cols = MORE_MAIN_CATALOG.alligator.colors!
     const far = Math.min(Math.max(...s.map(x => x.length)) - 1, Math.ceil(ch.rightBar) + 1)
     // 回放时只画到回放那根往右推的位置，不泄露后面的 K 线
-    s.forEach((x, k) => path(ch, x, p, r, from, Math.min(far, last + (x.length - ch.bars.length)), cols[k], 1.5))
+    s.forEach((x, k) => path(ch, x, p, r, from, Math.min(far, last + (x.length - ch.bars.length)), cols[k], 1))
   }
   if (on('zigzag')) drawZigzag(ch, p, r, from, to)
-  if (on('vstop')) {
-    const [lg, sh] = ch.series.vstop!, cols = MORE_MAIN_CATALOG.vstop.colors!
-    c.lineWidth = 1.5; c.lineCap = 'butt'
+  // 波动止损与抛物线 SAR：TV 都是 plot.style_cross，1 px 小十字
+  const crosses = (ss: readonly (readonly [Series, string])[]) => {
+    c.lineWidth = 1; c.lineCap = 'butt'
     const h = Math.max(2, Math.min(4, ch.candleW() / 2))
-    for (const [s, col] of [[lg, cols[0]], [sh, cols[1]]] as const) {
+    for (const [s, col] of ss) {
       c.strokeStyle = col; c.beginPath()
       for (let i = Math.max(0, from); i <= Math.min(to, last); i++) {
         const v = s[i]; if (v == null) continue
@@ -86,16 +86,8 @@ export function drawMoreMain(ch: TVChart, p: Pane, r: PriceRange, from: number, 
       c.stroke()
     }
   }
-  if (on('sar')) {
-    const s = ch.series.sar![0], rad = Math.max(1.25, Math.min(2.5, ch.candleW() / 4))
-    c.fillStyle = BLUE; c.beginPath()
-    for (let i = Math.max(0, from); i <= Math.min(to, last); i++) {
-      const v = s[i]; if (v == null) continue
-      const x = ch.indexToX(i), y = ch.priceToY(v, p, r)
-      c.moveTo(x + rad, y); c.arc(x, y, rad, 0, Math.PI * 2)
-    }
-    c.fill()
-  }
+  if (on('vstop')) { const [lg, sh] = ch.series.vstop!, cols = MORE_MAIN_CATALOG.vstop.colors!; crosses([[lg, cols[0]], [sh, cols[1]]]) }
+  if (on('sar')) crosses([[ch.series.sar![0], MORE_MAIN_CATALOG.sar.colors?.[0] ?? BLUE]])
   if (on('fractals')) {
     const [up, dn] = ch.series.fractals!, cols = MORE_MAIN_CATALOG.fractals.colors!, n = Math.max(1, Math.round(ch.params.fractals?.n ?? 2))
     const w = Math.max(3, Math.min(5, ch.candleW() / 2)), gap = 6
@@ -130,7 +122,7 @@ function drawZigzag(ch: TVChart, p: Pane, r: PriceRange, from: number, to: numbe
   if (before) pts.unshift(before)
   if (after) pts.push(after)
   if (!pts.length) return
-  c.strokeStyle = BLUE; c.lineWidth = 1.5; c.lineJoin = 'round'; c.lineCap = 'round'
+  c.strokeStyle = MORE_MAIN_CATALOG.zigzag.colors?.[0] ?? BLUE; c.lineWidth = 1; c.lineJoin = 'round'; c.lineCap = 'round'
   c.beginPath()
   pts.forEach(([i, v], k) => { const x = ch.indexToX(i), y = ch.priceToY(v, p, r); if (k) c.lineTo(x, y); else c.moveTo(x, y) })
   c.stroke()
@@ -142,12 +134,12 @@ function drawZigzag(ch: TVChart, p: Pane, r: PriceRange, from: number, to: numbe
   }
 }
 
-/** 枢轴点：每一段（天 / 周 / 月 / 年）一组水平虚线，段尾标 P / R1 / S1…；最后一段画到绘图区右沿 */
+/** 枢轴点：每一段（天 / 周 / 月 / 年）一组水平实线；照 TV 在段首左侧标「P (价)」（label.style_label_right、showPrices）；最后一段画到绘图区右沿 */
 function drawPivots(ch: TVChart, p: Pane, r: PriceRange, from: number, to: number): void {
   const s = ch.series.pivots!, c: Ctx = ch.ctx, cols = MORE_MAIN_CATALOG.pivots.colors!, labels = MORE_MAIN_CATALOG.pivots.labels!
   const last = ch.lastIndex(), iv = ch.iv, pc = pivotPColor(ch), half = ch.candleW() / 2 + 1
   const font = ch.font.split('px ')[1] || 'sans-serif'
-  c.font = `11px ${font}`; c.textBaseline = 'bottom'; c.textAlign = 'right'; c.lineWidth = 1
+  c.font = `11px ${font}`; c.textBaseline = 'middle'; c.textAlign = 'right'; c.lineWidth = 1
   const hi = Math.min(to, last)
   let i = Math.max(0, from)
   // 从这段的第一根找起（左沿切进一段时，那段从屏幕外开始）
@@ -162,8 +154,8 @@ function drawPivots(ch: TVChart, p: Pane, r: PriceRange, from: number, to: numbe
         const v = s[k][i]; if (v == null) continue
         const y = Math.round(ch.priceToY(v, p, r)) + .5, col = cols[k] || pc
         if (y < p.y - 20 || y > p.y + p.h + 20) continue
-        c.strokeStyle = hexA(col, 0.85); c.setLineDash([4, 3]); c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke(); c.setLineDash([])
-        if (x1 - x0 > 28) { c.fillStyle = col; c.fillText(labels[k], x1 - 2, y - 2) }
+        c.strokeStyle = col; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke()
+        if (x0 > 0) { c.fillStyle = col; c.fillText(`${labels[k]} (${fmt(v, ch.meta.dec)})`, x0 - 3, y) }
       }
     }
     i = j + 1
