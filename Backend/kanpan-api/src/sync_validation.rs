@@ -43,6 +43,13 @@ fn string(v:&Value,limit:usize)->bool {v.as_str().is_some_and(|s|s.len()<=limit)
 fn draw_tool_usage(v:&Value)->bool {
  v.as_object().is_some_and(|o|o.len()<=12&&o.iter().all(|(k,n)|KINDS.contains(&k.as_str())&&n.as_i64().is_some_and(|n|(0..=100_000).contains(&n))))
 }
+/// `settings.analysisUsage`：「分析」面板四节（画线 / 主力订单流 / 指标 / 对比）各用了几次，面板按它排节序。
+/// 一个对象，最多四个键，键是节名，值是 0…100000 的整数；和 `drawToolUsage` 同一套计次规则
+/// （总数过 256 整体减半），上限只防坏档。
+const ANALYSIS_SECTIONS:[&str;4]=["draw","orderFlow","indicators","compare"];
+fn analysis_usage(v:&Value)->bool {
+ v.as_object().is_some_and(|o|o.len()<=ANALYSIS_SECTIONS.len()&&o.iter().all(|(k,n)|ANALYSIS_SECTIONS.contains(&k.as_str())&&n.as_i64().is_some_and(|n|(0..=100_000).contains(&n))))
+}
 /// 一组的指标布局（客户端 `IndicatorLayout`，Kanpan/Kanpan/Settings/Model/IndicatorLayouts.swift）：
 /// 键是顶层那七个同名字段的子集，值的规则也和顶层逐项相同——顶层那份是三组共用的，
 /// 这里是某一组分了叉之后自己的那份。缺的键在客户端跟共用那份走，所以不要求七个都在。
@@ -254,6 +261,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // Empty means "has not picked one yet" for both.
    "lastDrawTool"=>v.as_str().is_some_and(|s|s.is_empty()||KINDS.contains(&s)),
    "drawToolUsage"=>draw_tool_usage(v),
+   "analysisUsage"=>analysis_usage(v),
    // A tab label on the drawing panel, not an enum with any server meaning; the client
    // falls back when the saved one is gone, so the length is the only real rule.
    "drawToolGroup"=>string(v,128),
@@ -793,6 +801,15 @@ mod tests {
   let thirteen:serde_json::Map<String,Value>=KINDS.iter().take(13).map(|k|(k.to_string(),json!(1))).collect();
   assert!(!field("settings","drawToolUsage",&Value::Object(thirteen)),"最多十二个键");
   assert!(crate::sync::SETTINGS_FIELDS.contains(&"drawToolUsage"));
+  // 「分析」面板节序计次：键只认四个节名。
+  assert!(field("settings","analysisUsage",&json!({}))&&field("settings","analysisUsage",&json!({"draw":12,"orderFlow":3,"indicators":0,"compare":7})));
+  assert!(field("settings","analysisUsage",&json!({"compare":100_000})));
+  for bad in [json!({"trend":1}),json!({"draw":-1}),json!({"draw":1.5}),json!({"draw":"3"}),json!({"draw":100_001}),
+              json!(["draw"]),json!("draw"),json!(null)] {
+   assert!(!field("settings","analysisUsage",&bad),"analysisUsage {bad}");
+  }
+  assert!(!field("settings","analysisUsage",&json!({"draw":1,"orderFlow":1,"indicators":1,"compare":1,"alerts":1})),"最多四个键");
+  assert!(crate::sync::SETTINGS_FIELDS.contains(&"analysisUsage"));
   // 横屏根间距：和 barSpacing 同一个范围。
   assert!(field("settings","landscapeBarSpacing",&json!(1.6))&&field("settings","landscapeBarSpacing",&json!(40))&&field("settings","landscapeBarSpacing",&json!(9.5)));
   for bad in [json!(1.5),json!(41.0),json!("4"),json!(null),json!(true)] {

@@ -213,6 +213,13 @@ struct Prefs: Sendable, Equatable {
   /// 随账号同步。它不是设置：用户看不到、也不用管。
   var drawToolUsage: [String: Int] = [:]
 
+  /// 「分析」面板四节（画线 · 主力订单流 · 指标 · 对比）各用了几次（键是 `AnalysisSection` rawValue）。
+  ///
+  /// 面板照它排节（`AnalysisSectionRank`）：每在某节里做一次实事 +1，总数过 256 整体减半，量的是「最近常用」；
+  /// 没用过时按出厂顺序。和 `drawToolUsage` 一样是自动统计、不是设置——用户看不到、也不用管；
+  /// 它定的是面板摆什么，同一个人换台手机还该是那个顺序，所以随账号同步。
+  var analysisUsage: [String: Int] = [:]
+
   /// 横屏画线台里主图指标（均线、布林……）画不画——顶行最右那颗「指标」胶囊管它，出厂开。
   ///
   /// 开着时价格轴仍只按 K 线定（`ChartSession.compose` 关掉 `overlaysAffectPriceRange`），

@@ -261,6 +261,18 @@ struct PrefsFieldPlanTests {
     #expect(PrefsCodec.decode(Data("{}".utf8)).favoritesTrend)
   }
 
+  /// 「分析」面板四节的使用次数（2026-10-08）：自动统计，但定的是面板怎么排，跟着人走；出厂空表。
+  @Test("分析面板四节次数跟着人走，出厂空表")
+  func analysisUsageIsSyncedAndEmptyByDefault() {
+    #expect(PrefsFieldPlan.table["analysisUsage"] == .synced)
+    #expect(Prefs.syncedFieldNames.contains("analysisUsage"))
+    var prefs = Prefs.defaults
+    #expect(prefs.analysisUsage.isEmpty)
+    prefs.analysisUsage = ["orderFlow": 4, "draw": 2]
+    #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)).analysisUsage == ["orderFlow": 4, "draw": 2])
+    #expect(PrefsCodec.decode(Data("{}".utf8)).analysisUsage.isEmpty)
+  }
+
   /// **「线路」这一摊整个留在这台设备上——直连 / 网关那两档也不再跟着人走。**
   ///
   /// 这条钉的是 2026-09-19 按 GPT Pro 第二轮审查 B7 定下的决定。在那之前 `routePolicy`

@@ -100,6 +100,10 @@ enum PrefsFieldPlan {
     // 它是自动统计出来的，按上面的判据本该只在本机；但它定的是条上摆什么——同一个人
     // 换台手机条上还该是那几把，所以跟账号走。量很小（最多十二个键、总数过 256 就减半）。
     "drawToolUsage": .synced,
+    // 「分析」面板四节怎么排：每节用了几次（整张表一个键，见 `Prefs.analysisUsage`，2026-10-08）。
+    // 和 `drawToolUsage` 同一个理由：自动统计出来的，但它定的是面板摆什么——同一个人换台手机
+    // 节的顺序还该一样，所以跟账号走。量很小（最多四个键、总数过 256 就减半）。
+    "analysisUsage": .synced,
     "drawingOverlaysShown": .synced,
     // 2026-10-06「隐藏画线」：个人的看图偏好，换台手机还该是藏着的，跟账号走。
     "drawingsHidden": .synced,

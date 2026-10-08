@@ -31,6 +31,13 @@ import KanpanCore
 /// （「分析里的对比要留」），分析面板恢复四节：这一节的「添加对比」开的就是顶栏「⋯ › 添加对比」那张
 /// 对比模式搜索页，两处入口共用同一页、同一份 `Prefs.compareSymbols`。
 ///
+/// 2026-10-08 四节按使用频率排（用户：「主力订单流、大单列表和爆仓放在分析的靠后位置……应该放到画线下面，
+/// 重要的常用的应该有位置权重……结合使用频率动态调整位置」）：机制照画线条那套（`AnalysisSectionRank`，
+/// 次数记在 `Prefs.analysisUsage`，随账号同步，总数过 256 减半）。出厂顺序 **画线 → 主力订单流 → 指标 → 对比**；
+/// 在某一节里做一次实事（开始画线、拨开关、点进参数、拖副图换序、加 / 移除对比）给那节 +1，「恢复默认指标」不计。
+/// 顺序在面板打开那一刻定一次、开着期间不重排——拨一下开关节就在手指底下跳是不行的；下次打开才按新次数排。
+/// 「恢复默认指标」那张卡永远在最后。横屏画线台那一版（`mainOnly`）只有主图指标，不排序。
+///
 /// 参数编辑那层 sheet 和面板提示仍挂在这一层自己身上。
 struct IndicatorPage: View {
   var store: PrefsStore
@@ -55,12 +62,34 @@ struct IndicatorPage: View {
   /// 「主力订单流 › 大单与爆仓」那一行（2026-10-08）：点了关面板、开弹层。nil 时那一行不排。
   var bigTrades: BigTradeEntry? = nil
   @State private var editing: IndicatorID?
+  /// 四节的顺序：面板打开那一刻按 `Prefs.analysisUsage` 定一次，开着期间不跟着计次重排。
+  @State private var order: [AnalysisSection]
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
   /// 横屏侧栏没有系统 `dismiss`，走主界面递进来的这一条（见 `PanelCloser`）。
   @Environment(\.panelDismiss) private var sideDismiss
 
+  init(store: PrefsStore, orderFlow: OrderFlowLink? = nil, symbol: String = "",
+       onAddCompare: (() -> Void)? = nil, compareNames: [String: String] = [:],
+       onDraw: (() -> Void)? = nil, drawEnabled: Bool = true, mainOnly: Bool = false,
+       bigTrades: BigTradeEntry? = nil) {
+    self.store = store
+    self.orderFlow = orderFlow
+    self.symbol = symbol
+    self.onAddCompare = onAddCompare
+    self.compareNames = compareNames
+    self.onDraw = onDraw
+    self.drawEnabled = drawEnabled
+    self.mainOnly = mainOnly
+    self.bigTrades = bigTrades
+    _order = State(initialValue: AnalysisSectionRank.order(usage: store.prefs.analysisUsage))
+  }
+
   private var prefs: Prefs { store.prefs }
+  /// 在 `s` 那一节里做了一次实事：记一笔次数（下次打开面板按它排）。不走 `byHand`——计次不该带触觉。
+  private func used(_ s: AnalysisSection) {
+    store.update { $0.analysisUsage = AnalysisSectionRank.counted($0.analysisUsage, s) }
+  }
   /// 「开始画线」与对比那几个动作要先收面板再做（搜索页、看得见图），竖屏 sheet / 横屏侧栏一律走这里。
   private var close: PanelCloser { PanelCloser(side: sideDismiss, sheet: dismiss) }
   /// 主图叠加那排开关里不再有主力订单流——它单成了一节。
@@ -95,15 +124,38 @@ struct IndicatorPage: View {
   }
 
   @ViewBuilder private var fullBody: some View {
-    drawSection
+    // 四节按 `order` 排（使用频率，见文件头 2026-10-08 那段）。
+    ForEach(order, id: \.self) { section in
+      switch section {
+      case .draw: drawSection
+      case .orderFlow: orderFlowSection
+      case .indicators: indicatorSection
+      case .compare: compareSection
+      }
+    }
 
+    // 指标布局回到出厂（一人一份、不分周期，2026-10-03）。永远在最后，不计次。
+    // 已经是出厂那份时点不动（`PanelRow` 在禁用时自己换禁用色阶）。
+    PanelCard {
+      PanelRow(name: "恢复默认指标", divider: false, onTap: {
+        store.resetIndicatorLayout()
+        Haptics.warning()
+      })
+      .disabled(prefs.indicatorLayout == .factory)
+      .accessibilityIdentifier("indicator.reset")
+    }
+    .padding(.top, Space.xl)
+  }
+
+  /// 指标：在用 · 主图叠加 · 副图三张卡。
+  @ViewBuilder private var indicatorSection: some View {
     // 「指标」这一节：节名压在开着的那几项上（原来这里叫「正在用」），下面是两段开关。
     // 一项都没开时不让两行节名叠在一起，节名并进第一段的标题里。
     let inUse = !prefs.overlays.isEmpty || !prefs.subs.isEmpty
     // 每节一张琉璃玻璃卡（2026-10-08），节名与卡里行文对齐。
     if inUse {
       PanelCardGroup(title: "指标") {
-        InUseList(store: store, onEdit: { editing = $0 })
+        InUseList(store: store, onEdit: { used(.indicators); editing = $0 }, onUsed: { used(.indicators) })
       }
     }
 
@@ -120,21 +172,6 @@ struct IndicatorPage: View {
         row(id, last: id == IndicatorID.subPalette.last)
       }
     }
-
-    compareSection
-    orderFlowSection
-
-    // 指标布局回到出厂（一人一份、不分周期，2026-10-03）。
-    // 已经是出厂那份时点不动（`PanelRow` 在禁用时自己换禁用色阶）。
-    PanelCard {
-      PanelRow(name: "恢复默认指标", divider: false, onTap: {
-        store.resetIndicatorLayout()
-        Haptics.warning()
-      })
-      .disabled(prefs.indicatorLayout == .factory)
-      .accessibilityIdentifier("indicator.reset")
-    }
-    .padding(.top, Space.xl)
   }
 
   /// 画线：一行，行尾是原来周期条上那颗 24pt 记号（`IntervalDrawGlyph`）。点它先收面板，
@@ -150,7 +187,7 @@ struct IndicatorPage: View {
       PanelCardGroup(title: "画线") {
         if let onDraw {
           // 行名不重复「画线」：分组标题已经念过一遍（2026-09-24 审查 U4，和主力订单流那节同一条规矩）。
-          PanelRow(name: "开始画线", onTap: { close(); onDraw() }) {
+          PanelRow(name: "开始画线", onTap: { used(.draw); close(); onDraw() }) {
             IntervalDrawGlyph(theme: t, size: 24)
               .opacity(drawEnabled ? 1 : ControlMetrics.disabledOpacity)
               .accessibilityHidden(true)
@@ -159,7 +196,7 @@ struct IndicatorPage: View {
           .accessibilityIdentifier("indicator.draw")
         }
         PanelRow(name: "隐藏画线", divider: false) {
-          PanelSwitch(isOn: prefs.drawingsHidden) { store.updateByHand { $0.drawingsHidden.toggle() } }
+          PanelSwitch(isOn: prefs.drawingsHidden) { store.updateByHand { $0.drawingsHidden.toggle() }; used(.draw) }
             .accessibilityIdentifier("drawing.hide")
         }
       }
@@ -173,12 +210,12 @@ struct IndicatorPage: View {
     if let onAddCompare {
       PanelCardGroup(title: "对比") {
         // 满三只时这一行点不动；`PanelRow` 在禁用时自己把字换成禁用色阶。
-        PanelRow(name: "添加对比", divider: !prefs.compareSymbols.isEmpty, onTap: { close(); onAddCompare() })
+        PanelRow(name: "添加对比", divider: !prefs.compareSymbols.isEmpty, onTap: { used(.compare); close(); onAddCompare() })
           .disabled(prefs.compareSymbols.count >= 3)
           .accessibilityIdentifier("compare.add")
         ForEach(prefs.compareSymbols, id: \.self) { key in
           PanelRow(name: compareNames[key] ?? String(key.split(separator: "/").last ?? "")) {
-            Button { store.updateByHand { $0.compareSymbols.removeAll { $0 == key } }; close() } label: {
+            Button { store.updateByHand { $0.compareSymbols.removeAll { $0 == key } }; used(.compare); close() } label: {
               Text("移除").font(PanelFont.seg).foregroundStyle(t.ink2).rowHitTarget()
             }
             .buttonStyle(PanelPlainButtonStyle())
@@ -186,7 +223,7 @@ struct IndicatorPage: View {
           }
         }
         if !prefs.compareSymbols.isEmpty {
-          PanelRow(name: "清除对比", divider: false, onTap: { store.updateByHand { $0.compareSymbols = [] }; close() })
+          PanelRow(name: "清除对比", divider: false, onTap: { store.updateByHand { $0.compareSymbols = [] }; used(.compare); close() })
             .accessibilityIdentifier("compare.clear")
         }
       }
@@ -203,18 +240,18 @@ struct IndicatorPage: View {
       // 「图上大单签」（2026-10-08）和挂单墙互不依赖：墙关着签照出，门槛那一行两样开着任一样就排（签也按门槛算）。
       let base = prefs.orderFlow || prefs.bigTradeSigns ? orderFlow?.currentFacts?.overrideKey : nil
       PanelRow(name: "显示", swatch: t.swatch(.orderFlow), divider: true) {
-        PanelSwitch(isOn: prefs.orderFlow) { store.byHand { $0.toggleIndicator(.orderFlow) } }
+        PanelSwitch(isOn: prefs.orderFlow) { store.byHand { $0.toggleIndicator(.orderFlow) }; used(.orderFlow) }
           .accessibilityIdentifier("indicator.switch.\(IndicatorID.orderFlow.rawValue)")
       }
       let entry = mainOnly ? nil : bigTrades
       PanelRow(name: BigTradeTerm.chartMarks.text, divider: base != nil || entry != nil) {
-        PanelSwitch(isOn: prefs.bigTradeSigns) { store.updateByHand { $0.bigTradeSigns.toggle() } }
+        PanelSwitch(isOn: prefs.bigTradeSigns) { store.updateByHand { $0.bigTradeSigns.toggle() }; used(.orderFlow) }
           .accessibilityIdentifier("orderflow.bigTradeSigns")
       }
       // 「大单与爆仓」（2026-10-08）：本根买卖对撞、每根、价位、爆仓那张弹层。两颗开关都关着也能开——
       // 弹层开着时成交账照订（`OrderFlowLink.wanted`）。右边那行副文字是正在走那根的净额，单拎一块刷新。
       if let entry, let link = orderFlow {
-        PanelRow(name: BigTradeTerm.title.text, divider: base != nil, onTap: { entry.open() },
+        PanelRow(name: BigTradeTerm.title.text, divider: base != nil, onTap: { used(.orderFlow); entry.open() },
                  buttonID: "orderflow.bigTrades", buttonLabel: BigTradeTerm.title.text) {
           HStack(spacing: Space.s) {
             BigTradeEntryMeta(link: link, entry: entry)
@@ -224,7 +261,7 @@ struct IndicatorPage: View {
       }
       if let base {
         let meta = "\(base) · " + (prefs.orderFlowOverrides[base] == nil ? "默认门槛" : "已改门槛")
-        PanelRow(name: "门槛", term: .orderFlowThreshold, divider: false, onTap: { editing = .orderFlow },
+        PanelRow(name: "门槛", term: .orderFlowThreshold, divider: false, onTap: { used(.orderFlow); editing = .orderFlow },
                  buttonID: "indicator.edit.\(IndicatorID.orderFlow.rawValue)", buttonLabel: "门槛，\(meta)") {
           HStack(spacing: Space.s) {
             Text(meta).monospacedDigit().font(PanelFont.meta).foregroundStyle(t.ink3).lineLimit(1)
@@ -247,6 +284,7 @@ struct IndicatorPage: View {
             $0.update { $0.drawingOverlaysShown = true }
           }
         }
+        if !mainOnly { used(.indicators) }
       }
         .accessibilityIdentifier("indicator.switch.\(id.rawValue)")
     }
@@ -263,6 +301,8 @@ struct IndicatorPage: View {
 private struct InUseList: View {
   var store: PrefsStore
   var onEdit: (IndicatorID) -> Void
+  /// 拖把手换序松手、真换了位置时调一次（「分析」面板给「指标」那一节计次用）。
+  var onUsed: () -> Void = {}
   /// 画线台「主图指标」那一版只列主图那几行，副图不摆（画线台不画副图）。
   var mainOnly = false
   @Environment(\.panelTheme) private var t
@@ -375,7 +415,9 @@ private struct InUseList: View {
         dragging = nil
         offset = 0
         guard steps != 0 else { return }
+        let before = prefs.subs
         store.updateByHand { $0.moveSub(from: index, to: index + steps) }
+        if prefs.subs != before { onUsed() }
       }
   }
 }

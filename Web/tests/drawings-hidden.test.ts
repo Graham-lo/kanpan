@@ -51,7 +51,7 @@ describe('手机网页「分析」面板：隐藏画线一行', () => {
     mst.drawingsHidden = false
   })
   it('点开关翻转偏好并落盘（save 触发同步）', () => {
-    expect(panelSource).toContain("case 'draw-hide': st.drawingsHidden = !st.drawingsHidden; save(); break")
+    expect(panelSource).toContain("case 'draw-hide': st.drawingsHidden = !st.drawingsHidden; tally('draw'); save(); break")
   })
 })
 

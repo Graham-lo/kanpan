@@ -119,7 +119,7 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
       RunLoop.main.run(until: Date().addingTimeInterval(1.0))
       shot("行情", tag)
 
-      // 分析面板（周期条行尾「分析」直达）：四节 画线 · 指标 · 对比 · 主力订单流，画线在最上面。
+      // 分析面板（周期条行尾「分析」直达）：四节 画线 · 主力订单流 · 指标 · 对比，出厂画线在最上面、之后按使用次数排。
       app.buttons["interval.indicators"].tap()
       XCTAssertTrue(app.buttons["indicator.switch.RSI"].waitForExistence(timeout: Self.short), "\(tag)：分析面板没开出来")
       XCTAssertEqual(app.staticTexts["panel.header"].label, "分析", "\(tag)：面板标题不是「分析」")
@@ -128,15 +128,16 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
       XCTAssertLessThan(draw.frame.maxY, app.buttons["indicator.switch.RSI"].frame.minY, "\(tag)：「画线」不在指标之上")
       RunLoop.main.run(until: Date().addingTimeInterval(0.8))
       shot("分析", tag)
-      // 往下滚到「对比」与「主力订单流」两节，再拍一张下半页（「对比」10-06 起和顶栏加号并存）。
+      // 往下滚到最后一节「对比」，再拍一张下半页（「对比」10-06 起和顶栏加号并存）。
       let orderFlow = app.buttons["indicator.switch.ORDERFLOW"]
+      let compare = app.buttons["compare.add"]
       let window = app.windows.firstMatch
-      for _ in 0..<8 where !(orderFlow.exists && orderFlow.isHittable) {
+      for _ in 0..<8 where !(compare.exists && compare.isHittable) {
         // 在面板内容区里往上拖（不碰把手，免得把面板本身拉高 / 收起）。
         window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
           .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62)))
       }
-      XCTAssertTrue(app.buttons["compare.add"].exists, "\(tag)：分析面板没有「对比」节")
+      XCTAssertTrue(compare.exists, "\(tag)：分析面板没有「对比」节")
       XCTAssertTrue(orderFlow.exists, "\(tag)：分析面板没有「主力订单流」节")
       RunLoop.main.run(until: Date().addingTimeInterval(0.6))
       shot("分析下半", tag)

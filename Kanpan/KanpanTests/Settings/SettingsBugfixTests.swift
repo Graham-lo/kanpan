@@ -220,6 +220,19 @@ struct SettingsBugfixTests {
     #expect(back.drawToolUsage == ["channel": 3])
   }
 
+  @Test("「分析」面板四节次数：认不出的节、负数、非整数一项一项丢，好的留着；上限夹；编码写得回来")
+  func 分析面板节次数() throws {
+    let p = decode(#"{"analysisUsage":{"draw":5,"laser":3,"orderFlow":-2,"indicators":1.5,"compare":"7","x":0}}"#)
+    #expect(p.analysisUsage == ["draw": 5])
+    #expect(decode(#"{"analysisUsage":"draw"}"#).analysisUsage == [:])
+    #expect(decode(#"{"analysisUsage":{"orderFlow":500000}}"#).analysisUsage == ["orderFlow": 100_000])
+    #expect(Prefs.defaults.analysisUsage.isEmpty)
+    var q = Prefs.defaults
+    q.analysisUsage = ["compare": 3, "orderFlow": 7, "bogus": 9]
+    let back = decode(String(decoding: PrefsCodec.encode(q), as: UTF8.self))
+    #expect(back.analysisUsage == ["compare": 3, "orderFlow": 7])
+  }
+
   @Test("横屏根宽：老档案没有这个键就取同一份里的 barSpacing，之后两份各走各的；越界夹到 1.6…40")
   func 横屏根宽() {
     #expect(decode(#"{"barSpacing":9}"#).landscapeBarSpacing == 9, "第一次有这个字段时取当时的 barSpacing")

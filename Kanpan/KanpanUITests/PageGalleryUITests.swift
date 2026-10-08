@@ -140,9 +140,10 @@ final class PageGalleryUITests: KanpanUICase {
     step("分析面板") {
       guard app.openIndicatorPage() else { return false }
       settle(); shot("分析面板")
-      let orderFlow = app.buttons["indicator.switch.ORDERFLOW"]
+      // 下半页滚到最后一节「对比」（四节按使用次数排，出厂 画线 · 主力订单流 · 指标 · 对比）。
+      let compare = app.buttons["compare.add"]
       let window = app.windows.firstMatch
-      for _ in 0..<8 where !(orderFlow.exists && orderFlow.isHittable) {
+      for _ in 0..<8 where !(compare.exists && compare.isHittable) {
         window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
           .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62)))
       }

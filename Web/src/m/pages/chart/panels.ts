@@ -1,6 +1,8 @@
 /* 手机网页版 · 行情页的几张面板（照 iOS Panels/IndicatorPanel.swift、ChartPanel.swift、OrderFlow/OrderFlowEditor.swift）
  *
- * - 分析（周期条行尾「分析」）：画线（开始画线 · 隐藏画线）· 指标（在用 / 主图叠加 / 副图）· 对比 · 主力订单流 · 恢复这一组的默认。
+ * - 分析（周期条行尾「分析」）：画线（开始画线 · 隐藏画线）· 主力订单流 · 指标（在用 / 主图叠加 / 副图）· 对比 是出厂节序，
+ *   之后按这个人在各节里做事的次数排（analysisRank.ts，照 iOS AnalysisSectionRank；打开那一刻定序、开着不重排）；
+ *   「恢复默认指标」永远最后。
  *   对比 10-05 搬到顶栏 ＋ 之后，10-06 用户要求两处并存（「分析里的对比要留」，照 iOS IndicatorPage.compareSection）：
  *   这一节的「添加对比」开的就是顶栏 ＋ 那张对比模式搜索页（pages/search.ts），共用同一份 compareSymbols；
  *   此刻不能对比（复盘回放、横屏画线台、看朋友分享的线）时整节不排。
@@ -38,6 +40,7 @@ import { TERMS, splitPair } from './header'
 import type { PagePort } from './data'
 import { notePriceAxisPicked } from '../habitsRuntime'
 import { BT } from '../../../terms'
+import { countedSection, sectionOrder, type AnalysisSection } from './analysisRank'
 
 // ───────────────────────────── 术语（照 iOS Glossary：只给读不出意思的短名挂问号）
 
@@ -110,12 +113,18 @@ export function openAnalysis(ctx: PanelContext): Sheet {
   /** 拖副图把手的途中别的设置落盘（同步、学到的周期……）会经 subscribe 重画面板：先记下，松手再画 */
   let redrawAfterDrag = false
   let btTimer: ReturnType<typeof setInterval> | null = null
+  /** 节序在打开那一刻定下、整个面板开着期间沿用（拨开关会落盘重画，节不能在手指底下跳）；下次打开再按新次数排 */
+  const order = sectionOrder(st.analysisUsage)
+  /** 在某一节里做了一次实事：那一节 +1（由调用处随同一动作的 save 一起落盘） */
+  const tally = (s: AnalysisSection): void => { st.analysisUsage = countedSection(st.analysisUsage, s) }
+  /** 一次拖动只记一次，不按跨过几行记 */
+  let dragTallied = false
   const sheet = openSheet(body => {
     const host = el('div', 'cp-panel')
     body.append(host)
     const render = (): void => {
       if (reorder?.dragging) { redrawAfterDrag = true; return }
-      host.innerHTML = analysisHTML(ctx)
+      host.innerHTML = analysisHTML(ctx, order)
     }
     render()
     off = subscribe(() => { if (!sheet.closed) render() })
@@ -130,35 +139,41 @@ export function openAnalysis(ctx: PanelContext): Sheet {
       const [act, arg] = (b.dataset.act || '').split(':') as [string, string | undefined]
       const id = arg as IndicatorId
       switch (act) {
-        case 'draw': sheet.close(); ctx.onDraw(); break
-        case 'draw-hide': st.drawingsHidden = !st.drawingsHidden; save(); break
-        case 'edit': openIndicatorEditor(id); break
-        case 'height': delete st.subHeightOverrides[id]; save(); break
-        case 'ov': st.overlays = toggleOverlay(st.overlays, id); save(); break
+        case 'draw': tally('draw'); save(); sheet.close(); ctx.onDraw(); break
+        case 'draw-hide': st.drawingsHidden = !st.drawingsHidden; tally('draw'); save(); break
+        case 'edit': tally('indicators'); save(); openIndicatorEditor(id); break
+        case 'height': delete st.subHeightOverrides[id]; tally('indicators'); save(); break
+        case 'ov': st.overlays = toggleOverlay(st.overlays, id); tally('indicators'); save(); break
         case 'sub': {
           const r = toggleSub(st.subs, id)
           st.subs = r.list
+          tally('indicators')
           save()
           if (r.dropped) toast(`副图最多三个 · 已换下 ${indicatorName(r.dropped)}`)
           break
         }
         // 照 iOS compareSection：加、移除、清除都先收起面板（对比画在图上，要让人马上看到）；
         // 「添加对比」开顶栏 ＋ 那张对比模式搜索页（两处入口共用一页）
-        case 'cmp-add': sheet.close(); ctx.onAddCompare?.(); break
-        case 'cmp-rm': st.compareSymbols = st.compareSymbols.filter(k => k !== arg); save(); sheet.close(); break
-        case 'cmp-clear': st.compareSymbols = []; save(); sheet.close(); break
-        case 'of': st.orderFlow = !st.orderFlow; save(); break
-        case 'of-edit': openOrderFlowEditor(ctx); break
-        case 'bt-signs': st.bigTradeSigns = !st.bigTradeSigns; save(); break
-        case 'bt-open': sheet.close(); ctx.onBigTrade?.(); break
+        case 'cmp-add': tally('compare'); save(); sheet.close(); ctx.onAddCompare?.(); break
+        case 'cmp-rm': st.compareSymbols = st.compareSymbols.filter(k => k !== arg); tally('compare'); save(); sheet.close(); break
+        case 'cmp-clear': st.compareSymbols = []; tally('compare'); save(); sheet.close(); break
+        case 'of': st.orderFlow = !st.orderFlow; tally('orderFlow'); save(); break
+        case 'of-edit': tally('orderFlow'); save(); openOrderFlowEditor(ctx); break
+        case 'bt-signs': st.bigTradeSigns = !st.bigTradeSigns; tally('orderFlow'); save(); break
+        case 'bt-open': tally('orderFlow'); save(); sheet.close(); ctx.onBigTrade?.(); break
+        // 「恢复默认指标」不计次（不是在用哪一节）
         case 'reset': resetLayout(); break
       }
     })
     reorder = reorderable(host, {
       item: '.cp-iu[data-sub]', handle: '.cp-grip',
       // 按起拖那一刻的行挪（键是 data-sub），途中副图组成变了也不会挪走别的
-      onMove(from, to, rows) { st.subs = moveSubAmong(st.subs, rows.map(r => r.dataset.sub as IndicatorId), from, to); save() },
-      onEnd() { if (redrawAfterDrag) { redrawAfterDrag = false; render() } },
+      onMove(from, to, rows) {
+        st.subs = moveSubAmong(st.subs, rows.map(r => r.dataset.sub as IndicatorId), from, to)
+        if (!dragTallied) { dragTallied = true; tally('indicators') }
+        save()
+      },
+      onEnd() { if (redrawAfterDrag) { redrawAfterDrag = false; render() } dragTallied = false },
     })
   }, { title: '分析', detent: 'medium', dim: 'large', id: 'analysis', className: 'cp-sheet cp-list cp-cards', onClose: () => { off?.(); reorder?.destroy(); if (btTimer) clearInterval(btTimer) } })
   return sheet
@@ -228,14 +243,32 @@ function mainOnlyHTML(): string {
   return out.join('')
 }
 
-export function analysisHTML(ctx: PanelContext): string {
-  const out: string[] = []
-  out.push(gt('画线'))
+/** 「分析」面板正文。order 是四节从上到下的顺序（openAnalysis 在打开那一刻定一次传进来；不给就按此刻的次数现算）；
+ *  「恢复默认指标」永远最后 */
+export function analysisHTML(ctx: PanelContext, order: readonly AnalysisSection[] = sectionOrder(st.analysisUsage)): string {
+  const sections: Record<AnalysisSection, () => string> = {
+    draw: drawSectionHTML,
+    orderFlow: () => orderFlowSectionHTML(ctx),
+    indicators: indicatorSectionsHTML,
+    compare: () => compareSectionHTML(ctx),
+  }
+  const out = order.map(s => sections[s]())
+  const factory = sameValue(currentLayout(st), factoryLayout())
+  out.push(`<div class="cp-group cp-reset"><button type="button" class="cp-row cp-tap" data-act="reset"${factory ? ' disabled' : ''}><span class="cp-rn">恢复默认指标</span></button></div>`)
+  return out.join('')
+}
+
+function drawSectionHTML(): string {
   // 「隐藏画线」（iOS IndicatorPage 画线节同一行，跟账号同步）：竖屏看行情时线全收起来，提醒照判、图上改画提醒线；
   // 横屏画线台一律显示，不受它管
-  out.push(`<div class="cp-group"><button type="button" class="cp-row cp-tap" data-act="draw"><span class="cp-rn">开始画线</span><span class="cp-drawglyph">${glyph('draw', 24)}</span></button>`
-    + `<div class="cp-row"><span class="cp-rn">隐藏画线</span>${sw(st.drawingsHidden, 'draw-hide', '隐藏画线')}</div></div>`)
+  return gt('画线')
+    + `<div class="cp-group"><button type="button" class="cp-row cp-tap" data-act="draw"><span class="cp-rn">开始画线</span><span class="cp-drawglyph">${glyph('draw', 24)}</span></button>`
+    + `<div class="cp-row"><span class="cp-rn">隐藏画线</span>${sw(st.drawingsHidden, 'draw-hide', '隐藏画线')}</div></div>`
+}
 
+/** 指标三段：在用 / 主图叠加 / 副图 */
+function indicatorSectionsHTML(): string {
+  const out: string[] = []
   const overlays = st.overlays.filter(x => x !== 'ORDERFLOW')
   const inUse = overlays.length > 0 || st.subs.length > 0
   const handles = st.subs.length > 0
@@ -246,15 +279,14 @@ export function analysisHTML(ctx: PanelContext): string {
     for (const id of st.subs) rows.push(inUseLine(id, true, handles))
     out.push(`<div class="cp-inuse">${rows.join('')}</div>`)
   }
-  const toggleRow = toggleRowHTML
   out.push(gt(inUse ? '主图叠加' : '指标 · 主图叠加'))
-  out.push(`<div class="cp-group">${OVERLAY_ROWS.map(id => toggleRow(id, st.overlays.includes(id), 'ov')).join('')}</div>`)
+  out.push(`<div class="cp-group">${OVERLAY_ROWS.map(id => toggleRowHTML(id, st.overlays.includes(id), 'ov')).join('')}</div>`)
   out.push(gt('副图 · 最多三个 · 成交量不占'))
-  out.push(`<div class="cp-group">${SUB_ROWS.map(id => toggleRow(id, st.subs.includes(id), 'sub')).join('')}</div>`)
+  out.push(`<div class="cp-group">${SUB_ROWS.map(id => toggleRowHTML(id, st.subs.includes(id), 'sub')).join('')}</div>`)
+  return out.join('')
+}
 
-  out.push(compareSectionHTML(ctx))
-
-  out.push(gt(indicatorName('ORDERFLOW')))
+function orderFlowSectionHTML(ctx: PanelContext): string {
   const base = baseOfSymbol(ctx.symbol()).base
   const of: string[] = [`<div class="cp-row"><span class="cp-rn">${dot(swatchVar('ORDERFLOW'))}显示</span>${sw(st.orderFlow, 'of', '显示主力订单流')}</div>`]
   // 图上大单签（出厂开、跟人走，和上面「显示」互不牵连）+ 「大单与爆仓」弹层入口（照 iOS 10-08）
@@ -267,11 +299,7 @@ export function analysisHTML(ctx: PanelContext): string {
     const meta = `${base} · ${st.orderFlowOverrides[base] ? '已改门槛' : '默认门槛'}`
     of.push(`<button type="button" class="cp-row cp-tap" data-act="of-edit" aria-label="门槛，${esc(meta)}"><span class="cp-rn">门槛${termHTML('threshold')}</span><span class="cp-meta num">${esc(meta)}</span>${chevron()}</button>`)
   }
-  out.push(`<div class="cp-group">${of.join('')}</div>`)
-
-  const factory = sameValue(currentLayout(st), factoryLayout())
-  out.push(`<div class="cp-group cp-reset"><button type="button" class="cp-row cp-tap" data-act="reset"${factory ? ' disabled' : ''}><span class="cp-rn">恢复默认指标</span></button></div>`)
-  return out.join('')
+  return gt(indicatorName('ORDERFLOW')) + `<div class="cp-group">${of.join('')}</div>`
 }
 
 /** 「对比」一节（照 iOS IndicatorPage.compareSection，10-06 恢复、与顶栏 ＋ 并存）：

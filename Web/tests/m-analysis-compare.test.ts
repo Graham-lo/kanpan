@@ -12,16 +12,17 @@ const ctx = (o: Partial<PanelContext> = {}): PanelContext => ({
 })
 const titles = (html: string): string[] => [...html.matchAll(/<div class="cp-gt">([^<]*)<\/div>/g)].map(m => m[1])
 
-beforeEach(() => { st.compareSymbols = [] })
+beforeEach(() => { st.compareSymbols = []; st.analysisUsage = {} })
 
-describe('分析面板四节：画线 · 指标 · 对比 · 主力订单流', () => {
-  it('对比一节排在指标之后、主力订单流之前', () => {
+describe('分析面板四节：出厂 画线 · 主力订单流 · 指标 · 对比（2026-10-08 起按用量排，见 m-analysis-rank）', () => {
+  it('没用过：画线 → 主力订单流 → 指标三段 → 对比，对比在最后', () => {
+    st.analysisUsage = {}
     const t = titles(analysisHTML(ctx()))
     expect(t[0]).toBe('画线')
+    expect(t[1]).toBe('主力订单流')
     const i = t.indexOf('对比')
-    expect(i).toBeGreaterThan(0)
+    expect(i).toBe(t.length - 1)
     expect(t[i - 1]).toMatch(/^副图/)
-    expect(t[i + 1]).toBe('主力订单流')
   })
   it('此刻不能对比（复盘回放 / 横屏画线台 / 看朋友的线）：整节不排，面板回到三节', () => {
     expect(titles(analysisHTML(ctx({ canCompare: () => false })))).not.toContain('对比')
@@ -54,7 +55,7 @@ describe('对比一节的行', () => {
 
 describe('从分析面板添加对比：开顶栏 ＋ 那张对比模式搜索页', () => {
   it('cmp-add 先收面板再调 onAddCompare（不再开旧的单选小表）', () => {
-    expect(panelSource).toMatch(/case 'cmp-add': sheet\.close\(\); ctx\.onAddCompare\?\.\(\)/)
+    expect(panelSource).toMatch(/case 'cmp-add': tally\('compare'\); save\(\); sheet\.close\(\); ctx\.onAddCompare\?\.\(\)/)
     expect(panelSource).not.toContain('openComparePicker')
   })
   it('行情页把 onAddCompare 接到与顶栏 ＋ 同一个 openSearch({ compare })，并按回放 / 横屏 / 预览判能不能对比', () => {

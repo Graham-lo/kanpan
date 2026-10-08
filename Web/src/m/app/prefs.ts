@@ -10,6 +10,7 @@
 
 import { compareKey } from '../../sync/codec'
 import { isDrawingKind } from '../chart/draw/drawing'
+import { ANALYSIS_SECTIONS, isAnalysisSection } from '../pages/chart/analysisRank'
 import { defaultParams } from '../indicator/ids'
 
 export type IntervalId = '1m' | '3m' | '5m' | '15m' | '30m' | '1h' | '2h' | '4h' | '6h' | '12h' | '1d' | '1w' | '1M' | '1y'
@@ -108,6 +109,9 @@ export interface Prefs {
   lastDrawTool: string
   /** 画线条按它挑最常用的几把（每把工具用了几次；iOS 竖屏画线条与横屏画线台、手机网页横屏画线台同一张表，m/chart/draw/toolRank.ts） */
   drawToolUsage: Record<string, number>
+  /** 「分析」面板四节（画线 / 主力订单流 / 指标 / 对比）各用了几次，面板打开时按它排节序
+   *  （iOS `Prefs.analysisUsage`、服务端 `analysisUsage` 同一张表，m/pages/chart/analysisRank.ts） */
+  analysisUsage: Record<string, number>
   /** iOS 横屏画线台里主图指标画不画（手机网页没有画线台，只随账号带着走、不丢） */
   drawingOverlaysShown: boolean
   /** 竖屏「隐藏画线」（与 iOS `Prefs.drawingsHidden` 同义，出厂 false）：开着时竖屏图上不画、点不中任何画线，
@@ -118,7 +122,7 @@ export interface Prefs {
 
 /** 进账号同步的字段（settings 集合）。顺序无意义，集合必须与 iOS 契约、服务端对齐 */
 export const SYNCED_FIELDS = [
-  'alertSound', 'barSpacing', 'bigTradeSigns', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'drawingsHidden', 'favoritesGroup', 'favoritesTrend', 'habitLearning',
+  'alertSound', 'analysisUsage', 'barSpacing', 'bigTradeSigns', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'drawingsHidden', 'favoritesGroup', 'favoritesTrend', 'habitLearning',
   'indicatorColors', 'indicatorLayouts', 'interval', 'landscapeBarSpacing', 'lastDrawTool', 'learnedDefaults', 'mainInverted',
   'notifyListingChanges', 'orderFlow', 'orderFlowOverrides', 'overlays', 'params', 'portraitHeight', 'priceMode',
   'quickIntervals', 'redUp', 'reviewSearchScope', 'sectorMarket', 'sectorWindow', 'skin', 'subHeightOverrides',
@@ -140,7 +144,7 @@ export function defaultPrefs(): Prefs {
     indicatorColors: {}, alertSound: 'default', watchMoveAlert: false, favoritesTrend: true, bigTradeSigns: true, notifyListingChanges: false,
     habitLearning: true, learnedDefaults: emptyLearned(), overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],
     params, subHeightOverrides: {}, indicatorLayouts: { others: {} }, routePolicy: 'gateway',
-    favoritesGroup: '', sectorMarket: 'crypto', sectorWindow: 'today', lastDrawTool: '', drawToolUsage: {}, reviewSearchScope: 'history',
+    favoritesGroup: '', sectorMarket: 'crypto', sectorWindow: 'today', lastDrawTool: '', drawToolUsage: {}, analysisUsage: {}, reviewSearchScope: 'history',
     drawingOverlaysShown: true, drawingsHidden: false,
   }
 }
@@ -236,6 +240,18 @@ export function cleanDrawToolUsage(v: unknown): Record<string, number> {
     .map(([k, n]) => [k, Math.min(n, 100_000)] as const)
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .slice(0, 12)
+  for (const [k, n] of kept) out[k] = n
+  return out
+}
+/** iOS Prefs.cleanAnalysisUsage / 服务端 analysis_usage：键只认四个节名、值是 1…100000 的整数、最多 4 个键 */
+export function cleanAnalysisUsage(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (!isRecord(v)) return out
+  const kept = Object.entries(v)
+    .filter((e): e is [string, number] => isAnalysisSection(e[0]) && Number.isInteger(e[1]) && (e[1] as number) > 0)
+    .map(([k, n]) => [k, Math.min(n, 100_000)] as const)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .slice(0, ANALYSIS_SECTIONS.length)
   for (const [k, n] of kept) out[k] = n
   return out
 }
@@ -414,6 +430,7 @@ export function normalizePrefs(raw: unknown): Prefs {
     sectorWindow: oneOf(r.sectorWindow, ['today', 'd5', 'd20'] as const, d.sectorWindow),
     lastDrawTool: typeof r.lastDrawTool === 'string' ? r.lastDrawTool : d.lastDrawTool,
     drawToolUsage: cleanDrawToolUsage(r.drawToolUsage),
+    analysisUsage: cleanAnalysisUsage(r.analysisUsage),
     drawingOverlaysShown: bool(r.drawingOverlaysShown, d.drawingOverlaysShown),
     drawingsHidden: bool(r.drawingsHidden, d.drawingsHidden),
     reviewSearchScope: oneOf(r.reviewSearchScope, ['history', 'private'] as const, d.reviewSearchScope),

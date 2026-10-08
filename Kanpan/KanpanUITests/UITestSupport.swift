@@ -453,6 +453,12 @@ class KanpanUICase: XCTestCase {
         expectExists(edit, Self.short, "打开均线之后没露出「参数与颜色」", file: file, line: line)
       }
     }
+    // 分析面板四节按使用次数排（2026-10-08），均线那一行可能在半屏折线以下：先在内容区往上拖到点得到。
+    let window = app.windows.firstMatch
+    for _ in 0..<6 where !(edit.exists && edit.isHittable) {
+      window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+        .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62)))
+    }
     XCTAssertTrue(waitUntil(timeout: Self.short) { edit.isHittable }, "「参数与颜色」点不到",
                   file: file, line: line)
     edit.tap()

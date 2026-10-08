@@ -175,6 +175,8 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "drawingOverlaysShown",
  // 画线条上露哪几把：每把画线工具用了几次（2026-10-05，对象，规则见 `sync_validation::draw_tool_usage`）。
  "drawToolUsage",
+ // 「分析」面板四节按用得多少排：每节用了几次（2026-10-08，对象，规则见 `sync_validation::analysis_usage`）。
+ "analysisUsage",
  // 横屏自己记的根间距（2026-10-05，pt，1.6…40，同 barSpacing）：横屏图宽是竖屏两倍多，两边各记一份。
  "landscapeBarSpacing",
  // 画线面板「隐藏画线」（2026-10-06，布尔）：看行情时把画线整片藏起来，提醒照常。

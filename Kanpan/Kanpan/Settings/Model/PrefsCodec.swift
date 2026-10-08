@@ -81,6 +81,7 @@ enum PrefsCodec {
     p.orderFlowOverrides = p.orderFlowOverrides.compactMapValues { $0.normalized }
     p.learnedDefaults = p.learnedDefaults.sanitized()
     p.drawToolUsage = Prefs.cleanDrawToolUsage(p.drawToolUsage)
+    p.analysisUsage = Prefs.cleanAnalysisUsage(p.analysisUsage)
     return p
   }
 
@@ -165,6 +166,7 @@ extension Prefs: Codable {
     case sectorMarket, sectorWindow
     case lastDrawTool
     case drawToolUsage
+    case analysisUsage
     case drawingOverlaysShown
     case drawingsHidden
     case favoritesTrend
@@ -212,6 +214,7 @@ extension Prefs: Codable {
     try c.encode(sectorWindow.rawValue, forKey: .sectorWindow)
     try c.encode(lastDrawTool, forKey: .lastDrawTool)
     try c.encode(drawToolUsage, forKey: .drawToolUsage)
+    try c.encode(analysisUsage, forKey: .analysisUsage)
     try c.encode(drawingOverlaysShown, forKey: .drawingOverlaysShown)
     try c.encode(drawingsHidden, forKey: .drawingsHidden)
     try c.encode(favoritesTrend, forKey: .favoritesTrend)
@@ -383,6 +386,14 @@ extension Prefs: Codable {
       }
       drawToolUsage = Prefs.cleanDrawToolUsage(usage)
     }
+    // 「分析」面板四节次数：同一套读法——键只认 `AnalysisSection`，值 0…100000 的整数，最多四个键。
+    if let raw = try? c.nestedContainer(keyedBy: PrefsUsageKey.self, forKey: .analysisUsage) {
+      var usage: [String: Int] = [:]
+      for key in raw.allKeys {
+        if let n = try? raw.decode(Int.self, forKey: key) { usage[key.stringValue] = n }
+      }
+      analysisUsage = Prefs.cleanAnalysisUsage(usage)
+    }
     if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }
     if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }
     if let v = bool(.watchMoveAlert) { watchMoveAlert = v }
@@ -411,7 +422,7 @@ extension Prefs: Codable {
   }
 }
 
-/// 读 `drawToolUsage` 那张表用的键：表的键是工具名，事先不知道有哪些。
+/// 读 `drawToolUsage` / `analysisUsage` 那两张表用的键：表的键是工具名 / 节名，事先不知道有哪些。
 private struct PrefsUsageKey: CodingKey {
   let stringValue: String
   var intValue: Int? { nil }
@@ -433,6 +444,19 @@ extension Prefs {
       .map { ($0.key, min($0.value, maxDrawToolUsageCount)) }
       .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0 < $1.0 }
       .prefix(maxDrawToolUsageKeys)
+    return Dictionary(uniqueKeysWithValues: kept.map { ($0.0, $0.1) })
+  }
+
+  /// `analysisUsage` 一张表最多几个键（面板上就四节）。
+  static let maxAnalysisUsageKeys = AnalysisSection.allCases.count
+
+  /// 规则同 `cleanDrawToolUsage`：键只认 `AnalysisSection`、次数 > 0、夹到 `maxDrawToolUsageCount`，最多四个键。
+  static func cleanAnalysisUsage(_ usage: [String: Int]) -> [String: Int] {
+    let kept = usage
+      .filter { AnalysisSection(rawValue: $0.key) != nil && $0.value > 0 }
+      .map { ($0.key, min($0.value, maxDrawToolUsageCount)) }
+      .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0 < $1.0 }
+      .prefix(maxAnalysisUsageKeys)
     return Dictionary(uniqueKeysWithValues: kept.map { ($0.0, $0.1) })
   }
 }
