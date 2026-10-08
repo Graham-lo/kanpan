@@ -160,6 +160,22 @@ CPU 约为 M4 单核的 15–30%，换到 VPS 的核按一半速度算约 30–6
 - 同参数 20 秒内只读一次库，答复 `Cache-Control: public, max-age=20`；和 `/history`、热力共用两个读名额。没在跟的 base 回 `tracked:false`、空 `rows`，不起跟。
 - 删表回退：只给这张副图用，回滚二进制即可；`TRUNCATE orderflow_flow` 不影响别的。
 
+### 爆仓分钟聚合（2026-10-08，`liq.rs`、表 `orderflow_liq`，迁移 0052）
+
+另开三路交易所连接收强平推送（不走成交那条跟踪任务）：币安 U 本位 `wss://fstream.binance.com/market/ws/!forceOrder@arr`（旧的 `/ws/` 路径实测 30 秒 0 条）、
+币本位 `wss://dstream.binance.com/ws/!forceOrder@arr`、OKX `wss://ws.okx.com:8443/ws/v5/public` 订 `liquidation-orders` 的 SWAP 与 FUTURES；Coinbase 没有强平。
+只记 `REGISTRY` 在跟的 base；卖出 / OKX `posSide=long` 记「多头被平」，美元额按品种表面值算（U 本位均价 × 已成交量 × 缩放倍数，反向合约张数 × 面值），
+交易所时刻离此刻 10 秒以内才信。一只一分钟一行写进 `orderflow_liq`（没有爆仓的分钟没有行）：多头额、空头额、笔数、这分钟最大一笔的额 / 价 / 哪边（0 多 1 空）/ 哪家（0 币安 1 OKX）。
+`GET /v1/market/orderflow/liq?base=&from=&to=` 读，回 `{base,tracked,rows:[[分钟,多头额,空头额,笔数,最大额,最大价,最大边,最大家],…]}`，最长 3 天、两端按分钟取整、不分页。网页版「大单」抽屉用。
+
+- 日志（info）：每小时两行 `Orderflow liq: last 3600s binance-um N seen, K kept, U unmapped, C connects; binance-cm …; okx …`（各路收到、记下、对不上面值、连了几次）、`Orderflow liq: last 3600s wrote N base-minutes; dropped a (queue full), b (write failed)`，加上 `Orderflow liq: purge deleted …; table … bytes`；
+  连接断开 debug、OKX 订阅出错与写失败 warn（写失败一分钟最多一行）。重连照 hub：建连共用限频与币安闸门，1 秒起翻倍到 30 秒、±50% 抖动，活过 60 秒复位。
+- 体积：比 flow 稀得多（只有爆仓的分钟才有行），上限同 flow 约 95 万行，不设闸门。看写入：`SELECT base,count(*),max(minute_ms) FROM orderflow_liq GROUP BY 1 ORDER BY 2 DESC LIMIT 10`。
+- 同参数 20 秒内只读一次库，答复 `Cache-Control: public, max-age=20`、支持 gzip；和 `/history`、热力、flow 共用两个读名额与每来源并发名额。没在跟的 base 回 `tracked:false`、空 `rows`，不起跟。
+- 关停时把还没写的分钟全交给写库线程（同 flow 的收尾）。
+- 实测（2026-10-08 kanpan-sg）：币安强平推送是快照——同一合约 1 秒内只推最新一笔：15 分钟 U 本位 309 笔、70 只、合计约 32 万美元，同一合约相邻两次推送（`E`）最短正好 1000 ms，239 个间隔里 19 个 ≤ 1.1 秒（这些就是连环爆仓时被吞掉了中间几笔），所以币安一侧的额与笔数是下限、平静行情差得少、连环爆仓时会明显偏低；OKX 同期 60 笔全是 SWAP（FUTURES 0 笔），同一合约间隔最短 61 ms，看不出按秒抽样。dstream 那一路 15 分钟 309 笔与 U 本位逐笔相同、没有一笔 `…USD_PERP`，按家族各认各的之后它眼下不贡献数据，留着等币安把币本位的强平推回来。被吞的那部分到底多大没有可对照的全量来源，没量。
+- 删表回退：只给这一个抽屉用，回滚二进制即可；`TRUNCATE orderflow_liq` 不影响别的。
+
 ### 足迹图与秒线历史（2026-10-07，`footprint.rs`、`seconds.rs`、`minutes.rs`，表 `orderflow_footprint`、`klines_seconds`，迁移 0051）
 
 同一个跟踪任务、同一批去重后的成交（不另开交易所连接），按交易所给的成交时刻（币安 `T`、OKX `ts`、Coinbase `time`；离此刻 10 秒以上不信，按收到的时刻）分分钟、分秒；
