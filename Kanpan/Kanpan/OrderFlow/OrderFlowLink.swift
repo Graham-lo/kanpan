@@ -55,7 +55,11 @@ final class OrderFlowLink {
   /// 任一开着就订（签要逐笔成交，成交和簿走同一条连接）。
   private(set) var walls = false
   private(set) var signs = false
-  var wanted: Bool { walls || signs }
+  /// 「大单与爆仓」弹层开着：两个开关都关着也得订着（弹层的数全从逐笔成交来）。
+  private(set) var sheetOpen = false
+  var wanted: Bool { walls || signs || sheetOpen }
+  /// 「大单与爆仓」弹层的状态（开没开、停在哪档、看哪根、爆仓账）。
+  @ObservationIgnored let sheet = BigTradeSheetModel()
   /// 用户改过的门槛 / 步长（`Prefs.orderFlowOverrides` 的镜像）。
   @ObservationIgnored private(set) var overrides: [String: OrderFlowOverride] = [:]
   /// 开关开着、在前台——此刻是否真的订着簿。
@@ -89,6 +93,7 @@ final class OrderFlowLink {
   func noteCrosshair(onMain: Bool) { focus.set(onMain) }
 
   func setWanted(walls: Bool, signs: Bool) { self.walls = walls; self.signs = signs }
+  func setSheetOpen(_ open: Bool) { sheetOpen = open }
   func setOverrides(_ next: [String: OrderFlowOverride]) { overrides = next }
 
   /// 跟着 `MarketModel.updateMicrostructure` 走：前后台、开关、改门槛、换行情流、品种信息到了

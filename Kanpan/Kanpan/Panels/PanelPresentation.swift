@@ -225,6 +225,8 @@ struct PanelActions {
   /// 传的是引用而不是算好的值——大单帧每半秒一次，算好的值挂在这里会让主界面跟着重算。
   var orderFlow: OrderFlowLink? = nil
   var symbol: String = ""
+  /// 「主力订单流 › 大单与爆仓」那一行：开弹层、读正在走那根。横屏、复盘、画线时传 nil，那一行不排。
+  var bigTrades: BigTradeEntry? = nil
   /// 横屏画线台里开的「分析」：只摆主图指标那几段（见 `IndicatorPage.mainOnly`）。
   var mainOnly = false
 }
@@ -248,7 +250,8 @@ struct PanelContent: View {
       // 选中反馈长在指标页各控件的动作上（`PrefsStore.updateByHand`），两条路一样。
       IndicatorPage(store: store, orderFlow: actions.orderFlow, symbol: actions.symbol,
                     onAddCompare: actions.onAddCompare, compareNames: actions.compareNames,
-                    onDraw: actions.onDraw, drawEnabled: actions.drawEnabled, mainOnly: actions.mainOnly)
+                    onDraw: actions.onDraw, drawEnabled: actions.drawEnabled, mainOnly: actions.mainOnly,
+                    bigTrades: actions.bigTrades)
     }
   }
 }

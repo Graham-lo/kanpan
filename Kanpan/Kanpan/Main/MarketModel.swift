@@ -1216,6 +1216,17 @@ final class MarketModel {
     orderFlow.setWanted(walls: walls, signs: signs)
     if was != orderFlow.wanted { updateMicrostructure() }
   }
+  /// 「大单与爆仓」弹层开 / 关：开着时两个开关都关着也照订逐笔成交。
+  func setBigTradeSheet(open: Bool) {
+    guard open != orderFlow.sheetOpen else { return }
+    let was = orderFlow.wanted
+    orderFlow.setSheetOpen(open)
+    if was != orderFlow.wanted { updateMicrostructure() }
+  }
+  /// 爆仓分钟账（kanpan-api /liq），弹层每 30 秒问一次；现货调用方不问。
+  func liquidations(base: String, fromMs: Int64, toMs: Int64) async -> LiquidationPage? {
+    await feed.liquidations(base: base, fromMs: fromMs, toMs: toMs)
+  }
   /// 主力订单流改过的门槛 / 步长（`Prefs.orderFlowOverrides`）。
   func setOrderFlowOverrides(_ overrides: [String: OrderFlowOverride]) {
     guard overrides != orderFlow.overrides else { return }

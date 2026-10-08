@@ -52,6 +52,8 @@ struct IndicatorPage: View {
   /// 和主图叠加那排开关；「恢复默认指标」会连副图一起动，也不摆。标题改叫「主图指标」。
   /// 改的仍是同一份指标布局，退出画线回竖屏原样带着走。
   var mainOnly = false
+  /// 「主力订单流 › 大单与爆仓」那一行（2026-10-08）：点了关面板、开弹层。nil 时那一行不排。
+  var bigTrades: BigTradeEntry? = nil
   @State private var editing: IndicatorID?
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -204,9 +206,21 @@ struct IndicatorPage: View {
         PanelSwitch(isOn: prefs.orderFlow) { store.byHand { $0.toggleIndicator(.orderFlow) } }
           .accessibilityIdentifier("indicator.switch.\(IndicatorID.orderFlow.rawValue)")
       }
-      PanelRow(name: "图上大单签", divider: base != nil) {
+      let entry = mainOnly ? nil : bigTrades
+      PanelRow(name: "图上大单签", divider: base != nil || entry != nil) {
         PanelSwitch(isOn: prefs.bigTradeSigns) { store.updateByHand { $0.bigTradeSigns.toggle() } }
           .accessibilityIdentifier("orderflow.bigTradeSigns")
+      }
+      // 「大单与爆仓」（2026-10-08）：本根买卖对撞、每根、价位、爆仓那张弹层。两颗开关都关着也能开——
+      // 弹层开着时成交账照订（`OrderFlowLink.wanted`）。右边那行副文字是正在走那根的净额，单拎一块刷新。
+      if let entry, let link = orderFlow {
+        PanelRow(name: "大单与爆仓", divider: base != nil, onTap: { entry.open() },
+                 buttonID: "orderflow.bigTrades", buttonLabel: "大单与爆仓") {
+          HStack(spacing: Space.s) {
+            BigTradeEntryMeta(link: link, entry: entry)
+            VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
+          }
+        }
       }
       if let base {
         let meta = "\(base) · " + (prefs.orderFlowOverrides[base] == nil ? "默认门槛" : "已改门槛")

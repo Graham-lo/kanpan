@@ -320,6 +320,8 @@ struct MainChartView: View {
   let onTapped: () -> Void
   /// 点图上已画的一条复盘记录（P3.7）：打开它的详情。
   var onOpenRecord: (UUID) -> Void = { _ in }
+  /// 点图上的大单签（开「大单与爆仓」弹层 / 换根）。复盘态不接。
+  var onBigTradeTap: ((BigTradeSign) -> Void)? = nil
 
   var body: some View {
     #if DEBUG
@@ -365,12 +367,18 @@ struct MainChartView: View {
           readout.set($0)
           // 行情流逐帧发的「精细档」：十字线在主图上，或者正盯着一单的详情卡。
           market.orderFlow.noteCrosshair(onMain: ($0.map { $0.pane == nil } ?? false) || readout.orderFlow != nil)
+          // 「大单与爆仓」弹层跟着十字线读那一根（只认主图；复盘那张图不是行情图）。
+          let crossT: Int64? = reviewChart.active ? nil : $0.flatMap { c in
+            c.pane == nil ? proxy.box?.chart.state?.series.time(at: c.index) : nil
+          }
+          market.orderFlow.sheet.noteCrosshair(t: crossT)
         },
         // 主力订单流的焦点（轻点选中的那一桶，或十字线停着的那一条合并带）：出详情卡。
         onOrderFlowFocus: { [readout = session.readout] focus in
           readout.set(orderFlow: focus)
           market.orderFlow.noteCrosshair(onMain: focus != nil || readout.crosshair.map { $0.pane == nil } == true)
         },
+        onBigTradeTap: reviewChart.active ? nil : onBigTradeTap,
         onNeedsHistory: { if reviewChart.mode == .replay { reviewChart.loadReplayPage(forward: false, feature: review) } else if !reviewChart.active { market.loadMore() } },
         // 面板打开时由原生遮罩消费首个触摸，只收起面板。
         onTapped: { onTapped() },

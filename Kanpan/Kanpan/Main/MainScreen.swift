@@ -316,6 +316,9 @@ struct MainScreen: View {
         .presentationBackground(theme.app)
         .preferredColorScheme(effectiveTheme.forced)
     }
+    // 「大单与爆仓」弹层（点图上大单签、或分析面板那一行开）。半屏时图还能摸，十字线落哪根弹层就读哪根。
+    .bigTradeSheet(market: market, store: store, proxy: proxy, theme: theme, scheme: effectiveTheme.forced,
+                   enabled: tab == .chart && !landscape && !reviewChart.active && !draw.active && !drawingCanvasOnly)
     .fullScreenCover(isPresented: $symbolSearch.allShown, onDismiss: { symbolSearch.allDismissed() }) {
       // 关掉品种页顺手把查询词清了：搜索页和它共用一个 `SymbolPickerModel`，
       // 词留着的话，下次点放大镜进来看到的是上一轮的结果，而不是「历史搜索 / 最近看过」。
@@ -1040,12 +1043,17 @@ struct MainScreen: View {
     // 此刻不能对比——复盘回放、横屏画线台、看朋友分享的线（对比在这几处都暂退）——整节不排。
     let onAddCompare: (() -> Void)? = reviewChart.active || draw.active || landscape || draw.previewing != nil
       ? nil : { dismissPanel(); showComparePicker = true }
+    // 「主力订单流 › 大单与爆仓」：横屏、画线、复盘回放里不开那张弹层（它只长在竖屏行情页上）。
+    let bigTrades: BigTradeEntry? = reviewChart.active || draw.active || landscape || drawingCanvasOnly
+      ? nil
+      : BigTradeEntry(open: { dismissPanel(); market.orderFlow.sheet.open(at: nil) }, liveBar: { market.liveBarSpan })
     return PanelActions(onPickInterval: pick(interval:),
                  onShare: chartShareAction, onAddCompare: onAddCompare, compareNames: compareNames,
                  onDraw: onDraw, drawEnabled: !comparing,
                  onSend: chartSendAction, sendBlocked: shareSendBlocked,
                  orderFlow: market.orderFlow, symbol: market.symbol,
                  // 横屏画线台不画副图和主力订单流，那里开的「分析」只摆主图那几段（「主图˅」进来）。
+                 bigTrades: bigTrades,
                  mainOnly: drawingCanvasOnly)
   }
 
@@ -1322,7 +1330,9 @@ struct MainScreen: View {
       merged: { merged(subs: $0) },
       say: { say($0) },
       onTapped: { dismissPanel() },
-      onOpenRecord: { openReview(id: $0.uuidString) })
+      onOpenRecord: { openReview(id: $0.uuidString) },
+      // 点图上的大单签：第一次开「大单与爆仓」半屏，开着时只换到那一根。
+      onBigTradeTap: { market.orderFlow.sheet.open(at: $0.t) })
   }
 
   /// 这次重温是从哪儿开的。复盘本会在开图之前把自己关掉，退出时照这个把它开回来——

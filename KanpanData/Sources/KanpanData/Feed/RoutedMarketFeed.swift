@@ -187,6 +187,12 @@ public actor RoutedMarketFeed {
   public func setOrderFlowView(symbol viewed: String, fromMs: Int64, toMs: Int64, sequence: UInt64? = nil) {
     orderFlow.setView(symbol: viewed, fromMs: fromMs, toMs: toMs, current: symbol, sequence: sequence)
   }
+  /// 爆仓分钟账（「大单与爆仓」弹层，kanpan-api /liq）：走当前行情提供者的订单流目录。
+  /// 现货的调用方自己不问；线路还没起来、服务端不通都是 nil，调用方当没有。
+  public func liquidations(base: String, fromMs: Int64, toMs: Int64) async -> LiquidationPage? {
+    guard let catalog = (activeProvider as? any OrderFlowSourcing)?.orderFlowCatalog else { return nil }
+    return await catalog.liquidations(base: base, fromMs: fromMs, toMs: toMs)
+  }
   /// 测试用：订单流这一格此刻记着的可视范围。
   var orderFlowViewForTesting: (symbol: String, from: Int64, to: Int64)? { orderFlow.view }
   private func startOrderFlow() {
