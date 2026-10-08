@@ -19,6 +19,8 @@ final class BigTradeSheetUITests: KanpanUICase {
     if name.contains("Loading") { env["KANPAN_TEST_BIGTRADE_STATE"] = "loading" }
     if name.contains("Stale") { env["KANPAN_TEST_BIGTRADE_STATE"] = "stale" }
     if name.contains("LiqEmpty") { env["KANPAN_TEST_BIGTRADE_STATE"] = "liqEmpty" }
+    // 点签那条：DEBUG 钩子往成交账里补一笔门槛以上的买单，图上必有签可点（名册不许按数据有没有来跳过）。
+    if name.contains("TapSign") { env["KANPAN_TEST_BIGTRADE_SEED"] = "1" }
     return env
   }
 
@@ -122,11 +124,12 @@ final class BigTradeSheetUITests: KanpanUICase {
   func testTapSignOpensFullOnThatBar() throws {
     waitForBars()
     var signs: [[String: Any]] = []
-    let ok = waitUntil(timeout: 90, poll: 1) {
+    let ok = waitUntil(timeout: Self.long, poll: 1) {
       signs = self.chartInfo()["bigTradeSigns"] as? [[String: Any]] ?? []
       return !signs.isEmpty
     }
-    try XCTSkipUnless(ok, "90 秒内 BTCUSDT 图上没出大单签（门槛以上的成交没来），这条跳过")
+    XCTAssertTrue(ok, "开着 KANPAN_TEST_BIGTRADE_SEED 图上也没出大单签（钩子补的那笔没走到图上）")
+    guard ok else { return }
     let sign = signs.max { ($0["x"] as? Double ?? 0) < ($1["x"] as? Double ?? 0) }!
     let canvas = app.otherElements["chart.canvas"]
     canvas.coordinate(withNormalizedOffset: .zero)

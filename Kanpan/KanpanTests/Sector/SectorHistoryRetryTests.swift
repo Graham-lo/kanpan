@@ -52,7 +52,10 @@ struct SectorHistoryRetryTests {
     }
     feed.daily.configure(backend: BackendClient(hosts: ["127.0.0.1:9"]))
     feed.setVisible(true)
-    for _ in 0..<200 where feed.daily.history.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+    // 单测跑在模拟器上的 app 宿主里，Caches 里可能躺着前几天真跑留下的那份（asof 是旧日期），
+    // 而磁盘那份先于网络那份顶上来：等「非空」会在磁盘那份一到就放行，拿旧日期去比今天就红。
+    // 要等的是网络那份（今天）真的装进去。
+    for _ in 0..<300 where feed.daily.history.asof != asof { try await Task.sleep(for: .milliseconds(10)) }
     #expect(feed.daily.history.asof == asof)
     for _ in 0..<3 {
       feed.setVisible(false)

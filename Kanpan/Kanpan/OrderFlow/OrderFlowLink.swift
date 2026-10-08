@@ -120,7 +120,27 @@ final class OrderFlowLink {
       snapshot = walls
     }
     if frame.trades != trades { trades = frame.trades }
+    #if DEBUG
+      if Self.testSeedSign { seedTestSign(frame) }
+    #endif
   }
+
+  #if DEBUG
+    /// UI 测试钩子 `KANPAN_TEST_BIGTRADE_SEED=1`（BigTradeSheetUITests 点签那条）：每帧往成交账里补一笔
+    /// 门槛以上的买单，时刻钉在第一次补的那一分钟，图上必有一枚签可点——用例不再看真成交来不来
+    /// （名册不许按数据有没有来跳过）。每帧都补是因为行情流每秒给的是一份新账，不带上一帧补的那笔。
+    private static let testSeedSign = ProcessInfo.processInfo.environment["KANPAN_TEST_BIGTRADE_SEED"] == "1"
+    @ObservationIgnored private var testSeedMs: Int64?
+    private func seedTestSign(_ frame: OrderFlowSnapshot) {
+      guard let threshold = BigTradeFlow.threshold(frame.thresholds), threshold > 0 else { return }
+      var flow = frame.trades ?? BigTradeFlow(symbol: frame.symbol)
+      let cut = flow.cut ?? BigTradeFlow.cut(threshold: threshold)
+      let t = testSeedMs ?? Int64(Date().timeIntervalSince1970 * 1000)
+      testSeedMs = t
+      flow.record(timeMs: t, price: flow.prints.last?.price ?? 0, usd: threshold * 1.2, buy: true, cut: cut)
+      trades = flow
+    }
+  #endif
 
   /// 大单签的地板（门槛 ÷ 5）：签按相对档位分，地板挡掉清淡时段的小额「大单」。
   var signFloor: Double? {
