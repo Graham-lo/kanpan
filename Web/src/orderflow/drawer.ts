@@ -16,7 +16,8 @@
  *      这里那一行跟着亮（带一道强调色左边线），不在视野里就滚进来。
  *   3. 价位：近 1 小时大单最集中的买、卖各三档（取法见 summary.priceLevels：浏览器在记的分钟用真实成交价，其余分钟用
  *      服务端的大买 / 大卖 × 那分钟 1 分钟 K 线的典型价；1 分钟 K 线一次取 60 根、每分钟作废一次，图本身是 1 分钟就直接用图上的），
- *      按价格排成一张小价格图，现价是一条虚线；最上 / 最下是离现价最近的卖墙 / 买墙胶囊（砖墙记号 · 价 · 额 · 距离），
+ *      按价格排成一张小价格图（同一档价位既是买前三又是卖前三时并成一行：一根条先涨色后跌色、两个额各按自己的颜色写，
+ *      价位标签不重复），现价是一条虚线；最上 / 最下是离现价最近的卖墙 / 买墙胶囊（砖墙记号 · 价 · 额 · 距离），
  *      挂了多久画成一个小时钟弧（满一圈 = 1 小时），不写字。
  *   4. 爆仓：三根对撞条，空头被平往上（涨色）、多头被平往下（跌色），右边一颗「最大一笔」胶囊。数据见 liquidation.ts。
  *
@@ -572,8 +573,7 @@ function paintPx(cx: Ctx | null, p: Pal): void {
   const { buy, sell } = priceLevels(cx.f, step, cx.now, typicalFor(cx))
   const top = PH + 8, bot = H - PH - 8
   if (!buy.length && !sell.length) { emptyState(c, W, (top + bot) / 2, p, '近 1 小时还没有大单'); return }
-  type L = Level & { buy: boolean }
-  const lv: (L | null)[] = [...buy.map(l => ({ ...l, buy: true })), ...sell.map(l => ({ ...l, buy: false }))].sort((a, b) => b.price - a.price)
+  const lv: (PxRow | null)[] = pxRows(buy, sell)
   // 现价那一行插在价格顺序里
   let at = lv.findIndex(l => l!.price < mid)
   if (at < 0) at = lv.length
@@ -582,8 +582,9 @@ function paintPx(cx: Ctx | null, p: Pal): void {
   const y0 = top + ((bot - top) - rowH * lv.length) / 2
   c.font = canvasFont(11)
   const labW = Math.max(...lv.map(l => c.measureText(px(l ? l.price : mid, dec)).width)) + 8
-  const mxUsd = Math.max(1, ...lv.map(l => l ? l.usd : 0))
-  const amtW = 44, bx = labW + 4, bw = Math.max(20, W - bx - amtW)
+  const mxUsd = Math.max(1, ...lv.map(l => l ? l.buy + l.sell : 0))
+  const amtW = Math.max(44, ...lv.map(l => l && l.buy && l.sell ? c.measureText(`${amt(l.buy)} ${amt(l.sell)}`).width + 8 : 0))
+  const bx = labW + 4, bw = Math.max(20, W - bx - amtW)
   lv.forEach((l, i) => {
     const y = Math.round(y0 + rowH * (i + .5))
     c.textAlign = 'right'
@@ -594,12 +595,30 @@ function paintPx(cx: Ctx | null, p: Pal): void {
       return
     }
     c.font = canvasFont(11); c.fillStyle = p.t2; c.fillText(px(l.price, dec), labW, y + .5)
-    const col = l.buy ? p.up : p.down
-    c.globalAlpha = p.dark ? 0.32 : 0.2; c.fillStyle = col; rr(c, bx, y - 1, bw, 2, 1); c.fill()
-    const len = Math.max(2, l.usd / mxUsd * bw)
-    c.globalAlpha = 0.85; rr(c, bx, y - 4, len, 8, 2); c.fill(); c.globalAlpha = 1
-    c.textAlign = 'left'; c.fillStyle = p.t2; c.fillText(amt(l.usd), bx + len + 5, y + .5)
+    c.globalAlpha = p.dark ? 0.32 : 0.2; c.fillStyle = l.buy >= l.sell ? p.up : p.down; rr(c, bx, y - 1, bw, 2, 1); c.fill()
+    // 并成一行的：一根条，买的一截（涨色）在前、卖的一截（跌色）接着
+    const lb = l.buy ? Math.max(2, l.buy / mxUsd * bw) : 0, ls = l.sell ? Math.max(2, l.sell / mxUsd * bw) : 0
+    c.globalAlpha = 0.85
+    if (lb && ls) {
+      c.fillStyle = p.up; rr(c, bx, y - 4, lb, 8, 2); c.fill(); c.fillRect(bx + lb - 2, y - 4, 2, 8)
+      c.fillStyle = p.down; rr(c, bx + lb, y - 4, ls, 8, 2); c.fill(); c.fillRect(bx + lb, y - 4, 2, 8)
+    } else { c.fillStyle = lb ? p.up : p.down; rr(c, bx, y - 4, lb || ls, 8, 2); c.fill() }
+    c.globalAlpha = 1
+    c.textAlign = 'left'
+    let tx = bx + lb + ls + 5
+    if (lb && ls) { c.fillStyle = p.up; c.fillText(amt(l.buy), tx, y + .5); tx += c.measureText(amt(l.buy) + ' ').width; c.fillStyle = p.down; c.fillText(amt(l.sell), tx, y + .5) }
+    else { c.fillStyle = p.t2; c.fillText(amt(lb ? l.buy : l.sell), tx, y + .5) }
   })
+}
+
+/** 价位块的一行：同一档价位的买、卖并在一起（只在一侧前三的那一侧是 0） */
+export interface PxRow { price: number; buy: number; sell: number }
+export function pxRows(buy: readonly Level[], sell: readonly Level[]): PxRow[] {
+  const m = new Map<number, PxRow>()
+  const key = (v: number): number => Math.round(v * 1e8)
+  for (const l of buy) { const k = key(l.price); const r = m.get(k) ?? { price: l.price, buy: 0, sell: 0 }; r.buy += l.usd; m.set(k, r) }
+  for (const l of sell) { const k = key(l.price); const r = m.get(k) ?? { price: l.price, buy: 0, sell: 0 }; r.sell += l.usd; m.set(k, r) }
+  return [...m.values()].sort((a, b) => b.price - a.price)
 }
 
 // ---- 爆仓
