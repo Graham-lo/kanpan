@@ -2010,3 +2010,12 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   - Debug 钩子 `KANPAN_TEST_BIGTRADE_STATE`（loading / stale / liqEmpty / untracked，只在 `#if DEBUG`）供截图强制状态。
 - **测试**：`Kanpan/KanpanUITests/BigTradeSheetUITests.swift`（8 条：半屏 / 全屏 / 点一根 / 门槛 / 返回、十字线联动、点签开半屏、三皮肤 × 浅深、骨架 / 现货 / 无爆仓 / 数据停了）。截图 `docs/acceptance/大单与爆仓-手机-2026-10-08/iOS-*.png`。
 - **踩坑**：同一工作树另一窗口有**已暂存**的改动时，`git commit -- <路径>` 以外的提交会把它们一并带上（9bee2030 带走了订单流适配器重命名并删了 DepthFeedFactory，9a5a9b25 补回）；有人在并行写时 `pull --rebase --autostash` 可能 stash 后 rebase 失败、stash 回不来——先 `git fetch` 看是否需要 rebase，不需要就直接 push。
+
+## 66. 10-08：「分析」面板四节按使用频率排位（iOS + 手机网页 + 服务端，74f3baae）
+
+- **用户原话**：「主力订单流、大单列表和爆仓放在分析的靠后位置，我认为应该放到画线下面，重要的常用的应该有位置权重，项目不是记录了用户的使用频率吗，完全可以结合起来动态调整位置。」
+- **机制**（照画线条 `DrawingToolRank` / `m/chart/draw/toolRank.ts` 那套）：新同步字段 `analysisUsage`（键 `draw` / `orderFlow` / `indicators` / `compare`，三端一致不许改名；值 0…100000；≤4 键；总数过 256 整体减半、减成 0 的删）。出厂顺序 **画线 → 主力订单流 → 指标 → 对比**；用过的按次数降序、同次数按出厂序、没用过的按出厂序补后面。面板**打开那一刻定一次顺序，开着期间不重排**（拨开关会落盘重画，节不能在手指底下跳）；「恢复默认指标」永远最后、不计次；横屏画线台那版（`mainOnly`）不排、不计。
+- **哪些动作计次**：开始画线 / 隐藏画线 → draw；主力订单流显示开关 / 图上大单签 / 大单与爆仓 / 门槛 → orderFlow；主图叠加与副图开关 / 参数与颜色 / 恢复副图高度 / 拖副图换序（一次拖动只记一次，且真换了位置才算）→ indicators；添加 / 移除 / 清除对比 → compare。iOS 计次走 `store.update`（不带触觉），手机网页和同一动作原有的 `save()` 合成一次落盘。
+- **文件**：iOS `Kanpan/Kanpan/Panels/AnalysisSectionRank.swift`（`AnalysisSection` + `order(usage:)` / `counted`）、`IndicatorPanel.swift`（`@State order` 在 `init` 里定、`fullBody` 按它 `ForEach`、`used(_:)`、`InUseList.onUsed`）、`Prefs.analysisUsage` + `PrefsCodec`（`cleanAnalysisUsage`，解码走 `PrefsUsageKey`）+ `PrefsFieldPlan`（`.synced`）；手机网页 `Web/src/m/pages/chart/analysisRank.ts` + `panels.ts`（`openAnalysis` 冻结 `order`、`analysisHTML(ctx, order)` 拆成四个节函数）+ `m/app/prefs.ts`（`cleanAnalysisUsage`、`SYNCED_FIELDS`）；服务端 `sync.rs` SETTINGS_FIELDS + `sync_validation::analysis_usage`；契约 `contract/settings-fields.json` 由 `make sync-contract` 重生成。电脑网页没有这张面板，不改。
+- **测试**：`AnalysisSectionRankTests`（7 条）、`SettingsBugfixTests` / `PrefsFieldPlanTests` 各 +1、`Web/tests/m-analysis-rank.test.ts`、`m-analysis-compare` 改成新出厂序；受面板顺序影响的 UI 测试：`UITestSupport.openIndicatorEditor` 先把均线行拖到可点、`MeAndFourTabsEvidence` / `PageGallery` 的「分析下半」改滚到最后一节「对比」。`cargo test --lib` 654 过、vitest 全绿、`make app-logic-test` 只剩另一窗口 `BigTradeSheetUITests` 跳过写法那条红（与此无关）。
+- **部署**：先后端（备份 `/opt/kanpan-backups/analysis-rank-20261008-205102/`，`install.py` 自己 try-restart，20:51 起）再网页（`sheet-CguiZw_C.js`）；顺序不能反——服务端不认 `analysisUsage` 时会把整条设置同步拒掉。
