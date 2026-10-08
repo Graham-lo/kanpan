@@ -273,16 +273,21 @@ struct HeaderStatsTests {
   /// 跨交易所冷换品种：`.provider` 报到之前，持仓量按新品种自己那家取（整机压测 2026-09-26）。
   @MainActor
   @Test("冷换到另一家交易所的品种，持仓量来源立刻跟着新品种走")
-  func coldCrossVenueSwitchUsesNewSymbolsStatsSource() {
+  func coldCrossVenueSwitchUsesNewSymbolsStatsSource() throws {
     let model = MarketModel(symbol: "coinbase/spot/BTC-USD", endpoints: Self.statsEndpoints)
     let coinbase = model.capabilities
     #expect(coinbase.openInterestSource == nil, "前提：Coinbase 现货没有持仓量")
+    // 币安永续的持仓量口径随线路走：直连是 binance、网关按 OKX 口径取（`BinanceProvider` 两份能力表）；
+    // 出厂线路 2026-10-08 起是网关（64cceac2），所以这里按当前线路问 resolver，不写死 "binance"。
+    let binancePerp = RouteResolver(policy: MarketRoutePolicyStore.current, endpoints: Self.statsEndpoints)
+      .provider(forSymbol: "BTCUSDT").capabilities.openInterestSource
+    try #require(binancePerp != nil, "前提：币安永续在当前线路上有持仓量来源")
     model.switchTo(symbol: "BTCUSDT")
     // 离线单测里 `.provider` 不会到：`capabilities` 仍是 Coinbase 那份，统计口径不能跟着它。
     #expect(model.capabilities == coinbase, "前提：.provider 还没到")
-    #expect(model.statsCapabilities.openInterestSource == "binance")
+    #expect(model.statsCapabilities.openInterestSource == binancePerp)
     #expect(model.isPollingStats)
-    #expect(model.pollingStatsSource == "binance", "轮询还按上一只（Coinbase）的口径取，持仓量那格会一直是「—」")
+    #expect(model.pollingStatsSource == binancePerp, "轮询还按上一只（Coinbase）的口径取，持仓量那格会一直是「—」")
     model.switchTo(symbol: "coinbase/spot/ETH-USD")
     #expect(model.statsCapabilities.openInterestSource == nil)
     model.stop()

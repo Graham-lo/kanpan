@@ -15,8 +15,10 @@ struct QuoteSeedVenueTests {
            quoteVolume: 1_000, open24h: last, timeMs: 1_700_000_000_000, lastTradeID: 1)
   }
 
+  /// 按**当前线路**取这一家的上游：`QuoteBook` 认的是 `RouteResolver.current`，出厂线路 2026-10-08 起是网关
+  /// （64cceac2），写死 `.direct` 的话种子会因上游对不上被整份拒收，这条就验不到东西。
   private func upstream(_ venue: String) -> String {
-    RouteResolver(policy: .direct, endpoints: .default)
+    RouteResolver(policy: MarketRoutePolicyStore.current, endpoints: .default)
       .provider(venue: venue).capabilities.upstream
   }
 

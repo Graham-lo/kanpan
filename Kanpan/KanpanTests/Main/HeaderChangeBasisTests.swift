@@ -19,7 +19,8 @@ struct HeaderChangeBasisTests {
                  underlyingType: "EQUITY", contractType: "PERPETUAL")
     }
     let venue = VenueRegistry.descriptor(forSymbol: key).id
-    let upstream = RouteResolver(policy: .direct, endpoints: .default).provider(venue: venue).capabilities.upstream
+    // 按当前线路取上游（出厂 2026-10-08 起是网关）：`QuoteBook.seed` 只收 `RouteResolver.current` 那家的数
+    let upstream = RouteResolver(policy: MarketRoutePolicyStore.current, endpoints: .default).provider(venue: venue).capabilities.upstream
     let now = Int64(Date().timeIntervalSince1970 * 1000)
     let row = Ticker(symbol: key, last: 300, changePercent: 4, high: 301, low: 299, quoteVolume: 1, timeMs: now)
     session.quotes.seed([row], upstream: upstream, venue: venue)
