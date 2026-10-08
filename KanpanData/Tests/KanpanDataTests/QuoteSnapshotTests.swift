@@ -231,33 +231,31 @@ struct QuoteSnapshotTests {
     #expect(await server.urls().first?.query == nil)
   }
 
-  @Test("全市场报价走网关自己的 tickers 端点，载荷仍要同源校验")
-  func allTickersGoThroughTheGatewaysOwnEndpoint() async throws {
-    // 网关这一档下板块页原来永久取不到全市场报价（审查 A-04）：`/fapi/v1/ticker/24hr`
-    // 不带 `symbol`，路由层就当「网关代理不了」直接退直连。现在它转去网关自己的
-    // `/market/v1/tickers`，信封和单品种一样（`source` + `ticker`）。
+  @Test("网关档的全市场报价原样透传到 kanpan-api 的 raw 路径，载荷不包信封")
+  func allTickersGoThroughTheRawPassthrough() async throws {
+    // 网关这一档下板块页原来永久取不到全市场报价（审查 A-04）：`/fapi/v1/ticker/24hr` 不带 `symbol`，
+    // 路由层就当「网关代理不了」。2026-10-08 起网关档一律改写成 `/v1/market/raw/<path>?…&source=binance`
+    // 原样透传（替身与信封都没有了），带不带 `symbol` 都走同一条路。
     let rows = #"[{"symbol":"BTCUSDT","lastPrice":"78000","priceChangePercent":"1.2","highPrice":"79000","lowPrice":"76000","quoteVolume":"9999","openPrice":"77000"}]"#
-    let seen = FakeServer { _ in json(#"{"source":"okx","ticker":"# + rows + "}") }
-    let transport = MarketRESTTransport(source: .okx, gateways: ["gateway.test"], transport: FakeTransport(seen))
+    let seen = FakeServer { _ in json(rows) }
+    let transport = MarketRESTTransport(gateways: ["gateway.test"], transport: FakeTransport(seen), policy: .gateway)
     let url = URL(string: "https://fapi.binance.com/fapi/v1/ticker/24hr")!
     let reply = try await transport.get(url, timeout: 5)
-    #expect(await seen.urls().first?.host == "gateway.test")
-    #expect(await seen.urls().first?.path == "/market/v1/tickers")
-    // 回给上层的是剥掉信封的币安形状数组。
+    let first = await seen.urls().first
+    #expect(first?.host == "gateway.test")
+    #expect(first?.path == "/v1/market/raw/fapi/v1/ticker/24hr")
+    #expect(first?.query?.contains("source=binance") == true)
+    // 回给上层的就是币安形状的数组本身。
     let back = try #require(try JSONSerialization.jsonObject(with: reply.body) as? [[String: Any]])
     #expect(back.compactMap { $0["symbol"] as? String } == ["BTCUSDT"])
 
-    // 换源了的载荷照旧不收：这是同源校验，不是「只代理单品种」。
-    let wrongSource = FakeServer { _ in json(#"{"source":"binance","ticker":[]}"#) }
-    let strict = MarketRESTTransport(source: .okx, gateways: ["gateway.test"],
-                                     transport: FakeTransport(wrongSource))
-    await #expect(throws: (any Error).self) { try await strict.get(url, timeout: 5) }
-
-    // 带 symbol 的单品种报价照常走网关。
+    // 带 symbol 的单品种报价同样走透传，查询原样带着。
     let single = URL(string: "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT")!
-    let gateway = FakeServer { _ in json(#"{"source":"okx","ticker":{}}"#) }
-    let ok = MarketRESTTransport(source: .okx, gateways: ["gateway.test"], transport: FakeTransport(gateway))
+    let gateway = FakeServer { _ in json("{}") }
+    let ok = MarketRESTTransport(gateways: ["gateway.test"], transport: FakeTransport(gateway), policy: .gateway)
     _ = try await ok.get(single, timeout: 5)
-    #expect(await gateway.urls().first?.host == "gateway.test")
+    let hit = await gateway.urls().first
+    #expect(hit?.host == "gateway.test")
+    #expect(hit?.query?.contains("symbol=BTCUSDT") == true)
   }
 }

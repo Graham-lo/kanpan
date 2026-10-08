@@ -71,7 +71,7 @@ public actor BinanceREST {
       let reply: HTTPReply
       do { reply = try await transport.get(url, timeout: timeout) }
       catch let error as BinanceError where error.isRateLimited {
-        // 走网关/对冲那条路时，上游的状态码是被 transport 吞掉再抛出来的，
+        // 直连那条路上，上游的状态码是被 transport 吞掉再抛出来的，
         // 到不了下面 `reply.status` 那段。不在这儿记一笔，限流器就永远不知道
         // 自己已经被 ban 了，只会接着往枪口上撞——表现成「用一会儿涨跌幅全空」。
         log("限流 \(error.status)（\(error.proxied ? "网关上游" : "上游")），Retry-After=\(error.retryAfter.map { "\(BinanceError.wholeSeconds($0))s" } ?? "无")\(error.proxied ? "，只冷却那台网关" : "，记录罚停")")
@@ -326,8 +326,7 @@ public actor BinanceREST {
 
   /// 全市场 24h 统计，一次往返。权重 40（不带 symbol 的官方档位），
   /// 但省掉的是几十个请求各自的排队与往返——回前台整屏补价时用它。
-  /// 网关只代理单品种 `ticker`，所以这条在非直连线路上会直接失败，
-  /// 调用方要能退回逐个请求。
+  /// 两条线路都有（网关档经 kanpan-api 原样透传）；失败时调用方仍要能退回逐个请求。
   /// - Parameter timeout: **总**时限，限流器里排队的那段也算在内（`Deadline`）。
   ///   只给 `URLRequest` 的话，排队那段没人管：出口 IP 的一分钟账接近上限时这一笔
   ///   （权重 40）会在限流器里一声不响地等到窗口滑过去，板块页就一直空着。
@@ -369,8 +368,7 @@ public actor BinanceREST {
   // 空串（`basis` 的 `annualizedBasisRate` 实测就一直是 `""`），为一个附带字段扔掉
   // 整页数据，图上缺的是一整段曲线。
   //
-  // 另外：网关不代理 `/futures/data/*`，所以这三条在网关线路下取不到，和持仓量今天
-  // 的处境一样——调用方要走空态，不要因此自动切线路。
+  // 网关线路上这一族经 kanpan-api 原样透传（`MarketRESTTransport`），和直连同一份解析。
 
   /// 近 30 天的全市场多空账户数比。
   public func globalLongShortAccountRatio(symbol: String, period: String, limit: Int = 500,

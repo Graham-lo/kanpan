@@ -59,7 +59,7 @@ struct TailCapTests {
 
   private func coinbase(_ server: FakeServer) -> CoinbaseProvider {
     CoinbaseProvider(policy: .direct, gateways: ["gw1.example"], transport: FakeTransport(server),
-                     limiter: CoinbaseRateLimiter(perSecond: 1_000_000, pacer: FastPacer()),
+                     limiter: VenueRateLimiter(perSecond: 1_000_000, pacer: FastPacer()),
                      clock: { Self.now })
   }
 

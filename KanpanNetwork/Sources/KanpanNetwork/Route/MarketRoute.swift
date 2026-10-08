@@ -18,9 +18,9 @@ public struct MarketRoute: Sendable, Equatable {
   /// 行情请求走不走网关。直连就只直连，网关就只网关，没有回退。
   public var viaGateway: Bool { policy == .gateway }
 
-  /// 网关候选，主在前、备在后：币安主行情在网关线路上的 REST / 推送，以及两台都有的只读接口
-  /// （`/oi/v1/metrics`、`/v1/market/{funding,ticker,open-interest/history,raw,stream}`、
-  /// `/market/v1/*`、`/market/okx/stream`）。只在主机上的 `/v1/*` 不要用它，用 `apiHosts`。
+  /// 网关候选，主在前、备在后：网关线路上的行情推送（币安的 Python hub `/market/stream`、
+  /// kanpan-api 的 `/v1/market/stream` hub 与 `/v1/market/ws/<id>` 中继）与 `/oi/v1/metrics` 归档。
+  /// REST 原样透传（`/v1/market/raw`）与只在主机上的 `/v1/*` 用 `apiHosts`。
   public var gateways: [String] { endpoints.gateways }
 
   /// kanpan-api 的主机，**和线路无关**，恒为主机（`ServerHosts.api`）。

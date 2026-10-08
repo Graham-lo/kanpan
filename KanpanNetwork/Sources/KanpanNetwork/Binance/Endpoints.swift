@@ -14,7 +14,8 @@ public struct BinanceHosts: Sendable, Equatable {
   public var stream: String
   /// 公开归档站，OI 的 metrics zip 在这儿。
   public var vision: String
-  /// 看盘自己的网关（主在前、备在后）。网关档的 REST、OI 代理与推送都只拨这几台。
+  /// 看盘自己的网关（主在前、备在后）。OI 归档代理只拨这几台；网关档的 REST 与推送由线路
+  /// （`MarketRoute`）决定，见 `MarketRESTTransport` / `SourceSocketFactory`。
   public var oiProxy: String?
   public var oiProxyFallbacks: [String]
   public var oiProxies: [String] {

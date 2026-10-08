@@ -170,7 +170,7 @@ struct StressWSStormTests {
   func coinbaseOneFrameThenDropStorm() async throws {
     let bench = StormBench()
     let pacer = ManualPacer()
-    let ws = CoinbaseWS(urls: [URL(string: "wss://advanced-trade-ws.coinbase.com")!], factory: bench, pacer: pacer,
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [URL(string: "wss://advanced-trade-ws.coinbase.com")!], factory: bench, pacer: pacer,
                         silenceMs: 1e12, transportSilenceMs: 1e12)
     let tally = EventTally()
     let events = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])

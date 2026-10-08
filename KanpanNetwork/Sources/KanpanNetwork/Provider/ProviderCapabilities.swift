@@ -12,8 +12,8 @@ public struct ProviderCapabilities: Sendable, Equatable {
   public var venue: String
   /// 品种身份里的市场（`InstrumentID.market`）。
   public var market: String
-  /// 这份数据实际是谁供的。通常和 `venue` 相同；网关线路下某家交易所被
-  /// 服务端换成替身时两者不同（用户看不见，只影响缓存分区与日志）。
+  /// 这份数据实际是谁供的。2026-10-08 起各家两条线路供的都是自己的数（币安网关档不再有 OKX 替身），
+  /// 所以恒等于 `venue`；字段留着，是因为 app 层拿它给报价簿、费率簿分区，删它要连 app 一起改。
   public var upstream: String
   /// 交易所原生支持的周期。
   public var nativeIntervals: Set<Interval>
@@ -42,8 +42,8 @@ public struct ProviderCapabilities: Sendable, Equatable {
   /// 有持仓量历史、多空比、主动买卖比、基差这类衍生统计（持仓量副图与那几个外部指标）。
   /// 没有的话界面上干脆不给这几个副图，不报错。
   public var hasDerivativeMetrics: Bool
-  /// 有持仓量历史（持仓量副图）。和 `hasDerivativeMetrics` 分开：网关线路上替身有自己的
-  /// 持仓量历史（服务端 `/v1/market/open-interest/history`），但没有多空比、主动买卖比、基差。
+  /// 有持仓量历史（持仓量副图）。和 `hasDerivativeMetrics` 分开：有的交易所给得出持仓量历史，
+  /// 却没有多空比、主动买卖比、基差。
   public var hasOpenInterestHistory: Bool
   /// 持仓量历史更早的那段有归档（币安每日 metrics zip、看盘网关按它聚好的区间）。
   /// 没有的话整段都问 `openInterestHist`，问到头就是头，不拿别家的归档来接。
@@ -52,8 +52,8 @@ public struct ProviderCapabilities: Sendable, Equatable {
   public var hasBulkTickers: Bool
   /// 行情巡检判断「线路恢复」时，要不要连更早那段历史也探一下。
   public var probesHistoryBoundary: Bool
-  /// K 线快照的独立分区。nil = 和同交易所的其它线路共用（品种键里已经带着交易所，
-  /// 不会串）；替身上游的数据要单独放，免得和真身的快照互相覆盖。
+  /// K 线快照的独立分区。nil = 和同交易所的其它线路共用（品种键里已经带着交易所，不会串）。
+  /// 原来给网关替身单独分区用；替身删了以后没有人再给非 nil，留着字段是因为 app 层还在读它。
   public var snapshotNamespace: String?
   /// 收哪些计价资产。
   public var quoteAssets: [String]
@@ -99,8 +99,8 @@ public struct ProviderCapabilities: Sendable, Equatable {
   /// 这一档的末根有没有原生推送。
   public func hasLiveKline(_ interval: Interval) -> Bool { liveKlineIntervals.contains(source(for: interval)) }
 
-  /// 这份数据是不是替身上游供的（网关线路下被服务端换了一家）。替身的逐笔、
-  /// 24h 行情和真身对不上，上层据此不拿它去喂共享报价层、顶栏优先用它自己的那帧。
+  /// 这份数据是不是替身上游供的。替身已经删了（2026-10-08），恒为 false；
+  /// app 层还按它分支，等那边收掉再删。
   public var isSubstitute: Bool { upstream != venue }
 
   /// 这家有没有持仓量。

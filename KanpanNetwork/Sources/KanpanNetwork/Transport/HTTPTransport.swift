@@ -18,10 +18,16 @@ public struct HTTPReply: Sendable {
 /// 把网络抽掉，`RateLimitTests` / `FeedReplayTests` 才能不联网跑。
 public protocol HTTPTransport: Sendable {
   func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply
+  /// POST 一段 JSON（`Content-Type: application/json`）。只有查询接口是 POST 的交易所要
+  /// （Hyperliquid 的 `info`）；默认实现直接报不支持，测试里的假传输不必都实现。
+  func post(_ url: URL, json body: Data, timeout: TimeInterval) async throws -> HTTPReply
 }
 
 extension HTTPTransport {
   public func get(_ url: URL) async throws -> HTTPReply { try await get(url, timeout: 15) }
+  public func post(_ url: URL, json body: Data, timeout: TimeInterval) async throws -> HTTPReply {
+    throw FeedError.unsupported("POST \(url.path)")
+  }
 }
 
 /// 真网络。
@@ -38,6 +44,19 @@ public struct URLSessionTransport: HTTPTransport {
   public func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
     var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
     req.httpMethod = "GET"
+    return try await send(req, url: url, timeout: timeout)
+  }
+
+  public func post(_ url: URL, json body: Data, timeout: TimeInterval) async throws -> HTTPReply {
+    var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+    req.httpMethod = "POST"
+    req.httpBody = body
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    return try await send(req, url: url, timeout: timeout)
+  }
+
+  private func send(_ base: URLRequest, url: URL, timeout: TimeInterval) async throws -> HTTPReply {
+    var req = base
     // 币安对没有 UA 的请求偶尔更严，带一个固定的，方便对方限流统计。
     req.setValue("kanpan-ios/1.0", forHTTPHeaderField: "User-Agent")
     #if DEBUG

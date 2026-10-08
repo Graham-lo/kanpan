@@ -145,7 +145,7 @@ struct CoinbaseRESTTests {
 
   private func provider(_ server: FakeServer, policy: MarketRoutePolicy = .direct) -> CoinbaseProvider {
     CoinbaseProvider(policy: policy, gateways: ["gw1.example", "gw2.example"], transport: FakeTransport(server),
-                     limiter: CoinbaseRateLimiter(perSecond: 1_000_000, pacer: FastPacer()),
+                     limiter: VenueRateLimiter(perSecond: 1_000_000, pacer: FastPacer()),
                      clock: { Self.now })
   }
 
@@ -190,12 +190,12 @@ struct CoinbaseRESTTests {
 
   @Test("备用网关带端口：REST 与推送地址都拼得出来")
   func gatewayWithPort() {
-    let e = CoinbaseEndpoints(policy: .gateway, gateways: ["a.example", "b.example:8443"])
+    let e = CoinbaseVenue.endpoints(policy: .gateway, gateways: ["a.example", "b.example:8443"])
     #expect(e.rest("products", host: "b.example:8443")?.absoluteString
             == "https://b.example:8443/v1/market/raw/products?source=coinbase")
     #expect(e.streams.map(\.absoluteString) == ["wss://a.example/v1/market/stream?source=coinbase",
                                                 "wss://b.example:8443/v1/market/stream?source=coinbase"])
-    #expect(CoinbaseEndpoints(policy: .direct, gateways: []).rest("products", host: "api.coinbase.com")?.absoluteString
+    #expect(CoinbaseVenue.endpoints(policy: .direct, gateways: []).rest("products", host: "api.coinbase.com")?.absoluteString
             == "https://api.coinbase.com/api/v3/brokerage/market/products")
   }
 
@@ -222,7 +222,7 @@ struct CoinbaseWSTests {
   @Test("连上先订心跳，再按频道订；切品种只退订 / 订阅，不重连；行情帧翻成统一报文")
   func subscribeAndSwitch() async throws {
     let bench = GateSocketBench()
-    let ws = CoinbaseWS(urls: [Self.url], factory: bench, pacer: FastPacer(scale: 0.0001),
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [Self.url], factory: bench, pacer: FastPacer(scale: 0.0001),
                         silenceMs: 1e12, transportSilenceMs: 1e12)
     let stream = await ws.start(topics: [.kline(symbol: "coinbase/spot/BTC-USD", interval: .m5),
                                          .ticker(symbol: "coinbase/spot/BTC-USD"),
@@ -259,7 +259,7 @@ struct CoinbaseWSTests {
   @Test("订了东西却一帧行情都不来：到期主动重连")
   func silentSubscriptionReconnects() async throws {
     let bench = GateSocketBench()
-    let ws = CoinbaseWS(urls: [Self.url], factory: bench, pacer: FastPacer(scale: 0.001),
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [Self.url], factory: bench, pacer: FastPacer(scale: 0.001),
                         silenceMs: 100, transportSilenceMs: 1e12)
     _ = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])
     #expect(await waitUntil(5) { await bench.connects >= 2 })
@@ -275,7 +275,7 @@ struct CoinbaseRateLimiterTests {
   @Test("取消的排队请求不留下占位")
   func cancelledWaitersReleaseTheirSlots() async throws {
     let pacer = ManualPacer()
-    let limiter = CoinbaseRateLimiter(perSecond: 10, pacer: pacer)
+    let limiter = VenueRateLimiter(perSecond: 10, pacer: pacer)
     try await limiter.acquire()
     let queued = (0..<5).map { _ in Task { try await limiter.acquire() } }
     for _ in 0..<200 where await pacer.sleeping < queued.count { await Task.yield() }
@@ -294,7 +294,7 @@ struct CoinbaseRateLimiterTests {
   @Test("429 罚停：从现在起整把歇够再放行，之后恢复正常间隔")
   func penaltyBlocksEveryone() async throws {
     let pacer = StepPacer()
-    let limiter = CoinbaseRateLimiter(perSecond: 10, pacer: pacer)
+    let limiter = VenueRateLimiter(perSecond: 10, pacer: pacer)
     try await limiter.acquire()
     await limiter.penalize(seconds: 2)
     try await limiter.acquire()

@@ -3,13 +3,14 @@ import KanpanCore
 
 /// 币安 U 本位永续，包成一个 `MarketProvider`。
 ///
-/// 线协议、限流、网关竞速都还是原来那几个文件（`RESTClient` / `WSClient` / `Route`），
+/// 线协议、限流、线路都还是原来那几个文件（`RESTClient` / `WSClient` / `Route`），
 /// 这里只做翻译：上层说「给我 BTC 的 1y」，这里换成「拉 1M 自己聚」；上层说
 /// 「订逐笔」，这里换成 `btcusdt@trade`。
 ///
-/// 网关线路上币安本家是被封的（451），服务端拿 OKX 的同名永续顶上——那是这一家
-/// 自己的事，见 `BinanceUpstream` 与 `RouteResolver`：同一个 venue（`binance`），
-/// 能力位不一样（首屏深度、没有标记价推送、没有盘口），上层照能力位办事就行。
+/// 两条线路供的都是币安本家的数（2026-10-08 起网关档不再有 OKX 替身）：
+/// - 直连：币安自己的域名；
+/// - 网关：REST 走 kanpan-api 的原样透传（`MarketRESTTransport`），推送走 Python 网关的共享 hub
+///   （`SourceSocketFactory`）。hub 不转盘口与逐笔，所以网关档的能力位只少 `hasMicrostructure`。
 public struct BinanceProvider: MarketProvider {
   public static let venue = "binance"
   public static let market = "usd_m"
@@ -61,43 +62,42 @@ public struct BinanceProvider: MarketProvider {
   public let capabilities: ProviderCapabilities
   public let rest: BinanceREST
   public let hosts: BinanceHosts
-  public let upstream: BinanceUpstream
   /// `RouteResolver` 定下的线路：直连 / 网关与网关表。
   let route: MarketRoute
   let sockets: any WSSocketFactory
-  /// 直接问网关（不经 `BinanceREST` 的路径翻译与限流器）的那几笔：替身的资金费率表。
+  /// 订单流品种表（`orderFlowCatalog`）问 kanpan-api 走的传输。
   let http: any HTTPTransport
 
   /// - Parameters:
-  ///   - rest: 测试注入用。不传就按 `upstream` + `route` 建一个走共享限流器的。
+  ///   - rest: 测试注入用。不传就按 `route` 建一个走共享限流器的（`BinanceREST.routed`）。
   ///   - sockets: 最底层的 WS 拨号器（测试里换成假的）。
-  ///   - http: 直接问网关的那几笔走的传输（测试里换成假的）。
-  public init(upstream: BinanceUpstream, hosts: BinanceHosts, route: MarketRoute,
+  ///   - http: 订单流品种表走的传输（测试里换成假的）。
+  public init(hosts: BinanceHosts, route: MarketRoute,
               rest: BinanceREST? = nil, sockets: any WSSocketFactory = URLSessionSocketFactory(),
               http: any HTTPTransport = URLSessionTransport(),
               log: FeedLog = .silent) {
-    self.upstream = upstream
     self.hosts = hosts
     self.route = route
     self.sockets = sockets
     self.http = http
-    self.rest = rest ?? BinanceREST.upstream(upstream, hosts: hosts, route: route, log: log)
-    self.capabilities = Self.capabilities(upstream)
+    self.rest = rest ?? BinanceREST.routed(hosts: hosts, route: route, log: log)
+    self.capabilities = Self.capabilities(viaGateway: route.viaGateway)
   }
 
-  /// 测试用的旧写法：只给线路档位，网关表取 `hosts.oiProxies`。
-  public init(upstream: BinanceUpstream, hosts: BinanceHosts, policy: MarketRoutePolicy,
+  /// 按线路建一个（`VenueRegistry.binance` 的工厂）：域名取出厂默认、网关表来自线路。
+  public init(route: MarketRoute, log: FeedLog = .silent) {
+    self.init(hosts: Self.hosts(route.endpoints), route: route, log: log)
+  }
+
+  /// 测试用的旧写法：只给线路档位，网关表取 `hosts.oiProxies`（同时当 kanpan-api 主机）。
+  public init(hosts: BinanceHosts, policy: MarketRoutePolicy,
               rest: BinanceREST? = nil, sockets: any WSSocketFactory = URLSessionSocketFactory(),
               http: any HTTPTransport = URLSessionTransport(),
               log: FeedLog = .silent) {
-    self.init(upstream: upstream, hosts: hosts,
-              route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: hosts.oiProxies)),
+    self.init(hosts: hosts,
+              route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: hosts.oiProxies,
+                                                                             api: hosts.oiProxies)),
               rest: rest, sockets: sockets, http: http, log: log)
-  }
-
-  /// 用户的线路 → 这一家实际由谁供数。直连是币安本家，网关上是 OKX 替身。
-  public static func upstream(for route: MarketRoute) -> BinanceUpstream {
-    route.viaGateway ? .okx : .binance
   }
 
   /// 币安的域名：REST / 流都是出厂默认（直连用），网关表来自线路。
@@ -111,46 +111,35 @@ public struct BinanceProvider: MarketProvider {
 
   public static let nativeIntervals: Set<Interval> = Set(Interval.allCases).subtracting(BinanceREST.aggregatedFrom.keys)
 
-  public static func capabilities(_ upstream: BinanceUpstream) -> ProviderCapabilities {
-    switch upstream {
-    case .binance:
-      return ProviderCapabilities(
-        venue: venue, market: market, upstream: upstream.rawValue,
-        nativeIntervals: nativeIntervals, aggregatedFrom: BinanceREST.aggregatedFrom,
-        maxKlines: BinanceREST.maxKlines, maxTailBars: BinanceREST.maxTailBars,
-        // 直连一次就要满深度：`MarketFeed.fillOnce` 看见首发深于一屏会另外并行发一发
-        // 300 根的小页，谁先回谁先画（弱网上先看见图，满深度回来再铺开）。
-        initialKlines: 1800,
-        liveKlineIntervals: nativeIntervals,
-        hasTickerStream: true, hasMarkPrice: true, hasFunding: true,
-        openInterestSource: "binance", hasMicrostructure: true, hasDerivativeMetrics: true,
-        hasOpenInterestHistory: true, hasOpenInterestArchive: true,
-        hasBulkTickers: true, probesHistoryBoundary: true, snapshotNamespace: nil,
-        quoteAssets: ["USDT"])
-    case .okx:
-      // OKX 替身：网关只有「最新窗口且 limit ≤ 300」才是一次请求，再深就要在 VPS 上
-      // 按 100 根翻十几页拼出来（`Backend/kanpan-gateway/market_rest.py` 的 klines 分支），
-      // 首屏反而更慢，所以首屏只要 300 根，深度交给后台加深。
-      // 网关的 OKX 组合流（`Backend/kanpan-gateway/okx_hub.py`）转 K 线和 24h 行情：
-      // 行情帧是 OKX `tickers` 频道原样换成币安写法，只是不带成交额（OKX 那边只有币的
-      // 个数），「额」那一格由 `ticker24h` 走 kanpan-api 补（`GatewayTicker`，按 OKX 自己的
-      // 成交均价换成 USDT）。没有标记价、逐笔方向与盘口。
-      // 持仓量：顶栏「仓」走网关按 OKX 口径取（`openInterestSource`），持仓量副图走
-      // kanpan-api 的 OKX 持仓量历史（`GatewayOIHistory`）；没有币安那份归档，也没有
-      // 多空比、主动买卖比、基差那几个外部指标。
-      // 资金费率有：没有标记价流，但网关按 OKX 官方整表给（`GatewayFunding`），
-      // 顶栏「费率」「结算」两格由整表垫、按表的刷新续，数是 OKX 自己的。
-      return ProviderCapabilities(
-        venue: venue, market: market, upstream: upstream.rawValue,
-        nativeIntervals: nativeIntervals, aggregatedFrom: BinanceREST.aggregatedFrom,
-        maxKlines: BinanceREST.maxKlines, maxTailBars: BinanceREST.maxTailBars, initialKlines: 300,
-        liveKlineIntervals: nativeIntervals,
-        hasTickerStream: true, hasMarkPrice: false, hasFunding: true,
-        openInterestSource: "okx", hasMicrostructure: false, hasDerivativeMetrics: false,
-        hasOpenInterestHistory: true, hasOpenInterestArchive: false,
-        hasBulkTickers: false, probesHistoryBoundary: false, snapshotNamespace: "okx",
-        quoteAssets: ["USDT"])
-    }
+  /// 直连：币安本家，能力位全开。
+  public static let directCapabilities = ProviderCapabilities(
+    venue: venue, market: market,
+    nativeIntervals: nativeIntervals, aggregatedFrom: BinanceREST.aggregatedFrom,
+    maxKlines: BinanceREST.maxKlines, maxTailBars: BinanceREST.maxTailBars,
+    // 直连一次就要满深度：`MarketFeed.fillOnce` 看见首发深于一屏会另外并行发一发
+    // 300 根的小页，谁先回谁先画（弱网上先看见图，满深度回来再铺开）。
+    initialKlines: 1800,
+    liveKlineIntervals: nativeIntervals,
+    hasTickerStream: true, hasMarkPrice: true, hasFunding: true,
+    openInterestSource: "binance", hasMicrostructure: true, hasDerivativeMetrics: true,
+    hasOpenInterestHistory: true, hasOpenInterestArchive: true,
+    hasBulkTickers: true, probesHistoryBoundary: true,
+    quoteAssets: ["USDT"])
+
+  /// 网关：同样是币安本家的数（REST 原样透传、推送走共享 hub），只少盘口与逐笔方向——
+  /// hub 只转 `ticker` / `markPrice@1s` / `aggTrade` / `kline_*`，没有 `@depth5` 与 `@trade`。
+  ///
+  /// 首屏只要 300 根（一发），深度交给后台加深：直连的 1800 会让 `MarketFeed.fillOnce` 并行再发一发
+  /// 300 根的小页，网关档首屏从一发变成两发，而且整页 1500 根要经新加坡转一道（性能底线：首屏请求数不增加）。
+  public static let gatewayCapabilities: ProviderCapabilities = {
+    var caps = directCapabilities
+    caps.initialKlines = 300
+    caps.hasMicrostructure = false
+    return caps
+  }()
+
+  public static func capabilities(viaGateway: Bool) -> ProviderCapabilities {
+    viaGateway ? gatewayCapabilities : directCapabilities
   }
 
   // ------------------------------------------------------------------ REST
@@ -170,21 +159,8 @@ public struct BinanceProvider: MarketProvider {
     try await rest.history(symbol: symbol, interval: interval, pages: pages, before: firstOpen)
   }
 
-  /// 直连是币安本家的 `/fapi/v1/ticker/24hr`。网关线路上先问 kanpan-api 的替身行情
-  /// （`GatewayTicker`，带换算好的 USDT 成交额）；它不在时退回网关原有的那条
-  /// （同是 OKX 的数，只是没有成交额）——两条都是替身自己的，不混源。
   public func ticker24h(symbol: String, timeout: TimeInterval) async throws -> Ticker {
-    let proxies = hosts.oiProxies
-    guard upstream != .binance, !proxies.isEmpty else {
-      return try await rest.ticker24h(symbol: symbol, timeout: timeout)
-    }
-    do {
-      return try await GatewayTicker.fetch(hosts: proxies, source: upstream.rawValue, symbol: symbol,
-                                           timeout: min(timeout, 6), transport: http)
-    } catch {
-      if error is CancellationError || Task.isCancelled { throw CancellationError() }
-      return try await rest.ticker24h(symbol: symbol, timeout: timeout)
-    }
+    try await rest.ticker24h(symbol: symbol, timeout: timeout)
   }
 
   public func tickers24h(timeout: TimeInterval) async throws -> [Ticker] {
@@ -192,46 +168,19 @@ public struct BinanceProvider: MarketProvider {
   }
 
   public func funding(symbol: String) async throws -> FundingSnapshot {
-    guard upstream == .binance else {
-      // 替身没有单品种费率接口：整表只有几 KB，从表里取这一行。
-      guard let row = try await fundingAll()[InstrumentID.canonical(symbol)] else {
-        throw FeedError.badResponse("\(upstream.rawValue) 没有 \(symbol) 的资金费率")
-      }
-      return row
-    }
-    return try await rest.funding(symbol: symbol)
+    try await rest.funding(symbol: symbol)
   }
 
-  /// 全市场资金费率整表，键是完整品种 key。
-  ///
-  /// 直连是币安本家的 `/fapi/v1/premiumIndex`；网关线路上是替身自己的整表
-  /// （`/v1/market/funding?source=okx`，见 `GatewayFunding`）——两家各给各的，
-  /// 不拿币安的费率去垫替身那张图（不混源）。
+  /// 全市场资金费率整表（`/fapi/v1/premiumIndex`），键是完整品种 key。
   public func fundingAll() async throws -> [String: FundingSnapshot] {
-    guard upstream == .binance else {
-      let proxies = hosts.oiProxies
-      guard !proxies.isEmpty else { throw FeedError.unsupported("全市场资金费率") }
-      return try await GatewayFunding.fetch(hosts: proxies, source: upstream.rawValue,
-                                            venue: Self.venue, market: Self.market, transport: http)
-    }
     var out: [String: FundingSnapshot] = [:]
     for (symbol, row) in try await rest.fundingAll() { out[InstrumentID.canonical(symbol)] = row }
     return out
   }
 
-  /// 网关线路上是替身自己的持仓量历史（`GatewayOIHistory`，OKX 的币数）。它只认
-  /// `endTime`：往前翻页由调用方（`OISource`）按页头时间接着问。
   public func openInterestHist(symbol: String, period: String, limit: Int,
                                startTime: Int64?, endTime: Int64?) async throws -> [OIPoint] {
-    guard upstream == .binance else {
-      let proxies = hosts.oiProxies
-      guard !proxies.isEmpty else { throw FeedError.unsupported("持仓量历史") }
-      let rows = try await GatewayOIHistory.fetch(hosts: proxies, source: upstream.rawValue, symbol: symbol,
-                                                  period: period, limit: limit, endTime: endTime, transport: http)
-      guard let startTime else { return rows }
-      return rows.filter { $0.time >= startTime }
-    }
-    return try await rest.openInterestHist(symbol: symbol, period: period, limit: limit,
+    try await rest.openInterestHist(symbol: symbol, period: period, limit: limit,
                                     startTime: startTime, endTime: endTime)
   }
 
@@ -260,18 +209,26 @@ public struct BinanceProvider: MarketProvider {
 
   // ------------------------------------------------------------------ WS
 
-  /// 线路由 `SourceSocketFactory` 管（直连只拨币安、网关只拨网关）。
+  /// 线路由 `SourceSocketFactory` 管（直连只拨币安、网关只拨网关的 hub）。网关档只把 hub 认的流交出去。
   public func makeStream(silenceMs: Double?, log: FeedLog) -> any MarketStream {
     BinanceWS(hosts: hosts,
-                     factory: SourceSocketFactory(source: upstream, hosts: hosts, factory: sockets,
-                                                  route: route, log: log),
-                     // 首帧前的静默窗口给 60 秒（A-07 第②层）：线路是用户定死的、没有竞速，
-                     // 冷门永续 15 秒内完全可能一帧都不推，收窄就会变成无休止的重连。
-                     silenceMs: silenceMs ?? 60_000, log: log)
+              factory: SourceSocketFactory(factory: sockets, route: route, log: log),
+              // 首帧前的静默窗口给 60 秒（A-07 第②层）：线路是用户定死的、没有竞速，
+              // 冷门永续 15 秒内完全可能一帧都不推，收窄就会变成无休止的重连。
+              silenceMs: silenceMs ?? 60_000, log: log,
+              allows: route.viaGateway ? Self.gatewayAllows : nil)
+  }
+
+  /// 网关 hub 放行的流（`stream_hub.py` 的 `STREAM`）：`ticker`、`markPrice@1s`、`aggTrade`、`kline_*`。
+  /// 别的（`@trade`、`@depth5@100ms`）订了会被 hub 以 1008 当场断开，整条连接上的行情都跟着断。
+  public static let gatewayAllows: @Sendable (String) -> Bool = { name in
+    guard let at = name.firstIndex(of: "@") else { return false }
+    let channel = name[name.index(after: at)...]
+    return channel == "ticker" || channel == "markPrice@1s" || channel == "aggTrade" || channel.hasPrefix("kline_")
   }
 
   public func probeStream(symbol: String, interval: Interval) async -> Bool {
-    let factory = SourceSocketFactory(source: upstream, hosts: hosts, factory: sockets, route: route)
+    let factory = SourceSocketFactory(factory: sockets, route: route)
     let url = hosts.combinedStream([Self.streamName(.kline(symbol: symbol, interval: BinanceREST.source(interval)))])
     do {
       let socket = try await factory.connect(to: url)
@@ -282,26 +239,29 @@ public struct BinanceProvider: MarketProvider {
   }
 
   /// 直连：REST 那台发一笔 `ping`（权重 1、无鉴权），推送那台只要 DNS + TLS 走通，用 HEAD。
-  /// 网关：首屏的 REST 竞速和推送都打网关，主、备两台各 HEAD 一下——以前这里不管线路
+  /// 网关：推送打网关表、REST 打 kanpan-api，每台各 HEAD 一下（线上是同一台）——以前这里不管线路
   /// 一律热直连域名，选了网关的人热的是一台他根本不会连的机器。
   public var prewarmTargets: [PrewarmTarget] {
     if route.viaGateway {
-      return route.gateways.compactMap { PrewarmTarget.make(host: $0, path: "/", method: "HEAD") }
+      var seen = Set<String>()
+      return (route.gateways + route.apiHosts).filter { seen.insert($0).inserted }
+        .compactMap { PrewarmTarget.make(host: $0, path: "/", method: "HEAD") }
     }
     return [PrewarmTarget.make(host: hosts.fapi, path: Self.warmPath, method: "GET"),
             PrewarmTarget.make(host: hosts.stream, path: "/", method: "HEAD")].compactMap { $0 }
   }
 
-  /// 小组件补价：直连打币安 `/fapi/v1/*`；网关打 `/market/v1/*`（替身来源），载荷在信封里。
+  /// 小组件补价：直连打币安 `/fapi/v1/*`；网关打 kanpan-api 的原样透传
+  /// `/v1/market/raw/fapi/v1/*?…&source=binance`，载荷与直连同形（不包信封）。
   public var widgetRefresh: WidgetSnapshot.Refresh? {
     let market = "\(capabilities.venue)/\(capabilities.market)"
     if route.viaGateway {
-      guard !route.gateways.isEmpty else { return nil }
-      let source = "&source=\(upstream.rawValue)"
-      return WidgetSnapshot.Refresh(market: market, hosts: route.gateways,
-                                    ticker: "/market/v1/ticker?symbol={symbol}" + source,
-                                    closes: "/market/v1/klines?symbol={symbol}&interval=1h&limit={limit}" + source,
-                                    tickerField: "ticker", closesField: "bars")
+      guard !route.apiHosts.isEmpty else { return nil }
+      let raw = VenueEndpoints.rawPrefix, source = "&source=\(Self.venue)"
+      return WidgetSnapshot.Refresh(market: market, hosts: route.apiHosts,
+                                    ticker: raw + "fapi/v1/ticker/24hr?symbol={symbol}" + source,
+                                    closes: raw + "fapi/v1/klines?symbol={symbol}&interval=1h&limit={limit}" + source,
+                                    format: .binance)
     }
     return WidgetSnapshot.Refresh(market: market, hosts: [hosts.fapi],
                                   ticker: "/fapi/v1/ticker/24hr?symbol={symbol}",
@@ -327,9 +287,15 @@ public struct BinanceProvider: MarketProvider {
 
 extension BinanceWS: MarketStream {
   public func start(topics: [StreamTopic]) async -> AsyncStream<WSEvent> {
-    start(streams: topics.map(BinanceProvider.streamName))
+    start(streams: streamNames(topics))
   }
   public func replace(topics: [StreamTopic]) async {
-    await replaceStreams(topics.map(BinanceProvider.streamName))
+    await replaceStreams(streamNames(topics))
+  }
+  /// 订阅 → 流名，只留这条线路认的（网关 hub 不认的那几种丢掉，见 `BinanceProvider.gatewayAllows`）。
+  private func streamNames(_ topics: [StreamTopic]) -> [String] {
+    let names = topics.map(BinanceProvider.streamName)
+    guard let allows else { return names }
+    return names.filter(allows)
   }
 }

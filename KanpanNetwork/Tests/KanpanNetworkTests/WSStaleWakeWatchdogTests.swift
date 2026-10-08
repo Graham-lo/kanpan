@@ -76,7 +76,7 @@ struct WSStaleWakeWatchdogTests {
     let bench = GateSocketBench()
     let cancelGate = await bench.holdCancel(on: 1)
     let pacer = ManualPacer()
-    let ws = CoinbaseWS(urls: [coinbaseURL], factory: bench, pacer: pacer,
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [coinbaseURL], factory: bench, pacer: pacer,
                         silenceMs: 10_000, transportSilenceMs: 1e12)
     let first = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])
     let c1 = Task { for await _ in first {} }
@@ -109,7 +109,7 @@ struct WSStaleWakeWatchdogTests {
   func coinbaseAllRejectedDoesNotReconnectForever() async throws {
     let bench = GateSocketBench()
     // 20 秒窗口 × 0.01 = 真实 200ms。
-    let ws = CoinbaseWS(urls: [coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
                         silenceMs: 20_000, transportSilenceMs: 1e12)
     _ = await ws.start(topics: [.ticker(symbol: "coinbase/spot/NOPE-USD")])
     try #require(await waitUntil(5) { await bench.socket(1) != nil })
@@ -126,7 +126,7 @@ struct WSStaleWakeWatchdogTests {
   @Test("C-6 Coinbase：新一轮已起、新连接上只发过心跳订阅，这时来的报错不许记到上一轮那批订阅头上")
   func coinbaseErrorAfterNewRunNotPinnedOnOldRunSubs() async throws {
     let bench = GateSocketBench()
-    let ws = CoinbaseWS(urls: [coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
                         silenceMs: 1e12, transportSilenceMs: 1e12)
     _ = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])
     try #require(await waitUntil(5) { await bench.socket(1) != nil })
@@ -148,7 +148,7 @@ struct WSStaleWakeWatchdogTests {
   @Test("C-6 Coinbase：同一轮里断线重连，新连接上只发过心跳订阅，这时来的报错不许记到旧连接最后那批订阅头上")
   func coinbaseErrorAfterReconnectNotPinnedOnOldConnectionSubs() async throws {
     let bench = GateSocketBench()
-    let ws = CoinbaseWS(urls: [coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
                         silenceMs: 1e12, transportSilenceMs: 1e12)
     _ = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])
     try #require(await waitUntil(5) { await bench.socket(1) != nil })

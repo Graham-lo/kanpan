@@ -7,8 +7,7 @@ import Foundation
 /// 才肯回头。现在线路是用户定的：直连就只走交易所直连，网关就只走 VPS 网关，
 /// 代码不再替他做判断。
 ///
-/// 某家交易所在网关上实际由谁供数（比如币安在网关上被封、由替身顶上），是那一家
-/// 提供者自己的事，见 `RouteResolver`，这里不管。
+/// 某家交易所在网关上连哪台、能给出哪些能力，是那一家提供者自己的事，见 `RouteResolver`，这里不管。
 public enum MarketRoutePolicy: String, Codable, Sendable, CaseIterable {
   /// 只走自己的网络直连交易所：不算网关、不记冷却、也不会被换上游。
   /// 2026-10-08 前是出厂默认；国内不开代理拿不到币安合约 REST（`fapi.binance.com` 没有国内能到的入口），

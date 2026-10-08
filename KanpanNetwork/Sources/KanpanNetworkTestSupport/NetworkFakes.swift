@@ -130,6 +130,10 @@ public actor FakeServer {
   public struct Hit: Sendable {
     public var url: URL
     public var atMs: Double
+    /// `GET` / `POST`。
+    public var method: String = "GET"
+    /// POST 的正文（GET 是 nil）。
+    public var body: Data? = nil
   }
   private var handler: @Sendable (URL) -> HTTPReply
   public private(set) var hits: [Hit] = []
@@ -145,6 +149,11 @@ public actor FakeServer {
     return handler(url)
   }
 
+  public func serve(post url: URL, body: Data) async -> HTTPReply {
+    hits.append(Hit(url: url, atMs: await pacer.nowMs(), method: "POST", body: body))
+    return handler(url)
+  }
+
   public func urls() -> [URL] { hits.map(\.url) }
   public func times() -> [Double] { hits.map(\.atMs) }
   public func setHandler(_ h: @escaping @Sendable (URL) -> HTTPReply) { handler = h }
@@ -155,6 +164,9 @@ public struct FakeTransport: HTTPTransport {
   public init(_ server: FakeServer) { self.server = server }
   public func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
     await server.serve(url)
+  }
+  public func post(_ url: URL, json body: Data, timeout: TimeInterval) async throws -> HTTPReply {
+    await server.serve(post: url, body: body)
   }
 }
 

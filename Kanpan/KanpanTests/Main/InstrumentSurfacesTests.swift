@@ -11,8 +11,9 @@ import KanpanNetwork
 @Suite("美元指数：给不出的块不摆")
 struct InstrumentSurfacesTests {
   private let dxy = MacroProvider.capabilities
-  private let perp = BinanceProvider.capabilities(.binance)
-  private let okx = BinanceProvider.capabilities(.okx)
+  private let perp = BinanceProvider.directCapabilities
+  /// 网关档的币安（没有盘口与逐笔方向，其余同直连）。
+  private let okx = BinanceProvider.gatewayCapabilities
   private let spot = CoinbaseProvider.capabilities
 
   @Test("头部右侧那块：一格都给不出（美元指数）才整块不摆，币、美股、现货照旧")

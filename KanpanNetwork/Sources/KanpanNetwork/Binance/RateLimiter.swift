@@ -76,7 +76,10 @@ public actor RateLimiter {
   /// 比例折算上游公布的新限额。
   public static let sharedBinanceBudget = 2100
   public static let sharedBinance = RateLimiter(budget: RateLimiter.sharedBinanceBudget, minGapMs: 25)
-  public static let sharedOKX = RateLimiter(budget: 1000, minGapMs: 40)
+  /// 网关档那一把（kanpan-api 原样透传）：出口是新加坡那台，权重记在它的 IP 上，服务端自己留给
+  /// 所有手机的预算是 1600 / 分钟，所以每台手机只占 1000、两笔之间隔 40ms（原 OKX 替身那把的参数，不放宽）。
+  /// 透传回的 429 / 418 按 `Retry-After` 罚的是这一把，不连累直连那把（`BinanceFuturesAccount` 也用它）。
+  public static let sharedGateway = RateLimiter(budget: 1000, minGapMs: 40)
 
   private let pacer: Pacer
   /// 见 `MonoClock`：真机上读时刻不必再跨一次 `await`。

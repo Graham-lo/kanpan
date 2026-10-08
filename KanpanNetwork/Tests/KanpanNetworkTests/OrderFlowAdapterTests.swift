@@ -454,8 +454,8 @@ struct OrderFlowAdapterTests {
 
   @Test("提供者：币安（两条线路）与 Coinbase 都给得出品种表，线路跟着提供者走")
   func providersSource() {
-    let direct: any MarketProvider = BinanceProvider(upstream: .binance, hosts: BinanceHosts(), policy: .direct)
-    let gateway: any MarketProvider = BinanceProvider(upstream: .okx, hosts: BinanceHosts(), policy: .gateway)
+    let direct: any MarketProvider = BinanceProvider(hosts: BinanceHosts(), policy: .direct)
+    let gateway: any MarketProvider = BinanceProvider(hosts: BinanceHosts(), policy: .gateway)
     let coinbase: any MarketProvider = CoinbaseProvider(policy: .gateway, endpoints: MarketEndpoints(gateways: ["gw-a.example"]))
     #expect((direct as? any OrderFlowSourcing)?.orderFlowCatalog.route.viaGateway == false)
     #expect((gateway as? any OrderFlowSourcing)?.orderFlowCatalog.route.viaGateway == true)

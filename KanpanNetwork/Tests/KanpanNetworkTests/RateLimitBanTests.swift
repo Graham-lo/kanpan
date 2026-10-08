@@ -22,7 +22,7 @@ struct RateLimitBanTests {
   /// 真 `MarketRESTTransport`（直连档）套一台假服务器：A-T01 要的就是
   /// 「上游的 `Retry-After` 经过 transport 这一层没有被压扁」。
   private func directREST(_ server: FakeServer, limiter: RateLimiter, pacer: Pacer) -> BinanceREST {
-    let routed = MarketRESTTransport(source: .binance, gateways: ["gw.example.com"],
+    let routed = MarketRESTTransport(gateways: ["gw.example.com"],
                                      transport: FakeTransport(server), policy: .direct)
     return BinanceREST(transport: routed, limiter: limiter, pacer: pacer)
   }
@@ -341,7 +341,7 @@ struct RateLimitBanTests {
       json(#"{"code":-1003,"msg":"IP banned until 1700000120000"}"#, status: 418,
            headers: ["Retry-After": "120"])
     }
-    let routed = MarketRESTTransport(source: .binance, gateways: ["gw.example.com"],
+    let routed = MarketRESTTransport(gateways: ["gw.example.com"],
                                      transport: FakeTransport(server), policy: .direct)
     let rest = BinanceREST(transport: routed, limiter: limiter, pacer: pacer)
     await #expect(throws: BinanceError.self) {

@@ -75,6 +75,9 @@ public actor BinanceWS {
   private var cutReason: String?
   /// 不在当前订阅集里、被丢掉的组合流报文数（旧流退订前的尾巴、服务器多推的）。
   public private(set) var droppedForeignFrames = 0
+  /// 这条线路认哪些流（`start(topics:)` / `replace(topics:)` 按它筛）。nil = 全认（直连）；
+  /// 网关 hub 只认一部分，订了它不认的会被整条断开（`BinanceProvider.gatewayAllows`）。
+  let allows: (@Sendable (String) -> Bool)?
 
   public init(hosts: BinanceHosts = .default,
               factory: WSSocketFactory = URLSessionSocketFactory(),
@@ -84,7 +87,9 @@ public actor BinanceWS {
               keepaliveProbeMs: Double = 10_000,
               baseBackoffMs: Double = 1000,
               capBackoffMs: Double = 30_000,
-              log: FeedLog = .silent) {
+              log: FeedLog = .silent,
+              allows: (@Sendable (String) -> Bool)? = nil) {
+    self.allows = allows
     self.hosts = hosts
     self.factory = factory
     self.pacer = pacer

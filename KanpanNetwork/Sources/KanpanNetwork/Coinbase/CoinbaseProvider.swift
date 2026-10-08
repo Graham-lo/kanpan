@@ -13,12 +13,12 @@ import KanpanCore
 /// - 一页最多 350 根（起止都含），数值是字符串、时间是秒、顺序是降序，都在
 ///   `CoinbaseDTO` 里翻平。
 ///
-/// 两条线路：直连打 `api.coinbase.com` / `advanced-trade-ws.coinbase.com`；网关打看盘
-/// 自己的 `kanpan-api`（REST 原样透传、推送是共享 hub），报文一字不差，只换地址。
-/// Coinbase 在网关上没有替身，所以两条线路的能力位相同。
+/// 两条线路：直连打 Coinbase 自己的域名；网关打看盘自己的 `kanpan-api`（REST 原样透传、
+/// 推送是共享 hub），报文一字不差，只换地址（`CoinbaseVenue`）。两条线路的能力位相同。
+/// REST 走通用的 `VenueREST`、推送走通用的 `VenueStream` + `CoinbaseWire`，限速是 `CoinbaseVenue.limiter`。
 public struct CoinbaseProvider: MarketProvider {
-  public static let venue = CoinbaseDTO.venue
-  public static let market = CoinbaseDTO.market
+  public static let venue = CoinbaseVenue.id
+  public static let market = CoinbaseVenue.market
   /// 一次请求最多多少根（Coinbase 起止都含，跨度要小于 350 步）。
   static let pageSize = 350
 
@@ -37,21 +37,20 @@ public struct CoinbaseProvider: MarketProvider {
     openInterestSource: nil, hasMicrostructure: false, hasDerivativeMetrics: false,
     // 品种表那一个请求（`products`）就带着全部品种的 24h 行情。
     hasBulkTickers: true, probesHistoryBoundary: false, snapshotNamespace: nil,
-    quoteAssets: [CoinbaseDTO.quote])
+    quoteAssets: [CoinbaseVenue.quote])
 
   public var capabilities: ProviderCapabilities { Self.capabilities }
-  let endpoints: CoinbaseEndpoints
-  let transport: any HTTPTransport
+  let rest: VenueREST
+  var endpoints: VenueEndpoints { rest.endpoints }
+  var transport: any HTTPTransport { rest.transport }
   let sockets: any WSSocketFactory
-  let limiter: CoinbaseRateLimiter
-  let log: FeedLog
   let clock: @Sendable () -> Date
 
   public init(route: MarketRoute,
               transport: any HTTPTransport = URLSessionTransport(),
               sockets: any WSSocketFactory = URLSessionSocketFactory(),
               log: FeedLog = .silent) {
-    self.init(route: route, transport: transport, sockets: sockets, limiter: .shared, log: log)
+    self.init(route: route, transport: transport, sockets: sockets, limiter: CoinbaseVenue.limiter, log: log)
   }
 
   /// 测试用的旧写法：线路档位 + 地址表。
@@ -60,72 +59,37 @@ public struct CoinbaseProvider: MarketProvider {
               sockets: any WSSocketFactory = URLSessionSocketFactory(),
               log: FeedLog = .silent) {
     self.init(route: MarketRoute(policy: policy, endpoints: endpoints), transport: transport, sockets: sockets,
-              limiter: .shared, log: log)
+              limiter: CoinbaseVenue.limiter, log: log)
   }
 
+  /// 测试用：网关表同时当 kanpan-api 主机（`CoinbaseVenue.endpoints(policy:gateways:)`）。
   init(policy: MarketRoutePolicy, gateways: [String], transport: any HTTPTransport,
        sockets: any WSSocketFactory = URLSessionSocketFactory(),
-       limiter: CoinbaseRateLimiter, log: FeedLog = .silent,
+       limiter: VenueRateLimiter, log: FeedLog = .silent,
        clock: @escaping @Sendable () -> Date = { Date() }) {
-    self.init(route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways)),
+    self.init(endpoints: CoinbaseVenue.endpoints(policy: policy, gateways: gateways),
               transport: transport, sockets: sockets, limiter: limiter, log: log, clock: clock)
   }
 
   init(route: MarketRoute, transport: any HTTPTransport,
        sockets: any WSSocketFactory = URLSessionSocketFactory(),
-       limiter: CoinbaseRateLimiter, log: FeedLog = .silent,
+       limiter: VenueRateLimiter, log: FeedLog = .silent,
        clock: @escaping @Sendable () -> Date = { Date() }) {
-    self.endpoints = CoinbaseEndpoints(route: route)
-    self.transport = transport; self.sockets = sockets
-    self.limiter = limiter; self.log = log; self.clock = clock
+    self.init(endpoints: CoinbaseVenue.endpoints(route), transport: transport, sockets: sockets,
+              limiter: limiter, log: log, clock: clock)
+  }
+
+  init(endpoints: VenueEndpoints, transport: any HTTPTransport, sockets: any WSSocketFactory,
+       limiter: VenueRateLimiter, log: FeedLog, clock: @escaping @Sendable () -> Date) {
+    self.rest = VenueREST(endpoints: endpoints, transport: transport, limiter: limiter, log: log)
+    self.sockets = sockets; self.clock = clock
   }
 
   // ------------------------------------------------------------------ 底层
 
-  /// 发一个 GET。网关线路上主网关不通（连不上 / 5xx）就换备用那台；
-  /// 4xx 是这一笔本身的问题（品种不存在、参数不对），换主机也一样，直接报。
+  /// 发一个 GET（`VenueREST`：网关主不通换备、4xx 直接报、429 罚这一家的限速器）。
   func get(_ path: String, query: [URLQueryItem] = [], timeout: TimeInterval = 15) async throws -> Data {
-    let hosts = endpoints.restHosts
-    guard !hosts.isEmpty else { throw FeedError.badResponse("行情暂不可用，请重试") }
-    var failure: any Error = FeedError.badResponse("行情暂不可用，请重试")
-    for host in hosts {
-      guard let url = endpoints.rest(path, query: query, host: host) else { continue }
-      var attempt = 0
-      while true {
-        attempt += 1
-        try await limiter.acquire()
-        let reply: HTTPReply
-        do { reply = try await transport.get(url, timeout: timeout) }
-        catch {
-          if error is CancellationError || Task.isCancelled { throw CancellationError() }
-          log("GET \(url.path) 失败：\(error)")
-          failure = error
-          break
-        }
-        log("GET \(url.path)\(url.query.map { "?\($0)" } ?? "") → \(reply.status) \(reply.body.count)B")
-        if reply.status == 200 { return reply.body }
-        let retry = UpstreamError.retryAfterSeconds(reply.header("Retry-After"))
-        let error = UpstreamError(status: reply.status, msg: Self.message(reply.body),
-                                  url: url.absoluteString, retryAfter: retry,
-                                  proxied: endpoints.viaGateway)
-        if reply.status == 429 {
-          await limiter.penalize(seconds: retry ?? 1)
-          failure = error
-          if attempt < 3 { continue }
-          throw error
-        }
-        if (400..<500).contains(reply.status) { throw error }
-        failure = error
-        break
-      }
-    }
-    throw failure
-  }
-
-  static func message(_ body: Data) -> String? {
-    struct E: Decodable { var message: String?; var error: String? }
-    let e = try? JSONDecoder().decode(E.self, from: body)
-    return e?.message ?? e?.error
+    try await rest.get(path, query: query, timeout: timeout)
   }
 
   private func productsQuery() -> [URLQueryItem] { [URLQueryItem(name: "product_type", value: "SPOT")] }
@@ -146,7 +110,7 @@ public struct CoinbaseProvider: MarketProvider {
   }
 
   public func ticker24h(symbol: String, timeout: TimeInterval) async throws -> Ticker {
-    let id = CoinbaseDTO.productID(symbol)
+    let id = CoinbaseVenue.productID(symbol)
     let data = try await get("products/\(id)", timeout: timeout)
     let product: CoinbaseDTO.Product
     do { product = try JSONDecoder().decode(CoinbaseDTO.Product.self, from: data) }
@@ -188,10 +152,10 @@ public struct CoinbaseProvider: MarketProvider {
   /// 不设上限的那一版（`history` 一次要翻好几页）。
   func fetchBars(symbol: String, interval source: Interval, count: Int,
                  startTime: Int64?, endTime: Int64?) async throws -> [Bar] {
-    guard let granularity = CoinbaseEndpoints.granularity(source) else {
+    guard let granularity = CoinbaseVenue.granularity(source) else {
       throw FeedError.unsupported("Coinbase 没有 \(source.rawValue) 周期")
     }
-    let id = CoinbaseDTO.productID(symbol)
+    let id = CoinbaseVenue.productID(symbol)
     let step = source.stepMs / 1000
     let nowSec = Int64(clock().timeIntervalSince1970)
     // 每个窗口 = [start, end]（秒，两端都含），最多 `pageSize` 根。
@@ -260,25 +224,18 @@ public struct CoinbaseProvider: MarketProvider {
   public var widgetRefresh: WidgetSnapshot.Refresh? {
     let hosts = endpoints.restHosts
     guard !hosts.isEmpty else { return nil }
-    let candles = "products/{symbol}/candles"
-    let hourly = "granularity=ONE_HOUR&start={start}&end={end}"
-    let ticker: String, closes: String
-    if endpoints.viaGateway {
-      let prefix = CoinbaseEndpoints.gatewayRestPrefix, source = "source=\(CoinbaseEndpoints.gatewaySource)"
-      ticker = prefix + "products/{symbol}?" + source
-      closes = prefix + candles + "?" + source + "&" + hourly
-    } else {
-      ticker = CoinbaseEndpoints.restPrefix + "products/{symbol}"
-      closes = CoinbaseEndpoints.restPrefix + candles + "?" + hourly
-    }
     return WidgetSnapshot.Refresh(market: "\(capabilities.venue)/\(capabilities.market)", hosts: hosts,
-                                  ticker: ticker, closes: closes, format: .coinbase)
+                                  ticker: endpoints.restTemplate("products/{symbol}"),
+                                  closes: endpoints.restTemplate("products/{symbol}/candles",
+                                                                 query: "granularity=ONE_HOUR&start={start}&end={end}"),
+                                  format: .coinbase)
   }
 
   // ------------------------------------------------------------------ 推送
 
   public func makeStream(silenceMs: Double?, log: FeedLog) -> any MarketStream {
-    CoinbaseWS(urls: endpoints.streams, factory: sockets, silenceMs: silenceMs ?? 60_000, log: log)
+    VenueStream(wire: CoinbaseWire(), urls: endpoints.streams, factory: sockets,
+                silenceMs: silenceMs ?? 60_000, log: log)
   }
 
   public func probeStream(symbol: String, interval: Interval) async -> Bool {

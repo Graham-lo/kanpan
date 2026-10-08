@@ -7,10 +7,9 @@ import KanpanNetwork
 // 把它们包成 `BinanceProvider` 再交给上层，用例本身不用逐个改写。
 
 extension BinanceProvider {
-  /// 用一个现成的 REST 客户端（多半带着假的 transport）建一个币安本家的提供者。
-  static func wrapping(_ rest: BinanceREST, upstream: BinanceUpstream = .binance,
-                       policy: MarketRoutePolicy = .direct) -> BinanceProvider {
-    BinanceProvider(upstream: upstream, hosts: rest.hosts, policy: policy, rest: rest)
+  /// 用一个现成的 REST 客户端（多半带着假的 transport）建一个币安提供者。
+  static func wrapping(_ rest: BinanceREST, policy: MarketRoutePolicy = .direct) -> BinanceProvider {
+    BinanceProvider(hosts: rest.hosts, policy: policy, rest: rest)
   }
 }
 
@@ -42,17 +41,17 @@ extension OISource {
 }
 
 extension RoutedMarketFeed {
-  /// 老用例的注入口：`primary` 是币安本家的 REST，`backup` 是网关上替身的 REST。
+  /// 老用例的注入口：`primary` 是直连档用的 REST（打币安本家），`backup` 是网关档用的 REST
+  /// （打新加坡那台的透传；2026-10-08 之前它是 OKX 替身，现在同样是币安的数、只是经网关转一道）。
   /// `http` 是直接问网关的那几笔（订单流品种表等）；不给就是真 `URLSessionTransport`——
   /// 会真的去连 `gw.test` 这类假主机，等满超时（审查第 44 项：路由用例 7 秒多就耗在这里）。
   init(hosts: BinanceHosts, paths: Paths, log: FeedLog = .silent,
        primary: BinanceREST, backup: BinanceREST, sockets: any WSSocketFactory,
        http: (any HTTPTransport)? = nil, policy: MarketRoutePolicy) {
     self.init(paths: paths, log: log, policy: policy) { _, policy in
-      let upstream = BinanceProvider.upstream(for: MarketRoute(policy: policy, endpoints: .production))
-      return BinanceProvider(upstream: upstream, hosts: hosts, policy: policy,
-                             rest: upstream == .binance ? primary : backup, sockets: sockets,
-                             http: http ?? URLSessionTransport(), log: log)
+      BinanceProvider(hosts: hosts, policy: policy,
+                      rest: policy == .gateway ? backup : primary, sockets: sockets,
+                      http: http ?? URLSessionTransport(), log: log)
     }
   }
 }

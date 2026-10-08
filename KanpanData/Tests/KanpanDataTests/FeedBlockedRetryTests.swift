@@ -88,8 +88,7 @@ struct FeedBlockedRetryTests {
     let upstream = BannedUpstream(retryAfterSeconds: 3600)
     // 真 `MarketRESTTransport`（直连档）：这样「点此重试」清的是真的线路冷却，
     // 而不是一个空操作。清完线路冷却，限流器上的 IP 封禁仍然在（A-03 第 4 点）。
-    let routed = MarketRESTTransport(source: .binance, gateways: ["gw.example.com"],
-                                     transport: upstream, policy: .direct)
+    let routed = MarketRESTTransport(gateways: ["gw.example.com"], transport: upstream, policy: .direct)
     let limiter = RateLimiter(pacer: pacer, minGapMs: 0)
     let rest = BinanceREST(transport: routed, limiter: limiter, pacer: pacer)
     // WS 走真时钟：它的看门狗在阶梯时钟上会一睡就「到点」，连着空转重连。原来它跟着

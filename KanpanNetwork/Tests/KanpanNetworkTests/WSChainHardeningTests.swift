@@ -74,7 +74,7 @@ struct WSChainHardeningTests {
   func coinbaseSendFailureReconnects() async throws {
     let bench = SendFailBench()
     // 两个静默窗口都拉到天边：能重连只可能是「发送失败」这一路触发的。
-    let ws = CoinbaseWS(urls: [Self.coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.0001),
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [Self.coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.0001),
                         silenceMs: 1e12, transportSilenceMs: 1e12)
     _ = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])
     #expect(await waitUntil(5) { await bench.connects >= 2 })
@@ -95,7 +95,7 @@ struct WSChainHardeningTests {
   func coinbasePendingTopicResubscribesThenReconnects() async throws {
     let bench = GateSocketBench()
     // 20 秒窗口 × 0.01 = 真实 200ms。
-    let ws = CoinbaseWS(urls: [Self.coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [Self.coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
                         silenceMs: 20_000, transportSilenceMs: 1e12)
     _ = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])
     #expect(await waitUntil(5) { await bench.socket(1) != nil })
@@ -121,12 +121,14 @@ struct WSChainHardeningTests {
   @Test("F5 Coinbase：新增订阅的首帧到了就算生效，不重发也不重连", .timeLimit(.minutes(1)))
   func coinbaseConfirmedTopicStaysPut() async throws {
     let bench = GateSocketBench()
-    let ws = CoinbaseWS(urls: [Self.coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [Self.coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
                         silenceMs: 20_000, transportSilenceMs: 1e12)
     _ = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])
     #expect(await waitUntil(5) { await bench.socket(1) != nil })
     let socket = try #require(await bench.socket(1))
     await socket.push(.text(Self.tickerFrame("BTC-USD")))
+    // 先等心跳与 BTC 的那一发订阅出去：抢在它之前 replace，两个品种会并进同一帧（Linux 上实测会抢到）。
+    _ = await waitUntil(5) { await socket.sent.count >= 2 }
     await ws.replace(topics: [.ticker(symbol: "coinbase/spot/BTC-USD"), .ticker(symbol: "coinbase/spot/ETH-USD")])
     #expect(await waitUntil(5) {
       self.controls(await socket.sent).contains { $0.type == "subscribe" && $0.product_ids == ["ETH-USD"] }
@@ -140,12 +142,14 @@ struct WSChainHardeningTests {
   @Test("F5 Coinbase：error 帧按最近一发控制帧记到那个频道 × 品种上，被明确拒掉的不再重发 / 重连", .timeLimit(.minutes(1)))
   func coinbaseErrorFrameIsAttributed() async throws {
     let bench = GateSocketBench()
-    let ws = CoinbaseWS(urls: [Self.coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [Self.coinbaseURL], factory: bench, pacer: FastPacer(scale: 0.01),
                         silenceMs: 20_000, transportSilenceMs: 1e12)
     _ = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])
     #expect(await waitUntil(5) { await bench.socket(1) != nil })
     let socket = try #require(await bench.socket(1))
     await socket.push(.text(Self.tickerFrame("BTC-USD")))
+    // 先等心跳与 BTC 的那一发订阅出去：抢在它之前 replace，两个品种会并进同一帧（Linux 上实测会抢到）。
+    _ = await waitUntil(5) { await socket.sent.count >= 2 }
     await ws.replace(topics: [.ticker(symbol: "coinbase/spot/BTC-USD"), .ticker(symbol: "coinbase/spot/NOPE-USD")])
     #expect(await waitUntil(5) {
       self.controls(await socket.sent).contains { $0.type == "subscribe" && $0.product_ids == ["NOPE-USD"] }
@@ -185,7 +189,7 @@ struct WSChainHardeningTests {
   func coinbaseStartResetsBackoff() async throws {
     let factory = RefusingFactory()
     let pacer = ManualPacer()
-    let ws = CoinbaseWS(urls: [Self.coinbaseURL], factory: factory, pacer: pacer,
+    let ws = VenueStream(wire: CoinbaseWire(), urls: [Self.coinbaseURL], factory: factory, pacer: pacer,
                         silenceMs: 1e12, transportSilenceMs: 1e12)
     _ = await ws.start(topics: [.ticker(symbol: "coinbase/spot/BTC-USD")])
     for n in 1...4 {

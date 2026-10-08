@@ -14,13 +14,13 @@ struct MarketRoutePolicyTests {
 
   private static let klines = URL(string: "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=300")!
 
-  /// 记下每一笔打到哪台主机；币安直连一律报错，网关一律回一份合法信封。
+  /// 记下每一笔打到哪台主机；币安直连一律报错，网关一律回一份合法载荷。
   private actor RouteSpy: HTTPTransport {
     private(set) var hosts: [String] = []
     func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
       hosts.append(url.host!)
       if url.host == "fapi.binance.com" { throw URLError(.cannotFindHost) }
-      return json(#"{"source":"binance","symbol":"BTCUSDT","interval":"1m","bars":[]}"#)
+      return json("[]")
     }
   }
 
@@ -61,8 +61,11 @@ struct MarketRoutePolicyTests {
       #expect(MarketRoutePolicyStore.current == policy)
     }
     #expect(MarketRoutePolicy.allCases.map(\.title) == ["直连", "网关"])
-    #expect(BinanceProvider.upstream(for: MarketRoute(policy: .direct, endpoints: .production)) == .binance)
-    #expect(BinanceProvider.upstream(for: MarketRoute(policy: .gateway, endpoints: .production)) == .okx)
+    // 两档供的都是币安本家的数（2026-10-08 起网关档不再有 OKX 替身）。
+    for policy in MarketRoutePolicy.allCases {
+      let caps = BinanceProvider(route: MarketRoute(policy: policy, endpoints: .production)).capabilities
+      #expect(caps.upstream == "binance" && !caps.isSubstitute && caps.snapshotNamespace == nil)
+    }
   }
 
   @Test("线路两档只管币安主行情：apiHosts 与 gateways 两档都只有新加坡主机一台（2026-10-02 起没有备机兜底）")
@@ -108,7 +111,7 @@ struct MarketRoutePolicyTests {
   @Test("直连：币安一笔都不打到网关")
   func directNeverTouchesGateway() async {
     let spy = RouteSpy()
-    let transport = MarketRESTTransport(source: .binance, gateways: ["gw.test"], transport: spy, policy: .direct)
+    let transport = MarketRESTTransport(gateways: ["gw.test"], transport: spy, policy: .direct)
     _ = try? await transport.get(Self.klines, timeout: 10)
     #expect(await spy.hosts == ["fapi.binance.com"])
   }
@@ -116,7 +119,7 @@ struct MarketRoutePolicyTests {
   @Test("直连：失败不记冷却，下一笔照样直连")
   func directDoesNotCoolDown() async {
     let spy = DeadRouteSpy()
-    let transport = MarketRESTTransport(source: .binance, gateways: ["gw.test"], transport: spy, policy: .direct)
+    let transport = MarketRESTTransport(gateways: ["gw.test"], transport: spy, policy: .direct)
     _ = try? await transport.get(Self.klines, timeout: 10)
     _ = try? await transport.get(Self.klines, timeout: 10)
     _ = try? await transport.get(Self.klines, timeout: 10)
@@ -134,17 +137,9 @@ struct MarketRoutePolicyTests {
   @Test("直连：用满请求超时，不做快速让位")
   func directUsesFullTimeout() async throws {
     let spy = TimeoutSpy()
-    let transport = MarketRESTTransport(source: .binance, gateways: ["gw.test"], transport: spy, policy: .direct)
+    let transport = MarketRESTTransport(gateways: ["gw.test"], transport: spy, policy: .direct)
     _ = try await transport.get(Self.klines, timeout: 12)
     #expect(await spy.timeouts == [12])
-  }
-
-  @Test("直连：OKX 源照旧走网关，不受影响")
-  func directLeavesOKXAlone() async throws {
-    let spy = RouteSpy()
-    let transport = MarketRESTTransport(source: .okx, gateways: ["gw.test"], transport: spy, policy: .direct)
-    _ = try? await transport.get(Self.klines, timeout: 10)
-    #expect(await spy.hosts == ["gw.test"])
   }
 
   // ---------------------------------------------------------------- 网关
@@ -152,28 +147,28 @@ struct MarketRoutePolicyTests {
   @Test("网关：一笔都不打直连")
   func gatewayNeverTouchesDirect() async throws {
     let spy = RouteSpy()
-    let transport = MarketRESTTransport(source: .binance, gateways: ["gw.test"], transport: spy, policy: .gateway)
+    let transport = MarketRESTTransport(gateways: ["gw.test"], transport: spy, policy: .gateway)
     let reply = try await transport.get(Self.klines, timeout: 10)
     #expect(reply.status == 200)
     #expect(await spy.hosts == ["gw.test"])
   }
 
-  /// 对照组：网关那边的冷却还在。没有这一条，「直连不记冷却」证明不了什么。
-  @Test("网关：失败之后这台网关先歇着，下一笔不再打它")
-  func gatewayCoolsDownAfterFailure() async {
+  /// 网关这一档不记冷却：主机按顺序试、每笔从头试（线上只有一台，歇着就等于整条线路停摆）。
+  @Test("网关：失败也不记冷却，下一笔照样问那台网关、不退直连")
+  func gatewayFailureDoesNotFallBackToDirect() async {
     let spy = DeadRouteSpy()
-    let transport = MarketRESTTransport(source: .binance, gateways: ["gw.test"], transport: spy, policy: .gateway)
+    let transport = MarketRESTTransport(gateways: ["gw.test"], transport: spy, policy: .gateway)
     _ = try? await transport.get(Self.klines, timeout: 10)
     _ = try? await transport.get(Self.klines, timeout: 10)
-    #expect(await spy.hosts == ["gw.test"])
+    #expect(await spy.hosts == ["gw.test", "gw.test"])
   }
 
-  @Test("网关：没有网关路线的请求直接失败，不偷偷走直连")
+  @Test("网关：透传白名单之外的地址直接失败，不偷偷走直连")
   func gatewayNeverFallsBackToDirect() async {
     let spy = RouteSpy()
-    let transport = MarketRESTTransport(source: .binance, gateways: ["gw.test"], transport: spy, policy: .gateway)
-    let oi = URL(string: "https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=5m")!
-    await #expect(throws: (any Error).self) { try await transport.get(oi, timeout: 10) }
+    let transport = MarketRESTTransport(gateways: ["gw.test"], transport: spy, policy: .gateway)
+    let zip = URL(string: "https://data.binance.vision/data/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-2026-10-01.zip")!
+    await #expect(throws: (any Error).self) { try await transport.get(zip, timeout: 10) }
     #expect(await spy.hosts.isEmpty)
   }
 
@@ -192,46 +187,79 @@ struct MarketRoutePolicyTests {
   }
 
   private static let stream = URL(string: "wss://dstream.binance.me/stream?streams=btcusdt@kline_1m")!
-  /// 网关表（主、备）就是 REST / OI 代理那一份；故意把直连域名也混进去，看它会不会被剔掉。
-  private static let appHosts = BinanceHosts(oiProxy: "dstream.binance.me", oiProxyFallbacks: ["gw1.test", "gw2.test:8443"])
 
-  @Test("网关线路下不开币安本家的流：明确报错，不悄悄退回直连、也不拨任何主机")
-  func gatewayBinanceSocketThrows() async {
+  @Test("网关：币安的流拨 Python 网关的 /market/stream hub（组合流同形），主、备都在候选里、查询原样带上")
+  func gatewaySocketsDialTheHub() async {
     let spy = SocketSpy()
-    let factory = SourceSocketFactory(source: .binance, hosts: Self.appHosts, factory: spy, policy: .gateway)
-    await #expect(throws: FeedError.self) { _ = try await factory.connect(to: Self.stream) }
-    #expect(spy.hosts.isEmpty)
+    let factory = SourceSocketFactory(gateways: ["gw1.test", "gw2.test:8443"], factory: spy, policy: .gateway)
+    _ = try? await factory.connect(to: Self.stream)
+    #expect(Set(spy.hosts).isSubset(of: ["gw1.test", "gw2.test"]) && spy.hosts.contains("gw1.test"))
+    #expect(Set(spy.paths) == ["/market/stream"])
+    #expect(!spy.hosts.contains("dstream.binance.me"))
   }
 
-  @Test("替身（OKX）的流只拨网关的 /market/okx/stream，主、备按顺序")
-  func substituteSocketsDialGateways() async {
+  @Test("网关：没有网关就明确报错，不悄悄退回直连、也不拨任何主机")
+  func gatewayWithoutGatewaysThrows() async {
     let spy = SocketSpy()
-    let hosts = BinanceHosts(oiProxy: "gw1.test", oiProxyFallbacks: ["gw2.test:8443"])
-    let factory = SourceSocketFactory(source: .okx, hosts: hosts, factory: spy, policy: .gateway)
-    _ = try? await factory.connect(to: Self.stream)
-    #expect(Set(spy.hosts).isSubset(of: ["gw1.test", "gw2.test"]) && !spy.hosts.isEmpty)
-    #expect(Set(spy.paths) == ["/market/okx/stream"])
+    let factory = SourceSocketFactory(gateways: [], factory: spy, policy: .gateway)
+    await #expect(throws: FeedError.self) { _ = try await factory.connect(to: Self.stream) }
+    #expect(spy.hosts.isEmpty)
   }
 
   @Test("直连：WS 只拨币安自己的域名")
   func directSocketsOnlyDialBinance() async {
     let spy = SocketSpy()
-    let factory = SourceSocketFactory(source: .binance, hosts: Self.appHosts, factory: spy, policy: .direct)
+    let factory = SourceSocketFactory(gateways: ["gw1.test", "gw2.test:8443"], factory: spy, policy: .direct)
     _ = try? await factory.connect(to: Self.stream)
     #expect(spy.hosts == ["dstream.binance.me"])
     // 直连不许改路径：币安只有 `/stream`，拨到 `/market/stream` 会被当场拒掉。
     #expect(spy.paths == ["/stream"])
   }
 
+  @Test("网关 hub 只放行 ticker / markPrice@1s / aggTrade / kline_*：逐笔与五档在网关档不订")
+  func gatewayStreamFilter() {
+    let allows = BinanceProvider.gatewayAllows
+    let topics: [StreamTopic] = [.kline(symbol: "BTCUSDT", interval: .y1), .kline(symbol: "BTCUSDT", interval: .m1),
+                                 .ticker(symbol: "BTCUSDT"), .markPrice(symbol: "BTCUSDT"),
+                                 .aggTrade(symbol: "BTCUSDT"), .trade(symbol: "BTCUSDT"), .depth(symbol: "BTCUSDT")]
+    let names = topics.map(BinanceProvider.streamName)
+    #expect(names.filter(allows) == ["btcusdt@kline_1M", "btcusdt@kline_1m", "btcusdt@ticker",
+                                     "btcusdt@markPrice@1s", "btcusdt@aggTrade"])
+  }
+
+  @Test("网关档的推送连接只把 hub 认的流交出去，直连照旧全订", .timeLimit(.minutes(1)))
+  func gatewayStreamDropsUnsupportedTopics() async throws {
+    let topics: [StreamTopic] = [.kline(symbol: "BTCUSDT", interval: .m1), .trade(symbol: "BTCUSDT"),
+                                 .depth(symbol: "BTCUSDT"), .ticker(symbol: "BTCUSDT")]
+    for policy in MarketRoutePolicy.allCases {
+      let bench = GateSocketBench()
+      let provider = BinanceProvider(hosts: BinanceHosts(oiProxy: "gw.test"), policy: policy, sockets: bench)
+      let stream = provider.makeStream(silenceMs: 1e12, log: .silent)
+      _ = await stream.start(topics: topics)
+      // 网关档：MarketSocketRouter 要先等到一帧行情才选中这条连接，这里只看拨出去的地址。
+      #expect(await waitUntil(5) { await bench.socket(1) != nil })
+      let dialed = try #require(await bench.socket(1)).url
+      let query = URLComponents(url: dialed, resolvingAgainstBaseURL: false)?.queryItems?.first?.value ?? ""
+      if policy == .gateway {
+        #expect(dialed.host == "gw.test" && dialed.path == "/market/stream")
+        #expect(query == "btcusdt@kline_1m/btcusdt@ticker")
+      } else {
+        #expect(dialed.host == "dstream.binance.me" && dialed.path == "/stream")
+        #expect(query.contains("@trade") && query.contains("@depth5@100ms"))
+      }
+      await stream.stop()
+    }
+  }
+
   // ---------------------------------------------------------------- 运行中换档
 
-  @Test("换档会把上一档留下的网关冷却清掉")
-  func switchingPolicyClearsCooldowns() async {
+  @Test("运行中换档：下一笔就按新档走")
+  func switchingPolicyTakesEffect() async {
     let spy = DeadRouteSpy()
-    let transport = MarketRESTTransport(source: .binance, gateways: ["gw.test"], transport: spy, policy: .gateway)
-    _ = try? await transport.get(Self.klines, timeout: 10)   // 网关失败，进冷却
-    await transport.setPolicy(.gateway)                       // 用户又按了一次
+    let transport = MarketRESTTransport(gateways: ["gw.test"], transport: spy, policy: .gateway)
     _ = try? await transport.get(Self.klines, timeout: 10)
-    #expect(await spy.hosts == ["gw.test", "gw.test"])
+    await transport.setPolicy(.direct)
+    _ = try? await transport.get(Self.klines, timeout: 10)
+    #expect(await spy.hosts == ["gw.test", "fapi.binance.com"])
   }
 }

@@ -7,12 +7,12 @@ import KanpanCore
 
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["KANPAN_LIVE_ROUTING"] == "1"))
 struct LiveRoutingTests {
-  @Test(.timeLimit(.minutes(1))) func completeOKXFeed() async throws {
+  @Test(.timeLimit(.minutes(1))) func completeGatewayFeed() async throws {
     let endpoints = MarketEndpoints(gateways: ["kanpan.43-160-232-253.sslip.io"])
     let path = Paths(root: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     defer { try? FileManager.default.removeItem(at: path.root) }
     try FileManager.default.createDirectory(at: path.root, withIntermediateDirectories: true)
-    // 线路是用户定的：网关 = OKX。跑完还原，别把这台机器的线路改掉。
+    // 线路是用户定的：网关 = 经新加坡那台透传的币安（2026-10-08 起不再是 OKX 替身）。跑完还原，别把这台机器的线路改掉。
     let before = MarketRoutePolicyStore.current
     MarketRoutePolicyStore.set(.gateway)
     defer { MarketRoutePolicyStore.set(before) }
@@ -24,7 +24,7 @@ struct LiveRoutingTests {
       switch update.event {
       case .provider(let caps): selected = caps.upstream
       case .series(let series) where series.count >= 300 && initial == 0:
-        #expect(selected == "okx")
+        #expect(selected == "binance")
         initial = series.count
         Task { await feed.loadMore() }
       case .lastBar: realPush = true
@@ -42,7 +42,7 @@ struct LiveRoutingTests {
     let restored = await reopened.events()
     await reopened.start(symbol: "BTCUSDT", interval: .m1)
     for await event in restored {
-      if case .provider(let caps) = event.event { #expect(caps.upstream == "okx"); break }
+      if case .provider(let caps) = event.event { #expect(caps.upstream == "binance"); break }
     }
     await reopened.stop()
   }

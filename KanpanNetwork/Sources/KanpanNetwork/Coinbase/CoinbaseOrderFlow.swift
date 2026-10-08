@@ -6,11 +6,11 @@ import KanpanCore
 
 extension OrderFlowExchange {
   static let coinbase = OrderFlowExchange(
-    key: "coinbase", displayName: "Coinbase", maxBooksPerConnection: 1,
+    key: CoinbaseVenue.id, displayName: CoinbaseVenue.displayName, maxBooksPerConnection: 1,
     sequenceModel: { _, _ in .strictIncrementing },
     snapshotInBand: { _ in true },
     fallback: { _, base, chartScale in
-      [OrderFlowFallbackBook(product: .spot, instrument: base + "-USD", priceFactor: chartScale)]
+      [OrderFlowFallbackBook(product: .spot, instrument: base + "-" + CoinbaseVenue.quote, priceFactor: chartScale)]
     },
     makeAdapters: { books, context in
       books.filter { $0.venue.product == .spot }.map { CoinbaseLevel2Adapter(book: $0, sockets: context.sockets) }

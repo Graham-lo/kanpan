@@ -32,36 +32,42 @@ struct ProviderCapabilitiesTests {
     #expect(caps.openInterestSource == "binance")
   }
 
-  @Test("网关：同一个 venue，替身上游，能力位按替身收窄")
-  func gatewayIsSubstitute() {
+  @Test("网关：同样是币安本家（REST 透传、推送 hub），只少盘口与逐笔方向；首屏一发 300 根")
+  func gatewayIsBinanceWithoutMicrostructure() {
     let caps = RouteResolver(policy: .gateway).provider(venue: "binance").capabilities
-    #expect(caps.venue == "binance" && caps.upstream == "okx")
-    #expect(caps.isSubstitute)
+    #expect(caps.venue == "binance" && caps.market == "usd_m" && caps.upstream == "binance")
+    #expect(!caps.isSubstitute)
+    #expect(caps.snapshotNamespace == nil)
+    // hub 不转 `@depth5` 与 `@trade`。
+    #expect(!caps.hasMicrostructure)
+    // 其余照直连：标记价、费率、持仓量、衍生统计、归档都有（REST 经透传、标记价经 hub）。
+    #expect(caps.hasTickerStream && caps.hasMarkPrice && caps.hasFunding)
+    #expect(caps.hasDerivativeMetrics && caps.hasBulkTickers)
+    #expect(caps.hasOpenInterestHistory && caps.hasOpenInterestArchive)
+    #expect(caps.openInterestSource == "binance")
+    #expect(caps.probesHistoryBoundary)
+    #expect(caps.maxKlines == 1500 && caps.liveKlineIntervals == BinanceProvider.directCapabilities.liveKlineIntervals)
+    // 首屏不比原来多发：一发 300 根，深度交给后台加深（直连 1800 会并行再发一发小页）。
     #expect(caps.initialKlines == 300)
-    // 网关的 OKX 组合流转 24h 行情（不带成交额，「额」由 `GatewayTicker` 补）；没有标记价。
-    #expect(caps.hasTickerStream && !caps.hasMarkPrice)
-    // 费率由网关按替身自己的整表给（`GatewayFunding`），不是没有。
-    #expect(caps.hasFunding)
-    #expect(!caps.hasMicrostructure && !caps.hasDerivativeMetrics && !caps.hasBulkTickers)
-    // 持仓量副图有替身自己的历史（`GatewayOIHistory`），没有币安那份归档。
-    #expect(caps.hasOpenInterestHistory && !caps.hasOpenInterestArchive)
-    #expect(!caps.probesHistoryBoundary)
-    #expect(caps.snapshotNamespace == "okx")
-    #expect(caps.openInterestSource == "okx")
+    var same = caps
+    same.hasMicrostructure = true
+    same.initialKlines = BinanceProvider.directCapabilities.initialKlines
+    #expect(same == BinanceProvider.directCapabilities)
   }
 
-  @Test("回放要本家数据：网关线路上也不拿替身顶")
+  @Test("回放要本家数据：两条线路都是币安本家")
   func ownDataIsNeverSubstitute() {
     for policy in MarketRoutePolicy.allCases {
       let caps = RouteResolver(policy: policy).ownDataProvider(venue: "binance")?.capabilities
       #expect(caps?.upstream == "binance")
+      #expect(caps == RouteResolver(policy: policy).provider(venue: "binance").capabilities)
     }
     #expect(RouteResolver(policy: .direct).ownDataProvider(venue: "nowhere") == nil)
   }
 
   @Test("1y 从 1M 聚，其余原生")
   func aggregation() {
-    let caps = BinanceProvider.capabilities(.binance)
+    let caps = BinanceProvider.directCapabilities
     #expect(caps.source(for: .y1) == .mo1)
     #expect(caps.isAggregated(.y1))
     #expect(!caps.isAggregated(.h1))
@@ -90,7 +96,7 @@ struct ProviderCapabilitiesTests {
     #expect(e.gateways == ["a", "b"])
   }
 
-  @Test("RouteResolver 的出口：直连给币安本家与出厂域名，网关给替身与新加坡那一台网关（2026-10-02 起没有备机）")
+  @Test("RouteResolver 的出口：直连给出厂域名，网关给新加坡那一台网关（2026-10-02 起没有备机），两档都是币安本家")
   func resolverOutputs() {
     let direct = RouteResolver(policy: .direct)
     #expect(direct.route.restHosts(direct: "fapi.binance.com") == ["fapi.binance.com"])
@@ -99,7 +105,7 @@ struct ProviderCapabilitiesTests {
     #expect(gateway.route.gateways == MarketEndpoints.production.gateways)
     #expect(gateway.route.gateways == [ServerHosts.primary])
     #expect(gateway.route.restHosts(direct: "fapi.binance.com") == MarketEndpoints.production.gateways)
-    #expect(gateway.defaultProvider.capabilities.upstream == "okx")
+    #expect(gateway.defaultProvider.capabilities.upstream == "binance")
     // 线上网关表里绝不能混进合约测试网。
     #expect(!MarketEndpoints.production.gateways.contains { $0.contains("binancefuture") })
     // 地址只在 ServerHosts 一处；账号 API 走的就是主网关那台。
@@ -119,7 +125,7 @@ struct ProviderCapabilitiesTests {
     #expect(gateway.allSatisfy { $0.method == "HEAD" })
   }
 
-  @Test("小组件补价跟线路走：直连打 /fapi，网关打 /market/v1 并从信封取")
+  @Test("小组件补价跟线路走：直连打 /fapi，网关打 kanpan-api 的原样透传（载荷同形，不包信封）")
   func widgetRefreshFollowsRoute() throws {
     let direct = try #require(RouteResolver(policy: .direct).defaultProvider.widgetRefresh)
     #expect(direct.hosts == ["fapi.binance.com"])
@@ -127,11 +133,18 @@ struct ProviderCapabilitiesTests {
     #expect(direct.tickerField == nil)
     #expect(direct.market == VenueRegistry.default.marketKey)
     let gateway = try #require(RouteResolver(policy: .gateway).defaultProvider.widgetRefresh)
-    #expect(gateway.hosts == MarketEndpoints.production.gateways)
+    #expect(gateway.hosts == MarketEndpoints.production.api)
     let url = try #require(gateway.tickerURL(host: gateway.hosts[0], symbol: "BTCUSDT"))
-    #expect(url.path == "/market/v1/ticker")
-    #expect(url.query?.contains("source=okx") == true)
-    #expect(gateway.tickerField == "ticker" && gateway.closesField == "bars")
+    #expect(url.path == "/v1/market/raw/fapi/v1/ticker/24hr")
+    #expect(url.query == "symbol=BTCUSDT&source=binance")
+    let closes = try #require(gateway.closesURL(host: gateway.hosts[0], symbol: "BTCUSDT"))
+    #expect(closes.path == "/v1/market/raw/fapi/v1/klines")
+    #expect(closes.query == "symbol=BTCUSDT&interval=1h&limit=\(WidgetSnapshot.sparkBars)&source=binance")
+    #expect(gateway.tickerField == nil && gateway.closesField == nil && gateway.format == .binance)
+    // 和 `MarketRESTTransport` 改写出来的地址一模一样。
+    let rewritten = MarketRESTTransport.rawURL(
+      for: URL(string: "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT")!, host: gateway.hosts[0])
+    #expect(url == rewritten)
   }
 
   @Test("Coinbase 现货也有小组件补价，跟线路走、地址与取数件用的同一条（E-10）")
@@ -143,7 +156,7 @@ struct ProviderCapabilitiesTests {
       #expect(plans.allSatisfy { $0.market != VenueRegistry.default.marketKey })
       let plan = try #require(plans.first { $0.market == VenueRegistry.coinbase.marketKey })
       #expect(plan.format == .coinbase)
-      let endpoints = CoinbaseEndpoints(route: resolver.route)
+      let endpoints = CoinbaseVenue.endpoints(resolver.route)
       #expect(plan.hosts == endpoints.restHosts)
       let host = plan.hosts[0]
       // 和 `ticker24h` / `fetchBars` 拼出来的地址一模一样，网关透传也就一样。

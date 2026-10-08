@@ -42,7 +42,7 @@ struct StressRetryAfterTests {
       let server = FakeServer(pacer: pacer) { _ in
         json(#"{"code":-1003,"msg":"Too many requests"}"#, status: 429, headers: ["Retry-After": raw])
       }
-      let routed = MarketRESTTransport(source: .binance, gateways: ["gw.example.com"],
+      let routed = MarketRESTTransport(gateways: ["gw.example.com"],
                                        transport: FakeTransport(server), policy: .direct)
       let rest = BinanceREST(transport: routed, limiter: limiter, pacer: pacer)
       var thrown: BinanceError?
@@ -57,24 +57,26 @@ struct StressRetryAfterTests {
     }
   }
 
-  @Test("网关转述上游限流，头与 body 都是极端值：不崩，冷却与错误秒数有限且 ≤ 3 天")
-  func gatewaySurvivesHostileEnvelope() async throws {
-    for (header, body) in [("inf", "1e30"), ("1e400", "1e300"), ("Fri, 31 Dec 9999 23:59:59 GMT", "99999999999999999999")] {
-      let server = FakeServer { _ in
-        json(#"{"error":"upstream_rate_limited","source":"binance","code":418,"retryAfter":\#(body),"upstreamStatus":"418"}"#,
-             status: 429, headers: ["Retry-After": header])
+  @Test("网关档原样透传回 429 + 极端 Retry-After：不崩，网关那把限流器的封禁有限且 ≤ 3 天")
+  func gatewayRawSurvivesHostileHeaders() async throws {
+    for raw in Self.hostile {
+      let pacer = StepPacer()
+      let limiter = RateLimiter(pacer: pacer, minGapMs: 0)
+      let server = FakeServer(pacer: pacer) { _ in
+        json(#"{"code":-1003,"msg":"Too many requests"}"#, status: 429, headers: ["Retry-After": raw])
       }
-      let transport = MarketRESTTransport(source: .binance, gateways: ["one.test"],
-                                          transport: FakeTransport(server), policy: .gateway)
-      let url = URL(string: "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=300")!
-      for _ in 0..<2 {   // 第二笔走「冷却里按原类别重放」那条路，秒数同样要有限
-        var thrown: BinanceError?
-        do { _ = try await transport.get(url, timeout: 10) } catch let e as BinanceError { thrown = e }
-        let error = try #require(thrown)
-        _ = String(describing: error)
-        #expect(error.reason == .ipBanned)
-        #expect((error.retryAfter ?? 0).isFinite && (error.retryAfter ?? 0) <= Self.cap, "\(header)/\(body)")
-      }
+      let routed = MarketRESTTransport(gateways: ["one.test"], transport: FakeTransport(server), policy: .gateway)
+      let rest = BinanceREST(transport: routed, limiter: limiter, pacer: pacer)
+      var thrown: BinanceError?
+      do { _ = try await rest.klines(symbol: "BTCUSDT", interval: .h1, limit: 300) }
+      catch let e as BinanceError { thrown = e }
+      let error = try #require(thrown, "\(raw)")
+      _ = String(describing: error)
+      #expect((error.retryAfter ?? 0).isFinite && (error.retryAfter ?? 0) <= Self.cap, "\(raw)")
+      let remaining = await limiter.banRemainingMs()
+      #expect(remaining.isFinite && remaining <= Self.cap * 1000, "\(raw) → \(remaining)")
+      #expect(await pacer.sleepLog().allSatisfy { $0.isFinite && $0 <= RateLimiter.waitableBanMs })
+      #expect(await server.urls().allSatisfy { $0.host == "one.test" && $0.path == "/v1/market/raw/fapi/v1/klines" })
     }
   }
 
@@ -82,7 +84,7 @@ struct StressRetryAfterTests {
   func coinbaseLongBanThrowsInsteadOfHanging() async throws {
     for seconds in [60.0, 1e30] {
       let pacer = StepPacer()
-      let limiter = CoinbaseRateLimiter(perSecond: 10, pacer: pacer)
+      let limiter = VenueRateLimiter(perSecond: 10, pacer: pacer)
       await limiter.penalize(seconds: seconds)
       var thrown: UpstreamError?
       do { try await limiter.acquire() } catch let e as UpstreamError { thrown = e }
@@ -95,14 +97,14 @@ struct StressRetryAfterTests {
     // inf / NaN 等于没给：按 1 秒罚，短到可以原地等掉（原来 inf 会在 `UInt64(inf)` 上崩）。
     for seconds in [Double.infinity, .nan] {
       let pacer = StepPacer()
-      let limiter = CoinbaseRateLimiter(perSecond: 10, pacer: pacer)
+      let limiter = VenueRateLimiter(perSecond: 10, pacer: pacer)
       await limiter.penalize(seconds: seconds)
       try await limiter.acquire()
       #expect(await pacer.sleepLog() == [1000])
     }
     // 短罚停仍然原地等掉（既有语义）。
     let pacer = StepPacer()
-    let limiter = CoinbaseRateLimiter(perSecond: 10, pacer: pacer)
+    let limiter = VenueRateLimiter(perSecond: 10, pacer: pacer)
     await limiter.penalize(seconds: 2)
     try await limiter.acquire()
     #expect(await pacer.sleepLog() == [2000])

@@ -9,8 +9,10 @@ public struct VenueDescriptor: Sendable {
   public let market: String
   /// 中文显示名（设置、日志里给人看）。
   public let displayName: String
-  /// 搜索结果行右侧的小字标注。nil = 不标（默认那一家不标）。
-  public let searchTag: String?
+  /// 品种展示里带的交易所缩写（用户 2026-10-08 定，三端一致，不用图标）：列表行名字前的灰小字
+  /// （「币安 DOGE / USDT」）、图表顶栏角标（「币安 USDT 永续」）、桌面快捷方式撞名时的前缀。
+  /// 空串 = 不带（美元指数不是交易所）。币安「币安」、OKX「OKX」、Bybit「Bybit」、Hyperliquid「HL」、Coinbase「CB」。
+  public let shortName: String
   /// 自选页有没有它自己的一个分类（默认那一家的品种按加密 / 美股分，不单列）。
   public let hasFavoriteCategory: Bool
   /// 参不参加板块页。板块分类表是按某一家的品种表做的，别家的品种不进板块。
@@ -20,16 +22,16 @@ public struct VenueDescriptor: Sendable {
   /// 自选分类条上那一类叫什么。nil = 用 `displayName`（Coinbase 那一类就叫「Coinbase」）。
   let categoryName: String?
   public typealias Factory = @Sendable (MarketRoute, FeedLog) -> any MarketProvider
-  /// 按线路建提供者（网关上可能是替身）。
+  /// 按线路建提供者。
   let make: Factory
-  /// 按线路建一个**只供这家本家数据**的提供者：复盘记录、回放说的是这家自己的 K 线，
-  /// 替身的数对不上，宁可取不到也不拿替身顶。没有替身的交易所两者相同。
+  /// 按线路建一个**只供这家本家数据**的提供者（复盘记录、回放）。2026-10-08 起各家在两条线路上供的
+  /// 都是自己的数（币安网关档不再有替身），所以和 `make` 是同一个；字段留着，上层的 `ownDataProvider` 不用改。
   let makeOwn: Factory
 
-  public init(id: String, market: String, displayName: String, searchTag: String?,
+  public init(id: String, market: String, displayName: String, shortName: String,
               hasFavoriteCategory: Bool, joinsSectors: Bool, defaultSymbol: String,
               categoryName: String? = nil, makeOwn: Factory? = nil, make: @escaping Factory) {
-    self.id = id; self.market = market; self.displayName = displayName; self.searchTag = searchTag
+    self.id = id; self.market = market; self.displayName = displayName; self.shortName = shortName
     self.categoryName = categoryName
     self.hasFavoriteCategory = hasFavoriteCategory; self.joinsSectors = joinsSectors
     self.defaultSymbol = InstrumentID(venue: id, market: market, symbol: defaultSymbol).key
@@ -50,29 +52,25 @@ public struct VenueDescriptor: Sendable {
 public enum VenueRegistry {
   public static let binance = VenueDescriptor(
     id: BinanceProvider.venue, market: BinanceProvider.market, displayName: "币安",
-    searchTag: nil, hasFavoriteCategory: false, joinsSectors: true, defaultSymbol: "BTCUSDT",
-    makeOwn: { route, log in
-      BinanceProvider(upstream: .binance, hosts: BinanceProvider.hosts(route.endpoints), route: route, log: log)
-    }
+    shortName: "币安", hasFavoriteCategory: false, joinsSectors: true, defaultSymbol: "BTCUSDT"
   ) { route, log in
-    BinanceProvider(upstream: BinanceProvider.upstream(for: route),
-                    hosts: BinanceProvider.hosts(route.endpoints), route: route, log: log)
+    BinanceProvider(route: route, log: log)
   }
 
   public static let coinbase = VenueDescriptor(
-    id: CoinbaseProvider.venue, market: CoinbaseProvider.market, displayName: "Coinbase",
-    searchTag: "Coinbase", hasFavoriteCategory: true, joinsSectors: false, defaultSymbol: "BTC-USD"
+    id: CoinbaseVenue.id, market: CoinbaseVenue.market, displayName: CoinbaseVenue.displayName,
+    shortName: CoinbaseVenue.shortName, hasFavoriteCategory: true, joinsSectors: false, defaultSymbol: "BTC-USD"
   ) { route, log in
     CoinbaseProvider(route: route, log: log)
   }
 
   /// 美元指数（`macro/index/DXY`）。不是交易所，是看盘自己的 `kanpan-api` 采的一只指数，
   /// 但对上层来说就是又一家「交易所」：品种表里一只、自选里单独一类「指数」、不进板块页、
-  /// 搜索结果不挂来源小字（行上已经写着「美元指数」）。数据只从 `kanpan-api` 来（`MacroProvider`），
+  /// 不带交易所缩写（行上已经写着「美元指数」）。数据只从 `kanpan-api` 来（`MacroProvider`），
   /// 直连 / 网关两条线路都一样。
   public static let macro = VenueDescriptor(
     id: MacroProvider.venue, market: MacroProvider.market, displayName: "美元指数",
-    searchTag: nil, hasFavoriteCategory: true, joinsSectors: false, defaultSymbol: "DXY",
+    shortName: "", hasFavoriteCategory: true, joinsSectors: false, defaultSymbol: "DXY",
     categoryName: "指数"
   ) { route, log in
     MacroProvider(route: route, log: log)

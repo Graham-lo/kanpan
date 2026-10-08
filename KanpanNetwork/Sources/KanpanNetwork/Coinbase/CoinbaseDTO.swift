@@ -5,18 +5,11 @@ import KanpanCore
 // ISO 8601（推送），K 线按时间**降序**给——全在这一层翻成看盘的口径
 // （毫秒、Double、升序），出了这个文件夹谁都不认识 Coinbase 的格式。
 
+//
+// 这是 Coinbase **唯一**的报文解码：行情提供者（REST）、行情推送（`CoinbaseWire`）、
+// 订单流（`CoinbaseLevel2Adapter`）都调这里。身份与代号互译在 `CoinbaseVenue`。
 enum CoinbaseDTO {
-  static let venue = "coinbase"
-  static let market = "spot"
-  /// 只收美元计价。`BTC-USDC` 这类不收（已拍板）。
-  static let quote = "USD"
-
-  static func key(_ productID: String) -> String {
-    InstrumentID(venue: venue, market: market, symbol: productID).key
-  }
-
-  /// 品种键 → Coinbase 的 product_id（`BTC-USD`）。
-  static func productID(_ key: String) -> String { InstrumentID(key).symbol }
+  private static func key(_ productID: String) -> String { CoinbaseVenue.key(productID) }
 
   // ---------------------------------------------------------------- 品种表 / 24h 行情
 
@@ -52,7 +45,7 @@ enum CoinbaseDTO {
 
     /// 准入：美元计价、在线、现货、不是只读展示。
     var isListed: Bool {
-      quote_currency_id == CoinbaseDTO.quote && status == "online"
+      quote_currency_id == CoinbaseVenue.quote && status == "online"
         && product_type == "SPOT" && view_only != true && is_disabled != true
     }
 
@@ -60,7 +53,7 @@ enum CoinbaseDTO {
       guard let tick = price_increment.flatMap(Double.init), tick > 0 else { return nil }
       let base = (base_display_symbol?.isEmpty == false ? base_display_symbol : base_currency_id) ?? product_id
       let step = base_increment.flatMap(Double.init) ?? 0
-      return SymbolInfo(symbol: CoinbaseDTO.key(product_id), base: base.uppercased(), quote: CoinbaseDTO.quote,
+      return SymbolInfo(symbol: CoinbaseVenue.key(product_id), base: base.uppercased(), quote: CoinbaseVenue.quote,
                         pricePrecision: price_increment.map(CoinbaseDTO.decimals) ?? 0,
                         quantityPrecision: step > 0 ? base_increment.map(CoinbaseDTO.decimals) ?? 8 : 8,
                         tickSize: tick,
@@ -303,5 +296,78 @@ enum CoinbaseDTO {
     let days = era * 146_097 + doe - 719_468
     let secs = Int64(days) * 86_400 + Int64(h * 3600 + mi * 60 + sec)
     return secs * 1000 + Int64(ms)
+  }
+}
+
+// ---------------------------------------------------------------- 订单流（level2 + market_trades）
+
+extension CoinbaseDTO {
+  /// 订单流那条连接上的一帧 → 一本簿的消息（`CoinbaseLevel2Adapter.decode` 调它）。
+  ///
+  /// - `sequence_num` 是**整条连接**的序号，所以心跳、订阅回执、成交帧也各发一条空增量把序号推过去，
+  ///   否则本地簿会误判断档。
+  /// - l2 的 `side` 是 `bid` / `offer`；snapshot 的请求档数记成两侧较多的一侧 + 1（整本都在）。
+  /// - `market_trades` 的 `side` 是主动方（BUY 吃卖盘）；只收 `update`，开头那份 `snapshot` 是旧成交，不计。
+  ///
+  /// 对应原项目 `bit-orderbook-coinbase/src/lib.rs:709` 与 `:869`。
+  static func level2(_ text: String, book: DepthBook) -> [DepthMessage] {
+    let symbol = book.venue.instrument
+    guard let frame = DepthWire.object(text), let seq = DepthWire.integer(frame["sequence_num"]) else { return [] }
+    let advance = DepthMessage.delta(BookDelta(firstUpdateID: seq, finalUpdateID: seq, previousFinalUpdateID: nil))
+    let events = frame["events"] as? [[String: Any]] ?? []
+    switch frame["channel"] as? String {
+    case "l2_data", "level2":
+      var bids: [BookLevel] = [], asks: [BookLevel] = []
+      var snapshot = false
+      var time: Int64?
+      for event in events where (event["product_id"] as? String) == symbol {
+        if event["type"] as? String == "snapshot" { snapshot = true; bids = []; asks = [] }
+        for u in event["updates"] as? [[String: Any]] ?? [] {
+          // 坏档（非有限值、越界）整帧丢掉：连序号也不推进，下一帧就会发现断档、整本重来，
+          // 不会只漏一档让本地簿悄悄留着一个旧量。
+          guard let p = DepthWire.number(u["price_level"]), let q = DepthWire.number(u["new_quantity"]),
+                p > 0, q >= 0, p.isFinite, q.isFinite else { WireNumber.noteDropped(); return [] }
+          let level = BookLevel(price: p * book.priceFactor, quantity: q * book.quantityFactor)
+          switch u["side"] as? String {
+          case "bid": bids.append(level)
+          case "offer", "ask": asks.append(level)
+          default: continue
+          }
+          if let t = (u["event_time"] as? String).flatMap(isoMs) { time = max(time ?? t, t) }
+        }
+      }
+      if snapshot {
+        return [.snapshot(BookSnapshot(lastUpdateID: seq, requestedLevels: max(bids.count, asks.count) + 1,
+                                       bids: bids, asks: asks, eventTimeMs: time))]
+      }
+      return [.delta(BookDelta(firstUpdateID: seq, finalUpdateID: seq, previousFinalUpdateID: nil,
+                               bids: bids, asks: asks, eventTimeMs: time ?? 0))]
+    case "market_trades":
+      var out = [advance]
+      for event in events where event["type"] as? String == "update" {
+        for t in event["trades"] as? [[String: Any]] ?? [] {
+          guard (t["product_id"] as? String) == symbol else { continue }
+          guard let p = DepthWire.number(t["price"]), let q = DepthWire.number(t["size"]),
+                p.isFinite, q.isFinite, p > 0, q >= 0 else {
+            // 坏成交：这一帧的成交全不要（只推进序号），并记一笔。
+            WireNumber.noteDropped()
+            return [advance]
+          }
+          guard q > 0 else { continue }
+          let hit: BookSide
+          switch (t["side"] as? String)?.uppercased() {
+          case "BUY": hit = .ask
+          case "SELL": hit = .bid
+          default: continue
+          }
+          out.append(.trade(book.trade(price: p, quantity: q, hit: hit,
+                                       timeMs: (t["time"] as? String).flatMap(isoMs) ?? 0)))
+        }
+      }
+      return out
+    default:
+      // 心跳、订阅回执：只推进序号。
+      return [advance]
+    }
   }
 }

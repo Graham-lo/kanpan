@@ -163,45 +163,40 @@ struct PremiumIndexTests {
     await #expect(throws: (any Error).self) { _ = try await bad.tickers24h() }
   }
 
-  /// 提供者那一层：整表按完整品种 key 交出去。直连问币安本家；网关上的 OKX 替身
-  /// 问网关的替身整表，绝不落到币安的 `premiumIndex` 上（不混源）。
-  @Test("全市场费率：直连问本家，网关问替身自己的整表，键都是完整品种 key")
+  /// 提供者那一层：整表按完整品种 key 交出去。两条线路问的都是币安本家的 `premiumIndex`
+  /// （网关档经 kanpan-api 原样透传），不再有替身那张表。
+  @Test("全市场费率：两条线路都问币安本家的 premiumIndex，键都是完整品种 key")
   func providerFundingAllStaysOnItsOwnSource() async throws {
     let pacer = StepPacer()
     let server = FakeServer { _ in
       json(#"[{"symbol":"BTCUSDT","lastFundingRate":"0.00010000","nextFundingTime":1700000000000}]"#)
     }
-    let rest = BinanceREST(transport: FakeTransport(server),
-                           limiter: RateLimiter(pacer: pacer, minGapMs: 0), pacer: pacer)
-    let direct = BinanceProvider(upstream: .binance, hosts: BinanceHosts(), policy: .direct, rest: rest)
-    let table = try await direct.fundingAll()
-    #expect(table[InstrumentID.canonical("BTCUSDT")]?.rate == 0.0001)
-
-    let gateway = FakeServer { url in
-      if url.host == "gw-a.example" { return json("{}", status: 503) }
-      return json(#"{"ok":true,"data":{"source":"okx","rows":[{"symbol":"BTCUSDT","rate":0.00008,"nextFundingTime":1790179200000},{"symbol":"ETHUSDT","rate":null,"nextFundingTime":1790179200000}]}}"#)
+    for policy in MarketRoutePolicy.allCases {
+      let hosts = BinanceHosts(oiProxy: "gw-a.example")
+      let transport = MarketRESTTransport(gateways: hosts.oiProxies, transport: FakeTransport(server), policy: policy)
+      let rest = BinanceREST(hosts: hosts, transport: transport,
+                             limiter: RateLimiter(pacer: pacer, minGapMs: 0), pacer: pacer)
+      let provider = BinanceProvider(hosts: hosts, policy: policy, rest: rest)
+      let table = try await provider.fundingAll()
+      #expect(table[InstrumentID.canonical("BTCUSDT")]?.rate == 0.0001)
     }
-    let hosts = BinanceHosts(oiProxy: "gw-a.example", oiProxyFallbacks: ["gw-b.example:8443"])
-    let substitute = BinanceProvider(upstream: .okx, hosts: hosts, policy: .gateway, rest: rest,
-                                     http: FakeTransport(gateway))
-    let okx = try await substitute.fundingAll()
-    #expect(okx[InstrumentID.canonical("BTCUSDT")] == FundingSnapshot(rate: 0.00008, nextFundingTimeMs: 1_790_179_200_000))
-    #expect(okx[InstrumentID.canonical("ETHUSDT")] == nil)
-    #expect(try await substitute.funding(symbol: "BTCUSDT").rate == 0.00008)
-    let asked = await gateway.hits.map(\.url)
-    // 主网关 503 就换备用那台（带端口），两次都一样。
-    #expect(asked.map { $0.host ?? "" } == ["gw-a.example", "gw-b.example", "gw-a.example", "gw-b.example"])
-    #expect(asked.filter { $0.host == "gw-b.example" }.allSatisfy { $0.port == 8443 })
-    #expect(asked.allSatisfy { $0.path == "/v1/market/funding" && $0.query == "source=okx" })
-    // 替身那两次一发也没打到币安本家那台假 server 上。
-    #expect(await server.hits.count == 1)
+    let asked = await server.urls()
+    #expect(asked.map { $0.host ?? "" } == ["fapi.binance.com", "gw-a.example"])
+    #expect(asked.map(\.path) == ["/fapi/v1/premiumIndex", "/v1/market/raw/fapi/v1/premiumIndex"])
+    #expect(asked.last?.query == "source=binance")
   }
 
-  @Test("网关费率表来源对不上就整表不收")
-  func gatewayFundingRejectsForeignSource() {
-    let body = Data(#"{"data":{"source":"binance","rows":[{"symbol":"BTCUSDT","rate":0.0001}]}}"#.utf8)
-    #expect(throws: (any Error).self) {
-      try GatewayFunding.decode(body, source: "okx", venue: "binance", market: "usd_m")
+  /// 行情帧不带涨跌额（`p`）时，用同一帧的最新价减 24h 开盘价补上；成交额（`q`）是空串就留成缺失。
+  /// 原来是网关 OKX 替身转的帧这样写；替身删了，宽容的解码留着（上游少一个字段不该丢整帧）。
+  @Test("行情帧不带涨跌额时用最新价减开盘价补上；成交额空串留空")
+  func tickerFrameWithoutPriceChange() throws {
+    let frame = #"{"e":"24hrTicker","E":1790163254373,"s":"BTCUSDT","o":"85896.9","c":"85509.7","P":"-0.45","h":"87245","l":"85406","v":"73948.48","q":"","C":1790163254373}"#
+    guard case .ticker(let t) = try JSONDecoder().decode(StreamPayload.self, from: Data(frame.utf8)) else {
+      Issue.record("不是行情帧"); return
     }
+    #expect(abs((t.priceChange ?? .nan) - (-387.2)) < 1e-6)
+    #expect(t.open24h == 85896.9)
+    #expect(t.quoteVolume.isNaN)
+    #expect(t.amplitude24h != nil)
   }
 }

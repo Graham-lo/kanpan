@@ -4,8 +4,8 @@ import KanpanCore
 /// 线路 × 交易所 → 提供者。**行情线路的唯一决策点。**
 ///
 /// 线路（直连 / 网关）是用户在设置里定的全局开关，对所有交易所生效；某家交易所在
-/// 网关上实际由谁供数（比如币安在网关上被封、服务端换替身顶上），在那一家自己的
-/// 工厂里决定，上层只看得到提供者的 `capabilities`。
+/// 网关上连哪台、能给出哪些能力，在那一家自己的工厂里决定，上层只看得到提供者的 `capabilities`。
+/// 两条线路供的都是那一家自己的数，不混源、没有替身。
 ///
 /// 输入是用户选的线路 + 主机，输出是 `route`（REST / 推送主机与网关候选）和按它建好的
 /// 提供者。app 里任何取数件都从这儿拿，不再自己拼 `.direct` / `.default`——那样的旁路
@@ -43,7 +43,8 @@ public struct RouteResolver: Sendable {
     VenueRegistry.descriptor(forSymbol: key).make(route, log)
   }
 
-  /// 这家本家的数据（不拿替身顶），走用户选的线路。复盘回放用（只取 K 线，不开推送）。
+  /// 这家本家的数据，走用户选的线路。复盘回放用（只取 K 线，不开推送）。各家两条线路供的都是
+  /// 自己的数，所以和 `provider(venue:)` 是同一个。
   /// 认不出的交易所给 nil。
   public func ownDataProvider(venue: String) -> (any MarketProvider)? {
     VenueRegistry.descriptor(venue).map { $0.makeOwn(route, log) }
