@@ -24,7 +24,7 @@
 //!   分钟末 + 3 秒宽限之后交给写库任务；宽限之后才到的作为增量再交一次（写库时加上去）。
 //! * 写库、清理、接口全照 `flow.rs`：一个写库任务攒批合并同一（base，分钟）、多行 INSERT 写 `orderflow_liq`（迁移 0052），
 //!   金额与笔数相加、最大一笔取大；占 `WRITE_SLOTS`；通道满了丢这一分钟。每小时和订单流的清理一起逐只 base 删 3 天以前的，
-//!   220 只 3 天最多约 95 万行，不设体积闸门。停机（`CLOSING`）把手上没交的分钟全部交出去。
+//!   220 只 3 天最多约 95 万行，不设体积闸门。停机（`CLOSING`）把手上没交的分钟全部交出去，`super::shutdown` 等它们写完（同一个 10 秒上限）。
 //! * 接口 `GET /v1/market/orderflow/liq?base=&from=&to=` → `{"base","tracked","rows":[[minute_ms,多头被平,空头被平,笔数,最大一笔,最大一笔价格,哪边,哪家],…]}`：
 //!   哪边 0 多头被平 / 1 空头被平，哪家 0 币安 / 1 OKX；金额取整美元，价格原样。区间、`tracked:false`（不读库）、不要登录、
 //!   20 秒合并读库、gzip、`Cache-Control: public, max-age=20`、读库占 `HISTORY_READS`，全和 `flow.rs` 一致。
@@ -45,7 +45,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use sqlx::{PgPool,Row as _};
 use std::collections::{BTreeMap,HashMap};
-use std::sync::atomic::{AtomicU64,Ordering};
+use std::sync::atomic::{AtomicBool,AtomicU64,AtomicUsize,Ordering};
 use std::sync::{Arc,Mutex,OnceLock,RwLock};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -393,6 +393,7 @@ async fn flush() {
      closed=true;
      let rest=acc().take();
      for (base,m) in rest {submit(&base,m);}
+     HANDED.store(true,Ordering::SeqCst);
     }
    },
   }
@@ -403,6 +404,21 @@ async fn flush() {
 
 static TX:OnceLock<mpsc::Sender<(String,Minute)>>=OnceLock::new();
 static DROPPED:AtomicU64=AtomicU64::new(0);
+/// 已交给写库任务、还没写完（写进或写失败）的分钟数；停机时 [`drained`] 等它归零。
+static IN_FLIGHT:AtomicUsize=AtomicUsize::new(0);
+/// 停机时 [`flush`] 已经把手上没交的分钟全交出去了。
+static HANDED:AtomicBool=AtomicBool::new(false);
+
+/// 停机收尾（`super::shutdown`，和跟踪任务交单同时进行）：等 [`flush`] 交完手上的分钟、写库任务把它们写完，
+/// 最多等到 `deadline`。没起爆仓聚合（测试、备用节点）直接算完。返回是否写完了。
+pub(super) async fn drained(deadline:Instant)->bool {
+ if TX.get().is_none() {return true}
+ loop {
+  if HANDED.load(Ordering::SeqCst)&&IN_FLIGHT.load(Ordering::SeqCst)==0 {return true}
+  if Instant::now()>=deadline {return false}
+  tokio::time::sleep(Duration::from_millis(10)).await;
+ }
+}
 
 /// 起写库任务、每秒交分钟的任务、映射重建与三路连接（serve 进程起订单流时一次）。
 pub(super) fn start(pool:PgPool) {
@@ -422,7 +438,8 @@ pub(super) fn start(pool:PgPool) {
 /// 交一分钟：不等，通道满了就丢。
 fn submit(base:&str,m:Minute) {
  let Some(tx)=TX.get() else {return};
- if tx.try_send((base.to_string(),m)).is_err() {DROPPED.fetch_add(1,Ordering::Relaxed);}
+ IN_FLIGHT.fetch_add(1,Ordering::SeqCst);
+ if tx.try_send((base.to_string(),m)).is_err() {IN_FLIGHT.fetch_sub(1,Ordering::SeqCst);DROPPED.fetch_add(1,Ordering::Relaxed);}
 }
 
 /// 一批里同一（base，分钟）的先合成一行：一条 `ON CONFLICT DO UPDATE` 不能两次碰同一行。
@@ -441,6 +458,7 @@ async fn writer(pool:PgPool,mut rx:mpsc::Receiver<(String,Minute)>) {
  while let Some(first)=rx.recv().await {
   let mut rows=vec![first];
   while rows.len()<PENDING_CAP && let Ok(more)=rx.try_recv() {rows.push(more);}
+  let received=rows.len();
   let rows=merge(rows);
   let Ok(_slot)=WRITE_SLOTS.acquire().await else {return};
   for chunk in rows.chunks(INSERT_ROWS) {
@@ -453,6 +471,7 @@ async fn writer(pool:PgPool,mut rx:mpsc::Receiver<(String,Minute)>) {
    }
   }
   drop(_slot);
+  IN_FLIGHT.fetch_sub(received,Ordering::SeqCst);
   if Instant::now()>=report {
    tracing::info!("Orderflow liq: last {}s wrote {written} base-minutes; dropped {} (queue full), {failed} (write failed)",REPORT.as_secs(),DROPPED.swap(0,Ordering::Relaxed));
    (written,failed)=(0,0);
@@ -716,5 +735,23 @@ mod tests {
   assert_eq!(left,2);
   sqlx::query("DELETE FROM orderflow_liq WHERE base=$1").bind(base).execute(&pool).await.unwrap();
   sqlx::query("DELETE FROM orderflow_bases WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+ }
+
+ /// 停机收尾靠「在途归零 = 已经写进库」：写库任务写完（或写失败）才减在途，减到零时行一定已经在库里。
+ #[tokio::test] async fn in_flight_reaches_zero_only_after_the_rows_are_written() {
+  let Some(pool)=store::tests::isolated_pool().await else {return};
+  let base="LIQDRAIN";
+  sqlx::query("DELETE FROM orderflow_liq WHERE base=$1").bind(base).execute(&pool).await.unwrap();
+  let (tx,rx)=mpsc::channel(8);
+  tokio::spawn(writer(pool.clone(),rx));
+  let m=|minute_ms|Minute{minute_ms,long_usd:5.0,short_usd:0.0,n:1,max_usd:5.0,max_price:1.0,max_side:LONG,max_ex:BINANCE};
+  IN_FLIGHT.fetch_add(2,Ordering::SeqCst);
+  tx.send((base.into(),m(60_000))).await.unwrap();
+  tx.send((base.into(),m(120_000))).await.unwrap();
+  let deadline=Instant::now()+Duration::from_secs(10);
+  while IN_FLIGHT.load(Ordering::SeqCst)!=0 {assert!(Instant::now()<deadline,"写库任务没把在途减回零");tokio::time::sleep(Duration::from_millis(5)).await;}
+  let n:i64=sqlx::query_scalar("SELECT count(*) FROM orderflow_liq WHERE base=$1").bind(base).fetch_one(&pool).await.unwrap();
+  assert_eq!(n,2,"在途归零时两分钟都已在库里");
+  sqlx::query("DELETE FROM orderflow_liq WHERE base=$1").bind(base).execute(&pool).await.unwrap();
  }
 }

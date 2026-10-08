@@ -861,7 +861,7 @@ struct Closed {bases:usize,live:usize,refreshed:Option<u64>,writing:usize,elapse
 /// 进程收到 SIGTERM 之后调用（`main.rs`，和 axum 的优雅退出同时开始）：
 /// 1. 让所有跟踪任务停下、交出挂着的单（不判失联）；结束了还没写的、刚出现还没写的交给各自的写库任务；
 /// 2. 一句 UPDATE 刷掉所有挂着的单的 `seen_ms`；
-/// 3. 等写库任务写完；
+/// 3. 等写库任务写完；同时等爆仓分钟聚合把没写的分钟交出并写完（`liq::drained`）；
 ///
 /// 整段最多 [`SHUTDOWN_LIMIT`]，到点不再等（没写进去的留给下次读回 / 清理收掉）。日志一行
 /// `Orderflow history: shutdown …`。没有跟踪器（备用节点、测试）什么也不做。
@@ -871,7 +871,10 @@ pub async fn shutdown() {
  *FINALS.lock().unwrap_or_else(|e|e.into_inner())=Some(tx);
  CLOSING.send_replace(true);
  let expected=ACTIVE.load(Ordering::SeqCst);
- let closed=close(pool,rx,expected,&ACTIVE,SHUTDOWN_COLLECT,SHUTDOWN_LIMIT).await;
+ // 爆仓分钟聚合同时收尾：交出手上没写的分钟并等它们写进去，同一个上限。
+ let liq_deadline=tokio::time::Instant::now()+SHUTDOWN_LIMIT;
+ let (closed,liq_drained)=tokio::join!(close(pool,rx,expected,&ACTIVE,SHUTDOWN_COLLECT,SHUTDOWN_LIMIT),liq::drained(liq_deadline));
+ if !liq_drained {tracing::warn!("Orderflow liq: shutdown left unwritten minutes after {}s",SHUTDOWN_LIMIT.as_secs());}
  FINALS.lock().unwrap_or_else(|e|e.into_inner()).take();
  let Closed{bases,live,refreshed,writing,elapsed_ms}=closed;
  let refreshed=refreshed.map_or("failed".to_string(),|n|n.to_string());
