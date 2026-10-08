@@ -220,8 +220,9 @@ export function barsCardHTML(bars: BarCol[], sel: number | null, flash: number |
 
 export function ladderCardHTML(rows: LadderRow[] | null): string {
   if (!rows || !rows.length) return ''
-  const side = (cls: 'bl' | 'br', w: number, v: number, wall: number | null): string =>
-    `<div class="${cls}" style="--w:${w.toFixed(0)}%"><i style="width:${w.toFixed(0)}%"></i>${wall != null ? `<span class="wall">墙 ${esc(fmt(wall))}</span>` : w > 6 ? `<s>${esc(fmt(v))}</s>` : ''}</div>`
+  // 条最长占这一侧的 62%：金额字贴在条外头，最长那条的字也不出卡片
+  const side = (cls: 'bl' | 'br', w0: number, v: number, wall: number | null, w = w0 * 0.62): string =>
+    `<div class="${cls}" style="--w:${w.toFixed(0)}%"><i style="width:${w.toFixed(0)}%"></i>${wall != null ? `<span class="wall">墙 ${esc(fmt(wall))}</span>` : w0 > 6 ? `<s>${esc(fmt(v))}</s>` : ''}</div>`
   return `<div class="bt-card" data-card="ladder"><h5>价位<span class="rt">现价上下五档 · 近 1 小时</span></h5><div class="bt-ladder">${rows.map(r =>
     side('bl', r.bw, r.buy, r.bidWall) + `<div class="p${r.now ? ' now' : ''}">${esc(r.price)}</div>` + side('br', r.sw, r.sell, r.askWall)).join('')}</div></div>`
 }

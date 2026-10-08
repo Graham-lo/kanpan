@@ -49,7 +49,8 @@
 .bt-rows .lab { font-weight: 600; color: var(--ink2) }
 .bt-ends { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; color: var(--ink3); font-variant-numeric: tabular-nums }
 .bt-ends b { font-weight: 600 }
-.bt-mini { font-size: 11px; color: var(--ink3); display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-variant-numeric: tabular-nums }
+.bt-mini { font-size: 11px; color: var(--ink3); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; margin-top: 8px; font-variant-numeric: tabular-nums }
+.bt-mini > span { white-space: nowrap }
 .bt-mini b { color: var(--ink); font-weight: 600 }
 .bt-sheet .up { color: var(--up) } .bt-sheet .down { color: var(--down) }
 .bt-sheet .bt-mini b.up { color: var(--up) } .bt-sheet .bt-mini b.down { color: var(--down) }
@@ -79,9 +80,9 @@
 .bt-ladder .bl, .bt-ladder .br { position: relative; height: 12px }
 .bt-ladder .bl i { position: absolute; right: 0; top: 0; bottom: 0; border-radius: 6px 2px 2px 6px; background: color-mix(in srgb, var(--up) 78%, transparent) }
 .bt-ladder .br i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px 6px 6px 2px; background: color-mix(in srgb, var(--down) 78%, transparent) }
-.bt-ladder s { position: absolute; top: 50%; transform: translateY(-50%); text-decoration: none; font-size: 10px; color: var(--ink3); white-space: nowrap }
+.bt-ladder s { position: absolute; top: 50%; transform: translateY(-50%); text-decoration: none; font-size: 11px; color: var(--ink3); white-space: nowrap }
 .bt-ladder .bl s { right: calc(var(--w) + 5px) } .bt-ladder .br s { left: calc(var(--w) + 5px) }
-.bt-ladder .wall { position: absolute; top: 50%; transform: translateY(-50%); font: 600 10px/1 var(--font-ui); padding: 3px 6px; border-radius: 999px; color: #fff; white-space: nowrap }
+.bt-ladder .wall { position: absolute; top: 50%; transform: translateY(-50%); font: 600 11px/1 var(--font-ui); padding: 3px 6px; border-radius: 999px; color: #fff; white-space: nowrap }
 .bt-ladder .bl .wall { left: 0; background: var(--up) } .bt-ladder .br .wall { right: 0; background: var(--down) }
 
 .bt-liqmax { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--lg-well) }
