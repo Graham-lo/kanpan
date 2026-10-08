@@ -37,7 +37,7 @@ import { morphHtml } from '../ui/patch'
 import { toast, menu, menuFrom, closeMenu, menuOpen, dialog, dialogs, head, term, type MenuItem } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioText, ratioCls } from '../ui/common'
 import { TVChart, type Drawing, type DrawingType, type ContextMenuInfo, type AlertLine, type AlertSignal } from '../chart/chart'
-import { installDrawing, selectTool, drawTool, drawSticky, toolDone, renderDrawbar, onDrawbarClick, onDrawbarContext, styleFor, canAdd, newDrawing, showQuick, hideQuick, refreshQuick, quickFade, copyDrawing, pasteDrawing, nudge, nudgeEnd } from './drawing'
+import { installDrawing, selectTool, drawTool, drawSticky, toolDone, renderDrawbar, onDrawbarClick, onDrawbarContext, styleFor, canAdd, newDrawing, showQuick, hideQuick, refreshQuick, quickFade, copyDrawing, pasteDrawing, nudge, nudgeEnd, editText } from './drawing'
 import { CATALOG, MAX_SUBS, type Bar, type IndicatorId, type IndParams, type SubId } from '../chart/calc'
 import { isMoreMain, MORE_PARAM_NAME } from '../chart/mainIndicators'
 import { indicatorRows, matchRow, IND_GROUPS } from './indicatorPicker'
@@ -281,6 +281,7 @@ function makeCell(i: number): Cell {
     onLegendAction: (id, act, btn) => { if (act === 'alert') indicatorAlert(cell, id); else legendAction(id, act, btn) },
     onToolDone: d => toolDone(cell, d),
     onSelectDrawing: d => showQuick(d, cell),
+    onEditText: (d, at) => editText(cell, d, at),
     onDrawingsChanged: () => drawingsChanged(cell),
     onAlertCreate: p => quickAlert(cfg(cell).symbol, p),
     onAlertMove: (a, p) => { if (a.id) moveAlert(a.id, p) },

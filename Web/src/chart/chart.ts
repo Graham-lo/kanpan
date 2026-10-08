@@ -1788,7 +1788,7 @@ export class TVChart {
     else if (d.type === 'ray') { const k = extend(a, b, PW * 3); c.moveTo(a.x, a.y); c.lineTo(k.x, k.y) }
     else if (d.type === 'hline') { c.moveTo(0, a.y); c.lineTo(PW, a.y) }
     else if (d.type === 'vline') { c.moveTo(a.x, p.y); c.lineTo(a.x, p.y + p.h) }
-    else if (d.type === 'rect') { c.rect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y)); c.save(); c.fillStyle = hexA(col, .12); c.fill(); c.restore() }
+    else if (d.type === 'rect') { c.rect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y)); if (d.filled !== false) { c.save(); c.fillStyle = hexA(col, .12); c.fill(); c.restore() } }
     else if (d.type === 'fib') {
       // 刻度跟画线走（同步过来的自定义刻度也照画）；颜色按位置轮着用，首尾灰
       const lv = levelsOf(d), pal = ['#F23645', '#FF9800', '#4CAF50', '#089981', '#00BCD4', '#2962FF', '#9C27B0']
@@ -1847,6 +1847,8 @@ export class TVChart {
       else if (d.type === 'rect' || d.type === 'measure' || d.type === 'fib') {
         const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y)
         if (x >= x0 - 4 && x <= x1 + 4 && y >= y0 - 4 && y <= y1 + 4) dist = 0
+        // 关了底色的矩形只认四条边（框里是空的，点进去该落到下面的 K 线 / 别的线上）
+        if (dist === 0 && d.type === 'rect' && d.filled === false) dist = Math.min(x - x0, x1 - x, y - y0, y1 - y) <= 5 ? 0 : Infinity
       }
       if (dist < 6) return { d, handle: null }
     }

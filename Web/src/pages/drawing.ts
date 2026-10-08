@@ -10,7 +10,7 @@
  */
 import { st, save } from '../app/store'
 import type { Drawing, DrawingType, TVChart } from '../chart/chart'
-import { QUOTA, TOOL_GROUPS, cleanDrawColor, cleanDrawWidth, familyOf, groupOf, quotaOK, toolName, type Dash } from '../chart/drawTools'
+import { QUOTA, TOOL_GROUPS, cleanDrawColor, cleanDrawWidth, familyOf, groupOf, quotaOK, toolName, usesFill, usesLevels, usesText, type Dash } from '../chart/drawTools'
 import { drawingAlertOf, drawingCanAlert, toggleDrawingAlert } from '../alerts/model'
 import { askNotify } from '../alerts/panel'
 import { $$, I, esc, tgt } from '../ui/dom'
@@ -62,32 +62,74 @@ const current = (gid: string): DrawingType => {
   return last && g.tools.some(x => x[0] === last) ? last : g.tools[0][0]
 }
 
+/** 展开箭头：4 × 7 的小三角（细，不抢图标） */
+const CHEV = '<svg class="chev" viewBox="0 0 4 7" aria-hidden="true"><path d="M.6.6 3.2 3.5.6 6.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+
 export function renderDrawbar(): void {
   const bar = $$('#drawbar')[0]; if (!bar) return
+  bindFlyHover(bar)
   const btn = (t: DrawingType, all: string, name: string, kbd: string) => {
     const on = tool === t
     return `<button class="ibtn" data-tool="${t}" data-tools="${all}" aria-label="${esc(name)}" data-tip="${esc(name)}${on && sticky ? '（连续画中，右键或 Esc 退出）' : '（双击连续画）'}" data-kbd="${kbd}" data-tip-side="right" aria-pressed="${on}">${I(t)}${on && sticky ? '<span class="sticky-dot" aria-hidden="true"></span>' : ''}</button>`
   }
+  const scroll = bar.scrollTop
   bar.innerHTML = `<button class="ibtn" data-tool="cursor" aria-label="十字光标" data-tip="十字光标" data-kbd="Esc" data-tip-side="right" aria-pressed="${!tool}">${I('cursor')}</button><div class="grp-sep"></div>` +
     TOOL_GROUPS.map(g => {
       const t = current(g.id), meta = g.tools.find(x => x[0] === t)!
       const all = g.tools.map(x => x[0]).join(' ')
-      return `<div class="tool-grp" data-grp="${g.id}">${btn(t, all, meta[1], meta[2])}${g.tools.length > 1 ? `<button class="fly-chev" data-fly="${g.id}" aria-label="${g.name}：全部工具" data-tip="${g.name}：全部工具" data-tip-side="right" aria-haspopup="menu">${I('chevronDown', 'icon-12')}</button>` : ''}</div>`
+      const open = flyGid === g.id && flyEl?.isConnected
+      return `<div class="tool-grp${g.tools.some(x => x[0] === tool) ? ' has-tool' : ''}${open ? ' fly-open' : ''}" data-grp="${g.id}">${btn(t, all, meta[1], meta[2])}${g.tools.length > 1 ? `<button class="fly-chev" data-fly="${g.id}" aria-label="${g.name}：全部工具" aria-haspopup="menu" aria-expanded="${!!open}">${CHEV}</button>` : ''}</div>`
     }).join('') +
     `<div class="grp-sep"></div>
+    ${btn('measure', 'measure', toolName('measure'), '⇧ 拖')}
     <button class="ibtn" data-dact="magnet" aria-label="磁吸" data-tip="磁吸：贴到最近的开高低收（按住 ⌘ 临时反过来）" data-tip-side="right" aria-pressed="${st.magnet}">${I('magnet')}</button>
     <button class="ibtn" data-dact="lock" aria-label="锁定画线" data-tip="锁定全部画线" data-tip-side="right" aria-pressed="${st.drawLocked}">${I('lock')}</button>
     <button class="ibtn" data-dact="hide" aria-label="隐藏画线" data-tip="隐藏全部画线" data-kbd="⌘ ⌥ H" data-tip-side="right" aria-pressed="${st.drawHidden}">${I(st.drawHidden ? 'eyeOff' : 'eye')}</button>
     <div class="spacer"></div>
     <button class="ibtn" data-dact="clear" aria-label="删除" data-tip="删除画线 / 指标" data-tip-side="right" aria-haspopup="menu">${I('trash')}</button>`
+  bar.scrollTop = scroll
+}
+
+// 展开整组：点右沿的箭头条，或鼠标停在箭头条上（120 ms）就展开；菜单紧贴工具栏右沿、和这一组的按钮顶对齐
+let flyGid: string | null = null
+let flyEl: HTMLElement | null = null
+let hoverTimer = 0
+function bindFlyHover(bar: HTMLElement): void {
+  if (bar.dataset.flyHover) return
+  bar.dataset.flyHover = '1'
+  bar.addEventListener('mouseover', e => {
+    const b = tgt(e).closest<HTMLElement>('.fly-chev')
+    clearTimeout(hoverTimer)
+    if (!b?.dataset.fly || (flyGid === b.dataset.fly && flyEl?.isConnected)) return
+    const gid = b.dataset.fly
+    hoverTimer = window.setTimeout(() => { if (b.isConnected && b.matches(':hover')) flyout(b, gid) }, 120)
+  })
+  bar.addEventListener('mouseleave', () => clearTimeout(hoverTimer))
+  // 列太矮在滚动时，展开着的菜单不再对得上那一组：收起
+  bar.addEventListener('scroll', () => { if (flyEl?.isConnected) closeMenu() }, { passive: true })
+}
+function markFly(gid: string | null): void {
+  $$<HTMLElement>('#drawbar .tool-grp').forEach(g => {
+    const on = g.dataset.grp === gid
+    g.classList.toggle('fly-open', on)
+    g.querySelector('.fly-chev')?.setAttribute('aria-expanded', String(on))
+  })
 }
 
 function flyout(b: HTMLElement, gid: string): void {
   const g = TOOL_GROUPS.find(x => x.id === gid); if (!g) return
+  clearTimeout(hoverTimer)
   const r = (b.closest('.tool-grp') as HTMLElement).getBoundingClientRect()
+  const bar = (b.closest('#drawbar') as HTMLElement | null)?.getBoundingClientRect() ?? r
   const items: MenuItem[] = [{ header: g.name }, ...g.tools.map(([t, name, kbd]): MenuItem => ({ icon: t, label: name, sc: kbd, checked: tool === t, run: () => selectTool(t) }))]
-  const m = menu(items, r.right + 6, r.top, { width: 220, returnFocus: b })
+  const m = menu(items, bar.right + 2, r.top - 4, { width: 285, returnFocus: b })
   m.classList.add('tool-fly')
+  // 靠下的组：菜单往上挪到刚好放得下，不整块翻到按钮上面去
+  m.style.top = Math.max(8, Math.min(r.top - 4, innerHeight - m.offsetHeight - 8)) + 'px'
+  flyGid = gid; flyEl = m; markFly(gid)
+  // 菜单怎么关的都行（点外面、Esc、选了一把）：关了就把这一组的展开态收掉
+  new MutationObserver((_, ob) => { if (!m.isConnected) { ob.disconnect(); if (flyEl === m) { flyEl = null; flyGid = null; markFly(null) } } })
+    .observe(document.body, { childList: true })
   // 双击菜单里的一项 = 连续画
   m.addEventListener('dblclick', e => {
     const mi = tgt(e).closest<HTMLElement>('.mi'); if (!mi) return
@@ -169,12 +211,15 @@ const widthSvg = (raw: unknown) => { const w = cleanDrawWidth(raw); return `<svg
 const swatchBtn = (raw: unknown, pressed: boolean, tip: string) => { const c = esc(cleanDrawColor(raw)); return `<button class="swatch-btn" data-color="${c}" aria-label="${esc(tip)} ${c}" data-tip="${esc(tip)}" aria-pressed="${pressed}"><span class="swatch" style="background:${c}"></span></button>` }
 const sameColor = (a: unknown, b: unknown): boolean => cleanDrawColor(a).toUpperCase() === cleanDrawColor(b).toUpperCase()
 
-/** 这条画线能调哪些样式（多空持仓固定红绿、固定区间成交量分布只有框色） */
-function knobs(t: DrawingType): { color: boolean; width: boolean; dash: boolean } {
-  if (t === 'position') return { color: false, width: false, dash: false }
-  if (t === 'fvp') return { color: true, width: false, dash: false }
-  return { color: true, width: true, dash: t !== 'fib' }
+/** 这条画线能调哪些样式（多空持仓固定红绿；两把成交量分布只有框色；标注类没有线宽线型；刻度一族没有线型） */
+function knobs(t: DrawingType): { color: boolean; width: boolean; dash: boolean; fill: boolean; text: boolean } {
+  const fill = usesFill(t) && t !== 'position', text = usesText(t)
+  if (t === 'position') return { color: false, width: false, dash: false, fill: false, text: false }
+  if (t === 'fvp' || t === 'anchoredVolumeProfile') return { color: true, width: false, dash: false, fill: false, text: false }
+  if (t === 'note' || t === 'callout' || t === 'flag' || t === 'priceLabel' || t === 'markerUp' || t === 'markerDown') return { color: true, width: false, dash: false, fill, text }
+  return { color: true, width: true, dash: t !== 'fib' && !usesLevels(t), fill, text }
 }
+const FILL_SVG = (on: boolean) => `<svg class="icon-16" viewBox="0 0 16 16"><rect x="2.5" y="3.5" width="11" height="9" rx="2" fill="${on ? 'currentColor' : 'none'}" fill-opacity=".35" stroke="currentColor" stroke-width="1.5"/></svg>`
 
 export function showQuick(d: Drawing | null, c?: DrawCell): void {
   if (!d || !c || d.type === 'measure' || !c.chart.editable()) { hideQuick(); return }
@@ -226,6 +271,8 @@ function renderQuick(): void {
       ${recent.map(x => swatchBtn(x, false, '最近用过的颜色')).join('')}` : '') +
     (k.width ? `<span class="tb-sep"></span><button class="ibtn xs" data-q="width" aria-label="粗细 ${w} px" data-tip="粗细" ${locked ? 'disabled' : ''} aria-haspopup="menu">${widthSvg(w)}</button>` : '') +
     (k.dash ? `<button class="ibtn xs" data-q="dash" aria-label="线型：${DASH_NAME[dash]}" data-tip="线型" ${locked ? 'disabled' : ''} aria-haspopup="menu"><svg class="icon-16" viewBox="0 0 16 16">${DASH_SVG[dash]}</svg></button>` : '') +
+    (k.fill ? `<button class="ibtn xs" data-q="fill" aria-pressed="${d.filled !== false}" aria-label="底色" data-tip="底色" ${locked ? 'disabled' : ''}>${FILL_SVG(d.filled !== false)}</button>` : '') +
+    (k.text ? `<button class="ibtn xs" data-q="text" aria-label="改文字" data-tip="改文字" data-kbd="双击" ${locked ? 'disabled' : ''}>${I('pencil', 'icon-16')}</button>` : '') +
     `<span class="tb-sep"></span>
     ${canAlert ? `<button class="ibtn xs" data-q="alert" aria-pressed="${hasAlert}" aria-label="画线提醒" data-tip="价格碰到这条线时提醒我">${I('bellPlus', 'icon-16')}</button>` : ''}
     <button class="ibtn xs" data-q="lock" aria-pressed="${locked}" aria-label="${locked ? '解锁' : '锁定'}" data-tip="${locked ? '解锁这条' : '锁定这条（不能拖、不能改）'}">${I('lock', 'icon-16')}</button>
@@ -266,6 +313,8 @@ function quickClick(e: MouseEvent): void {
     menu([{ header: '线型' }, ...(['solid', 'dashed', 'dotted'] as const).map((k): MenuItem => ({ html: `<span class="dq-sample"><svg class="icon-16" viewBox="0 0 16 16">${DASH_SVG[k]}</svg></span>${DASH_NAME[k]}`, check: true, checked: (d.dash === 'dashed' || d.dash === 'dotted' ? d.dash : 'solid') === k, run: () => applyStyle({ dash: k === 'solid' ? undefined : k }) }))], r.left, below, { width: 160, returnFocus: b })
     return
   }
+  if (q === 'fill') { d.filled = d.filled === false; if (d.filled) delete d.filled; c.chart.dirty = true; host.changed(c); renderQuick(); return }
+  if (q === 'text') { const at = c.chart.textRectOf(d); if (at) editText(c, d, at); return }
   if (q === 'alert') { if (toggleDrawingAlert(host.symbolOf(c), d)) { toast('画线提醒已开', '价格碰到这条线时通知你', 'bell'); askNotify() } host.changed(c); renderQuick(); return }
   if (q === 'lock') { d.locked = !d.locked; host.changed(c); renderQuick(); return }
   if (q === 'del') { c.chart.selected = d; c.chart.deleteSelected() }
@@ -313,4 +362,52 @@ export function nudgeEnd(): void {
   if (!nudging) return
   const c = nudging; nudging = null
   host.changed(c)
+}
+
+// ------------------------------------------------------------ 原地改字（文字注释 / 气泡标注 / 旗标）
+// 刚放下、双击、快捷条「改文字」都走这里：字块上原地出一个输入框，↵ 确定、Esc 取消、点别处也算确定；最多 60 个字
+let editing: { c: DrawCell; d: Drawing; el: HTMLInputElement; done: boolean } | null = null
+const TEXT_LIMIT = 60
+function clipText(v: string): string {
+  const seg = typeof Intl !== 'undefined' && 'Segmenter' in Intl ? [...new Intl.Segmenter('zh', { granularity: 'grapheme' }).segment(v)].map(x => x.segment) : [...v]
+  return seg.slice(0, TEXT_LIMIT).join('')
+}
+export const textEditing = (): boolean => !!editing
+export function editText(c: DrawCell, d: Drawing, at: { x: number; y: number; w: number; h: number }): void {
+  endEdit(true)
+  if (!c.chart.editable() || d.locked) return
+  const cv = c.chart.canvas.getBoundingClientRect(), box = c.el.getBoundingClientRect()
+  const el = document.createElement('input')
+  el.className = 'draw-text-edit'; el.type = 'text'; el.value = d.text ?? ''; el.placeholder = '文字'
+  el.setAttribute('aria-label', toolName(d.type) + '文字'); el.spellcheck = false; el.autocomplete = 'off'
+  const w = Math.max(140, Math.min(320, at.w + 40)), h = Math.max(24, at.h + 6)
+  const left = Math.max(0, Math.min(cv.left - box.left + at.x - 3, box.width - w - 4))
+  el.style.cssText = `left:${left}px;top:${cv.top - box.top + at.y + at.h / 2 - h / 2}px;width:${w}px;height:${h}px;--draw-col:${cleanDrawColor(d.color)}`
+  editing = { c, d, el, done: false }
+  el.addEventListener('keydown', e => {
+    e.stopPropagation()
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); endEdit(true) }
+    else if (e.key === 'Escape') { e.preventDefault(); endEdit(false) }
+  })
+  el.addEventListener('input', () => { const v = clipText(el.value); if (v !== el.value) el.value = v })
+  el.addEventListener('mousedown', e => e.stopPropagation())
+  c.el.appendChild(el)
+  // 刚放下时还在画布的按下 / 松开里：等这次事件走完（画布按下的默认动作会把焦点挪走）再聚焦，之后失焦才算「点别处确定」
+  setTimeout(() => {
+    if (editing?.el !== el) return
+    el.focus(); el.select()
+    el.addEventListener('blur', () => endEdit(true))
+  }, 0)
+}
+/** 收起输入框；commit = 把字写回去（变了才记一步撤销、同步） */
+export function endEdit(commit: boolean): void {
+  const e = editing; if (!e || e.done) return
+  e.done = true; editing = null
+  const v = clipText(e.el.value.trim())
+  e.el.remove()
+  if (!commit || v === (e.d.text ?? '') || !e.c.chart.drawings.includes(e.d)) return
+  if (v) e.d.text = v; else delete e.d.text
+  e.c.chart.dirty = true
+  host.changed(e.c)
+  refreshQuick()
 }

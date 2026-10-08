@@ -1,0 +1,65 @@
+/* Hkline Web · 左侧画线工具栏（2026-10-08 照 TradingView 的尺寸重排）
+ *
+ *   · 列宽 52；每颗按钮占满整行 52 × 38、上下紧挨，图标 28 × 28 略偏左，右沿 11 px 留给展开箭头条
+ *   · 多于一把的组：右沿一条 11 × 34 的箭头条（4 × 7 小三角），平时淡显、悬停这一组时亮起；点它或停在上面展开整组
+ *   · 分隔：13 px 间距里一条 1 px 线
+ *   · 窗口矮到放不下时整列滚动（不溢出、不压扁按钮），十六格布局和窄窗口一样
+ *   · 展开的菜单 285 宽、紧贴工具栏右沿；每行 40 高、14 号字、28 图标，快捷键靠右淡色；组名 11 号字淡色
+ * 这里覆盖 app.css 里老的 .drawbar 规则（那份文件别的窗口也在改，工具栏的样式都收在这一份）
+ */
+:root { --drawbar-w: 52px; }
+
+.drawbar {
+  align-items: stretch; gap: 0; padding: 4px 0; min-height: 0;
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none;
+}
+.drawbar::-webkit-scrollbar { display: none; }
+.drawbar .spacer { flex: 1 0 0; min-height: 0; }
+.drawbar .grp-sep { flex: none; width: auto; height: 1px; margin: 6px 10px; background: var(--line); }
+
+.drawbar .ibtn {
+  flex: none; width: 100%; height: 38px; border-radius: 0; background: transparent;
+  display: flex; align-items: center; justify-content: flex-start; padding: 0 0 0 9px;
+}
+.drawbar .ibtn::before {
+  content: ""; position: absolute; left: 5px; top: 2px; width: 36px; height: 34px; border-radius: 6px;
+  background: transparent; transition: background var(--d-fast) var(--ease);
+}
+.drawbar .ibtn > .icon { position: relative; width: 28px; height: 28px; }
+.drawbar .ibtn:hover { background: transparent; }
+.drawbar .ibtn:hover::before { background: var(--surface-3); }
+.drawbar .ibtn[aria-pressed="true"] { background: transparent; }
+.drawbar .ibtn[aria-pressed="true"]::before { background: var(--accent-soft); }
+.drawbar .ibtn:focus-visible { outline: none; }
+.drawbar .ibtn:focus-visible::before { box-shadow: 0 0 0 2px var(--accent); }
+.drawbar .sticky-dot { right: 13px; bottom: 5px; }
+
+.drawbar .tool-grp { flex: none; position: relative; display: block; height: 38px; }
+.drawbar .fly-chev {
+  position: absolute; right: 0; top: 2px; width: 11px; height: 34px; display: grid; place-items: center;
+  border-radius: 4px; color: var(--text-3); opacity: .45; background: transparent;
+  transition: opacity var(--d-fast) var(--ease), background var(--d-fast) var(--ease), color var(--d-fast) var(--ease);
+}
+.drawbar .fly-chev .chev { width: 4px; height: 7px; display: block; }
+.drawbar .tool-grp:hover .fly-chev, .drawbar .fly-chev:focus-visible, .drawbar .tool-grp.fly-open .fly-chev { opacity: 1; color: var(--text-2); }
+.drawbar .fly-chev:hover, .drawbar .tool-grp.fly-open .fly-chev { background: var(--surface-3); color: var(--text-1); }
+.drawbar .fly-chev:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.menu.tool-fly { width: 285px; min-width: 285px; padding: 4px 0; }
+.menu.tool-fly .mh {
+  height: 30px; display: flex; align-items: center; padding: 0 14px;
+  font-size: var(--t11); font-weight: 600; letter-spacing: .4px; color: var(--text-3);
+}
+.menu.tool-fly .mi { height: 40px; gap: 10px; padding: 0 14px 0 10px; border-radius: 0; font-size: var(--t14); }
+.menu.tool-fly .mi .icon { width: 28px; height: 28px; flex: none; }
+.menu.tool-fly .mi .sc { margin-left: auto; font-size: var(--t12); color: var(--text-3); white-space: nowrap; }
+.menu.tool-fly .mi.checked { background: var(--accent-soft); color: var(--accent-text); }
+.menu.tool-fly .mi.checked .icon { color: var(--accent-text); }
+
+/* 原地改字：贴在字块上的输入框（文字注释 / 气泡标注 / 旗标） */
+.draw-text-edit {
+  position: absolute; z-index: 30; padding: 0 8px; border-radius: 6px;
+  font-family: inherit; font-size: var(--t13); font-weight: 500; color: var(--text-1); background: var(--overlay);
+  border: 1.5px solid var(--draw-col, var(--accent)); box-shadow: var(--shadow-menu); outline: none;
+}
+.draw-text-edit::placeholder { color: var(--text-3); }
