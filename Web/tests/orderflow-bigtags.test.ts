@@ -1,6 +1,6 @@
 /* Hkline Web · 主力订单流 2026-10-08：图上「大单签」、底部抽屉四块摘要、爆仓数据、四个开关互不牵连
  * 签：相对档位（最近 300 根的 P85 / P95 / max(P99, 3×P95)，垫绝对下限，数据不变不重算）、一根一枚、另一侧过 P95 才描边、
- *     夹在主图里（让开成交量）、撞图例 / 画线文字退成三角、三角也放不下不画；数据：分钟桶并根、服务端历史接缝；
+ *     夹在主图里（让开成交量）、本侧放不下翻到另一侧、两侧都撞退成三角、三角也放不下不画；数据：分钟桶并根、服务端历史接缝；
  * 抽屉：北京时间零点、三窗口、现货 / 合约与三家占比、价位（浏览器真实价 + 服务端行 × 1 分钟典型价）、最近的墙、
  *     开方比例尺、占比条至少两段、十字线所在根；爆仓：解析、合计、30 秒轮询与失败重试、只留 16 只。 */
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -124,20 +124,28 @@ describe('摆放', () => {
       expect(p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h).toBe(false)
     }
   })
-  it('撞上图例 / 画线文字：退成三角，不往外挪；三角也撞就不画', () => {
-    const legend = { x: 0, y: 70, w: 300, h: 20 }   // 盖住签的位置（80–96），三角的位置（90–96）露出来一截以下
-    const t = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ avoid: [{ x: 0, y: 70, w: 300, h: 19 }] }))
+  it('本侧撞上图例 / 画线文字：先翻到 K 线另一侧，颜色与朝向不变', () => {
+    const t = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ avoid: [{ x: 0, y: 70, w: 300, h: 30 }] }))
+    expect(t).toHaveLength(1); expect(t[0]).toMatchObject({ side: 'buy', kind: 'tag' }); expect(t[0].y).toBe(204)
+  })
+  it('两侧都撞：退成三角（先本侧），不往外挪；三角两侧也撞就不画', () => {
+    // 上方盖住签（80–96）但露出三角（90–96）；下方盖住签（204–220）与三角（204–210）
+    const avoid = [{ x: 0, y: 70, w: 300, h: 19 }, { x: 0, y: 200, w: 300, h: 30 }]
+    const t = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ avoid }))
     expect(t).toHaveLength(1); expect(t[0].kind).toBe('tri'); expect(t[0].y + t[0].h).toBe(96)
-    const none = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ avoid: [{ ...legend, h: 30 }] }))
+    const none = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ avoid: [{ x: 0, y: 70, w: 300, h: 30 }, avoid[1]] }))
     expect(none).toHaveLength(0)
   })
-  it('夹在主图里：顶上没地方不画；卖签掉进成交量那一截（bottom 以下）也不画', () => {
-    expect(planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ span: () => ({ hiY: 3, loY: 200 }) }))).toHaveLength(0)
+  it('夹在主图里：顶上没地方的买签翻到最低价下方；卖签掉进成交量那一截（bottom 以下）翻到最高价上方', () => {
+    const top = planTags([{ i: 0, t: 0, x: 100, data: big(500_000, 0) }], env({ span: () => ({ hiY: 3, loY: 200 }) }))
+    expect(top).toHaveLength(1); expect(top[0]).toMatchObject({ side: 'buy', kind: 'tag' }); expect(top[0].y).toBe(204)
     const low = planTags([{ i: 0, t: 0, x: 100, data: big(0, 500_000) }], env({ span: () => ({ hiY: 100, loY: 330 }), bottom: 336 }))
-    expect(low).toHaveLength(0)
-    // 金额签放不下、三角放得下：退成三角
-    const tri = planTags([{ i: 0, t: 0, x: 100, data: big(0, 500_000) }], env({ span: () => ({ hiY: 100, loY: 320 }), bottom: 336 }))
-    expect(tri).toHaveLength(1); expect(tri[0].kind).toBe('tri'); expect(tri[0].y + tri[0].h).toBeLessThanOrEqual(336)
+    expect(low).toHaveLength(1); expect(low[0]).toMatchObject({ side: 'sell', kind: 'tag' }); expect(low[0].y + low[0].h).toBe(96)
+    // 两侧签都放不下、三角本侧放得下：退成本侧三角
+    const tri = planTags([{ i: 0, t: 0, x: 100, data: big(0, 500_000) }], env({ span: () => ({ hiY: 12, loY: 320 }), bottom: 336 }))
+    expect(tri).toHaveLength(1); expect(tri[0].kind).toBe('tri'); expect(tri[0].y).toBe(324); expect(tri[0].y + tri[0].h).toBeLessThanOrEqual(336)
+    // 窗格矮到两侧连三角都放不下：不画
+    expect(planTags([{ i: 0, t: 0, x: 100, data: big(0, 500_000) }], env({ span: () => ({ hiY: 5, loY: 330 }), bottom: 336 }))).toHaveLength(0)
   })
   it('不越过价格轴：右沿出界的签退成三角', () => {
     const t = planTags([{ i: 0, t: 0, x: 796, data: big(500_000, 0) }], env())
@@ -288,6 +296,17 @@ describe('抽屉 · 画法', () => {
     expect(splitWorth([{ v: 5 }, { v: 0 }])).toBe(false)
     expect(splitWorth([{ v: 5 }, { v: 1 }, { v: 0 }])).toBe(true)
     expect(splitWorth([])).toBe(false)
+  })
+  it('价位块：同一档既是买前三又是卖前三并成一行，价位不重复，按价从高到低', async () => {
+    const { pxRows } = await import('../src/orderflow/drawer')
+    const rows = pxRows([{ price: 115.6, usd: 4.8e6, n: 0 }, { price: 115.2, usd: 7.2e6, n: 0 }, { price: 114.8, usd: 4.8e6, n: 0 }],
+      [{ price: 115.6, usd: 7e6, n: 0 }, { price: 115.4, usd: 3.3e6, n: 0 }, { price: 115.2, usd: 3.7e6, n: 0 }])
+    expect(rows.map(r => r.price)).toEqual([115.6, 115.4, 115.2, 114.8])
+    expect(rows[0]).toEqual({ price: 115.6, buy: 4.8e6, sell: 7e6 })
+    expect(rows[1]).toEqual({ price: 115.4, buy: 0, sell: 3.3e6 })
+    expect(rows[3]).toEqual({ price: 114.8, buy: 4.8e6, sell: 0 })
+    // 分档价有浮点误差（0.1 + 0.2）也算同一档
+    expect(pxRows([{ price: 0.1 + 0.2, usd: 1, n: 0 }], [{ price: 0.3, usd: 2, n: 0 }])).toHaveLength(1)
   })
   it('深色判断按主文字亮度：#rgb / #rrggbb / rgb()', async () => {
     const { lum } = await import('../src/orderflow/drawer')
