@@ -15,7 +15,15 @@
 //!   - OKX `wss://ws.okx.com:8443/ws/v5/public` 订 `liquidation-orders` 的 SWAP 与 FUTURES 两路（一条连接、一条订阅请求）。
 //!     帧 `{"arg":…,"data":[{"instId","instFamily","instType","details":[{"side","posSide","bkPx","sz","ts"}]}]}`；`side`=sell 是多头被平。
 //!     名义：U 本位 = bkPx × sz × 面值（ctVal×ctMult，币），币本位 = sz × 面值（美元）。
+//!   - Bybit（2026-10-08 起）`wss://stream.bybit.com/v5/public/{linear|inverse}`（连不上与 `stream.bytick.com` 交替）订
+//!     `allLiquidation.{代号}`：没有「全市场一条流」，只能按代号订，所以订的是此刻跟踪的 base 在 Bybit 的合约（每 30 秒随映射
+//!     对一次差、增量订 / 退订，一条请求最多 10 个话题）。帧 `{"topic":"allLiquidation.SOLUSDT","data":[{"T","s","S","v","p"}]}`；
+//!     **`S`=Buy 是多头被平**（Bybit 文档：S 是被平仓位的方向，和币安 / OKX 记的平仓单方向正好相反）。名义：U 本位（含 USDC 永续与交割）
+//!     = p × v（v 是币数），币本位 = v × 面值（1 张 1 美元）。每 20 秒发 `{"op":"ping"}`，`success:false` 的回执打 warn。
+//!     Bybit 现货没有强平（现货不加杠杆没有仓位可平；杠杆现货的强平不走公开推送），只接 linear 与 inverse 两路。
 //!   - Coinbase 只接现货，没有强平。
+//!   - Hyperliquid 爆仓无公开数据源：公开 WS 只有 `trades`（强平成交混在普通成交里、不带标记）和按地址订的 `userFills` /
+//!     `userEvents`，没有全市场强平流，所以不接。
 //! * 品种 → base 与面值：用 `orderflow_instruments` 的合约表（每 30 秒按此刻跟踪的 base 重建一次映射）。先按交易所代号查；
 //!   查不到的 OKX 按 instFamily、币安按交易对（`BTCUSD_PERP` → `BTCUSD`）借同一族的面值（同族面值相同，周 / 月交割、USDC 永续靠这条）；
 //!   币安 U 本位再查不到的按代号去掉交割后缀与 USDT / USDC、再去 `1000` 前缀（名义不要面值）。拿不到面值的丢掉，每小时报数。
@@ -26,11 +34,11 @@
 //!   金额与笔数相加、最大一笔取大；占 `WRITE_SLOTS`；通道满了丢这一分钟。每小时和订单流的清理一起逐只 base 删 3 天以前的，
 //!   220 只 3 天最多约 95 万行，不设体积闸门。停机（`CLOSING`）把手上没交的分钟全部交出去，`super::shutdown` 等它们写完（同一个 10 秒上限）。
 //! * 接口 `GET /v1/market/orderflow/liq?base=&from=&to=` → `{"base","tracked","rows":[[minute_ms,多头被平,空头被平,笔数,最大一笔,最大一笔价格,哪边,哪家],…]}`：
-//!   哪边 0 多头被平 / 1 空头被平，哪家 0 币安 / 1 OKX；金额取整美元，价格原样。区间、`tracked:false`（不读库）、不要登录、
+//!   哪边 0 多头被平 / 1 空头被平，哪家 0 币安 / 1 OKX / 2 Bybit；金额取整美元，价格原样。区间、`tracked:false`（不读库）、不要登录、
 //!   20 秒合并读库、gzip、`Cache-Control: public, max-age=20`、读库占 `HISTORY_READS`，全和 `flow.rs` 一致。
 //! * 连接照 `hub.rs`：建连走同一个节拍器（`hub::open`：币安全部连接共用、两次至少隔 1 秒、5 分钟最多 60 条、尊重币安封禁闸门；
-//!   OKX 至少隔 400 毫秒），断线退避 1 秒起翻倍封顶 30 秒、带 ±50% 抖动，连上活过一分钟的退避从头来；每 20 秒 ping
-//!   （OKX 发文本 `ping`），60 秒一帧没有就断开重连；OKX `{"event":"error"}` 打 warn；断连只打 debug，每小时一行 info 报数。
+//!   OKX 至少隔 400 毫秒，Bybit 至少隔 250 毫秒、5 分钟最多 100 条），断线退避 1 秒起翻倍封顶 30 秒、带 ±50% 抖动，连上活过一分钟的退避从头来；每 20 秒 ping
+//!   （OKX 发文本 `ping`，Bybit 发 `{"op":"ping"}`），60 秒一帧没有就断开重连；OKX `{"event":"error"}` 打 warn；断连只打 debug，每小时一行 info 报数。
 //! * 只聚合，不判定。
 use super::feeds::{Decoder,Kind};
 use super::hub::{self,Ws};
@@ -40,14 +48,14 @@ use crate::error::{ApiError,Params,Result};
 use crate::orderflow_instruments::{self as instruments,Notional,Product,Venue};
 #[cfg(test)]
 use crate::orderflow_instruments::ExchangeKey;
-use crate::venues::{binance::orderflow::KEY as BINANCE_TABLE,okx::orderflow::KEY as OKX_TABLE};
+use crate::venues::{binance::orderflow::KEY as BINANCE_TABLE,bybit::orderflow::KEY as BYBIT_TABLE,okx::orderflow::KEY as OKX_TABLE};
 use axum::extract::State;
 use axum::response::Response;
 use futures_util::{SinkExt,StreamExt};
 use serde::Deserialize;
 use serde_json::Value;
 use sqlx::{PgPool,Row as _};
-use std::collections::{BTreeMap,HashMap};
+use std::collections::{BTreeMap,BTreeSet,HashMap};
 use std::sync::atomic::{AtomicBool,AtomicU64,AtomicUsize,Ordering};
 use std::sync::{Arc,Mutex,OnceLock,RwLock};
 use std::time::Duration;
@@ -81,6 +89,9 @@ pub(super) const SHORT:i16=1;
 /// 哪家。
 pub(super) const BINANCE:i16=0;
 pub(super) const OKX:i16=1;
+pub(super) const BYBIT:i16=2;
+/// Bybit 一条订阅请求最多几个话题。
+const BYBIT_ARGS:usize=10;
 
 // ------------------------------------------------------------------ 分钟
 
@@ -142,26 +153,41 @@ fn stamp(exchange_ms:Option<i64>,local:i64)->i64 {
 // ------------------------------------------------------------------ 源与解析
 
 #[derive(Clone,Copy,Debug,PartialEq,Eq,Hash)]
-pub(super) enum Source {BinanceUm,BinanceCm,Okx}
+pub(super) enum Source {BinanceUm,BinanceCm,Okx,BybitLinear,BybitInverse}
 
-const SOURCES:[Source;3]=[Source::BinanceUm,Source::BinanceCm,Source::Okx];
+const SOURCES:[Source;5]=[Source::BinanceUm,Source::BinanceCm,Source::Okx,Source::BybitLinear,Source::BybitInverse];
 
 impl Source {
- fn url(self)->&'static str {
+ /// 第几次建连（Bybit 连不上时在主域名与 bytick 之间交替）。
+ fn url(self,attempt:u32)->String {
+  let bybit=|category:&str|format!("{}/{category}",crate::venues::bybit::WS_BASES[attempt as usize%2]);
   match self {
-   Source::BinanceUm=>"wss://fstream.binance.com/market/ws/!forceOrder@arr",
-   Source::BinanceCm=>"wss://dstream.binance.com/ws/!forceOrder@arr",
-   Source::Okx=>"wss://ws.okx.com:8443/ws/v5/public",
+   Source::BinanceUm=>"wss://fstream.binance.com/market/ws/!forceOrder@arr".into(),
+   Source::BinanceCm=>"wss://dstream.binance.com/ws/!forceOrder@arr".into(),
+   Source::Okx=>"wss://ws.okx.com:8443/ws/v5/public".into(),
+   Source::BybitLinear=>bybit("linear"),
+   Source::BybitInverse=>bybit("inverse"),
   }
  }
+ fn bybit(self)->bool {matches!(self,Source::BybitLinear|Source::BybitInverse)}
  /// 建连走 hub 里哪一家的节拍器（币安的 U 本位 / 币本位共用一个）。
- fn kind(self)->Kind {match self {Source::BinanceUm=>Kind::BinanceUmTrades,Source::BinanceCm=>Kind::BinanceCm,Source::Okx=>Kind::Okx}}
- fn label(self)->&'static str {match self {Source::BinanceUm=>"binance-um",Source::BinanceCm=>"binance-cm",Source::Okx=>"okx"}}
- fn ex(self)->i16 {if self==Source::Okx {OKX} else {BINANCE}}
+ fn kind(self)->Kind {
+  match self {
+   Source::BinanceUm=>Kind::BinanceUmTrades,Source::BinanceCm=>Kind::BinanceCm,Source::Okx=>Kind::Okx,
+   Source::BybitLinear=>Kind::BybitLinear,Source::BybitInverse=>Kind::BybitInverse,
+  }
+ }
+ fn label(self)->&'static str {
+  match self {
+   Source::BinanceUm=>"binance-um",Source::BinanceCm=>"binance-cm",Source::Okx=>"okx",
+   Source::BybitLinear=>"bybit-linear",Source::BybitInverse=>"bybit-inverse",
+  }
+ }
+ fn ex(self)->i16 {match self {Source::Okx=>OKX,Source::BybitLinear|Source::BybitInverse=>BYBIT,_=>BINANCE}}
  fn index(self)->usize {self as usize}
  /// 币安两条连接各认各的：币本位只认 `…USD_PERP` / `…USD_yymmdd`，其余算 U 本位。
  fn accepts(self,symbol:&str)->bool {
-  match self {Source::BinanceUm=>!coin_margined(symbol),Source::BinanceCm=>coin_margined(symbol),Source::Okx=>true}
+  match self {Source::BinanceUm=>!coin_margined(symbol),Source::BinanceCm=>coin_margined(symbol),_=>true}
  }
  /// 一张合约表的行属于哪一路（现货与 Coinbase 不属于任何一路）。
  fn of(v:&Venue)->Option<Source> {
@@ -170,6 +196,8 @@ impl Source {
    (BINANCE_TABLE,_,Notional::Linear{..})=>Some(Source::BinanceUm),
    (BINANCE_TABLE,_,Notional::Inverse{..})=>Some(Source::BinanceCm),
    (OKX_TABLE,..)=>Some(Source::Okx),
+   (BYBIT_TABLE,_,Notional::Linear{..})=>Some(Source::BybitLinear),
+   (BYBIT_TABLE,_,Notional::Inverse{..})=>Some(Source::BybitInverse),
    _=>None,
   }
  }
@@ -231,6 +259,28 @@ fn okx(text:&str)->Vec<Raw> {
  out
 }
 
+/// Bybit `allLiquidation`：一帧可能几笔。`S` 是被平仓位的方向：Buy = 多头被平。回执、`pong` 回空。
+fn bybit(text:&str)->Vec<Raw> {
+ let Ok(frame)=serde_json::from_str::<Value>(text) else {return Vec::new()};
+ if !frame["topic"].as_str().is_some_and(|t|t.starts_with("allLiquidation.")) {return Vec::new()}
+ let mut out=Vec::new();
+ for d in frame["data"].as_array().map(Vec::as_slice).unwrap_or_default() {
+  let Some(symbol)=d["s"].as_str() else {continue};
+  let side=match d["S"].as_str() {Some("Buy")=>LONG,Some("Sell")=>SHORT,_=>continue};
+  let (Some(price),Some(qty))=(positive(&d["p"]),positive(&d["v"])) else {continue};
+  out.push(Raw{symbol:symbol.to_ascii_uppercase(),family:None,side,price,qty,at:d["T"].as_i64()});
+ }
+ out
+}
+
+/// Bybit 订 / 退一批代号的请求（一条最多 10 个话题）。
+fn bybit_ops(op:&str,symbols:&[&String])->Vec<String> {
+ symbols.chunks(BYBIT_ARGS).map(|chunk|{
+  let args:Vec<String>=chunk.iter().map(|s|format!("allLiquidation.{s}")).collect();
+  serde_json::json!({"op":op,"args":args}).to_string()
+ }).collect()
+}
+
 /// 币安 U 本位查不到表时按代号认 base：去掉交割后缀与 USDT / USDC，再去 `1000` 前缀。
 fn um_base(symbol:&str)->Option<String> {
  let pair=symbol.split('_').next()?;
@@ -264,6 +314,10 @@ impl Book {
   }
   book
  }
+ /// 这一路此刻该订的代号（Bybit 按代号订）。
+ fn symbols(&self,src:Source)->BTreeSet<String> {
+  self.by_symbol.keys().filter(|(s,_)|*s==src).map(|(_,symbol)|symbol.clone()).collect()
+ }
  /// 一笔换成（base，美元名义）；拿不到面值为 None。
  fn resolve(&self,src:Source,raw:&Raw)->Option<(String,f64)> {
   let fam=raw.family.clone().unwrap_or_else(||family(src,&raw.symbol));
@@ -294,15 +348,16 @@ async fn remap() {
 
 // ------------------------------------------------------------------ 连接
 
-static SEEN:[AtomicU64;3]=[const {AtomicU64::new(0)};3];
-static KEPT:[AtomicU64;3]=[const {AtomicU64::new(0)};3];
-static UNMAPPED:[AtomicU64;3]=[const {AtomicU64::new(0)};3];
-static CONNECTS:[AtomicU64;3]=[const {AtomicU64::new(0)};3];
+static SEEN:[AtomicU64;SOURCES.len()]=[const {AtomicU64::new(0)};SOURCES.len()];
+static KEPT:[AtomicU64;SOURCES.len()]=[const {AtomicU64::new(0)};SOURCES.len()];
+static UNMAPPED:[AtomicU64;SOURCES.len()]=[const {AtomicU64::new(0)};SOURCES.len()];
+static CONNECTS:[AtomicU64;SOURCES.len()]=[const {AtomicU64::new(0)};SOURCES.len()];
 
 /// 一帧：解析、换算、只留在跟的 base，记进累加器。
 fn handle(src:Source,text:&str,now:i64) {
  let raws=match src {
   Source::Okx=>okx(text),
+  Source::BybitLinear|Source::BybitInverse=>bybit(text),
   _=>binance(text).into_iter().filter(|r|src.accepts(&r.symbol)).collect(),
  };
  if raws.is_empty() {return}
@@ -324,14 +379,15 @@ fn handle(src:Source,text:&str,now:i64) {
 /// 一路连接的一生：连上就收，断了抖动退避重连（和 `hub::run` 同一套节奏）。
 async fn feed(src:Source) {
  let mut backoff=Duration::from_secs(1);
+ let mut attempt=0u32;
  loop {
   let started=Instant::now();
-  match hub::open(src.kind(),src.url()).await {
+  match hub::open(src.kind(),&src.url(attempt)).await {
    Ok(ws)=>{CONNECTS[src.index()].fetch_add(1,Ordering::Relaxed);listen(src,ws).await;},
-   Err(e)=>tracing::debug!("Orderflow liq: {} unreachable: {e}",src.label()),
+   Err(e)=>{attempt=attempt.wrapping_add(1);tracing::debug!("Orderflow liq: {} unreachable: {e}",src.label())},
   }
-  // 活过一分钟的算正常断开，退避从头来。
-  if started.elapsed()>Duration::from_secs(60) {backoff=Duration::from_secs(1)}
+  // 活过一分钟的算正常断开，退避从头来；没活过的下次换个域名（只有 Bybit 有两个）。
+  if started.elapsed()>Duration::from_secs(60) {backoff=Duration::from_secs(1)} else {attempt=attempt.wrapping_add(1)}
   tokio::time::sleep(hub::jittered(backoff)).await;
   backoff=(backoff*2).min(Duration::from_secs(30));
  }
@@ -345,8 +401,23 @@ async fn listen(src:Source,ws:Ws) {
  if src==Source::Okx&&!matches!(tokio::time::timeout(hub::SEND,tx.send(send(OKX_SUBSCRIBE))).await,Ok(Ok(()))) {return}
  let mut ping=tokio::time::interval_at(Instant::now()+hub::PING,hub::PING);
  let mut deadline=Instant::now()+hub::IDLE;
+ // Bybit 按代号订：连上先订此刻映射里的，之后每 30 秒和映射对一次差（只有 Bybit 用得上）。
+ let mut subscribed=BTreeSet::new();
+ let mut remap=tokio::time::interval(REMAP);
  loop {
   tokio::select! {
+   _=remap.tick(),if src.bybit()=>{
+    let want=BOOK.read().unwrap_or_else(|e|e.into_inner()).symbols(src);
+    let gone:Vec<&String>=subscribed.difference(&want).collect();
+    let new:Vec<&String>=want.difference(&subscribed).collect();
+    let ops:Vec<String>=bybit_ops("unsubscribe",&gone).into_iter().chain(bybit_ops("subscribe",&new)).collect();
+    let mut sent=true;
+    for op in ops {
+     if !matches!(tokio::time::timeout(hub::SEND,tx.send(Up::Text(op.into()))).await,Ok(Ok(()))) {sent=false;break}
+    }
+    if !sent {break}
+    subscribed=want;
+   },
    frame=rx.next()=>{
     let text=match frame {
      Some(Ok(Up::Text(text)))=>text,
@@ -358,10 +429,11 @@ async fn listen(src:Source,ws:Ws) {
      if text.as_str()=="pong" {continue}
      if let Some(error)=Decoder::okx_error(text.as_str()) {tracing::warn!("Orderflow liq: okx error {error}");continue}
     }
+    if src.bybit()&&let Some(error)=Decoder::bybit_error(text.as_str()) {tracing::warn!("Orderflow liq: {} error {error}",src.label());continue}
     handle(src,text.as_str(),now_ms());
    },
    _=ping.tick()=>{
-    let frame=if src==Source::Okx {send("ping")} else {Up::Ping(Default::default())};
+    let frame=match src {Source::Okx=>send("ping"),Source::BybitLinear|Source::BybitInverse=>send(r#"{"op":"ping"}"#),_=>Up::Ping(Default::default())};
     if !matches!(tokio::time::timeout(hub::SEND,tx.send(frame)).await,Ok(Ok(()))) {break}
    },
    _=tokio::time::sleep_until(deadline)=>{tracing::debug!("Orderflow liq: {} silent for {:?}",src.label(),hub::IDLE);break},
@@ -424,7 +496,7 @@ pub(super) async fn drained(deadline:Instant)->bool {
  }
 }
 
-/// 起写库任务、每秒交分钟的任务、映射重建与三路连接（serve 进程起订单流时一次）。
+/// 起写库任务、每秒交分钟的任务、映射重建与五路连接（serve 进程起订单流时一次）。
 pub(super) fn start(pool:PgPool) {
  if TX.get().is_some() {return}
  TX.get_or_init(||{
@@ -437,6 +509,8 @@ pub(super) fn start(pool:PgPool) {
  crate::supervise::spawn_restarting("orderflow-liq-binance-um",||feed(Source::BinanceUm));
  crate::supervise::spawn_restarting("orderflow-liq-binance-cm",||feed(Source::BinanceCm));
  crate::supervise::spawn_restarting("orderflow-liq-okx",||feed(Source::Okx));
+ crate::supervise::spawn_restarting("orderflow-liq-bybit-linear",||feed(Source::BybitLinear));
+ crate::supervise::spawn_restarting("orderflow-liq-bybit-inverse",||feed(Source::BybitInverse));
 }
 
 /// 交一分钟：不等，通道满了就丢。
@@ -608,6 +682,9 @@ mod tests {
    ("BTC",venue(ExchangeKey("okx"),Product::CoinPerp,"BTC-USD-SWAP",Notional::Inverse{contract_usd:100.0})),
    ("PEPE",venue(ExchangeKey("binance"),Product::UsdtPerp,"1000PEPEUSDT",Notional::Linear{multiplier:1.0})),
    ("BTC",venue(ExchangeKey("coinbase"),Product::Spot,"BTC-USD",Notional::Linear{multiplier:1.0})),
+   ("SOL",venue(ExchangeKey("bybit"),Product::UsdtPerp,"SOLUSDT",Notional::Linear{multiplier:1.0})),
+   ("ETH",venue(ExchangeKey("bybit"),Product::CoinPerp,"ETHUSD",Notional::Inverse{contract_usd:1.0})),
+   ("ETH",venue(ExchangeKey("bybit"),Product::Spot,"ETHUSDT",Notional::Linear{multiplier:1.0})),
   ];
   Book::build(rows.iter().map(|(b,v)|(*b,v)))
  }
@@ -655,7 +732,7 @@ mod tests {
   assert_eq!(b.resolve(Source::BinanceUm,&raw("SOLUSDC",None,200.0,2.0)),Some(("SOL".into(),400.0)),"表外的 U 本位按代号认");
   assert_eq!(b.resolve(Source::BinanceUm,&raw("1000BONKUSDT_251226",None,0.02,100.0)),Some(("BONK".into(),2.0)));
   assert_eq!(b.resolve(Source::BinanceUm,&raw("ETHBTC",None,0.03,1.0)),None);
-  assert_eq!(b.by_symbol.len(),5,"现货与 Coinbase 不进映射");
+  assert_eq!(b.by_symbol.len(),7,"现货与 Coinbase 不进映射");
  }
 
  #[test] fn exchange_time_is_trusted_only_near_the_local_clock() {
@@ -758,4 +835,39 @@ mod tests {
   assert_eq!(n,2,"在途归零时两分钟都已在库里");
   sqlx::query("DELETE FROM orderflow_liq WHERE base=$1").bind(base).execute(&pool).await.unwrap();
  }
+
+ // 2026-10-08 在新加坡 VPS 上抓到的 Bybit 原帧。
+ const BYBIT_LINEAR:&str=r#"{"topic":"allLiquidation.SOLUSDT","type":"snapshot","ts":1791457584979,"data":[{"T":1791457584957,"s":"SOLUSDT","S":"Buy","v":"439.0","p":"113.300"}]}"#;
+ const BYBIT_INVERSE:&str=r#"{"topic":"allLiquidation.ETHUSD","type":"snapshot","ts":1791457730670,"data":[{"T":1791457730668,"s":"ETHUSD","S":"Buy","v":"45705","p":"2523.64"},{"T":1791457730669,"s":"ETHUSD","S":"Sell","v":"10","p":"2523.00"}]}"#;
+
+ #[test] fn bybit_frames_parse_buy_as_long_liquidated() {
+  assert_eq!(bybit(BYBIT_LINEAR),vec![Raw{symbol:"SOLUSDT".into(),family:None,side:LONG,price:113.3,qty:439.0,at:Some(1791457584957)}],"S=Buy 是多头被平");
+  let inverse=bybit(BYBIT_INVERSE);
+  assert_eq!(inverse.iter().map(|r|r.side).collect::<Vec<_>>(),vec![LONG,SHORT]);
+  for quiet in [r#"{"success":true,"ret_msg":"pong","conn_id":"x","req_id":"","op":"ping"}"#,
+   r#"{"success":true,"ret_msg":"","conn_id":"x","op":"subscribe"}"#,
+   r#"{"topic":"publicTrade.SOLUSDT","data":[{"T":1,"s":"SOLUSDT","S":"Buy","v":"1","p":"1"}]}"#] {assert!(bybit(quiet).is_empty())}
+  let b=book();
+  assert_eq!(b.resolve(Source::BybitLinear,&bybit(BYBIT_LINEAR)[0]),Some(("SOL".into(),113.3*439.0)),"U 本位 = 价 × 币数");
+  assert_eq!(b.resolve(Source::BybitInverse,&inverse[0]),Some(("ETH".into(),45_705.0)),"币本位 = 张数 × 1 美元");
+  assert_eq!(b.resolve(Source::BybitLinear,&Raw{symbol:"ETHUSDT".into(),family:None,side:LONG,price:1.0,qty:1.0,at:None}),None,"现货不进映射");
+  assert_eq!((Source::BybitLinear.ex(),Source::BybitInverse.ex()),(BYBIT,BYBIT));
+ }
+
+ #[test] fn bybit_subscribes_only_tracked_contracts_ten_per_request() {
+  let b=book();
+  assert_eq!(b.symbols(Source::BybitLinear).into_iter().collect::<Vec<_>>(),["SOLUSDT"]);
+  assert_eq!(b.symbols(Source::BybitInverse).into_iter().collect::<Vec<_>>(),["ETHUSD"]);
+  let names:Vec<String>=(0..23).map(|i|format!("A{i}USDT")).collect();
+  let refs:Vec<&String>=names.iter().collect();
+  let ops=bybit_ops("subscribe",&refs);
+  assert_eq!(ops.len(),3);
+  let first:Value=serde_json::from_str(&ops[0]).unwrap();
+  assert_eq!((first["op"].as_str(),first["args"].as_array().unwrap().len(),first["args"][0].as_str()),(Some("subscribe"),10,Some("allLiquidation.A0USDT")));
+  assert!(bybit_ops("unsubscribe",&[]).is_empty());
+  assert_eq!(Source::BybitLinear.url(0),"wss://stream.bybit.com/v5/public/linear");
+  assert_eq!(Source::BybitInverse.url(1),"wss://stream.bytick.com/v5/public/inverse","连不上换备用域名");
+  assert_eq!(Source::Okx.url(1),"wss://ws.okx.com:8443/ws/v5/public");
+ }
+
 }
