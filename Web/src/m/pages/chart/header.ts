@@ -31,6 +31,7 @@ import {
 import { fetchValuation, valuationOf } from './data'
 import { liveOrCached } from '../../model/quoteCache'
 import { chartSubOf, pairOf } from '../../model/symKey'
+import { fundingPeriodOf } from '../../../venues'
 import { headName, type Sym } from '../../../market/symbols'
 
 export const TERMS: Record<string, Term> = {
@@ -221,7 +222,7 @@ export function createHeader(host: HTMLElement, h: HeaderHandlers) {
       const f = fundingText(s?.fr, fresh)
       const frB = put('fr', f.text)
       frB.classList.toggle('up', f.dir > 0); frB.classList.toggle('down', f.dir < 0)
-      put('settle', fundingCountdownText(s?.nextFunding, now) ?? MISSING)
+      put('settle', fundingCountdownText(s?.nextFunding, now, fundingPeriodOf(sym)) ?? MISSING)
       // 估值：加密 O/M、美股 FPE（亏损给 P/S），大宗不摆
       const kind = (s?.kind ?? 'crypto') as AssetKind
       if (kind === 'us') void fetchValuation(sym)

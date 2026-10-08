@@ -97,11 +97,12 @@ export function fundingText(rate: number | null | undefined, fresh: boolean): { 
 }
 
 const EIGHT_HOURS = 8 * 3_600_000
-/** 结算倒计时：已过点按 8 小时往后滚；剩 ≥ 32 小时不写；「<1分」「X时Y分」「Y分」 */
-export function fundingCountdownText(nextFunding: number | null | undefined, now: number): string | null {
+/** 结算倒计时：已过点按这家的一期长度（periodMs，默认 8 小时；Hyperliquid 传 1 小时）往后滚；剩 ≥ 32 小时不写；「<1分」「X时Y分」「Y分」 */
+export function fundingCountdownText(nextFunding: number | null | undefined, now: number, periodMs = EIGHT_HOURS): string | null {
   if (nextFunding == null || !Number.isFinite(nextFunding) || nextFunding <= 0) return null
+  const period = Number.isFinite(periodMs) && periodMs > 0 ? periodMs : EIGHT_HOURS
   let t = nextFunding
-  if (t <= now) t += Math.ceil((now - t + 1) / EIGHT_HOURS) * EIGHT_HOURS
+  if (t <= now) t += Math.ceil((now - t + 1) / period) * period
   const left = t - now
   if (left >= 32 * 3_600_000) return null
   const mins = Math.floor(left / 60_000)

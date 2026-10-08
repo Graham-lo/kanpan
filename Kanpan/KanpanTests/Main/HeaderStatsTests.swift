@@ -199,6 +199,18 @@ struct HeaderStatsTests {
     #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: justPassed, now: now) == "7时59分")
   }
 
+  @Test("每小时一期的交易所（Hyperliquid）过点按一小时滚，不写成「7时59分」")
+  func fundingCountdownRollsByVenuePeriod() {
+    let now = Date(timeIntervalSince1970: 1_700_000_000)
+    let justPassed = Int64((now.timeIntervalSince1970 - 10) * 1000)
+    #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: justPassed, period: 3600, now: now) == "59分")
+    #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: justPassed, period: 3600, now: now.addingTimeInterval(3550)) == "<1分")
+    // 一小时一期的下一次结算最多一小时之后：「≥ 四期不写」仍按八小时那条底线，不把 50 分钟后的正常时刻判成太远
+    #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: Int64((now.timeIntervalSince1970 + 3000) * 1000), period: 3600, now: now) == "50分")
+    // 一期长度写坏（0 / 负数）退回八小时
+    #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: justPassed, period: 0, now: now) == "7时59分")
+  }
+
   /// 下架 / 交割的合约没有「现在的价」，顶栏不给它实时的样子（审查 B-06）。
   @MainActor
   @Test("品种不在交易时，这口价就不算新鲜")

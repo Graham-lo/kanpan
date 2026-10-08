@@ -52,6 +52,14 @@ describe('手机网页版 · 行情页头部', () => {
     expect(L.fundingCountdownText(now + 33 * 3_600_000, now)).toBeNull()
     expect(L.fundingCountdownText(null, now)).toBeNull()
   })
+  it('结算倒计时：每小时一期的交易所（Hyperliquid）过点按 1 小时滚，不写成 7 小时', () => {
+    const now = Date.UTC(2026, 8, 30, 3, 0, 10)
+    expect(L.fundingCountdownText(Date.UTC(2026, 8, 30, 3, 0), now, 36e5)).toBe('59分')
+    expect(L.fundingCountdownText(Date.UTC(2026, 8, 30, 3, 0), now + 59 * 60_000, 36e5)).toBe('<1分')
+    expect(L.fundingCountdownText(Date.UTC(2026, 8, 30, 4, 0), now, 36e5)).toBe('59分')
+    // 一期长度写坏退回 8 小时
+    expect(L.fundingCountdownText(Date.UTC(2026, 8, 30, 3, 0), now, 0)).toBe('7时59分')
+  })
   it('停住判定：全局停住、全市场表断、这只 60 秒没新价', () => {
     const now = 1_000_000
     expect(L.isStale({ flag: true, live: true, now })).toBe(true)

@@ -35,6 +35,10 @@ public struct ProviderCapabilities: Sendable, Equatable {
   public var hasMarkPrice: Bool
   /// 有资金费率与结算时间（永续才有）。
   public var hasFunding: Bool
+  /// 一期资金费率多长（秒）。币安 / OKX / Bybit 的标准档 8 小时，Hyperliquid 每小时一期。
+  /// 费率帧自己带下一次结算时刻，这个数只用在「刚结算完、下一帧还没到」那几秒的倒计时往后滚：
+  /// 按 8 小时滚，Hyperliquid 就会在整点后短暂写出「7时59分」。
+  public var fundingPeriod: TimeInterval
   /// 持仓量统计接口用的上游名（服务端 `/v1/market/open-interest?source=`）。nil = 没有持仓量。
   public var openInterestSource: String?
   /// 有逐笔主动方向与五档盘口推送（主动买卖量、盘口副图）。
@@ -70,7 +74,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
   public init(venue: String, market: String, upstream: String? = nil,
               nativeIntervals: Set<Interval>, aggregatedFrom: [Interval: Interval] = [:],
               maxKlines: Int, maxTailBars: Int? = nil, initialKlines: Int, liveKlineIntervals: Set<Interval>,
-              hasTickerStream: Bool, hasMarkPrice: Bool, hasFunding: Bool,
+              hasTickerStream: Bool, hasMarkPrice: Bool, hasFunding: Bool, fundingPeriod: TimeInterval = 8 * 3600,
               openInterestSource: String?, hasMicrostructure: Bool, hasDerivativeMetrics: Bool,
               hasOpenInterestHistory: Bool = false, hasOpenInterestArchive: Bool = false,
               hasBulkTickers: Bool, probesHistoryBoundary: Bool, snapshotNamespace: String? = nil,
@@ -81,6 +85,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
     self.maxKlines = maxKlines; self.maxTailBars = maxTailBars ?? maxKlines; self.initialKlines = initialKlines
     self.liveKlineIntervals = liveKlineIntervals
     self.hasTickerStream = hasTickerStream; self.hasMarkPrice = hasMarkPrice; self.hasFunding = hasFunding
+    self.fundingPeriod = fundingPeriod
     self.openInterestSource = openInterestSource; self.hasMicrostructure = hasMicrostructure
     self.hasDerivativeMetrics = hasDerivativeMetrics; self.hasBulkTickers = hasBulkTickers
     self.hasOpenInterestHistory = hasOpenInterestHistory; self.hasOpenInterestArchive = hasOpenInterestArchive

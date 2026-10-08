@@ -110,6 +110,13 @@ export function marketOf(sym: string): VenueMarket | undefined {
 export const venueKeyOf = (sym: string): string => parseKey(sym).venue
 /** 列表行 / 图表角标里的缩写：币安 / OKX / Bybit / HL / CB；美元指数与不认识的回 '' */
 export const venueLabel = (sym: string): string => marketOf(sym)?.shortName ?? ''
+/** 默认一期资金费率 8 小时 */
+export const FUNDING_PERIOD_MS = 8 * 3_600_000
+/** 这只那一家一期资金费率多长（毫秒）：Hyperliquid 每小时，其余 8 小时。结算刚过、下一帧没到那几秒倒计时按它往后滚 */
+export function fundingPeriodOf(sym: string): number {
+  const ms = marketOf(sym)?.fundingIntervalMs
+  return ms != null && Number.isFinite(ms) && ms > 0 ? ms : FUNDING_PERIOD_MS
+}
 /** 搜索组头里的全名（按 venue 键） */
 export const venueName = (venue: string): string => BY_KEY.get(venue)?.market.displayName ?? venue
 /** 这只的键形状过不过那一家的规矩（服务端 sync_validation identity 同一规则） */

@@ -169,6 +169,8 @@ export const hlMarket: VenueMarket = {
     if (!interval) return []
     const ms = IV_MS[iv], limit = Math.min(5000, q.limit)
     const now = Date.now()
+  // 费率每小时一期（ctx.funding 就是一小时的费率，下一次结算 = 下一个整点），不是别家的八小时
+  fundingIntervalMs: 36e5,
     let start: number, end: number
     if (q.start != null) { start = q.start; end = Math.min(now, q.start + limit * ms) }
     else { end = q.end != null ? q.end - 1 : now; start = end - limit * ms }

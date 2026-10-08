@@ -223,6 +223,9 @@ export interface VenueMarket {
   stream?: MarketWire
   intervals: Intervals
 }
+  /** 一期资金费率多长（毫秒）。不给 = 8 小时（币安 / OKX / Bybit 标准档）；Hyperliquid 每小时一期。
+   *  费率帧自己带下一次结算时刻，这个数只用在「刚结算完、下一帧还没到」那几秒的倒计时往后滚 */
+  fundingIntervalMs?: number
 
 /** 解码共用：字符串 / 数 → 有限数，否则 undefined */
 export const num = (v: unknown): number | undefined => { const x = n(v); return Number.isFinite(x) ? x : undefined }

@@ -233,6 +233,7 @@ struct MainHeaderView<Card: View>: View {
           forwardEarnings: market.forwardEarnings,
           revenue: market.revenue,
           nextFundingTimeMs: market.displayedNextFundingTime,
+          fundingPeriod: market.capabilities.fundingPeriod,
           stale: !market.priceFresh,
           showsStats: InstrumentSurfaces.showsHeaderStats(capabilities: market.capabilities, asset: market.asset))
           .accessibilityElement(children: .contain)

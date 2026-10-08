@@ -236,6 +236,10 @@ struct HyperliquidVenueTests {
     #expect(!c.hasOpenInterestHistory && !c.hasOpenInterestArchive && !c.hasDerivativeMetrics && !c.hasMicrostructure)
     #expect(c.maxKlines == 5000 && c.initialKlines == 300 && c.maxTailBars == 5000)
     #expect(c.hasVolume && !c.hasSessionChange)
+    // 费率每小时一期（`funding` 是一小时的费率，下一次结算 = 下一个整点）；别家默认八小时
+    #expect(c.fundingPeriod == 3600)
+    #expect(BinanceProvider.directCapabilities.fundingPeriod == 8 * 3600)
+    #expect(OKXProvider.capabilities.fundingPeriod == 8 * 3600 && BybitProvider.capabilities.fundingPeriod == 8 * 3600)
   }
 
   @Test("地址：直连 api.hyperliquid.xyz/info 与 /ws；网关打 kanpan-api 透传与中继；订单流的中继拿 kanpan-api 主机")

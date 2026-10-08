@@ -33,7 +33,9 @@ public struct HyperliquidProvider: MarketProvider {
     // 一页 5000 根，交易所也只留这么多。首屏只要 300：一次请求就画出来，深度交给后台加深。
     maxKlines: pageSize, maxTailBars: pageSize, initialKlines: 300,
     liveKlineIntervals: nativeIntervals,
+    // 费率每小时一期（`funding` 字段就是一小时的费率，下一次结算 = 下一个整点），不是别家的八小时。
     hasTickerStream: true, hasMarkPrice: true, hasFunding: true,
+    fundingPeriod: TimeInterval(HyperliquidVenue.fundingIntervalMs) / 1000,
     openInterestSource: venue, hasMicrostructure: false, hasDerivativeMetrics: false,
     hasOpenInterestHistory: false, hasOpenInterestArchive: false,
     hasBulkTickers: true, probesHistoryBoundary: false, snapshotNamespace: nil,

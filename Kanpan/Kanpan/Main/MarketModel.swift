@@ -750,8 +750,8 @@ final class MarketModel {
   /// 没有标记价流的线路（网关上的 OKX 替身）：结算时刻一到就重拉一次整表。
   ///
   /// 那条线路上「结算」那格只靠簿。原来要等持仓轮询那一圈（45 秒一圈、簿一分钟才算旧）
-  /// 才续上，结算过后最多一分半里那格按 `HeaderStats.fundingPeriod` 的八小时往后滚——
-  /// 四小时、一小时一结的品种就倒数出一个错的时刻。到点就问，间隙只剩交易所翻表那两秒。
+  /// 才续上，结算过后最多一分半里那格按这家的一期长度（`ProviderCapabilities.fundingPeriod`，多数八小时）往后滚——
+  /// 同一家里四小时、一小时一结的个别品种就倒数出一个错的时刻。到点就问，间隙只剩交易所翻表那两秒。
   @ObservationIgnored private var fundingRollover: Task<Void, Never>?
 
   private func scheduleFundingRollover(_ sym: String, at nextMs: Int64) {

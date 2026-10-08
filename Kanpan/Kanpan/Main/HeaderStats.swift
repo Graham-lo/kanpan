@@ -97,23 +97,26 @@ enum HeaderStats {
   }
 
   /// 距离下一次资金费率结算的中文倒计时，缺时刻返回 nil。
-  /// 结算刚过且下一帧未到时沿用原有八小时滚动规则，不改变取数口径。
-  static func fundingCountdownText(nextFundingTimeMs: Int64?, now: Date = Date()) -> String? {
+  /// 结算刚过且下一帧未到时按这家的一期长度（`period`，默认八小时；Hyperliquid 一小时）往后滚，不改变取数口径。
+  static func fundingCountdownText(nextFundingTimeMs: Int64?, period: TimeInterval = fundingPeriod,
+                                   now: Date = Date()) -> String? {
     guard let target = nextFundingTimeMs, target > 0 else { return nil }
+    let period = period.isFinite && period > 0 ? period : fundingPeriod
     var remaining = Double(target) / 1000 - now.timeIntervalSince1970
     // 已经过了结算时刻：往后滚到下一期。滚太多期说明这一帧早就不算数了，
     // 那由费率本身的展示寿命（`fundingMaxAge`）去判，这儿不再多说一句。
-    while remaining <= 0 { remaining += fundingPeriod }
-    guard remaining.isFinite, remaining < fundingPeriod * 4 else { return nil }
+    while remaining <= 0 { remaining += period }
+    guard remaining.isFinite, remaining < max(period * 4, fundingPeriod * 4) else { return nil }
     if remaining < 60 { return "<1分" }
     let total = Int(remaining)
     let hours = total / 3600, minutes = (total % 3600) / 60
     return hours > 0 ? "\(hours)时\(minutes)分" : "\(minutes)分"
   }
 
-  /// 一期资金费率多长。币安 USD-M 的标准档是 8 小时（少数品种 4 / 1 小时，
+  /// 一期资金费率多长的默认值。币安 USD-M 的标准档是 8 小时（少数品种 4 / 1 小时，
   /// 它们的下一次结算时刻同样由流里那一帧给，这个常量只用在「刚结算完、
-  /// 下一帧还没到」的那几秒里）。
+  /// 下一帧还没到」的那几秒里）。按交易所不同的那家（Hyperliquid 每小时）由
+  /// `ProviderCapabilities.fundingPeriod` 给，调用方传进来。
   static let fundingPeriod: TimeInterval = 8 * 3600
 
   /// 费率帧的展示寿命。资金费率每小时结算一次，帧比一个结算周期还旧就等于没有。

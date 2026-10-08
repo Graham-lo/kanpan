@@ -374,6 +374,8 @@ struct PriceRow: View {
   /// 下一次资金费率结算的时刻（`MarkPriceTick.nextFundingTime`）。「结算」那一格
   /// 读它；没有就显示破折号（见 `HeaderStats.fundingCountdownText`）。
   var nextFundingTimeMs: Int64?
+  /// 这家一期费率多长（`ProviderCapabilities.fundingPeriod`）：结算刚过、下一帧没到那几秒，倒计时按它往后滚。
+  var fundingPeriod: TimeInterval = HeaderStats.fundingPeriod
   /// 这口价不能当「现在的价」看：上一条线路留下的、断流超过宽限，或者这个品种已经不在交易了。
   /// 最新价和涨跌小字换成 `staleInk`（比 `ink3` 再淡一档，2026-09-28），不改字号也不加任何说明文字——「为什么是灰的」不需要解释，新数据到了
   /// 它自己就亮回来（§2B #54）。
@@ -561,7 +563,7 @@ struct PriceRow: View {
 
   private func countdownText(now: Date) -> String? {
     guard !stale, fundingRate != nil else { return nil }
-    return HeaderStats.fundingCountdownText(nextFundingTimeMs: nextFundingTimeMs, now: now)
+    return HeaderStats.fundingCountdownText(nextFundingTimeMs: nextFundingTimeMs, period: fundingPeriod, now: now)
   }
 
   /// 费率的正负是它唯一要读的信息，按涨跌色给，与价格和涨跌小字使用同两支色。

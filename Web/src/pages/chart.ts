@@ -47,7 +47,7 @@ import {
   IV_LABEL, IV_SHORT, INTERVALS, TABS, sectorsOf, baseOf, headName, kindOfUnderlying, type Kind, type Sym, type KlineResult,
   isDefaultVenue, knownMissing, loadAllVenues, ensureVenuesFor, symbolOfStream,
 } from '../market'
-import { venueLabel } from '../venues'
+import { fundingPeriodOf, venueLabel } from '../venues'
 import { searchGroups, resultName, groupHead, venueStatusHTML } from './searchGroups'
 import { klineDiskReady, diskBars, keepBars, flushBars } from '../market/klineStore'
 import { settle } from '../market/settle'
@@ -1101,7 +1101,7 @@ function renderDetail(): void {
       ${cell('持仓 24h', d.oiChg == null ? '—' : pctText(d.oiChg), cls(d.oiChg))}
       ${cell('成交额', s.vol ? fmtCompact(s.vol) : '—', '', 'vol')}
       ${cell(term('资金费率', '费率'), frText(s), cls(s.fr), 'fr')}
-      ${cell(term('下次结算'), s.nextFunding ? countdown(s.nextFunding - Date.now()) : '—', '', 'cd')}
+      ${cell(term('下次结算'), fundingCountdown(s), '', 'cd')}
       ${cell('笔数', s.count ? fmtCompact(s.count) : '—', '', 'count')}
       ${cell(term('多空人数比'), ratioText(d.ls), ratioCls(d.ls))}
       ${cell(term('大户持仓比'), ratioText(d.top), ratioCls(d.top))}
@@ -1114,6 +1114,13 @@ function renderDetail(): void {
 }
 const chgText = (s: Sym): string => s.price == null ? '—' : `${s.chg >= 0 ? '+' : ''}${fmt(s.chg, s.dec)}  ${pctText(s.pct)}`
 const frText = (s: Sym): string => s.fr == null ? '—' : (s.fr * 100).toFixed(4) + '%'
+/** 下次结算倒计时。结算刚过、下一帧没到那几秒按这家的一期长度往后滚（Hyperliquid 每小时、别家 8 小时），不停在 00:00:00 */
+export function fundingCountdown(s: Pick<Sym, 'symbol' | 'nextFunding'>, now = Date.now()): string {
+  if (!s.nextFunding) return '—'
+  let t = s.nextFunding
+  if (t <= now) { const p = fundingPeriodOf(s.symbol); t += Math.ceil((now - t + 1) / p) * p }
+  return countdown(t - now)
+}
 
 /** 推送来的数只改那几格的字，不重画整块 */
 function patchDetail(): void {
@@ -1700,7 +1707,7 @@ export async function initChart(): Promise<void> {
   setInterval(() => {
     paintClock()
     const s = sym(cfg(active())?.symbol || ''), cd = $('#detail [data-f="cd"]')
-    if (cd && s?.nextFunding) cd.textContent = countdown(s.nextFunding - Date.now())
+    if (cd && s?.nextFunding) cd.textContent = fundingCountdown(s)
   }, 1000)
   setInterval(() => {
     if (document.visibilityState === 'hidden') return

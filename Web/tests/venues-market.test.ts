@@ -10,7 +10,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseKey, keyOf, displayKey, syncKeyOf, venueOf, isDefaultVenue, alertMarketOf, wireSymbol } from '../src/market/identity'
-import { MARKET_VENUES, VENUE_LIST, intervalPlan, marketKlines, marketOf, symbolOk, venueLabel, venueName } from '../src/venues'
+import { MARKET_VENUES, VENUE_LIST, fundingPeriodOf, intervalPlan, marketKlines, marketOf, symbolOk, venueLabel, venueName } from '../src/venues'
 import { decodeOkxCandles, decodeOkxInstruments, decodeOkxPush, decodeOkxTickers, okxInstId, okxKeyOf, okxMarket } from '../src/venues/okx'
 import { bybitDecoder, decodeBybitInstruments, decodeBybitKlines, decodeBybitTickers, bybitMarket } from '../src/venues/bybit'
 import { decodeHlCandles, decodeHlCtxs, decodeHlPush, decodeHlUniverse, hlCoin, hlMarket, hlWeight, nextHour } from '../src/venues/hyperliquid'
@@ -78,6 +78,9 @@ describe('注册表：行情 + 订单流一张表', () => {
     expect(venueName('hyperliquid')).toBe('Hyperliquid')
     expect(marketOf('okx/usd_m/BTCUSDT')?.quote).toBe('USDT')
     expect(marketOf('hyperliquid/usd_m/BTC')?.quote).toBe('USDC')
+    // 费率一期多长：Hyperliquid 每小时，别家不给 = 8 小时
+    expect(fundingPeriodOf('hyperliquid/usd_m/BTC')).toBe(36e5)
+    expect(['BTCUSDT', 'okx/usd_m/BTCUSDT', 'bybit/usd_m/BTCUSDT', 'coinbase/spot/BTC-USD', 'DXY'].map(fundingPeriodOf)).toEqual(Array(5).fill(8 * 36e5))
     expect(marketOf('coinbase/usd_m/BTC-USD')).toBeUndefined()   // market 段对不上不认
     expect(marketOf('DXY')).toBeUndefined()
   })
