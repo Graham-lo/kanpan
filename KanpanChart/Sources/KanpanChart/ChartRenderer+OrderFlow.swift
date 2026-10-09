@@ -631,7 +631,20 @@ extension ChartRenderer {
     let x = Double(point.x), y = Double(point.y)
     guard x >= 0, x <= L.plotW, y >= L.main.y, y <= L.main.y + L.main.h else { return nil }
     let frame = orderFlowBands(pane: L.main, range: priceRange(size: size), L: L)
-    return Self.orderFlowHit(frame.bands, x: x, y: y, touch: true)?.group
+    return Self.orderFlowLabelHit(frame, at: point) ?? Self.orderFlowHit(frame.bands, x: x, y: y, touch: true)?.group
+  }
+
+  /// 金额签按排版后的实际框命中（最多六枚）；签为避让移位后仍属于原来的聚合墙。
+  static func orderFlowLabelHit(_ frame: OrderFlowFrame, at point: CGPoint) -> OrderFlowGroup? {
+    guard let label = frame.labels.last(where: { $0.frame.contains(point) }) else { return nil }
+    return frame.bands.first(where: { $0.key == label.key })?.group
+  }
+
+  public func orderFlowLabelHit(at point: CGPoint, size: CGSize) -> OrderFlowGroup? {
+    guard orderFlowSnapshot != nil, !state.series.isEmpty else { return nil }
+    let L = layout(size: size)
+    guard CGRect(x: 0, y: L.main.y, width: L.plotW, height: L.main.h).contains(point) else { return nil }
+    return Self.orderFlowLabelHit(orderFlowBands(pane: L.main, range: priceRange(size: size), L: L), at: point)
   }
 
   /// 轻点这一下是不是点在一根 K 线上（视图坐标）：横向落在那一根的格子里（不足 8pt 按 8pt 算），
@@ -678,7 +691,8 @@ extension ChartRenderer {
     guard let flow = orderFlowSnapshot, flow.phase == .ready else { return nil }
     let frame = orderFlowBands(pane: pane, range: range, L: L)
     if let cross = state.crosshair {
-      guard cross.pane == nil, let band = orderFlowHovered(frame.bands, pane: pane, range: range, L: L) else { return nil }
+      guard cross.source == .chart, cross.pane == nil,
+            let band = orderFlowHovered(frame.bands, pane: pane, range: range, L: L) else { return nil }
       return (band.group, band, true)
     }
     guard let key = state.orderFlowSelected else { return nil }

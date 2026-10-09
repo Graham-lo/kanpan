@@ -699,6 +699,7 @@ extension ChartView {
     // 关掉磁吸时竖线本来停在某个时刻上（`t`），挪根之后那个时刻属于上一根，
     // 留着它线就还站在原地。清掉 = 用新那根的中心，这正是「挪了一根」该有的样子。
     c.t = nil
+    c.source = .chart
     if c.pane == nil, s.magnet || wasOnClose { c.price = s.series.close[next] }
     s.crosshair = c
     // 挪出屏幕就把视野跟着推：人按的是「下一根」，结果那一根画在屏幕外面，
@@ -775,6 +776,11 @@ extension ChartView {
       return
     }
     gesture.lastPlotTap = (ms: now, x: Double(p.x), y: Double(p.y))
+    // 金额签在最上层，且可能为了避让移离原线：按屏上实际框优先，不被 K 线或气泡热区截走。
+    if let renderer, let hit = renderer.orderFlowLabelHit(at: p, size: bounds.size) {
+      selectOrderFlow(renderer.orderFlowIsSelected(hit) ? nil : hit.key)
+      return
+    }
     // 大单与爆仓气泡：点中一枚泡就落十字线、交宿主出弹层（蜡烛上只认泡本身那一小块，见 `handleBigTradeTap`）。
     if handleBigTradeTap(at: p) { return }
     // 主力订单流：点在一条色带（一桶一段合并的那条）上就选中它（出详情卡、描边），再点同一条收起，点别的换过去；

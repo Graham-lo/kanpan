@@ -121,6 +121,69 @@ final class BigTradeSheetUITests: KanpanUICase {
 
   // MARK: 点泡
 
+  func testTapBubbleAndOrderFlowLabelStayExclusive() throws {
+    waitForBars()
+    XCTAssertTrue(app.openIndicatorPage())
+    let toggle = app.buttons[Ids.indicatorSwitch("ORDERFLOW")]
+    expectExists(toggle, Self.short)
+    toggle.tap()
+    dismissSheet(until: app.buttons[Ids.indicatorSwitch("MACD")])
+    let header = app.staticTexts[Ids.panelHeader].firstMatch
+    dismissSheet(until: header)
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !header.exists })
+
+    var labels: [[String: Any]] = []
+    XCTAssertTrue(waitUntil(timeout: Self.long, poll: 0.5) {
+      labels = self.chartInfo()["orderFlowLabels"] as? [[String: Any]] ?? []
+      return !labels.isEmpty
+    }, "挂单金额签没出现")
+    let label = try XCTUnwrap(labels.first)
+    let canvas = app.otherElements["chart.canvas"]
+    let origin = canvas.coordinate(withNormalizedOffset: .zero)
+    origin.withOffset(CGVector(dx: (label["x"] as? Double ?? 0) + (label["w"] as? Double ?? 0) / 2,
+                              dy: (label["y"] as? Double ?? 0) + (label["h"] as? Double ?? 0) / 2)).tap()
+    expectExists(el("chart.orderFlowCard"), Self.short, "点金额签没出挂单详情")
+    XCTAssertFalse(sheet.exists, "点金额签误开了大单页")
+    let cardShot = XCTAttachment(screenshot: app.screenshot())
+    cardShot.name = "金额标签-挂单详情"; cardShot.lifetime = .keepAlways; add(cardShot)
+
+    var bubblePoint: CGPoint?
+    XCTAssertTrue(waitUntil(timeout: Self.long, poll: 0.5) {
+      let info = self.chartInfo()
+      let labels = (info["orderFlowLabels"] as? [[String: Any]] ?? []).map {
+        CGRect(x: $0["x"] as? Double ?? 0, y: $0["y"] as? Double ?? 0,
+               width: $0["w"] as? Double ?? 0, height: $0["h"] as? Double ?? 0).insetBy(dx: -3, dy: -3)
+      }
+      let card = self.el("chart.orderFlowCard").frame.offsetBy(dx: -canvas.frame.minX, dy: -canvas.frame.minY)
+      let bubbles = (info["bigTradeBubbles"] as? [[String: Any]] ?? [])
+        .filter { $0["isBubble"] as? Bool == true }
+        .sorted { ($0["usd"] as? Double ?? 0) > ($1["usd"] as? Double ?? 0) }
+      // 金额签画在泡之上；点露出的泡身，不能把同位置金额签的正确响应当成气泡失败。
+      for bubble in bubbles {
+        let x = bubble["x"] as? Double ?? 0, y = bubble["y"] as? Double ?? 0, r = bubble["r"] as? Double ?? 0
+        for (dx, dy) in [(0.0, 0.0), (0, -0.75), (0, 0.75), (-0.75, 0), (0.75, 0)] {
+          let point = CGPoint(x: x + dx * r, y: y + dy * r)
+          if !labels.contains(where: { $0.contains(point) }) && !card.contains(point) {
+            bubblePoint = point
+            return true
+          }
+        }
+      }
+      return false
+    }, "找不到未被金额签或详情卡遮住的气泡")
+    let point = try XCTUnwrap(bubblePoint)
+    origin.withOffset(CGVector(dx: point.x, dy: point.y)).tap()
+    expectExists(sheet, Self.short, "点气泡没出大单页")
+    let pageShot = XCTAttachment(screenshot: app.screenshot())
+    pageShot.name = "气泡大单页-17pt标题"; pageShot.lifetime = .keepAlways; add(pageShot)
+    closeSheet()
+    XCTAssertFalse(el("chart.orderFlowCard").exists, "点气泡后还残留挂单详情卡")
+    XCTAssertEqual(chartInfo()["orderFlowSelected"] as? String, "")
+    XCTAssertTrue((chartInfo()["orderFlowFocus"] as? [String: Any] ?? [:]).isEmpty, "程序定位又触发了挂单悬停")
+    let bubbleShot = XCTAttachment(screenshot: app.screenshot())
+    bubbleShot.name = "气泡关闭后-无挂单详情"; bubbleShot.lifetime = .keepAlways; add(bubbleShot)
+  }
+
   func testTapBubbleOpensFullOnThatBar() throws {
     waitForBars()
     var bubbles: [[String: Any]] = []

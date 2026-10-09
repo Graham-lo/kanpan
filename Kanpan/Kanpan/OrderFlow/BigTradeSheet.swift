@@ -376,7 +376,7 @@ struct BigTradeSheet: View {
       .accessibilityLabel("返回")
       .accessibilityIdentifier("bigtrade.back")
       VStack(alignment: .leading, spacing: 5) {
-        Text(BT.title.text).font(.scaled(20, .bold, relativeTo: .title3)).foregroundStyle(t.ink)
+        Text(BT.title.text).font(TypeScale.title).foregroundStyle(t.ink)
           .accessibilityAddTraits(.isHeader)
         Text(subtitle).lineLimit(1)
           .font(TypeScale.captionEmph).foregroundStyle(t.ink3)
@@ -468,20 +468,20 @@ struct BigTradeSheet: View {
                   rightID: String? = nil) -> some View {
     HStack(spacing: Space.s) {
       if live { LiveDot(color: t.up) }
-      Text(title).font(.scaled(12, .semibold, relativeTo: .caption))
+      Text(title).font(TypeScale.controlOn).foregroundStyle(t.ink2)
         .accessibilityIdentifier(titleID ?? "")
       Spacer(minLength: Space.s)
       if let right {
-        Text(right).font(TypeScale.captionEmph).lineLimit(1).accessibilityIdentifier(rightID ?? "")
+        Text(right).font(TypeScale.caption).lineLimit(1).accessibilityIdentifier(rightID ?? "")
       }
     }
     .foregroundStyle(t.ink3)
     .padding(.bottom, 10)
   }
 
-  private func amount(_ x: Double, color: Color, size: CGFloat, weight: Font.Weight = .semibold) -> some View {
+  private func amount(_ x: Double, color: Color, font: ScaledFont) -> some View {
     Text(fmtVol(x))
-      .font(.scaled(size, weight, relativeTo: size > 15 ? .title2 : .caption2))
+      .font(font)
       .monospacedDigit()
       .foregroundStyle(color)
       .contentTransition(.numericText(value: x))
@@ -516,13 +516,13 @@ struct BigTradeSheet: View {
       } else {
         HStack(alignment: .firstTextBaseline) {
           HStack(alignment: .firstTextBaseline, spacing: 5) {
-            amount(bar.buyUsd, color: up, size: 22)
-            if let c = bar.buyCount { Text(BT.buyCount.fill(["n": "\(c)"])).font(TypeScale.caption2Emph).foregroundStyle(t.ink3) }
+            amount(bar.buyUsd, color: up, font: TypeScale.title)
+            if let c = bar.buyCount { Text(BT.buyCount.fill(["n": "\(c)"])).font(TypeScale.captionEmph).foregroundStyle(t.ink3) }
           }
           Spacer(minLength: Space.s)
           HStack(alignment: .firstTextBaseline, spacing: 5) {
-            amount(bar.sellUsd, color: down, size: 22)
-            if let c = bar.sellCount { Text(BT.sellCount.fill(["n": "\(c)"])).font(TypeScale.caption2Emph).foregroundStyle(t.ink3) }
+            amount(bar.sellUsd, color: down, font: TypeScale.title)
+            if let c = bar.sellCount { Text(BT.sellCount.fill(["n": "\(c)"])).font(TypeScale.captionEmph).foregroundStyle(t.ink3) }
           }
         }
         .accessibilityElement(children: .combine)
@@ -547,17 +547,17 @@ struct BigTradeSheet: View {
 
   private func windowRow(_ label: String, _ w: BigTradeSum, muted: Bool) -> some View {
     GridRow {
-      Text(label).font(.scaled(12, .semibold, relativeTo: .caption)).foregroundStyle(t.ink2)
+      Text(label).font(TypeScale.captionEmph).foregroundStyle(t.ink2)
         .frame(width: 52, alignment: .leading)
       VStack(spacing: 4) {
         VersusBar(buy: w.buyUsd, sell: w.sellUsd, height: 10, muted: muted)
         HStack {
-          amount(w.buyUsd, color: muted ? t.ink3 : t.ink, size: 11)
+          amount(w.buyUsd, color: muted ? t.ink3 : t.ink, font: TypeScale.captionEmph)
           Spacer(minLength: Space.xs)
-          Text(BigTradeSummary.netText(w.net, signed: false)).font(TypeScale.caption2).monospacedDigit()
+          Text(BigTradeSummary.netText(w.net, signed: false)).font(TypeScale.caption).monospacedDigit()
             .foregroundStyle(t.ink3)
           Spacer(minLength: Space.xs)
-          amount(w.sellUsd, color: muted ? t.ink3 : t.ink, size: 11)
+          amount(w.sellUsd, color: muted ? t.ink3 : t.ink, font: TypeScale.captionEmph)
         }
       }
     }
@@ -588,28 +588,28 @@ struct BigTradeSheet: View {
         VersusBar(buy: liq.hour.shortUsd, sell: liq.hour.longUsd, height: 10, muted: muted)
           .padding(.top, 2).padding(.bottom, 4)
         HStack(spacing: Space.xs) {
-          Text(BT.shortLiq.text + " " + fmtVol(liq.hour.shortUsd)).font(TypeScale.caption2Emph).foregroundStyle(up)
+          Text(BT.shortLiq.text + " " + fmtVol(liq.hour.shortUsd)).font(TypeScale.captionEmph).foregroundStyle(up)
           Spacer(minLength: Space.xs)
-          Text(BT.longLiq.text + " " + fmtVol(liq.hour.longUsd)).font(TypeScale.caption2Emph).foregroundStyle(down)
+          Text(BT.longLiq.text + " " + fmtVol(liq.hour.longUsd)).font(TypeScale.captionEmph).foregroundStyle(down)
         }
         .monospacedDigit()
         .accessibilityElement(children: .combine)
         let maxLine = liq.today.max.map { r in
           Text(BT.todayMaxLiq.text + " ").foregroundStyle(t.ink3)
-            + Text((r.maxIsLong ? BT.long : BT.short).text + " " + fmtVol(r.maxUsd)).fontWeight(.semibold)
+            + Text((r.maxIsLong ? BT.long : BT.short).text + " " + fmtVol(r.maxUsd)).fontWeight(.medium)
               .foregroundStyle(muted ? t.ink3 : (r.maxIsLong ? t.down : t.up))
             + Text(" @ " + fmtPrice(r.maxPrice, decimals: market.info.priceDecimals) + " · "
               + time(r.minuteMs, step: 60_000)).foregroundStyle(t.ink3)
         }
         let dayLine = Text(BT.day.text + " " + BT.long.text + " ").foregroundStyle(t.ink3)
-          + Text(fmtVol(liq.day.longUsd)).fontWeight(.semibold).foregroundStyle(muted ? t.ink3 : t.ink)
+          + Text(fmtVol(liq.day.longUsd)).fontWeight(.medium).foregroundStyle(muted ? t.ink3 : t.ink)
           + Text(" · " + BT.short.text + " ").foregroundStyle(t.ink3)
-          + Text(fmtVol(liq.day.shortUsd)).fontWeight(.semibold).foregroundStyle(muted ? t.ink3 : t.ink)
+          + Text(fmtVol(liq.day.shortUsd)).fontWeight(.medium).foregroundStyle(muted ? t.ink3 : t.ink)
         ViewThatFits(in: .horizontal) {
           HStack { maxLine; Spacer(minLength: Space.s); dayLine }
           VStack(alignment: .leading, spacing: Space.xs) { maxLine; dayLine }
         }
-        .font(TypeScale.caption2).monospacedDigit().lineLimit(1)
+        .font(TypeScale.caption).monospacedDigit().lineLimit(1)
         .padding(.top, Space.s)
       }
     }
@@ -661,7 +661,7 @@ struct BigTradeSheet: View {
               LadderSide(value: r.buy, peak: peak, leading: false, color: t.up, muted: s.muted, wall: r.bidWall,
                          wallColor: t.candleUp, ink3: t.ink3)
               Text(fmtPrice(r.price, decimals: decimals))
-                .font(.scaled(11, r.now ? .bold : .medium, relativeTo: .caption2)).monospacedDigit()
+                .font(TypeScale.captionEmph).monospacedDigit()
                 .foregroundStyle(r.now ? m.accent : t.ink2)
                 .lineLimit(1).minimumScaleFactor(0.8)
                 .frame(width: 64)
@@ -694,9 +694,9 @@ struct BigTradeSheet: View {
         Text(BT.yesterday.text + " " + time(liq.timelineStart, step: 60_000)).foregroundStyle(t.ink3)
         Spacer(minLength: Space.xs)
         (Text(BT.long.text + " ").foregroundStyle(t.ink3)
-          + Text(fmtVol(liq.day.longUsd)).fontWeight(.semibold).foregroundStyle(s.muted ? t.ink3 : t.down)
+          + Text(fmtVol(liq.day.longUsd)).fontWeight(.medium).foregroundStyle(s.muted ? t.ink3 : t.down)
           + Text(" · " + BT.short.text + " ").foregroundStyle(t.ink3)
-          + Text(fmtVol(liq.day.shortUsd)).fontWeight(.semibold).foregroundStyle(s.muted ? t.ink3 : t.up))
+          + Text(fmtVol(liq.day.shortUsd)).fontWeight(.medium).foregroundStyle(s.muted ? t.ink3 : t.up))
         Spacer(minLength: Space.xs)
         Text(BT.now.text).foregroundStyle(t.ink3)
       }
@@ -710,18 +710,18 @@ struct BigTradeSheet: View {
     let color = muted ? t.ink3 : (r.maxIsLong ? t.down : t.up)
     let venue = OrderFlowBase.exchanges[r.maxExchange.key] ?? r.maxExchange.key
     return HStack(spacing: Space.m) {
-      Text((r.maxIsLong ? BT.longMark : BT.shortMark).text).font(.scaled(13, .bold, relativeTo: .footnote)).foregroundStyle(.white)
+      Text((r.maxIsLong ? BT.longMark : BT.shortMark).text).font(TypeScale.controlOn).foregroundStyle(.white)
         .frame(width: 34, height: 34)
         .background(Circle().fill(muted ? t.ink3 : (r.maxIsLong ? t.candleDown : t.candleUp)))
       VStack(alignment: .leading, spacing: Space.xxs) {
         Text(BT.todayMaxLiq.text + " · " + (r.maxIsLong ? BT.longLiq : BT.shortLiq).text)
-          .font(.scaled(13, .semibold, relativeTo: .footnote)).foregroundStyle(t.ink)
+          .font(TypeScale.control).foregroundStyle(t.ink)
         Text(time(r.minuteMs, step: 60_000) + " · " + fmtPrice(r.maxPrice, decimals: market.info.priceDecimals)
           + " · " + venue)
           .font(TypeScale.caption2Emph).monospacedDigit().foregroundStyle(t.ink3)
       }
       Spacer(minLength: Space.s)
-      Text(fmtVol(r.maxUsd)).font(.scaled(17, .semibold, relativeTo: .body)).monospacedDigit().foregroundStyle(color)
+      Text(fmtVol(r.maxUsd)).font(TypeScale.bodyEmph).monospacedDigit().foregroundStyle(color)
     }
     .padding(.vertical, 10).padding(.horizontal, Space.m)
     .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(m.well))
@@ -742,8 +742,8 @@ struct BigTradeSheet: View {
   private var thresholdRow: some View {
     Button { Haptics.tap(); model.editing = true } label: {
       HStack(spacing: 10) {
-        Text(BT.threshold.text).font(.scaled(14, .medium, relativeTo: .subheadline)).foregroundStyle(t.ink2)
-        Text(thresholdText).font(.scaled(14, relativeTo: .subheadline)).monospacedDigit().foregroundStyle(t.ink)
+        Text(BT.threshold.text).font(TypeScale.body).foregroundStyle(t.ink2)
+        Text(thresholdText).font(TypeScale.footnote).monospacedDigit().foregroundStyle(t.ink)
           .lineLimit(1)
         Spacer(minLength: Space.s)
         Text("›").font(TypeScale.controlOn).foregroundStyle(t.amber)
@@ -860,7 +860,7 @@ private struct VersusBar: View {
           .opacity(muted ? 0.6 : 1)
         }
         if let net, total > 0 {
-          Text(net).font(.scaled(11, .semibold, relativeTo: .caption2)).monospacedDigit()
+          Text(net).font(TypeScale.captionEmph).monospacedDigit()
             .foregroundStyle(netColor)
             .padding(.horizontal, Space.s).padding(.vertical, 5)
             .background(Capsule().fill(t.raised).shadow(color: .black.opacity(0.14), radius: 2, y: 1))
@@ -902,12 +902,12 @@ private struct LadderSide: View {
             .saturation(muted ? 0.15 : 1).opacity(muted ? 0.6 : 1)
         }
         if wall == nil, value / peak > 0.06 {
-          Text(fmtVol(value)).font(.scaled(11, relativeTo: .caption2)).monospacedDigit().foregroundStyle(ink3)
+          Text(fmtVol(value)).font(TypeScale.caption2).monospacedDigit().foregroundStyle(ink3)
             .fixedSize()
             .offset(x: leading ? w + 5 : -(w + 5))
         }
         if let wall {
-          Text(wall).font(.scaled(11, .semibold, relativeTo: .caption2)).monospacedDigit().foregroundStyle(.white)
+          Text(wall).font(TypeScale.caption2Emph).monospacedDigit().foregroundStyle(.white)
             .padding(.horizontal, 6).padding(.vertical, 3)
             .background(Capsule().fill(muted ? ink3 : wallColor))
             .fixedSize()

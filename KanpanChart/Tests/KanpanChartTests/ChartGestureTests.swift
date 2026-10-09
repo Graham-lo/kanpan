@@ -97,6 +97,51 @@ private func stroke(
 
 @MainActor
 @Suite("AICoin 手势状态机") struct ChartGestureTests {
+  @Test("点金额签选墙并可收起")
+  func orderFlowAmountLabelTap() throws {
+    var (r, _) = OrderFlowChartTests.renderer()
+    OrderFlowChartTests.clearRight(&r)
+    let size = OrderFlowChartTests.size
+    let L = r.layout(size: size)
+    let f = r.orderFlowFrame(pane: L.main, range: r.priceRange(size: size), L: L)
+    let label = try #require(f.labels.first)
+    let v = ChartView(state: r.state)
+    v.frame = CGRect(origin: .zero, size: size)
+    v.layoutIfNeeded()
+    var focus: ChartOrderFlowFocus?
+    v.onOrderFlowFocusChanged = { focus = $0 }
+    let p = CGPoint(x: label.frame.midX, y: label.frame.midY)
+    stroke(v, from: p, through: [], startMs: 10_000)
+    #expect(focus?.group.key == label.key && focus?.selected == true)
+    #expect(v.state?.crosshair == nil)
+    stroke(v, from: p, through: [], startMs: 11_000)
+    #expect(focus == nil && v.state?.orderFlowSelected == nil)
+  }
+
+  @Test("气泡点击只通知大单页，清掉原挂单选中且行情更新不再出卡")
+  func bigTradeTapIsExclusive() throws {
+    var r = BigTradeChartTests.renderer()
+    let b = r.state.series
+    r.state.orderFlow = OrderFlowSnapshot(symbol: b.symbol, phase: .ready,
+      orders: [OrderFlowChartTests.order(.usdtPerp, .bid, price: b.close.last!, firstSeen: b.firstTime)], asOfMs: b.lastTime)
+    let v = ChartView(state: r.state)
+    v.frame = CGRect(origin: .zero, size: BigTradeChartTests.size)
+    v.layoutIfNeeded()
+    let bubble = try #require(v.bigTradeBubbles.first(where: { $0.isBubble }))
+    var opened = 0
+    var focus: ChartOrderFlowFocus?
+    v.onBigTradeTap = { _ in opened += 1 }
+    v.onOrderFlowFocusChanged = { focus = $0 }
+    let key = OrderFlowGroupKey(r.state.orderFlow!.orders[0])
+    v.selectOrderFlow(key)
+    #expect(focus != nil)
+    stroke(v, from: bubble.center, through: [], startMs: 10_000)
+    #expect(opened == 1 && focus == nil)
+    #expect(v.state?.crosshair?.source == .bigTrade && v.state?.orderFlowSelected == nil)
+    v.state?.orderFlow?.asOfMs += 500
+    #expect(focus == nil)
+  }
+
   @Test("单击显示，第二次关闭；X吸柱中心、Y保留选中价")
   func taps() throws {
     let (v, _) = try makeView(magnet: false)

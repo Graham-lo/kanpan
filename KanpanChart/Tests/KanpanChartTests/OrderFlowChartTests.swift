@@ -1626,6 +1626,44 @@ struct OrderFlowChartTests {
     #expect(!away.drawOrderFlowHover(scratch, pane: L.main, range: range, L: L))
   }
 
+  @Test("移位金额签命中所属聚合墙，不按原细线或邻墙认")
+  func shiftedLabelHit() throws {
+    let (r, _) = Self.renderer()
+    var f = frame(r)
+    let band = try #require(f.bands.first)
+    let rect = CGRect(x: 120, y: 60, width: 48, height: 16)
+    f.labels = [.init(key: band.key, text: "10M", frame: rect, fill: band.color, ink: "#FFFFFF")]
+    #expect(ChartRenderer.orderFlowLabelHit(f, at: CGPoint(x: 144, y: 68))?.key == band.key)
+    #expect(ChartRenderer.orderFlowLabelHit(f, at: CGPoint(x: 144, y: 90)) == nil)
+    // 实际排版后的签每枚都能命中，详情仍是整个跨桶墙。
+    for label in frame(r).labels {
+      #expect(r.orderFlowHit(at: CGPoint(x: label.frame.midX, y: label.frame.midY), size: Self.size)?.key == label.key)
+    }
+  }
+
+  @Test("大单页定位不出挂单卡，手动十字线仍能查看同一价位")
+  func bigTradeCrosshairDoesNotHoverWall() throws {
+    let (r, orders) = Self.renderer()
+    let view = ChartView(state: r.state)
+    view.frame = CGRect(origin: .zero, size: Self.size)
+    view.layoutIfNeeded()
+    var focus: ChartOrderFlowFocus?
+    view.onOrderFlowFocusChanged = { focus = $0 }
+    let i = r.state.series.count - 2
+    let c = Crosshair(index: i, price: orders[0].price)
+    view.state?.crosshair = c
+    #expect(focus != nil)
+    view.state?.crosshair?.source = .bigTrade
+    #expect(focus == nil, "同一根同一价格，仅改定位来源也必须收掉挂单卡")
+    view.state?.orderFlow?.asOfMs += 500
+    #expect(focus == nil, "行情更新不能把卡重新带出来")
+    view.state?.crosshair?.source = .chart
+    #expect(focus != nil)
+    view.selectOrderFlow(OrderFlowGroupKey(orders[0]))
+    view.placeCrosshair(atTime: r.state.series.time(at: i))
+    #expect(view.state?.orderFlowSelected == nil && view.state?.crosshair?.source == .bigTrade)
+  }
+
   @Test("轻点选中：选中出卡、再点同一条收起、点别的换过去、点空白收卡；选中时十字线收掉；金额跟着快照走")
   func selectAndDeselect() throws {
     let (r, orders) = Self.renderer()

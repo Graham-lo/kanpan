@@ -34,7 +34,7 @@ extension ChartView {
   public func placeCrosshair(atTime t: Int64) {
     guard var s = state, s.series.count > 0 else { return }
     let i = min(s.series.firstIndex(atOrAfter: t), s.series.count - 1)
-    s.crosshair = Crosshair(index: i, price: s.options.crossPrice == .close ? nil : s.series.close[i])
+    s.crosshair = Crosshair(index: i, price: s.options.crossPrice == .close ? nil : s.series.close[i], source: .bigTrade)
     s.orderFlowSelected = nil
     if let L = chartLayout, L.plotW > 0 {
       let x = s.view.x(Double(s.series.time(at: i)), plotW: L.plotW)

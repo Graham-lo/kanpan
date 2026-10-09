@@ -353,6 +353,9 @@ extension ChartState.Input {
 /// 存的是**时间和价格**，不是像素：转屏、改副图高度、补历史都会换一套坐标，存像素的话
 /// 线会自己跳走。`index` 是磁吸模式下吸到的那根，读数（图例、时间胶囊）一律读它。
 public struct Crosshair: Sendable, Equatable {
+  /// 气泡 / 大单页定位只读这一根，不顺带命中挂单详情；手动移动后恢复图表检查。
+  public enum Source: Sendable, Equatable { case chart, bigTrade }
+  public var source: Source
   public var index: Int
   public var pane: IndicatorID?
   /// 关掉磁吸时竖线停在这个时间上；`nil` 用第 `index` 根的中心。
@@ -362,7 +365,7 @@ public struct Crosshair: Sendable, Equatable {
   /// 注意存的是价格不是 y：`y` 这个名字留着是因为 M3 的基线用它摆位置，语义没变过——
   /// 当时给的就是「这一层画到哪个高度」，现在统一成价格由渲染器换算。
   public var price: Double?
-  public init(index: Int, t: Double? = nil, price: Double? = nil, pane: IndicatorID? = nil) {
-    self.index = index; self.t = t; self.price = price; self.pane = pane
+  public init(index: Int, t: Double? = nil, price: Double? = nil, pane: IndicatorID? = nil, source: Source = .chart) {
+    self.index = index; self.t = t; self.price = price; self.pane = pane; self.source = source
   }
 }
