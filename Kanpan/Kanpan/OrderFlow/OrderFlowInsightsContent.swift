@@ -249,7 +249,7 @@ struct OrderFlowInsightsContent: View {
     }
   }
   @ViewBuilder private var participantRows: some View {
-    if let window = page?.windows.first(where: { $0.minutes == 15 }), !window.sources.isEmpty {
+    if covered(15), let window = page?.windows.first(where: { $0.minutes == 15 }), !window.sources.isEmpty {
       divider
       note(L.observedSources)
       ForEach([true, false], id: \.self) { spot in

@@ -115,7 +115,7 @@ export function buildInsights(i: InsightInput): InsightView {
     return { id: `flow-${minutes}`, title: `近 ${minutes} 分钟`, value: has && move != null ? `${move >= 0 ? '+' : ''}${move.toFixed(2)}%` : undefined,
       detail: observation, note: has ? `主动买 $${amount(source!.buyUsd)} · 主动卖 $${amount(source!.sellUsd)} · ${insightTime(from)}–${insightTime(windowEnd)}` : undefined }
   })
-  const observed = fresh ? b?.windows.find(w => w.minutes === 15)?.sources ?? [] : []
+  const observed = fresh && covered && b!.coverageSinceMs! <= windowEnd - 15 * M ? b?.windows.find(w => w.minutes === 15)?.sources ?? [] : []
   for (const spot of [true, false]) {
     const source = observed.filter(s => (s.product === 'spot') === spot), buy = source.reduce((n, s) => n + s.buyUsd, 0), sell = source.reduce((n, s) => n + s.sellUsd, 0)
     if (buy + sell > 0) flowRows.push({ id: spot ? 'observed-spot' : 'observed-contract', title: `已观测${spot ? '现货' : '合约'}大单 · 近 15 分钟`, value: undefined,

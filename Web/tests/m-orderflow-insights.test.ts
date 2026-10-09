@@ -56,8 +56,10 @@ describe('盘口洞察 · 真实数据与覆盖', () => {
   it('后端完整分钟窗口对齐价格；最近覆盖不够15m时不做15m判断', () => {
     const good = buildInsights(input()).sections.find(s => s.id === 'activity')!.rows
     expect(good[0].detail).toContain('伴随价格上移')
+    expect(good.some(r => r.id.startsWith('observed-'))).toBe(true)
     const partial = buildInsights(input({ body: body({ coverageSinceMs: END - 10 * M }) })).sections.find(s => s.id === 'activity')!.rows
     expect(partial[0].detail).toContain('伴随价格上移'); expect(partial[1].detail).toContain('覆盖不足')
+    expect(partial.some(r => r.id.startsWith('observed-'))).toBe(false)
   })
   it('接口失败/过期保留价区但停方向推断；缺源不补零、不套其他所', () => {
     const failed = buildInsights(input({ state: 'error' }))
