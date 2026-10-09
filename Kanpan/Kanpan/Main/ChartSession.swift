@@ -237,6 +237,7 @@ final class ChartSession {
     // 没有盘口的品种（美元指数：一个算出来的指数，没有簿）不挂订单流——开关开着也不转圈、不报错。
     result.orderFlow = market.capabilities.hasOrderFlow
       ? market.orderFlow.chartValue(symbol: market.symbol, drawingCanvasOnly: input.drawingCanvasOnly) : nil
+    result.orderFlowDisplay = OrderFlowDisplay(history: prefs.orderFlowHistory)
     // 图上大单与爆仓气泡（横屏画线台也画，点了不出弹层——那边的宿主不接 `onBigTradeTap`）。
     result.bigTrades = market.capabilities.hasOrderFlow ? market.orderFlow.chartTape(symbol: market.symbol) : nil
     // 横屏画线台：主图指标可以开着（顶行「指标」胶囊管），但价格轴只按 K 线定——

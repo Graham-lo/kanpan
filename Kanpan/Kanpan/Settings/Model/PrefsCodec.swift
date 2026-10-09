@@ -140,7 +140,7 @@ extension Prefs: Codable {
     // `viewAnchor`、`priceBias`、`dataDisplay`、`crossPrice`、`allowMainInversion`、`allowSubInversion`、
     // `adaptiveIndicators` 2026-09-28 收掉（收设置项 B 组）：图一律按 `Prefs.chartOptions` 的定值画，
     // 老存档、云端老 body 里的这些键读时忽略，服务端退役。
-    case depth, orderFlow, priceMode
+    case depth, orderFlow, orderFlowHistory, priceMode
     // 主力订单流的门槛 / 步长改动（2026-09-24 逐单模型那一轮加的）。四个显示开关（`orderFlowSpot`、
     // `orderFlowContract`、`orderFlowShowFilled`、`orderFlowShowCancelled`）以及更早按买卖拆开的
     // `orderFlowFilledBid/Ask`、`orderFlowCancelledBid/Ask` 2026-09-28 收掉（收设置项 D 组），老档读时忽略。
@@ -191,6 +191,7 @@ extension Prefs: Codable {
     try c.encode(redUp, forKey: .redUp)
     try c.encode(depth, forKey: .depth)
     try c.encode(orderFlow, forKey: .orderFlow)
+    try c.encode(orderFlowHistory, forKey: .orderFlowHistory)
     try c.encode(orderFlowOverrides, forKey: .orderFlowOverrides)
     try c.encode(bigTradeSigns, forKey: .bigTradeSigns)
     try c.encode(barSpacing, forKey: .barSpacing)
@@ -319,6 +320,7 @@ extension Prefs: Codable {
 
     if let v = bool(.depth) { depth = v }
     if let v = bool(.orderFlow) { orderFlow = v }
+    if let v = bool(.orderFlowHistory) { orderFlowHistory = v }
     if let v = bool(.bigTradeSigns) { bigTradeSigns = v }
     // 改过的门槛 / 步长：认不出的 base、越界的数一项一项丢，不让一只坏档拖垮整张表。
     if let raw = try? c.decode([String: OrderFlowOverride].self, forKey: .orderFlowOverrides) {

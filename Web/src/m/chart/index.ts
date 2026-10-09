@@ -559,7 +559,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       let cross = ov.crosshair
       let vp = { ...s.viewport, view: old.viewport.view }
       let input = { ...s.input }
-      let overlay = { ...s.overlay, crosshair: cross, orderFlowSelected: s.overlay.orderFlow == null ? null : ov.orderFlowSelected }
+      let overlay = { ...s.overlay, crosshair: cross, orderFlowSelected: s.overlay.orderFlow == null || s.overlay.orderFlowDisplay.history !== ov.orderFlowDisplay.history ? null : ov.orderFlowSelected }
       input.subInverted = adoptInversion ? look.subInverted : oi0.subInverted
       if (resizing) vp.subScale = old.viewport.subScale
       if (reordering) input.subs = oi0.subs

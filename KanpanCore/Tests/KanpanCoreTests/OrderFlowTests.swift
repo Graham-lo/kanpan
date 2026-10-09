@@ -338,6 +338,13 @@ final class OrderFlowDefaultsTests: XCTestCase {
       BigOrder(venueID: "v", exchange: "币安", product: product, side: side, bucket: 1, price: 1, firstSeenMs: 0,
                status: status, initialNotional: 1, notional: 1, threshold: 1)
     }
+    let liveOnly = OrderFlowDisplay(history: false)
+    for status in [BigOrder.Status.live, .filled, .cancelled, .lost] {
+      XCTAssertEqual(liveOnly.shows(order(.usdtPerp, .bid, status)), status == .live)
+      XCTAssertTrue(OrderFlowDisplay.all.shows(order(.spot, .ask, status)))
+    }
+    var partial = order(.spot, .bid, .live); partial.filledNotional = 0.5
+    XCTAssertTrue(liveOnly.shows(partial), "部分成交但仍挂着的单继续显示")
     let all = OrderFlowDisplay.all
     XCTAssertTrue(all.shows(order(.spot, .bid, .cancelled)))
     let noSpot = OrderFlowDisplay(spot: false)

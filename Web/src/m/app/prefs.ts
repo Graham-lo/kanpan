@@ -77,6 +77,7 @@ export interface Prefs {
   priceMode: PriceMode
   depth: boolean
   orderFlow: boolean
+  orderFlowHistory: boolean
   orderFlowOverrides: Record<string, OrderFlowOverride>
   candleKind: CandleKind
   barSpacing: number
@@ -125,7 +126,7 @@ export interface Prefs {
 export const SYNCED_FIELDS = [
   'alertSound', 'analysisUsage', 'barSpacing', 'bigTradeSigns', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'drawingsHidden', 'favoritesGroup', 'favoritesTrend', 'habitLearning',
   'indicatorColors', 'indicatorLayouts', 'interval', 'landscapeBarSpacing', 'lastDrawTool', 'learnedDefaults', 'mainInverted',
-  'notifyListingChanges', 'orderFlow', 'orderFlowOverrides', 'overlays', 'params', 'portraitHeight', 'priceMode',
+  'notifyListingChanges', 'orderFlow', 'orderFlowHistory', 'orderFlowOverrides', 'overlays', 'params', 'portraitHeight', 'priceMode',
   'quickIntervals', 'redUp', 'reviewSearchScope', 'sectorMarket', 'sectorWindow', 'skin', 'subHeightOverrides',
   'subInverted', 'subs', 'theme', 'watchMoveAlert',
 ] as const satisfies readonly (keyof Prefs)[]
@@ -140,7 +141,7 @@ export function defaultPrefs(): Prefs {
   for (const id of FACTORY_PARAMS_IDS) params[id] = [...(DEFAULT_PARAMS[id] ?? [])]
   return {
     interval: '1h', quickIntervals: [...QUICK_INTERVALS], theme: 'auto', skin: 'sage', redUp: false,
-    compareSymbols: [], priceMode: 'log', depth: false, orderFlow: false, orderFlowOverrides: {},
+    compareSymbols: [], priceMode: 'log', depth: false, orderFlow: false, orderFlowHistory: false, orderFlowOverrides: {},
     candleKind: 'candle', barSpacing: 4, landscapeBarSpacing: 4, mainInverted: false, subInverted: [], portraitHeight: 0.5,
     indicatorColors: {}, alertSound: 'default', watchMoveAlert: false, favoritesTrend: true, bigTradeSigns: true, notifyListingChanges: false,
     habitLearning: true, learnedDefaults: emptyLearned(), overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],
@@ -405,6 +406,7 @@ export function normalizePrefs(raw: unknown): Prefs {
     priceMode: top.priceMode,
     depth: bool(r.depth, d.depth),
     orderFlow: bool(r.orderFlow, d.orderFlow),
+    orderFlowHistory: bool(r.orderFlowHistory, d.orderFlowHistory),
     orderFlowOverrides: cleanOrderFlowOverrides(r.orderFlowOverrides),
     candleKind: top.candleKind,
     barSpacing: num(r.barSpacing, d.barSpacing, BAR_SPACING[0], BAR_SPACING[1]),

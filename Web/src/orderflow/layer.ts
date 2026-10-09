@@ -193,11 +193,11 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
     const rs = step * k
     const tFrom = g.timeOf(g.from - 1), tTo = g.timeOf(g.to + 2)
     const top = g.pane.y, bottom = g.pane.y + g.pane.h
-    const disp = OF.prefs.display
+    const disp = { ...OF.prefs.display, history: st.orderFlowHistory }
     const bar = Math.max(0, g.iv || 0)
     const opts = { gapMs: OrderFlowGroup.mergeGapMs(bar), minLifeMs: bar, step: snap.thresholds?.step ?? step }
     const walls = mergedWalls(snap.orders, o => shows(disp, o), JSON.stringify(disp), opts)
-    const hlWall = wallOf(walls, OF.highlight, snap.orders, opts.step)
+    const hlWall = wallOf(walls, OF.highlight, snap.orders, opts.step, o => shows(disp, o))
     const list = hlWall && !walls.includes(hlWall) ? [...walls, hlWall] : walls
     const cands: Vis[] = []
     for (const w of list) {

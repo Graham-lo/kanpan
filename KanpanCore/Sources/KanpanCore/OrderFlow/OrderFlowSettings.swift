@@ -128,17 +128,31 @@ public struct OrderFlowDisplay: Sendable, Equatable, Codable {
   public var filled = true
   /// 显示已撤销的大单（买卖两侧一起）。
   public var cancelled = true
+  /// 显示生命周期已结束的大单；关闭时只显示仍挂着的单。
+  public var history = true
   // 原来已成交 / 已撤销各按买卖拆成两个开关（六个），审查第 41 项合成四个：买卖两侧分开藏
   // 没有实际用处（看的是「这一侧有没有人撤」，不是「只看撤掉的卖单」），六个开关只是多占一屏。
 
-  public init(spot: Bool = true, contract: Bool = true, filled: Bool = true, cancelled: Bool = true) {
+  public init(spot: Bool = true, contract: Bool = true, filled: Bool = true, cancelled: Bool = true, history: Bool = true) {
     self.spot = spot; self.contract = contract; self.filled = filled; self.cancelled = cancelled
+    self.history = history
+  }
+
+  private enum CodingKeys: String, CodingKey { case spot, contract, filled, cancelled, history }
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(spot: try c.decode(Bool.self, forKey: .spot),
+              contract: try c.decode(Bool.self, forKey: .contract),
+              filled: try c.decode(Bool.self, forKey: .filled),
+              cancelled: try c.decode(Bool.self, forKey: .cancelled),
+              history: try c.decodeIfPresent(Bool.self, forKey: .history) ?? true)
   }
 
   public static let all = OrderFlowDisplay()
 
-  /// 这一单画不画。还挂着的、失联结束的只看产品开关。
+  /// 先按生命周期过滤，再按产品和结束类型过滤；不改变跟踪或历史记录。
   public func shows(_ order: BigOrder) -> Bool {
+    guard history || order.isLive else { return false }
     guard order.product.isContract ? contract : spot else { return false }
     switch order.status {
     case .live, .lost: return true  // 失联结束的不归成交 / 撤销开关管

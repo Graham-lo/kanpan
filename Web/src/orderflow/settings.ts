@@ -158,6 +158,7 @@ export function baseOfSymbol(symbol: string): { base: string; scale: number } {
 // ------------------------------------------------------------ 显示开关（网页本机，不同步）
 
 export interface Display {
+  history?: boolean
   spot: boolean; contract: boolean
   filledBid: boolean; filledAsk: boolean
   cancelledBid: boolean; cancelledAsk: boolean
@@ -166,6 +167,7 @@ export const DISPLAY_ALL: Display = { spot: true, contract: true, filledBid: tru
 
 /** 这一单画不画（挂着的、失联结束的只看产品开关）。 */
 export function shows(d: Display, o: BigOrder): boolean {
+  if (d.history === false && o.status !== 'live') return false
   if (!(isContract(o.product) ? d.contract : d.spot)) return false
   if (o.status === 'filled') return o.side === 'bid' ? d.filledBid : d.filledAsk
   if (o.status === 'cancelled') return o.side === 'bid' ? d.cancelledBid : d.cancelledAsk

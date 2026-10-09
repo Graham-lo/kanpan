@@ -164,6 +164,7 @@ export function openAnalysis(ctx: PanelContext): Sheet {
         case 'cmp-rm': st.compareSymbols = st.compareSymbols.filter(k => k !== arg); tally('compare'); save(); sheet.close(); break
         case 'cmp-clear': st.compareSymbols = []; tally('compare'); save(); sheet.close(); break
         case 'of': st.orderFlow = !st.orderFlow; tally('orderFlow'); save(); break
+        case 'of-history': st.orderFlowHistory = !st.orderFlowHistory; tally('orderFlow'); save(); break
         case 'of-edit': tally('orderFlow'); save(); openOrderFlowEditor(ctx); break
         case 'bt-signs': st.bigTradeSigns = !st.bigTradeSigns; tally('orderFlow'); save(); break
         case 'bt-open': tally('orderFlow'); save(); sheet.close(); ctx.onBigTrade?.(); break
@@ -295,6 +296,7 @@ function indicatorSectionsHTML(): string {
 function orderFlowSectionHTML(ctx: PanelContext): string {
   const base = baseOfSymbol(ctx.symbol()).base
   const of: string[] = [`<div class="cp-row"><span class="cp-rn">${dot(swatchVar('ORDERFLOW'))}显示</span>${sw(st.orderFlow, 'of', '显示主力订单流')}</div>`]
+  of.push(`<div class="cp-row"><span class="cp-rn">历史大单</span>${sw(st.orderFlowHistory, 'of-history', '历史大单')}</div>`)
   // 图上大单与爆仓气泡（出厂开、跟人走，和上面「显示」互不牵连）+ 「大单与爆仓」弹层入口（照 iOS 10-08）
   of.push(`<div class="cp-row"><span class="cp-rn">${BT.chartMarks}</span>${sw(st.bigTradeSigns, 'bt-signs', BT.chartMarks)}</div>`)
   if (ctx.onBigTrade) {

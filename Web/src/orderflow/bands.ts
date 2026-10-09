@@ -153,10 +153,10 @@ export function mergedWalls(orders: readonly BigOrder[], keep: (o: BigOrder) => 
 }
 
 /** 被点中的那一单所在的墙；它那一段被当碎屑去掉了就单独给它建一道（点中的总要画出来） */
-export function wallOf(walls: readonly OrderFlowGroup[], highlight: string | null, orders: readonly BigOrder[], step: number | null): OrderFlowGroup | null {
+export function wallOf(walls: readonly OrderFlowGroup[], highlight: string | null, orders: readonly BigOrder[], step: number | null, keep: (o: BigOrder) => boolean = () => true): OrderFlowGroup | null {
   if (!highlight) return null
   for (const w of walls) if (w.members.some(m => orderId(m) === highlight)) return w
-  const o = orders.find(x => orderId(x) === highlight)
+  const o = orders.find(x => orderId(x) === highlight && keep(x))
   return o ? OrderFlowGroup.make(OrderFlowKey.of(o), [o], null, step) : null
 }
 

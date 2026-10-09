@@ -364,11 +364,18 @@ export function indicatorRowHTML(): string {
   return `<div class="ind-row ${settingsLayerOpen() ? 'of-set-open' : ''}" data-of-row tabindex="0" role="checkbox" aria-checked="${on}">
     <span class="check-box ${on ? 'on' : ''}">${on ? I('check', 'icon-16') : ''}</span><span class="nm">主力订单流<small>各家大额挂单画在图上</small></span>
     <span class="tag">主图</span>
-    <button class="ibtn xs" data-of-set aria-label="门槛与步长" data-tip="门槛与步长">${I('gear', 'icon-16')}</button></div>`
+    <button class="ibtn xs" data-of-set aria-label="门槛与步长" data-tip="门槛与步长">${I('gear', 'icon-16')}</button></div>
+    <div class="ind-row" data-of-history tabindex="0" role="checkbox" aria-checked="${st.orderFlowHistory}"><span class="check-box ${st.orderFlowHistory ? 'on' : ''}">${st.orderFlowHistory ? I('check', 'icon-16') : ''}</span><span class="nm">历史大单</span></div>`
 }
 
 /** 指标面板的点击 / 回车：是订单流那一行就处理并返回 true（调用方随后重画列表）。 */
 export function indicatorRowClick(t: HTMLElement): boolean {
+  if (t.closest('[data-of-history]')) {
+    st.orderFlowHistory = !st.orderFlowHistory
+    save(); OF.highlight = null; OF.version++
+    api?.charts().forEach(c => { c.chart.dirty = true })
+    return true
+  }
   const gear = t.closest<HTMLElement>('[data-of-set]')
   if (gear) {
     const a = api?.activeChart()

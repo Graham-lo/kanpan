@@ -44,6 +44,8 @@ struct Prefs: Sendable, Equatable {
   var depth: Bool = false
   /// 主图指标「主力订单流」：簿里过门槛的大单画到 K 线上。默认关。
   var orderFlow: Bool = false
+  /// 分析 › 主力订单流 › 历史大单。默认只看仍挂着的单，随账号同步。
+  var orderFlowHistory: Bool = false
   /// 图上大单与爆仓气泡（2026-10-08，键名沿用）：每根向上（大买 + 空单爆仓）/ 向下（大卖 + 多单爆仓）过门槛的在 K 线高 / 低外
   /// 标点或泡，点泡开「大单与爆仓」。出厂开、跟账号走；和挂单墙（`orderFlow`）互不依赖——墙关着泡照出。「指标 › 主力订单流」里一颗开关。
   var bigTradeSigns: Bool = true
@@ -56,8 +58,7 @@ struct Prefs: Sendable, Equatable {
   var orderFlowOverrides: [String: OrderFlowOverride] = [:]
   // 主力订单流的四个显示开关（`orderFlowSpot` / `orderFlowContract` / `orderFlowShowFilled` /
   // `orderFlowShowCancelled`，「指标 › 主力订单流」表底「显示」一节）2026-09-28 收掉（收设置项 D 组）：
-  // 一律全画——现货与合约本来就按颜色分，已成交的画满色、没吃到的（撤单或还挂着）淡一档，
-  // 靠画法区分而不是藏起来。图上走 `ChartState.orderFlowDisplay` 的出厂值 `.all`。
+  // 现货与合约一律显示；历史是否显示由 `orderFlowHistory` 统一控制（2026-10-09）。
   /// 蜡烛 / 平均K线（Heikin-Ashi）。默认蜡烛。
   var candleKind: CandleKind = .candle
   // 2026-09-28 收设置项 B 组：网格、阳线实心 / 空心、实时价格线、本根倒计时、至今涨幅、

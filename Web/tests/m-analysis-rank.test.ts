@@ -101,7 +101,7 @@ describe('分析面板按节序排', () => {
       draw: 'draw', 'draw-hide': 'draw',
       edit: 'indicators', height: 'indicators', ov: 'indicators', sub: 'indicators',
       'cmp-add': 'compare', 'cmp-rm': 'compare', 'cmp-clear': 'compare',
-      of: 'orderFlow', 'of-edit': 'orderFlow', 'bt-signs': 'orderFlow', 'bt-open': 'orderFlow',
+      of: 'orderFlow', 'of-history': 'orderFlow', 'of-edit': 'orderFlow', 'bt-signs': 'orderFlow', 'bt-open': 'orderFlow',
     })
     expect(panelSource).toMatch(/case 'reset': resetLayout\(\); break/)
     expect(panelSource).toMatch(/onMove\([^)]*\) \{[\s\S]*?tally\('indicators'\)[\s\S]*?save\(\)/)

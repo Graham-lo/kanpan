@@ -109,6 +109,7 @@ export interface State {
   customIvs: string[]
   /** 指标「主力订单流」开没开（图上大单带、抽屉） */
   orderFlow: boolean
+  orderFlowHistory: boolean
   /** 主力订单流门槛 / 步长里用户改过的项，按 base（BTC、PEPE…）存；随账号同步 */
   orderFlowOverrides: Record<string, Override>
   /** 对比品种：规范键 venue/market/SYMBOL（美元指数是 macro/index/DXY），最多三只；一人一份，随账号同步（和手机同一个字段）。
@@ -141,7 +142,7 @@ function defaults(): State {
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
     vpvrMode: 'split', linkCross: true, linkSymbol: false, linkIv: false, linkTime: false, customIvs: [],
-    orderFlow: false, orderFlowOverrides: {}, compareSymbols: [], chartSettings: { ...CHART_DEFAULTS },
+    orderFlow: false, orderFlowHistory: false, orderFlowOverrides: {}, compareSymbols: [], chartSettings: { ...CHART_DEFAULTS },
     page: 'chart', stale: false, account: null,
   }
 }
@@ -292,6 +293,7 @@ export function hydrate(saved: Partial<State>): State {
   s.recentColors = Array.isArray(s.recentColors) ? s.recentColors.filter(c => typeof c === 'string' && /^#[0-9A-Fa-f]{6}$/.test(c)).slice(0, 3) : []
   s.toolLast = strMap(s.toolLast)
   s.orderFlow = s.orderFlow === true
+  s.orderFlowHistory = s.orderFlowHistory === true
   const ofo: Record<string, Override> = {}
   if (s.orderFlowOverrides && typeof s.orderFlowOverrides === 'object') {
     for (const [k, v] of Object.entries(s.orderFlowOverrides).slice(0, MAX_OVERRIDES)) { const n = normalizeOverride(v); if (n && /^[A-Z0-9]{1,20}$/.test(k)) ofo[k] = n }

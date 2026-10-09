@@ -150,7 +150,7 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  // 只读老客户端写的 `indicatorLayouts/<minute|hour|day>` 并对它们发 null 清掉——所以白名单留着。
  "indicatorLayouts",
  "portraitHeight","quickIntervals","theme","skin","styleID","redUp","priceMode",
- "depth","orderFlow","candleKind",
+ "depth","orderFlow","orderFlowHistory","candleKind",
  "compactValues","barSpacing","mainInverted","subInverted","interval",
  "routePolicy",
  // How the person left each page looking: which category, which market, which tool.

@@ -1545,6 +1545,19 @@ struct OrderFlowChartTests {
     #expect(frame(r).bands.count == 4)
   }
 
+  @Test("历史关闭：逐单过滤后再合墙，历史不能混进当前墙；打开恢复显示")
+  func liveOnlyHistory() {
+    var (r, _) = Self.renderer()
+    let allCount = frame(r).bands.count
+    r.state.orderFlowDisplay.history = false
+    let current = frame(r).bands
+    #expect(!current.isEmpty)
+    #expect(current.allSatisfy { $0.group.members.allSatisfy(\.isLive) })
+    #expect(current.count < allCount)
+    r.state.orderFlowDisplay.history = true
+    #expect(frame(r).bands.count == allCount)
+  }
+
   @Test("点中判定：线按至少 8 pt 高的带子算，横向两头放 4 pt、竖向再放 8 pt；同价叠着点出名义大的，错开的细线点得中")
   func hitTolerance() throws {
     let (r, _) = Self.renderer()

@@ -1363,6 +1363,18 @@ describe('主力订单流 · 图表', () => {
     }
   })
 
+  it('关闭历史先过滤再合墙，打开恢复历史', () => {
+    const { g } = fixtureRig()
+    const allCount = g.frame().bands.length
+    g.display({ ...defaultOrderFlowDisplay(), history: false })
+    const live = g.frame().bands
+    expect(live.length).toBeGreaterThan(0)
+    expect(live.every(b => b.group.members.every(o => o.status === 'live'))).toBe(true)
+    expect(live.length).toBeLessThan(allCount)
+    g.display({ ...defaultOrderFlowDisplay(), history: true })
+    expect(g.frame().bands.length).toBe(allCount)
+  })
+
   it('显示开关：关现货 / 合约 / 已成交 / 已撤销各自只藏那一类（逐单过滤后再合并）；合计只算还挂着的', () => {
     const { g, orders } = fixtureRig()
     const live = orders.filter(o => o.status === 'live')

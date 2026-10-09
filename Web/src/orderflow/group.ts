@@ -18,6 +18,7 @@ import { PRIMARY } from '../venues'
 /** OrderFlowDisplay（OrderFlowSettings.swift）：现货 / 合约 / 已成交 / 已撤销四个开关，出厂全开。
  *  注意与 src/orderflow/settings.ts 里 PC 的六开关 Display 不是一回事。 */
 export interface OrderFlowDisplay {
+  history?: boolean
   spot: boolean
   contract: boolean
   filled: boolean
@@ -27,10 +28,11 @@ export interface OrderFlowDisplay {
 export const defaultOrderFlowDisplay = (): OrderFlowDisplay => ({ spot: true, contract: true, filled: true, cancelled: true })
 
 export const orderFlowDisplayEqual = (a: OrderFlowDisplay, b: OrderFlowDisplay): boolean =>
-  a.spot === b.spot && a.contract === b.contract && a.filled === b.filled && a.cancelled === b.cancelled
+  (a.history ?? true) === (b.history ?? true) && a.spot === b.spot && a.contract === b.contract && a.filled === b.filled && a.cancelled === b.cancelled
 
 /** 这一单画不画。还挂着的、失联结束的只看产品开关。 */
 export function displayShows(d: OrderFlowDisplay, o: BigOrder): boolean {
+  if (d.history === false && o.status !== 'live') return false
   if (!(isContract(o.product) ? d.contract : d.spot)) return false
   switch (o.status) {
     case 'live': case 'lost': return true

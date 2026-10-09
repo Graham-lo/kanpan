@@ -165,6 +165,7 @@ export function initChart(root: HTMLElement): PageHandle {
     priceMode: effectivePriceMode(sym()), mainInverted: st.mainInverted, subInverted: st.subInverted,
     subScale: { ...st.subHeightOverrides },
     barSpacing: st.barSpacing, orderFlow: st.orderFlow && shownInd().orderFlow,
+    orderFlowDisplay: { spot: true, contract: true, filled: true, cancelled: true, history: st.orderFlowHistory },
     landscapeOverlays: st.drawingOverlaysShown,
     // 对比整串交给引擎（它自己去掉主图那只、去重、最多三只）；盘口只在页面露着时开，见 syncChart 的 extraKey
     compareSymbols: [...st.compareSymbols], depth: false,
@@ -339,12 +340,12 @@ export function initChart(root: HTMLElement): PageHandle {
     bench.renderRail()
     const ind = shownInd()
     const of = st.orderFlow && ind.orderFlow
-    const ik = JSON.stringify([ind.overlays, ind.subs, st.params, of])
+    const ik = JSON.stringify([ind.overlays, ind.subs, st.params, of, st.orderFlowHistory])
     if (ik !== indKey) {
       indKey = ik
       chart.setIndicators(ind.overlays, ind.subs, st.params)
-      chart.setOrderFlow(of)
-      if (!of) card.set(null, '', 2)
+      chart.setOrderFlow(of, { spot: true, contract: true, filled: true, cancelled: true, history: st.orderFlowHistory })
+      card.set(null, '', 2)
     }
     chart.setLandscapeOverlays(st.drawingOverlaysShown)
     const pm = effectivePriceMode(sym())
@@ -366,7 +367,7 @@ export function initChart(root: HTMLElement): PageHandle {
     bt.sync()
     render()
   }
-  indKey = ((i) => JSON.stringify([i.overlays, i.subs, st.params, st.orderFlow && i.orderFlow]))(shownInd())
+  indKey = ((i) => JSON.stringify([i.overlays, i.subs, st.params, st.orderFlow && i.orderFlow, st.orderFlowHistory]))(shownInd())
   lookKey = lookKeyOf(effectivePriceMode(sym()))
 
   // ---- 头部与各条的刷新（行情推送经 rAF 合并）

@@ -36,6 +36,28 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     return env
   }
 
+  func testHistorySwitchDefaultsOffAndPersists() throws {
+    app.buttons[Ids.intervalIndicators].tap()
+    let toggle = app.buttons["orderflow.history"]
+    XCTAssertTrue(toggle.waitForExistence(timeout: Self.short))
+    XCTAssertEqual(toggle.value as? String, "关")
+    toggle.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { toggle.value as? String == "开" })
+    app.terminate()
+    app.launch()
+    let tab = app.buttons[Ids.bottomChart]
+    if tab.waitForExistence(timeout: 3), !app.symbolLabel.exists { tab.tap() }
+    XCTAssertTrue(app.buttons[Ids.intervalIndicators].waitForExistence(timeout: Self.long))
+    app.buttons[Ids.intervalIndicators].tap()
+    XCTAssertTrue(toggle.waitForExistence(timeout: Self.short))
+    XCTAssertEqual(toggle.value as? String, "开")
+    toggle.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { toggle.value as? String == "关" })
+    let dir = Self.outDir.deletingLastPathComponent().appendingPathComponent("历史大单-2026-10-09")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try app.screenshot().pngRepresentation.write(to: dir.appendingPathComponent("iPhone16Pro-分析-历史大单默认关闭.png"))
+  }
+
   /// 首屏实测用的档案：这条用例在里面把开关打开并落盘，之后 `simctl launch` 带同一个档案冷启动。
   static let coldStartProfile = "0F10F10F-0000-4000-8000-000000000924"
 

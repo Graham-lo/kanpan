@@ -244,6 +244,10 @@ struct IndicatorPage: View {
           .accessibilityIdentifier("indicator.switch.\(IndicatorID.orderFlow.rawValue)")
       }
       let entry = mainOnly ? nil : bigTrades
+      PanelRow(name: "历史大单", divider: true) {
+        PanelSwitch(isOn: prefs.orderFlowHistory) { store.updateByHand { $0.orderFlowHistory.toggle() }; used(.orderFlow) }
+          .accessibilityIdentifier("orderflow.history")
+      }
       PanelRow(name: BigTradeTerm.chartMarks.text, divider: base != nil || entry != nil) {
         PanelSwitch(isOn: prefs.bigTradeSigns) { store.updateByHand { $0.bigTradeSigns.toggle() }; used(.orderFlow) }
           .accessibilityIdentifier("orderflow.bigTradeSigns")

@@ -5,19 +5,23 @@ import KanpanCore
 
 @Suite("主力订单流 · 设置")
 struct OrderFlowPrefsTests {
-  @Test("出厂：没有改过的币（显示开关 2026-09-28 收掉，图上走 ChartState 的出厂值 .all）")
+  @Test("出厂：没有改过的币，历史大单默认关闭")
   func defaults() {
     let prefs = Prefs.defaults
     #expect(prefs.orderFlowOverrides.isEmpty)
+    #expect(!prefs.orderFlowHistory)
+    #expect(!PrefsCodec.decode(Data(#"{"v":2,"orderFlow":true}"#.utf8)).orderFlowHistory)
   }
 
   @Test("改过的门槛落盘再读回一字不差")
   func roundTrip() {
     var prefs = Prefs.defaults
+    prefs.orderFlowHistory = true
     prefs.setOrderFlowOverride(OrderFlowOverride(spot: 2_000_000, step: 50), for: "BTC")
     prefs.setOrderFlowOverride(OrderFlowOverride(usdtPerp: 1_500_000), for: "TSLA")
     let back = PrefsCodec.decode(PrefsCodec.encode(prefs))
     #expect(back.orderFlowOverrides == prefs.orderFlowOverrides)
+    #expect(back.orderFlowHistory)
   }
 
   @Test("老存档里的显示开关（四个新键、六合四之前的旧键）读时忽略，也不再写")
@@ -69,8 +73,10 @@ struct OrderFlowPrefsTests {
     #expect(bad.orderFlowOverrides.isEmpty && bad.orderFlow)
   }
 
-  @Test("门槛跟着人走（随账号同步）；显示开关已收掉")
+  @Test("门槛与历史大单开关随账号同步；旧的细分开关仍退役")
   func synced() {
+    #expect(PrefsFieldPlan.table["orderFlowHistory"] == .synced)
+    #expect(Prefs.syncedFieldNames.contains("orderFlowHistory"))
     #expect(PrefsFieldPlan.table["orderFlowOverrides"] == .synced)
     #expect(Prefs.syncedFieldNames.contains("orderFlowOverrides"))
     for retired in ["orderFlowFilledBid", "orderFlowFilledAsk", "orderFlowCancelledBid", "orderFlowCancelledAsk",

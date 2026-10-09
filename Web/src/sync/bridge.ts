@@ -21,7 +21,7 @@ import { LAYOUTS_FIELD, cleanBook, liveBook, mergeBooks } from '../app/layouts'
 import type { Owned, SyncStore } from './store'
 import { type Json, type SyncObject, keyOf, same } from './types'
 
-export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'compareSymbols' | 'drawHidden' | 'layouts' | 'layout' | 'cells' | 'active' | 'chartSettings'>>
+export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'orderFlowHistory' | 'compareSymbols' | 'drawHidden' | 'layouts' | 'layout' | 'cells' | 'active' | 'chartSettings'>>
 export type Part = 'settings' | 'favorites' | 'drawings' | 'alerts'
 export type Prints = Partial<Record<Part, string>>
 
@@ -35,7 +35,7 @@ export const OWNED: Owned = {
 
 /** 设置里除布局集以外的那几项（指标、周期条、对比……） */
 const CORE_FIELDS = SETTINGS_FIELDS.filter(f => f !== LAYOUTS_FIELD)
-export const corePrint = (s: WebState): string => JSON.stringify([s.pinned, s.ind, s.params, s.orderFlowOverrides ?? {}, s.compareSymbols ?? [], s.drawHidden === true])
+export const corePrint = (s: WebState): string => JSON.stringify([s.pinned, s.ind, s.params, s.orderFlowOverrides ?? {}, s.orderFlowHistory === true, s.compareSymbols ?? [], s.drawHidden === true])
 /** 布局集（活数据抄回之后）的指纹 */
 export const layoutsPrint = (s: WebState): string => (s.layouts && s.layout && s.cells ? JSON.stringify(liveBook({ layouts: s.layouts, layout: s.layout, cells: s.cells, active: s.active ?? 0 })) : '')
 

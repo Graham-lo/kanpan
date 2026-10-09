@@ -131,6 +131,8 @@ const obj = (v: Json | undefined): Record<string, Json> | null => v && typeof v 
 export interface SettingsState {
   pinned: string[]; ind: IndState; params: Record<string, IndParams> | null
   /** 主力订单流门槛 / 步长里用户改过的项（按 base），线上形状和手机一样：{ BTC: { spot, usdtPerp, coinPerp, delivery, step } } */
+  /** 是否显示已结束挂单，默认关闭，与手机同一份偏好。 */
+  orderFlowHistory?: boolean
   orderFlowOverrides?: Record<string, Override>
   /** 对比品种（规范键 venue/market/SYMBOL，最多三只），和手机 Prefs.compareSymbols 同一个字段 */
   compareSymbols?: string[]
@@ -144,7 +146,7 @@ export interface SettingsState {
 
 export const SETTINGS_ID = 'chart'
 const PARAM_IDS: [string, string][] = [['ma', 'MA'], ['ema', 'EMA'], ['boll', 'BOLL'], ['macd', 'MACD'], ['rsi', 'RSI'], ['kdj', 'KDJ']]
-export const SETTINGS_FIELDS = ['quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlowOverrides', 'compareSymbols', 'drawingsHidden', LAYOUTS_FIELD, 'webChart']
+export const SETTINGS_FIELDS = ['quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlowOverrides', 'orderFlowHistory', 'compareSymbols', 'drawingsHidden', LAYOUTS_FIELD, 'webChart']
 /** 云端没有这个字段时本机的值要推上去（网页独有，没有别的端会写它）：seen 记成 null，下一次记账一定推 */
 const PUSH_WHEN_CLOUD_EMPTY = new Set([LAYOUTS_FIELD])
 /** 状态里有没有布局集那几项（单元测试里的精简状态可以没有） */
@@ -171,6 +173,7 @@ export function webSetting(s: SettingsState, field: string): Json {
   if (field === 'subs') return [...(s.ind.vol ? ['VOL'] : []), ...s.ind.subs.map(x => SUB_MAP.find(([w]) => w === x)?.[1]).filter((x): x is string => !!x)]
   if (field === 'orderFlowOverrides') return (cleanOverrides(s.orderFlowOverrides) ?? {}) as unknown as Json
   if (field === 'compareSymbols') return cleanCompare(s.compareSymbols)
+  if (field === 'orderFlowHistory') return s.orderFlowHistory === true
   if (field === 'drawingsHidden') return s.drawHidden === true
   if (field === LAYOUTS_FIELD) return hasLayouts(s) ? liveBook({ ...s, active: s.active ?? 0 }) as unknown as Json : null
   if (field === 'webChart') return chartDiff(cleanChart(s.chartSettings)) as unknown as Json
@@ -216,6 +219,7 @@ export function encodeSetting(field: string, web: Json, prev: Json | undefined):
   if (field === 'subs') return mergeList(prevList, new Set(SUB_MAP.map(([, c]) => c)), web as string[])
   if (field === 'orderFlowOverrides') return (cleanOverrides(web) ?? undefined) as unknown as Json | undefined
   if (field === 'compareSymbols') return cleanCompare(web)
+  if (field === 'orderFlowHistory') return web === true
   if (field === 'drawingsHidden') return web === true
   if (field === LAYOUTS_FIELD) return (cleanBook(web) ?? undefined) as unknown as Json | undefined
   if (field === 'webChart') return obj(web) && JSON.stringify(web).length <= CHART_MAX_BYTES ? web : undefined
@@ -256,6 +260,7 @@ export function decodeSetting(field: string, cloud: Json | undefined, cur: Setti
   if (field === 'orderFlowOverrides') return (cleanOverrides(cloud) ?? undefined) as unknown as Json | undefined
   // 别家的键（Coinbase 现货）照样留着：网页画不了就不画，但不能一装一推把手机那只冲掉
   if (field === 'compareSymbols') return Array.isArray(cloud) ? cleanCompare(cloud) : undefined
+  if (field === 'orderFlowHistory') return typeof cloud === 'boolean' ? cloud : undefined
   if (field === 'drawingsHidden') return typeof cloud === 'boolean' ? cloud : undefined
   if (field === LAYOUTS_FIELD) return (cleanBook(cloud) ?? undefined) as unknown as Json | undefined
   if (field === 'webChart') return obj(cloud) ? chartDiff(cleanChart(cloud)) as unknown as Json : undefined
@@ -280,6 +285,7 @@ export function putSetting(s: SettingsState, field: string, v: Json): void {
   if (field === 'quickIntervals') s.pinned = list
   else if (field === 'orderFlowOverrides') s.orderFlowOverrides = cleanOverrides(v) ?? {}
   else if (field === 'compareSymbols') s.compareSymbols = cleanCompare(v)
+  else if (field === 'orderFlowHistory') s.orderFlowHistory = v === true
   else if (field === 'drawingsHidden') s.drawHidden = v === true
   else if (field === LAYOUTS_FIELD) {
     const b = cleanBook(v)
@@ -324,6 +330,7 @@ export function factorySettings(): Required<SettingsState> {
     ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] },
     params: null,
     orderFlowOverrides: {},
+    orderFlowHistory: false,
     compareSymbols: [],
     drawHidden: false,
     layouts: bookFrom('1', [{ symbol: 'BTCUSDT', iv: '1h' }]),
@@ -336,7 +343,7 @@ export function factorySettings(): Required<SettingsState> {
 export function resetSettings(s: SettingsState): string[] {
   const before = SETTINGS_FIELDS.map(f => webSetting(s, f))
   const f = factorySettings()
-  s.pinned = f.pinned; s.ind = f.ind; s.params = f.params; s.orderFlowOverrides = f.orderFlowOverrides; s.compareSymbols = f.compareSymbols; s.drawHidden = f.drawHidden; s.chartSettings = f.chartSettings
+  s.pinned = f.pinned; s.ind = f.ind; s.params = f.params; s.orderFlowOverrides = f.orderFlowOverrides; s.orderFlowHistory = f.orderFlowHistory; s.compareSymbols = f.compareSymbols; s.drawHidden = f.drawHidden; s.chartSettings = f.chartSettings
   if (hasLayouts(s)) { s.layouts = f.layouts; s.layout = f.layout; s.cells = f.cells; s.active = f.active }
   return SETTINGS_FIELDS.filter((x, i) => !same(before[i], webSetting(s, x)))
 }

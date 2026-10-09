@@ -563,7 +563,7 @@ struct ChartHost: UIViewRepresentable {
       // 图不在的时候偏好里的翻转改过（云端 / 设置）：认偏好那份，不拿存下来的旧图盖。
       if adoptInversion { next.price.inverted = wanted.main; next.subInverted = wanted.subs }
       next.crosshair = next.options.dataDisplay == saved.options.dataDisplay && next.options.crossPrice == saved.options.crossPrice ? saved.crosshair : nil
-      next.orderFlowSelected = next.orderFlow == nil ? nil : saved.orderFlowSelected
+      next.orderFlowSelected = next.orderFlow == nil || next.orderFlowDisplay != saved.orderFlowDisplay ? nil : saved.orderFlowSelected
       incoming = next
       // 图不在的那段时间档案到过货（见 `ChartProxy.lastAdoptToken`）：存下来的那份
       // 视野宽度是旧的，位置留着、宽度按档案重量。没到过货就原样装回去。
@@ -646,7 +646,7 @@ struct ChartHost: UIViewRepresentable {
       s.view = old.view
       s.crosshair = old.crosshair
       // 轻点选中的那一桶（详情卡）也是图上的交互态，外面那份必然是空的；主力订单流关掉就清掉。
-      s.orderFlowSelected = s.orderFlow == nil ? nil : old.orderFlowSelected
+      s.orderFlowSelected = s.orderFlow == nil || s.orderFlowDisplay != old.orderFlowDisplay ? nil : old.orderFlowSelected
       // 翻转归图，除非偏好那一侧真改了（`ChartInversion.adopt`）。
       s.subInverted = adoptInversion ? wanted.subs : old.subInverted
       if box.isResizing { s.subScale = old.subScale }
