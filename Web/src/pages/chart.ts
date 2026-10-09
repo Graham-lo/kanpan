@@ -1205,7 +1205,7 @@ export function openSearch(initial = ''): void {
     activeIdx = Math.min(activeIdx, Math.max(0, results.length - 1))
     let i = 0
     const row = (s: Sym): string => { const k = i++, w = isWatched(s.symbol); return `<div class="sr ${k === activeIdx ? 'active' : ''}" role="option" aria-selected="${k === activeIdx}" data-i="${k}">
-      ${badge(s, 'lg')}<div><div class="n1">${resultName(s, qq)}</div><div class="n2">${esc(s.cn || '')}${s.cn ? ' · ' : ''}${esc(chartSub(s.symbol, s))}</div></div>
+      ${badge(s, 'lg')}<div><div class="n1">${resultName(s, qq)}</div>${s.cn ? `<div class="n2">${esc(s.cn)}</div>` : ''}</div>
       <div class="r num">${priceText(s)}</div><div class="r num ${cls(s.pct)}">${pctText(s.pct)}</div><div class="r num muted">${fmtCompact(s.vol)}</div>
       <button class="ibtn sm" data-w="${esc(s.symbol)}" aria-label="${w ? '移出自选' : '加入自选'}" style="color:${w ? '#F5A623' : ''}">${I(w ? 'star' : 'starOff')}</button></div>` }
     listEl.innerHTML = !S.symbols.size ? `<div class="empty">${S.live === false ? '连不上币安合约接口，搜不了' : '正在取品种表…'}</div>`

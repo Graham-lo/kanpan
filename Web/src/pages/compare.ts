@@ -19,7 +19,7 @@ import { normalize } from '../market/searchText'
 import { IV_MS, fmtCompact } from '../util/format'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, dialog, dialogs } from '../ui/overlay'
-import { sym, badge, priceText, pctText, cls, chartSub } from '../ui/common'
+import { sym, badge, priceText, pctText, cls } from '../ui/common'
 
 export interface CompareCell { idx: number; chart: TVChart; symbol: string; iv: string }
 export interface CompareDeps {
@@ -185,7 +185,7 @@ export function openCompare(): void {
         const btn = isMain ? `<span class="cmp-tag">主图</span>`
           : `<button class="ibtn sm cmp-tgl ${on_ ? 'on' : ''}" data-t="${esc(s.symbol)}" aria-label="${on_ ? '移出对比' : '加入对比'}" aria-pressed="${on_}">${I(on_ ? 'check' : 'plus')}</button>`
         return `<div class="sr ${i === activeIdx ? 'active' : ''} ${dis ? 'cmp-off' : ''}" role="option" aria-selected="${on_}" aria-disabled="${dis}" data-i="${i}">
-      ${badge(s, 'lg')}<div><div class="n1">${resultName(s, qq)}</div><div class="n2">${esc(s.cn || '')}${s.cn ? ' · ' : ''}${esc(chartSub(s.symbol, s))}</div></div>
+      ${badge(s, 'lg')}<div><div class="n1">${resultName(s, qq)}</div>${s.cn ? `<div class="n2">${esc(s.cn)}</div>` : ''}</div>
       <div class="r num">${priceText(s)}</div><div class="r num ${cls(s.pct)}">${pctText(s.pct)}</div><div class="r num muted">${fmtCompact(s.vol)}</div>${btn}</div>`
       }).join('')).join('') + venueStatusHTML()
       : `<div class="empty">没有找到「${esc(q)}」</div>${venueStatusHTML()}`

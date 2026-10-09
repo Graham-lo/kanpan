@@ -10,7 +10,6 @@ import { normalize } from '../market/searchText'
 import { DEFAULT_VENUE } from '../market/identity'
 import { MARKET_VENUES, venueName } from '../venues'
 import { esc } from '../ui/dom'
-import { venueTag } from '../ui/common'
 
 /** 组序：行情交易所的注册表顺序（MARKET_VENUES：币安 · OKX · Bybit · Hyperliquid · Coinbase，和 iOS VenueRegistry.all 一致），
  *  美元指数（macro）排最后。原来用的是订单流的合并顺序 VENUE_LIST（Coinbase 排在 Bybit 前面），同档时组序和 iOS 对不上 */
@@ -24,11 +23,11 @@ export function searchGroups(pool: Sym[], q: string, watched: (k: string) => boo
   return { groups, flat: groups.flatMap(g => g.items) }
 }
 
-/** 一行的名字：缩写 + 基础币 + 计价（「OKX BTC/USDT」），打到的那一截高亮 */
+/** 一行的名字：基础币 + 计价（「BTCUSDT」），交易所由组头说明，打到的那一截高亮 */
 export function resultName(s: Sym, qq: string): string {
-  const head = headName(s)
+  const head = headName(s) + s.quote
   const hl = qq && head.toUpperCase().startsWith(qq) ? `<mark>${esc(head.slice(0, qq.length))}</mark>${esc(head.slice(qq.length))}` : esc(head)
-  return `${venueTag(s.symbol)}${hl}${s.quote ? `<span class="vq">/${esc(s.quote)}</span>` : ''}`
+  return hl
 }
 
 /** 组头 */

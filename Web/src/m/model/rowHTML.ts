@@ -94,7 +94,7 @@ export function patchLiuli(row: Element, d: LiuliData): void {
 /** 走势线那一格上次画的是哪一份（innerHTML 读回来会被浏览器改写，比不出来） */
 const drawnTrend = new WeakMap<Element, string>()
 
-/** 搜索结果行（SymbolRowView）：徽章 32 · base（命中处着色）/ quote · 右侧价格与涨跌 · 星 */
+/** 搜索结果行（SymbolRowView）：徽章 32 · base + quote（命中处着色）· 右侧价格与涨跌 · 星 */
 export function listRowHTML(f: RowFacts, d: { price: number | null; dec?: number | null; pct: number | null; meta: string; fav: boolean; hl?: [number, number] | null; cmp?: CompareRowState }): string {
   const baseParts = splitHighlight(f.base, d.hl ?? null, 0).map(p => p.hit ? `<em>${esc(p.text)}</em>` : esc(p.text)).join('')
   const quoteParts = splitHighlight(f.quote, d.hl ?? null, f.base.length).map(p => p.hit ? `<em>${esc(p.text)}</em>` : esc(p.text)).join('')
@@ -103,8 +103,8 @@ export function listRowHTML(f: RowFacts, d: { price: number | null; dec?: number
   // 对比模式（搜索页顶栏 ＋ 开的那一副）：主图那一行整行退成禁用色、点不动
   const main = d.cmp === 'main'
   return `<div class="sr${main ? ' cmp-main' : ''}" data-sym="${esc(f.symbol)}" role="button" tabindex="${main ? -1 : 0}"${main ? ' aria-disabled="true"' : ''}>${badgeHTML(f.mark ?? f.base, 32, f.asset)}`
-    + `<div class="sr-name"><div class="sr-top">${f.venue ?? ''}<span class="sr-base">${baseParts}</span>${f.quote ? `<span class="sr-sep"> / </span><span class="sr-quote">${quoteParts}</span>` : idxName(f) ? `<span class="sr-sep"> </span><span class="sr-quote">${esc(idxName(f))}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
-    + `<div class="sr-meta">${esc(d.meta)}</div></div>`
+    + `<div class="sr-name"><div class="sr-top"><span class="sr-base">${baseParts}${quoteParts}</span>${f.isNew ? NEW_MARK : ''}</div>`
+    + `${d.meta ? `<div class="sr-meta">${esc(d.meta)}</div>` : ''}</div>`
     + `<div class="sr-right num"><span class="sr-price">${esc(priceText(d.price, d.dec))}</span><span class="sr-chg ${dir}">${esc(chg)}</span></div>`
     + (d.cmp ? compareMarkHTML(f.symbol, d.cmp)
       : `<button type="button" class="sr-star${d.fav ? ' on' : ''}" data-star="${esc(f.symbol)}" aria-label="${d.fav ? '取消自选' : '加入自选'}" aria-pressed="${d.fav}">${STAR}</button>`)

@@ -52,11 +52,9 @@ export function chartSubOf(k: string, s?: Partial<Pick<Sym, 'quote' | 'macro'>> 
   return [venueLabel(k), s?.quote || marketOf(k)?.quote || '', market === 'spot' ? '现货' : '永续'].filter(Boolean).join(' ')
 }
 
-/** 搜索 / 品种整页行的第二行：「BTCUSDT 永续」「BTC-USDT-SWAP 永续」「BTC-USD 现货」「DXY 指数」 */
-export function rowMeta(k: string, s?: Partial<Pick<Sym, 'raw' | 'macro'>> | null): string {
-  const market = parseKey(k).market
-  if (s?.macro || market === 'index') return `${k} 指数`
-  return `${s?.raw || wireSymbol(k)} ${market === 'spot' ? '现货' : '永续'}`
+/** 搜索 / 品种整页行第二行只保留中文别名，不重复代号、交易所和市场。 */
+export function rowMeta(_k: string, s?: Partial<Pick<Sym, 'cn' | 'raw' | 'macro'>> | null): string {
+  return s?.cn || ''
 }
 
 /** 提醒卡 / 提醒表单那一行：「币安 · USDT 永续」「CB · USD 现货」「指数」 */
