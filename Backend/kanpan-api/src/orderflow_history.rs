@@ -49,6 +49,7 @@ mod book;
 mod feeds;
 mod flow;
 mod footprint;
+mod insights;
 mod heat;
 mod hub;
 mod layers;
@@ -476,6 +477,7 @@ struct Tracker {
  flow:flow::Acc,
  /// 这几分钟的足迹（价位桶 × 主动买卖，见 `footprint.rs`）与币安 U 本位永续的秒线（见 `seconds.rs`）。
  footprint:footprint::Acc,
+ insights:insights::Acc,
  seconds:seconds::Acc,
  /// 挂着的单上次写库时的量、成交、门槛与时刻（见 `changed_live`）。
  written:HashMap<LiveKey,(f64,f64,f64,i64)>,
@@ -494,7 +496,7 @@ impl Tracker {
  fn add_venues(&mut self,venues:&[Venue]) {
   for v in venues.iter().filter(|v|self.planned.of(wire_product(v.product)).is_some()) {
    let scale=v.price_scale.unwrap_or(1).max(1) as f64;
-   if v.product!=Product::Delivery {self.footprint.tick(v.tick/scale);}
+   if v.product!=Product::Delivery {self.footprint.tick(v.tick/scale);self.insights.register(&info(v),v.tick/scale);}
    if v.exchange==BINANCE&&v.product==Product::UsdtPerp {
     self.seconds.venue(seconds::Venue{id:info(v).id,symbol:v.instrument.clone(),tick:v.tick,scale});
    }
@@ -513,6 +515,7 @@ impl Tracker {
   if ids.is_empty() {return}
   for id in &ids {
    self.model.remove_venue(id);
+   self.insights.remove(id,now_ms());
    self.open.remove(id);self.inflight.remove(id);self.retry.remove(id);self.failures.remove(id);self.epochs.remove(id);self.last_trade.remove(id);
   }
   tracing::debug!("Orderflow history: {} sheds {}",self.base,ids.join(", "));
@@ -581,7 +584,8 @@ impl Tracker {
     let action=self.model.ingest(&venue,connection,message,now);
     self.resync(&venue,action,ready_since,now);
    },
-   Event::Trade{venue,trade,id,at}=>{
+   Event::TradeStream{venues,connection,online}=>for id in venues {self.insights.stream(&id,connection,online,now);},
+   Event::Trade{venue,trade,id,at,token}=>{
     if let Some(id)=id {
      let last=self.last_trade.entry(venue.clone()).or_insert(i64::MIN);
      if id<=*last {return}
@@ -592,6 +596,7 @@ impl Tracker {
     flow::submit(&self.base,self.flow.add(usd,buy,flow::big_cut(&self.model.thresholds),now));
     // 足迹与秒线按交易所给的成交时刻分分钟、分秒（交割合约有基差，不进足迹）。
     let at=minutes::trade_time(at,now);
+    self.insights.add(&venue,trade.price,usd,buy,token.as_deref(),at,now,flow::big_cut(&self.model.thresholds));
     if !venue.contains(":delivery:") {self.footprint.add(trade.price,usd,buy,at);}
     if venue.starts_with(seconds::VENUE_PREFIX) {self.seconds.add(&venue,trade.price,trade.quantity,buy,at);}
     self.model.trade(&venue,trade,now);
@@ -691,6 +696,7 @@ impl Tracker {
   self.write_ended().await;
   flow::submit(&self.base,self.flow.take());
   footprint::submit(&self.base,self.footprint.take());
+  insights::submit(&self.base,self.insights.take(now_ms()));
   seconds::submit(&self.base,self.seconds.take());
   let live=self.model.live();
   let rows=changed_live(live.clone(),&mut self.written,now_ms(),i64::MAX);
@@ -785,6 +791,7 @@ where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+
     t.due_retries(now);
     flow::submit(&t.base,t.flow.roll(now));
     footprint::submit(&t.base,t.footprint.roll(now));
+    insights::submit(&t.base,t.insights.roll(now,flow::big_cut(&t.model.thresholds)));
     seconds::submit(&t.base,t.seconds.roll(now));
     t.write_ended().await;
    },
@@ -833,7 +840,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  let (writes,rx)=mpsc::channel::<Write>(WRITES_QUEUE);
  let writer=tokio::spawn(writer(pool.clone(),base.clone(),rx));
  let mut t=Tracker{base:base.clone(),model:Model::new(&base,published),events,control,open:HashSet::new(),inflight:HashMap::new(),retry:HashMap::new(),failures:HashMap::new(),
-  epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority,writes,
+  epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::new(&base,now_ms()),seconds:seconds::Acc::default(),written:HashMap::new(),priority,writes,
   calibration:Calibration{needed,value:None,day:None,partial:false,since:now_ms(),subscribed:now_ms(),restored:None},planned:thresholds,shared};
  match store::live(&pool,&base).await {
   Ok(rows) if needed=>t.calibration.restored=Some((rows,now_ms())),
@@ -841,6 +848,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
   Err(e)=>tracing::warn!("Orderflow history: {base} restore failed: {e}"),
  }
  t.write_ended().await;
+ if let Err(e)=t.insights.restore(&pool,now_ms()).await {tracing::warn!("Orderflow insights: {base} replay checkpoint unreadable: {e}");}
  t.add_venues(&venues);
  (t.calibration.since,t.calibration.subscribed)=(now_ms(),now_ms());
  let fetch={let base=base.clone();move |due:bool|{let base=base.clone();async move {
@@ -862,6 +870,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  t.write_ended().await;
  flow::submit(&base,t.flow.take());
  footprint::submit(&base,t.footprint.take());
+ insights::submit(&base,t.insights.take(now_ms()));
  seconds::submit(&base,t.seconds.take());
  hub::remove(t.model.venue_ids(),&t.events);
  drop(t);
@@ -910,6 +919,7 @@ pub async fn shutdown() {
  // 爆仓分钟聚合同时收尾：交出手上没写的分钟并等它们写进去，同一个上限。
  let liq_deadline=tokio::time::Instant::now()+SHUTDOWN_LIMIT;
  let (closed,liq_drained)=tokio::join!(close(pool,rx,expected,&ACTIVE,SHUTDOWN_COLLECT,SHUTDOWN_LIMIT),liq::drained(liq_deadline));
+ if !insights::drained(liq_deadline).await {tracing::warn!("Orderflow insights: shutdown left unwritten minutes after {}s",SHUTDOWN_LIMIT.as_secs());}
  if !liq_drained {tracing::warn!("Orderflow liq: shutdown left unwritten minutes after {}s",SHUTDOWN_LIMIT.as_secs());}
  FINALS.lock().unwrap_or_else(|e|e.into_inner()).take();
  let Closed{bases,live,refreshed,writing,elapsed_ms}=closed;
@@ -1361,6 +1371,7 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
  flow::start(pool.clone());
  liq::start(pool.clone());
  footprint::start(pool.clone());
+ insights::start(pool.clone());
  seconds::start(pool.clone());
  tokio::spawn(async move {
   let registry=REGISTRY.get_or_init(||Arc::new(Registry::new(pool.clone()))).clone();
@@ -1435,6 +1446,10 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
      match footprint::purge(&pool,now_ms()).await {
       Ok(deleted)=>tracing::info!("Orderflow footprint: purge deleted {deleted}"),
       Err(e)=>tracing::warn!("Orderflow footprint: purge failed: {e}"),
+     }
+     match insights::purge(&pool,now_ms()).await {
+      Ok(deleted)=>tracing::info!("Orderflow insights: purge deleted {deleted}"),
+      Err(e)=>tracing::warn!("Orderflow insights: purge failed: {e}"),
      }
      match seconds::purge(&pool,now_ms()).await {
       Ok(deleted)=>tracing::info!("Orderflow seconds: purge deleted {deleted}"),
@@ -1700,6 +1715,7 @@ async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,limit:i64,thr
 pub fn routes()->Router<AppState> {
  Router::new().route(PATH,get(history)).route(heat::PATH,get(heat::heat)).route(flow::PATH,get(flow::flow))
   .route(liq::PATH,get(liq::liq))
+  .route(insights::PATH,get(insights::insights))
   .route(footprint::PATH,get(footprint::footprint)).route(seconds::PATH,get(seconds::seconds))
   .route_layer(axum::middleware::from_fn(per_client))
 }
@@ -1832,7 +1848,7 @@ mod tests {
   let (shared,_)=watch::channel(Thresholds::default());
   let thresholds=Thresholds{step:Some(1.0),..Default::default()};
   let t=Tracker{base:"ZZSLOW".into(),model:Model::new("ZZSLOW",thresholds),events:events.clone(),control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None},planned:thresholds,shared};
   let (stop_tx,stop)=watch::channel(false);
   let slow=|_due:bool|async {tokio::time::sleep(Duration::from_secs(100)).await;Refreshed{venues:vec![],thresholds:None}};
@@ -1859,7 +1875,7 @@ mod tests {
   let (shared,_)=watch::channel(Thresholds::default());
   let thresholds=Thresholds{step:Some(100.0),usdt_perp:Some(5e6),..Default::default()};
   let t=Tracker{base:base.into(),model:Model::new(base,thresholds),events,control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None},planned:thresholds,shared};
   (t,inbox,control_rx,writes_rx)
  }
@@ -2032,7 +2048,7 @@ mod tests {
    Restored{order:order(90),step:1.0,seen_ms:read_at-130_000},
   ];
   let mut t=Tracker{base:"ZZSTOCK".into(),model:Model::new("ZZSTOCK",thresholds),events,control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:true,value:None,day:None,partial:false,since:read_at,subscribed:read_at,restored:Some((rows,read_at))},planned:thresholds,shared};
   t.calibrate(read_at+237_000);
   assert!(t.calibration.value.is_some(),"标定了");

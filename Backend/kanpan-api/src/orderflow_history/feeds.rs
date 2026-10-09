@@ -60,7 +60,9 @@ pub enum Event {
  Frame{venue:String,connection:u64,message:Message},
  /// `id`：币安 aggTrade 的 `a`。交接期间两条连接会推同一笔，跟踪器按它去重。
  /// `at`：交易所给的成交时刻（毫秒；币安 `T`、OKX `ts`、Coinbase `time`），足迹图与秒线按它分秒、分钟。
- Trade{venue:String,trade:Trade,id:Option<i64>,at:Option<i64>},
+ Trade{venue:String,trade:Trade,id:Option<i64>,at:Option<i64>,token:Option<String>},
+ /// 成交连接状态独立于簿；币安 U 本位成交是单独的一条连接。
+ TradeStream{venues:Vec<String>,connection:u64,online:bool},
  /// `epoch`：发请求时簿的 `VenueBook::epoch`，对不上的丢掉。
  Snapshot{venue:String,epoch:u64,snapshot:Option<Snapshot>},
 }
@@ -183,6 +185,7 @@ fn num(v:&Value)->Option<f64> {
  x.is_finite().then_some(x)
 }
 fn int(v:&Value)->Option<i64> {match v {Value::Number(n)=>n.as_i64(),Value::String(s)=>s.parse().ok(),_=>None}}
+fn trade_token(v:&Value)->Option<String> {match v {Value::Number(n)=>Some(n.to_string()),Value::String(s) if !s.is_empty()=>Some(s.clone()),_=>None}}
 
 /// `[[价, 量], …]`（币安、OKX 都是这个形状；OKX 每档后面还有两项，不看）。
 fn levels(v:&Value,venue:&VenueInfo)->Option<Vec<Level>> {
@@ -204,7 +207,7 @@ fn trade(venue:&VenueInfo,price:f64,quantity:f64,hit:Side)->Option<Trade> {
 
 /// 一条连接收到的一帧 → （哪本簿，消息）。成交与簿分开发：成交不看连接代号。
 /// 成交带（簿，成交，成交号，交易所给的成交时刻）。
-pub enum Decoded {Book(String,Message),Trade(String,Trade,Option<i64>,Option<i64>)}
+pub enum Decoded {Book(String,Message),Trade(String,Trade,Option<i64>,Option<i64>,Option<String>)}
 
 /// 一条连接的解码器。挂在这条连接上的簿会变（OKX 动态订退、币安交接后退掉旧簿），所以可增删。
 pub struct Decoder {kind:Kind,by_instrument:HashMap<String,VenueInfo>,
@@ -251,7 +254,7 @@ impl Decoder {
    let items=frame["data"].as_array().map(Vec::as_slice).unwrap_or(&[]);
    return items.iter().filter_map(|t| {
     let hit=match t["S"].as_str()? {"Buy"=>Side::Ask,"Sell"=>Side::Bid,_=>return None};
-    trade(venue,num(&t["p"])?,num(&t["v"])?,hit).map(|x|Decoded::Trade(venue.id.clone(),x,None,int(&t["T"])))
+    trade(venue,num(&t["p"])?,num(&t["v"])?,hit).map(|x|Decoded::Trade(venue.id.clone(),x,None,int(&t["T"]),trade_token(&t["i"])))
    }).collect();
   }
   let Some(rest)=topic.strip_prefix("orderbook.") else {return Vec::new()};
@@ -301,7 +304,7 @@ impl Decoder {
      let at=int(&t["time"])?;
      if at<since {return None}
      let hit=match t["side"].as_str()? {"B"=>Side::Ask,"A"=>Side::Bid,_=>return None};
-     trade(venue,num(&t["px"])?,num(&t["sz"])?,hit).map(|x|Decoded::Trade(venue.id.clone(),x,None,Some(at)))
+     trade(venue,num(&t["px"])?,num(&t["sz"])?,hit).map(|x|Decoded::Trade(venue.id.clone(),x,None,Some(at),trade_token(&t["tid"])))
     }).collect()
    },
    _=>Vec::new(),
@@ -326,7 +329,7 @@ impl Decoder {
    Some("aggTrade")=>{
     let (Some(p),Some(q))=(num(&body["p"]),num(&body["q"])) else {return Vec::new()};
     let hit=if body["m"].as_bool().unwrap_or(false) {Side::Bid} else {Side::Ask};
-    trade(venue,p,q,hit).map(|t|Decoded::Trade(venue.id.clone(),t,int(&body["a"]),int(&body["T"]))).into_iter().collect()
+    trade(venue,p,q,hit).map(|t|Decoded::Trade(venue.id.clone(),t,int(&body["a"]),int(&body["T"]),trade_token(&body["a"]))).into_iter().collect()
    },
    _=>Vec::new(),
   }
@@ -341,7 +344,7 @@ impl Decoder {
    Some("trades")=>items.iter().filter_map(|t| {
     let hit=match t["side"].as_str()? {"buy"=>Side::Ask,"sell"=>Side::Bid,_=>return None};
     let at=int(&t["ts"]);
-    trade(venue,num(&t["px"])?,num(&t["sz"])?,hit).map(|t|Decoded::Trade(venue.id.clone(),t,None,at))
+    trade(venue,num(&t["px"])?,num(&t["sz"])?,hit).map(|trade|Decoded::Trade(venue.id.clone(),trade,None,at,trade_token(&t["tradeId"])))
    }).collect(),
    Some("books")=>{
     let (Some(action),[item])=(frame["action"].as_str(),items.as_slice()) else {return Vec::new()};
@@ -391,7 +394,7 @@ impl Decoder {
       let hit=match t["side"].as_str().map(str::to_uppercase).as_deref() {Some("BUY")=>Side::Ask,Some("SELL")=>Side::Bid,_=>continue};
       let (Some(p),Some(q))=(num(&t["price"]),num(&t["size"])) else {continue};
       let at=t["time"].as_str().and_then(|v|chrono::DateTime::parse_from_rfc3339(v).ok()).map(|v|v.timestamp_millis());
-      if let Some(t)=trade(venue,p,q,hit) {out.push(Decoded::Trade(id.clone(),t,None,at));}
+      if let Some(trade)=trade(venue,p,q,hit) {out.push(Decoded::Trade(id.clone(),trade,None,at,trade_token(&t["trade_id"])));}
      }
     }
     out
@@ -466,7 +469,7 @@ mod tests {
   let mut trades=decoder(Kind::BinanceUmTrades,&venues);
   let text=r#"{"data":{"e":"aggTrade","s":"1000PEPEUSDT","a":42,"p":"0.012","q":"5","m":true,"T":1700000000123}}"#;
   let out=trades.decode(text);
-  let [Decoded::Trade(_,t,id,at)]=out.as_slice() else {panic!("one trade")};
+  let [Decoded::Trade(_,t,id,at,_)]=out.as_slice() else {panic!("one trade")};
   assert_eq!((t.hit,*id,*at),(Side::Bid,Some(42),Some(1_700_000_000_123)));
   trades.remove(&venues[0]);
   assert!(trades.decode(text).is_empty(),"退掉的簿不再解");
@@ -479,7 +482,7 @@ mod tests {
   let reset=d.decode(r#"{"arg":{"channel":"books","instId":"BTC-USDT-SWAP"},"action":"update","data":[{"bids":[],"asks":[],"seqId":3,"prevSeqId":9}]}"#);
   assert!(matches!(reset.as_slice(),[Decoded::Book(_,Message::Reset)]));
   let trades=d.decode(r#"{"arg":{"channel":"trades","instId":"BTC-USDT-SWAP"},"data":[{"px":"60000","sz":"3","side":"buy","ts":"1700000000456"}]}"#);
-  assert!(matches!(trades.as_slice(),[Decoded::Trade(_,t,None,Some(1_700_000_000_456))] if t.hit==Side::Ask));
+  assert!(matches!(trades.as_slice(),[Decoded::Trade(_,t,None,Some(1_700_000_000_456),_)] if t.hit==Side::Ask));
   assert!(d.decode(r#"{"event":"subscribe","arg":{"channel":"books","instId":"BTC-USDT-SWAP"}}"#).is_empty());
   assert!(d.decode("pong").is_empty());
  }
@@ -492,7 +495,7 @@ mod tests {
   assert!(matches!(hb.as_slice(),[Decoded::Book(_,Message::Delta(x))] if x.first==5&&x.bids.is_empty()));
   let trades=d.decode(r#"{"channel":"market_trades","sequence_num":6,"events":[{"type":"snapshot","trades":[{"product_id":"BTC-USD","price":"1","size":"1","side":"BUY"}]},{"type":"update","trades":[{"product_id":"BTC-USD","price":"60000","size":"1","side":"SELL","time":"2023-11-14T22:13:20.789Z"}]}]}"#);
   assert_eq!(trades.len(),2,"快照里的历史成交不算");
-  assert!(matches!(&trades[1],Decoded::Trade(_,t,_,Some(1_700_000_000_789)) if t.hit==Side::Bid));
+  assert!(matches!(&trades[1],Decoded::Trade(_,t,_,Some(1_700_000_000_789),_) if t.hit==Side::Bid));
  }
 
  #[test] fn rest_snapshot_parses() {
@@ -523,7 +526,7 @@ mod tests {
   }
   let trade=r#"{"topic":"publicTrade.BTCUSDT","type":"snapshot","ts":1791457528912,"data":[{"T":1791457528911,"s":"BTCUSDT","S":"Buy","v":"0.011","p":"82642.90","L":"PlusTick","i":"5be1261b-d231-533b-89cd-0653c4f333be","BT":false,"RPI":false,"seq":822323446907},{"T":1791457528913,"s":"BTCUSDT","S":"Sell","v":"0.2","p":"82642.80","i":"x","BT":false}]}"#;
   match &d.decode(trade)[..] {
-   [Decoded::Trade(_,a,None,Some(1791457528911)),Decoded::Trade(_,b,None,Some(1791457528913))]=>{
+   [Decoded::Trade(_,a,None,Some(1791457528911),_),Decoded::Trade(_,b,None,Some(1791457528913),_)]=>{
     assert_eq!((a.hit,a.price,a.quantity),(Side::Ask,82642.9,0.011),"S=Buy 是主动买、吃卖盘");
     assert_eq!(b.hit,Side::Bid);
    },
@@ -544,7 +547,7 @@ mod tests {
   let spot=v("bybit","spot","BTCUSDT",Notional::Linear(1.0),1.0);
   let mut d=decoder(Kind::BybitSpot,&[spot]);
   let trade=r#"{"topic":"publicTrade.BTCUSDT","ts":1791457528952,"type":"snapshot","data":[{"i":"2290000001227213949","T":1791457528951,"p":"82680","v":"0.001185","S":"Buy","seq":115115351336,"s":"BTCUSDT","BT":false,"RPI":false}]}"#;
-  assert!(matches!(&d.decode(trade)[..],[Decoded::Trade(id,t,None,Some(1791457528951))] if id=="bybit:spot:BTCUSDT"&&t.hit==Side::Ask));
+  assert!(matches!(&d.decode(trade)[..],[Decoded::Trade(id,t,None,Some(1791457528951),_)] if id=="bybit:spot:BTCUSDT"&&t.hit==Side::Ask));
  }
 
  #[test] fn bybit_urls_ops_and_capacity() {
@@ -590,14 +593,28 @@ mod tests {
   assert!(d.decode(replay).is_empty(),"第一帧回放丢掉");
   let live=r#"{"channel":"trades","data":[{"coin":"BTC","side":"B","px":"82625.0","sz":"0.00025","time":1791457522600,"hash":"0x0c","tid":615263281857618},{"coin":"BTC","side":"A","px":"82627.0","sz":"0.00242","time":1791457522888,"hash":"0x3a","tid":351151329239414}]}"#;
   match &d.decode(live)[..] {
-   [Decoded::Trade(id,t,None,Some(1791457522888))]=>{assert_eq!((id.as_str(),t.hit,t.price,t.quantity),("hyperliquid:usdtPerp:BTC",Side::Bid,82627.0,0.00242));},
+   [Decoded::Trade(id,t,None,Some(1791457522888),_)]=>{assert_eq!((id.as_str(),t.hit,t.price,t.quantity),("hyperliquid:usdtPerp:BTC",Side::Bid,82627.0,0.00242));},
    other=>panic!("{}",other.len()),
   }
   let buy=r#"{"channel":"trades","data":[{"coin":"BTC","side":"B","px":"82625.0","sz":"1","time":1791457523000,"tid":1}]}"#;
-  assert!(matches!(&d.decode(buy)[..],[Decoded::Trade(_,t,None,_)] if t.hit==Side::Ask),"B 是主动买、吃卖盘");
+  assert!(matches!(&d.decode(buy)[..],[Decoded::Trade(_,t,None,_,_)] if t.hit==Side::Ask),"B 是主动买、吃卖盘");
   for quiet in [r#"{"channel":"subscriptionResponse","data":{"method":"subscribe","subscription":{"type":"l2Book","coin":"BTC","nSigFigs":4,"mantissa":null,"fast":false}}}"#,
    r#"{"channel":"l2Book","data":{"coin":"ETH","time":1,"levels":[[],[]]}}"#] {assert!(d.decode(quiet).is_empty())}
   assert_eq!(Decoder::hyperliquid_error(r#"{"channel":"error","data":"Already subscribed"}"#).as_deref(),Some(r#""Already subscribed""#));
  }
 
+ #[test] fn true_exchange_trade_ids_are_preserved_for_insights_replay_deduplication() {
+  let cases=[
+   (Kind::BinanceUmTrades,"binance","usdtPerp","BTCUSDT",r#"{"e":"aggTrade","s":"BTCUSDT","a":42,"p":"60000","q":"1","m":false,"T":1700000000000}"#,"42"),
+   (Kind::Okx,"okx","usdtPerp","BTC-USDT-SWAP",r#"{"arg":{"channel":"trades","instId":"BTC-USDT-SWAP"},"data":[{"tradeId":"123","px":"60000","sz":"1","side":"buy","ts":"1700000000000"}]}"#,"123"),
+   (Kind::Coinbase,"coinbase","spot","BTC-USD",r#"{"channel":"market_trades","sequence_num":6,"events":[{"type":"update","trades":[{"trade_id":"456","product_id":"BTC-USD","price":"60000","size":"1","side":"BUY","time":"2023-11-14T22:13:20Z"}]}]}"#,"456"),
+   (Kind::BybitLinear,"bybit","usdtPerp","BTCUSDT",r#"{"topic":"publicTrade.BTCUSDT","data":[{"i":"trade-uuid","T":1700000000000,"p":"60000","v":"1","S":"Buy"}]}"#,"trade-uuid"),
+   (Kind::Hyperliquid,"hyperliquid","usdtPerp","BTC",r#"{"channel":"trades","data":[{"coin":"BTC","side":"B","px":"60000","sz":"1","time":1700000000000,"tid":789}]}"#,"789"),
+  ];
+  for (kind,exchange,product,instrument,text,want) in cases {
+   let mut d=decoder(kind,&[v(exchange,product,instrument,Notional::Linear(1.0),1.0)]);
+   let ids:Vec<String>=d.decode(text).into_iter().filter_map(|x|if let Decoded::Trade(_,_,_,_,id)=x {id} else {None}).collect();
+   assert_eq!(ids,vec![want],"{exchange}");
+  }
+ }
 }

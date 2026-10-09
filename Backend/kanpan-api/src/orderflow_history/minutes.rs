@@ -27,6 +27,8 @@ pub(super) trait Row:Send+Sync+Sized+'static {
  /// 除 `base`、`minute_ms` 以外的列，按 `push_binds` / `from_pg` 的顺序。
  const COLUMNS:&'static str;
  const BUDGET:Budget;
+ /// 个别较大的分钟聚合可以收紧待写批次，避免排队内容突破服务内存预算。
+ const PENDING_LIMIT:usize=PENDING_CAP;
  /// 这张表交不进写库通道（满了）丢了几分钟，每小时报一次清零。
  fn dropped()->&'static AtomicU64;
  fn minute_ms(&self)->i64;
@@ -35,6 +37,8 @@ pub(super) trait Row:Send+Sync+Sized+'static {
  fn push_binds(&self,b:&mut Separated<'_,'_,Postgres,&'static str>);
  /// 从 `SELECT minute_ms,{COLUMNS}` 读出来的一行还原；字节坏了回 None。
  fn from_pg(row:&PgRow)->Option<Self>;
+ /// 可选的完整性标记：通道丢行或写失败时，让调用方撤销连续覆盖声明。
+ fn failed(_base:&str,_minute_ms:i64) {}
 }
 
 /// 一批里同一（base，分钟）的先合成一行。
@@ -50,16 +54,21 @@ pub(super) fn merge<R:Row>(rows:Vec<(String,R)>)->Vec<(String,R)> {
 }
 
 pub(super) fn channel<R:Row>(pool:PgPool,queue:usize)->mpsc::Sender<(String,R)> {
+ channel_with_task(pool,queue).0
+}
+
+pub(super) fn channel_with_task<R:Row>(pool:PgPool,queue:usize)->(mpsc::Sender<(String,R)>,tokio::task::JoinHandle<()>) {
  let (tx,rx)=mpsc::channel(queue);
- tokio::spawn(writer(pool,rx));
- tx
+ let task=tokio::spawn(writer(pool,rx));
+ (tx,task)
 }
 
 /// 交收完的几分钟：不等，通道满了就丢（记在这张表的 `dropped` 上）。
 pub(super) fn submit<R:Row>(tx:Option<&mpsc::Sender<(String,R)>>,base:&str,rows:Vec<R>) {
  let Some(tx)=tx else {return};
  for row in rows {
-  if tx.try_send((base.to_string(),row)).is_err() {R::dropped().fetch_add(1,Ordering::Relaxed);}
+  let minute=row.minute_ms();
+  if tx.try_send((base.to_string(),row)).is_err() {R::dropped().fetch_add(1,Ordering::Relaxed);R::failed(base,minute);}
  }
 }
 
@@ -69,16 +78,18 @@ async fn writer<R:Row>(pool:PgPool,mut rx:mpsc::Receiver<(String,R)>) {
  let mut warned:Option<tokio::time::Instant>=None;
  while let Some(first)=rx.recv().await {
   let mut rows=vec![first];
-  while rows.len()<PENDING_CAP && let Ok(more)=rx.try_recv() {rows.push(more);}
+  while rows.len()<R::PENDING_LIMIT && let Ok(more)=rx.try_recv() {rows.push(more);}
   let mut rows=merge(rows);
   let Ok(_slot)=WRITE_SLOTS.acquire().await else {return};
   while !rows.is_empty() {
    let rest=rows.split_off(rows.len().min(INSERT_ROWS));
    let n=rows.len() as u64;
+   let failed_rows:Vec<(String,i64)>=rows.iter().map(|(base,row)|(base.clone(),row.minute_ms())).collect();
    match write(&pool,rows).await {
     Ok(m)=>{written+=n;merged+=m;},
     Err(e)=>{
      failed+=n;
+     for (base,minute) in failed_rows {R::failed(&base,minute);}
      if warned.is_none_or(|at|at.elapsed()>=Duration::from_secs(60)) {warned=Some(tokio::time::Instant::now());tracing::warn!("Orderflow {}: write failed, {n} minutes dropped: {e}",R::TABLE);}
     },
    }
@@ -151,7 +162,9 @@ pub(super) async fn purge<R:Row>(pool:&PgPool,now:i64)->sqlx::Result<u64> {
    .bind(&bases).bind(now-3_600_000).fetch_one(pool).await?;
   let (live,per_row)=storage_budget::estimate(pool,R::TABLE,average.unwrap_or(1_000.0)).await?;
   let live=live-deleted as f64*per_row;
-  let (done,n)=storage_budget::trim(live,budget.target(),per_row,cutoff,now-store::DAY_MS/4,store::DAY_MS/4,|_,to|{
+  // 共用一条预算的分钟表平均分配删后目标，不能每张都独占整条额度导致合计越线。
+  let target=budget.target()/budget.tables.len().max(1) as f64;
+  let (done,n)=storage_budget::trim(live,target,per_row,cutoff,now-store::DAY_MS/4,store::DAY_MS/4,|_,to|{
    let bases=&bases;
    async move {delete_before(pool,R::TABLE,bases,to).await}
   }).await?;

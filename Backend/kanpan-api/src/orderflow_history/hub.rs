@@ -43,7 +43,7 @@ use super::feeds::{self,Decoded,Decoder,Event,Kind,KINDS};
 use crate::binance_gate;
 use futures_util::{SinkExt,StreamExt};
 use std::collections::{HashMap,HashSet,VecDeque};
-use std::sync::OnceLock;
+use std::sync::{Arc,OnceLock};
 use std::sync::atomic::{AtomicU64,Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -161,6 +161,8 @@ struct Slot {
  rotate_at:Instant,
  /// 这条连接接手了哪些旧连接上的哪些簿（等它 Up 之后让旧连接退掉）。
  replaces:Vec<(u64,Vec<String>)>,
+ /// 任务 panic 时仍能撤销它实际的成交连接 ID。
+ connection:Arc<AtomicU64>,
 }
 
 impl Slot {fn streams(&self)->usize {self.venues.len()*self.kind.suffixes().len().max(1)}}
@@ -178,8 +180,9 @@ impl Pool {
   let jitter=Duration::from_secs(rand::random_range(0..=ROTATE_JITTER_SECS));
   let now=Instant::now();
   let venues:HashMap<String,Route>=routes.iter().map(|r|(r.venue.id.clone(),r.clone())).collect();
-  self.slots.insert(id,Slot{kind,venues,tx,born:now,up:false,moving:false,rotate_at:now+ROTATE_AFTER+jitter,replaces});
-  let task=tokio::spawn(run(id,kind,routes,rx,hub_tx.clone()));
+  let connection=Arc::new(AtomicU64::new(0));
+  self.slots.insert(id,Slot{kind,venues,tx,born:now,up:false,moving:false,rotate_at:now+ROTATE_AFTER+jitter,replaces,connection:connection.clone()});
+  let task=tokio::spawn(run(id,kind,routes,rx,hub_tx.clone(),connection));
   let hub_tx=hub_tx.clone();
   tokio::spawn(async move {
    if let Err(e)=task.await && e.is_panic() {
@@ -259,6 +262,10 @@ impl Pool {
  /// （另找连接或新开）。跟踪器已经关掉的那几本就此放下。
  fn crashed(&mut self,id:u64,hub_tx:&mpsc::UnboundedSender<HubCmd>) {
   let Some(slot)=self.slots.remove(&id) else {return};
+  let connection=slot.connection.load(Ordering::Relaxed);
+  if connection!=0&&slot.kind!=Kind::BinanceUmDepth {
+   for r in slot.venues.values() {let _=r.control.send(Event::TradeStream{venues:vec![r.venue.id.clone()],connection,online:false});}
+  }
   let routes:Vec<Route>=slot.venues.into_values().filter(|r|!r.events.is_closed()).collect();
   if !routes.is_empty() {self.add(routes,hub_tx)}
  }
@@ -434,19 +441,32 @@ impl Conn {
 
  /// 给这些簿各自的跟踪器发一条要紧的（Opened / Handover / Closed）：走不丢的那个口，不等。只订成交的连接不发。
  fn announce(&self,routes:&[&Route],make:impl Fn(Vec<String>)->Event) {
-  if !self.kind.carries_books() {return}
-  for r in routes {let _=r.control.send(make(vec![r.venue.id.clone()]));}
+  for r in routes {
+   let event=make(vec![r.venue.id.clone()]);
+   if self.kind!=Kind::BinanceUmDepth {
+    let (connection,online)=match &event {
+     Event::Opened{connection,..}|Event::Handover{connection,..}=>(*connection,true),
+     Event::Closed{connection,..}=>(*connection,false),
+     _=>continue,
+    };
+    let _=r.control.send(Event::TradeStream{venues:vec![r.venue.id.clone()],connection,online});
+   }
+   if self.kind.carries_books() {let _=r.control.send(event);}
+  }
  }
 
  /// 帧送给跟踪器：堵住了就丢（记数），不拖别的币。
  fn deliver(&self,decoded:Decoded,connection:u64) {
   let (id,event)=match decoded {
    Decoded::Book(venue,message)=>(venue.clone(),Event::Frame{venue,connection,message}),
-   Decoded::Trade(venue,trade,id,at)=>(venue.clone(),Event::Trade{venue,trade,id,at}),
+   Decoded::Trade(venue,trade,id,at,token)=>(venue.clone(),Event::Trade{venue,trade,id,at,token}),
   };
   let Some(route)=self.routes.get(&id) else {return};
   FRAMES[self.kind.index()].fetch_add(1,Ordering::Relaxed);
-  if let Err(mpsc::error::TrySendError::Full(_))=route.events.try_send(event) {DROPS[self.kind.index()].fetch_add(1,Ordering::Relaxed);}
+  if let Err(mpsc::error::TrySendError::Full(event))=route.events.try_send(event) {
+   DROPS[self.kind.index()].fetch_add(1,Ordering::Relaxed);
+   if matches!(event,Event::Trade{..}) {super::insights::gap_venue(&id,chrono::Utc::now().timestamp_millis());}
+  }
  }
 }
 
@@ -467,12 +487,12 @@ async fn send_text(tx:&mut futures_util::stream::SplitSink<Ws,Up>,text:String)->
 
 /// 一条连接的一生：连上（首次连上按交接通知、之后按重连通知）、转帧、跟池子的命令增删簿，
 /// 断了抖动退避重连；挂着的簿退光了就结束。
-async fn run(slot:u64,kind:Kind,routes:Vec<Route>,cmds:mpsc::UnboundedReceiver<ConnCmd>,hub_tx:mpsc::UnboundedSender<HubCmd>) {
- if kind==Kind::Hyperliquid {return run_shared(slot,routes,cmds,hub_tx).await}
- run_own(slot,kind,routes,cmds,hub_tx).await
+async fn run(slot:u64,kind:Kind,routes:Vec<Route>,cmds:mpsc::UnboundedReceiver<ConnCmd>,hub_tx:mpsc::UnboundedSender<HubCmd>,connection:Arc<AtomicU64>) {
+ if kind==Kind::Hyperliquid {return run_shared(slot,routes,cmds,hub_tx,connection).await}
+ run_own(slot,kind,routes,cmds,hub_tx,connection).await
 }
 
-async fn run_own(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiver<ConnCmd>,hub_tx:mpsc::UnboundedSender<HubCmd>) {
+async fn run_own(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiver<ConnCmd>,hub_tx:mpsc::UnboundedSender<HubCmd>,current:Arc<AtomicU64>) {
  let mut conn=Conn{kind,routes:HashMap::new(),decoder:Decoder::new(kind)};
  for r in routes {conn.insert(r);}
  // 第几次连：Bybit 连不上主域名时下一次换备用域名（见 `Kind::url_at`）。
@@ -500,6 +520,7 @@ async fn run_own(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedRe
    },
   };
   let connection=feeds::next_connection();
+  current.store(connection,Ordering::Relaxed);
   let (mut tx,mut rx)=ws.split();
   let mut ok=true;
   // OKX 每条连接一小时内的订退请求时刻。
@@ -621,6 +642,7 @@ async fn run_own(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedRe
   let all:Vec<Route>=conn.routes.values().cloned().collect();
   let refs:Vec<&Route>=all.iter().collect();
   conn.announce(&refs,|venues|Event::Closed{venues,connection});
+  current.store(0,Ordering::Relaxed);
   // 活过一分钟的算正常断开，退避从头来；没活过一分钟的下一次换个域名试（只有 Bybit 有备用域名）。
   if started.elapsed()>Duration::from_secs(60) {backoff=Duration::from_secs(1)} else {attempt=attempt.wrapping_add(1);}
   let until=Instant::now()+jittered(backoff);
@@ -639,7 +661,7 @@ async fn run_own(slot:u64,kind:Kind,routes:Vec<Route>,mut cmds:mpsc::UnboundedRe
 /// Hyperliquid：不自己开连接，挂进 `venues::hyperliquid::hub` 那条全进程共用的上游（中继也在用），
 /// 按「跟踪」那一份名额订 `l2Book` + `trades`。上游连上（或加入时已连着）按「连上了」通知簿，断了按「断了」；
 /// hub 自己重连重订。每帧 `l2Book` 都是整本，断档不存在，`Resubscribe` 不用做什么。
-async fn run_shared(slot:u64,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiver<ConnCmd>,hub_tx:mpsc::UnboundedSender<HubCmd>) {
+async fn run_shared(slot:u64,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiver<ConnCmd>,hub_tx:mpsc::UnboundedSender<HubCmd>,current:Arc<AtomicU64>) {
  use crate::venues::hyperliquid::hub::{self as hl,Class,Feed,Topic};
  let kind=Kind::Hyperliquid;
  let mut conn=Conn{kind,routes:HashMap::new(),decoder:Decoder::new(kind)};
@@ -656,6 +678,7 @@ async fn run_shared(slot:u64,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiver<
     None=>break,
     Some(Feed::Up)=>{
      let id=feeds::next_connection();
+     current.store(id,Ordering::Relaxed);
      let all:Vec<Route>=conn.routes.values().cloned().collect();
      let refs:Vec<&Route>=all.iter().collect();
      if let Some(old)=connection.take() {conn.announce(&refs,|venues|Event::Closed{venues,connection:old});}
@@ -666,6 +689,7 @@ async fn run_shared(slot:u64,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiver<
      if !announced_up {announced_up=true;let _=hub_tx.send(HubCmd::Up(slot));}
     },
     Some(Feed::Down)=>if let Some(old)=connection.take() {
+     current.store(0,Ordering::Relaxed);
      let all:Vec<Route>=conn.routes.values().cloned().collect();
      let refs:Vec<&Route>=all.iter().collect();
      conn.announce(&refs,|venues|Event::Closed{venues,connection:old});
@@ -704,6 +728,7 @@ async fn run_shared(slot:u64,routes:Vec<Route>,mut cmds:mpsc::UnboundedReceiver<
   conn.announce(&refs,|venues|Event::Closed{venues,connection:id});
  }
  drop(handle);
+ current.store(0,Ordering::Relaxed);
  let _=hub_tx.send(HubCmd::Gone(slot));
 }
 
@@ -712,6 +737,17 @@ mod tests {
  use super::*;
  use super::super::book::Sequence;
  use super::super::model::Notional;
+
+ #[tokio::test(start_paused=true)] async fn a_panicked_trade_connection_revokes_its_actual_connection_id_before_requeueing() {
+  let (events,_rx)=mpsc::channel(8);let (hub_tx,_hub_rx)=mpsc::unbounded_channel();
+  let (control,mut control_rx)=mpsc::unbounded_channel();
+  let mut r=route("binance","usdtPerp","AUSDT",&events);r.control=control;
+  let mut pool=Pool::default();let slot=pool.spawn(Kind::BinanceUmTrades,vec![r],vec![],&hub_tx);
+  pool.slots[&slot].connection.store(123,Ordering::Relaxed);
+  pool.crashed(slot,&hub_tx);
+  assert!(matches!(control_rx.try_recv(),Ok(Event::TradeStream{connection:123,online:false,..})));
+  assert_eq!(pool.pending[&Kind::BinanceUmTrades].routes.len(),1);
+ }
 
  fn route(exchange:&'static str,product:&'static str,instrument:&str,events:&mpsc::Sender<Event>)->Route {
   let (control,_)=mpsc::unbounded_channel();
@@ -726,14 +762,15 @@ mod tests {
   let (control,mut control_rx)=mpsc::unbounded_channel();
   r.control=control;
   // 跟踪器堵住了：帧的口满着。
-  events.try_send(Event::Trade{venue:r.venue.id.clone(),trade:super::super::book::Trade{price:1.0,quantity:1.0,hit:super::super::book::Side::Bid},id:None,at:None}).unwrap();
+  events.try_send(Event::Trade{venue:r.venue.id.clone(),trade:super::super::book::Trade{price:1.0,quantity:1.0,hit:super::super::book::Side::Bid},id:None,at:None,token:None}).unwrap();
   let mut conn=Conn{kind:Kind::BinanceUmDepth,routes:HashMap::new(),decoder:Decoder::new(Kind::BinanceUmDepth)};
   conn.insert(r.clone());
   conn.announce(&[&r],|venues|Event::Opened{venues,connection:7});
   assert!(matches!(control_rx.try_recv(),Ok(Event::Opened{connection:7,..})),"帧的口满着，Opened 照样送到");
-  // 只订成交的连接不发。
+  // 只订成交的连接不改簿状态，但洞察必须知道它已断线。
   let trades=Conn{kind:Kind::BinanceUmTrades,routes:HashMap::new(),decoder:Decoder::new(Kind::BinanceUmTrades)};
   trades.announce(&[&r],|venues|Event::Closed{venues,connection:7});
+  assert!(matches!(control_rx.try_recv(),Ok(Event::TradeStream{connection:7,online:false,..})));
   assert!(control_rx.try_recv().is_err());
  }
 
