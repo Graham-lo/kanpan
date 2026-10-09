@@ -77,7 +77,8 @@ const INPUT_KEYS_EXCEPT_SERIES = [
 ] as const
 
 const sameCrosshair = (a: Crosshair | null, b: Crosshair | null): boolean =>
-  a === b || (a != null && b != null && a.index === b.index && a.pane === b.pane && a.t === b.t && a.price === b.price)
+  a === b || (a != null && b != null && a.index === b.index && a.pane === b.pane && a.t === b.t && a.price === b.price
+    && (a.source ?? 'chart') === (b.source ?? 'chart'))
 
 const sameFocus = (a: Set<string> | null, b: Set<string> | null): boolean =>
   a == null || b == null ? a == null && b == null : a.size === b.size && [...a].every(k => b.has(k))
@@ -559,7 +560,7 @@ export class ChartView {
   get isAtLatest(): boolean { return this.gestures.isAtLatest }
   clearCrosshair(): void { this.gestures.clearCrosshair() }
   moveCrosshair(by: number): void { this.gestures.moveCrosshairBy(by) }
-  crosshairTo(index: number): void { this.gestures.crosshairTo(index) }
+  crosshairTo(index: number, source: Crosshair['source'] = 'chart'): void { this.gestures.crosshairTo(index, source) }
   resetPriceScale(): void { this.gestures.resetPriceScale() }
   nudge(dx: number): void { this.gestures.nudge(dx) }
   reveal(from: number, to: number): void { this.gestures.reveal(from, to) }

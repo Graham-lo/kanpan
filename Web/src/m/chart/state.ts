@@ -30,6 +30,8 @@ export interface SymbolInfo {
 }
 
 export interface Crosshair {
+  /** 气泡 / 大单页的程序定位不触发挂单卡；手动移动恢复 chart。缺省为 chart。 */
+  source?: 'chart' | 'bigTrade'
   index: number
   /** null = 主图；否则是那一格副图的指标 */
   pane: IndicatorID | null

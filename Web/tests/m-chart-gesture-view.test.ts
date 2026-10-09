@@ -9,6 +9,7 @@ import { ChartView } from '../src/m/chart/view'
 import { ChartGesture } from '../src/m/chart/gesture'
 import { decodeDrawing } from '../src/m/chart/draw/drawing'
 import { ScaleReport } from '../src/m/chart/scaleReport'
+import { orderFlowBands } from '../src/m/chart/renderer.orderflow'
 
 type Listener = (e: unknown) => void
 function fakeEl(): Record<string, unknown> {
@@ -64,6 +65,45 @@ function rig(): ChartView {
   v.state = state()
   return v
 }
+
+describe('订单流点击互斥', () => {
+  it('金额签优先于气泡放宽热区，点签选墙再点收起', () => {
+    const v = rig(), s = v.state!, b = s.input.series
+    v.state = withOverlay(s, { orderFlow: { symbol: b.symbol, phase: 'ready', asOfMs: b.lastTime, thresholds: {}, orders: [{
+      venueID: 'binance:usdtPerp:X', exchange: '币安', product: 'usdtPerp', side: 'bid', bucket: 1,
+      price: 100, firstSeenMs: b.time(b.count - 20), endMs: null, status: 'live',
+      initialNotional: 10_000_000, notional: 10_000_000, filledNotional: 0, threshold: 1_000_000, vanishedNotional: null,
+    }] } })
+    const r = v.renderer!, L = r.layout(v.width, v.height)
+    const label = orderFlowBands(r, L.main, r.priceRange(v.width, v.height), L).labels[0]
+    expect(label).toBeDefined()
+    const bubble = vi.fn(() => true)
+    v.bigTradeTap = bubble
+    const f = finger(label.frame.x + label.frame.w / 2, label.frame.y + label.frame.h / 2)
+    down(v, f, 10_000); up(v, f, 10_010)
+    expect(v.state!.overlay.orderFlowSelected).toEqual(label.key)
+    expect(bubble).not.toHaveBeenCalled()
+    down(v, f, 11_000); up(v, f, 11_010)
+    expect(v.state!.overlay.orderFlowSelected).toBeNull()
+  })
+  it('大单定位清旧挂单卡；同位置恢复手动来源必须刷新，手动拖动恢复检查', () => {
+    const v = rig(), i = v.state!.input.series.count - 30
+    v.crosshairTo(i)
+    const c = v.state!.overlay.crosshair!
+    v.state = withOverlay(v.state!, { orderFlowSelected: { bucket: 1, side: 'bid', contract: true, start: 1 } })
+    const changed = vi.fn()
+    v.onCrosshairChanged = changed
+    v.crosshairTo(i, 'bigTrade')
+    expect(changed).toHaveBeenCalledTimes(1)
+    expect(v.state!.overlay.crosshair?.source).toBe('bigTrade')
+    expect(v.state!.overlay.orderFlowSelected).toBeNull()
+    v.state = withOverlay(v.state!, { crosshair: c })
+    expect(changed).toHaveBeenCalledTimes(2)
+    v.crosshairTo(i, 'bigTrade')
+    v.gestures.moveCrosshair({ x: 150, y: 160 }, v.chartLayout!)
+    expect(v.state!.overlay.crosshair?.source ?? 'chart').toBe('chart')
+  })
+})
 
 describe('十字线归哪根手指（ChartGestureTests · 审查 B·P3-2）', () => {
   it('拎着十字线时落下第二根手指、先抬起主人那根：十字线就此放下，不跳到第二根手指底下', () => {

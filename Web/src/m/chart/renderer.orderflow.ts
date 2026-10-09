@@ -912,7 +912,20 @@ export function orderFlowHit(r: ChartRenderer, x: number, y: number, W: number, 
   const L = r.layout(W, H)
   if (!(x >= 0 && x <= L.plotW && y >= L.main.y && y <= L.main.y + L.main.h)) return null
   const frame = orderFlowBands(r, L.main, r.priceRange(W, H), L)
-  return orderFlowHitBands(frame.bands, x, y, true)?.group ?? null
+  return orderFlowLabelHitFrame(frame, x, y) ?? orderFlowHitBands(frame.bands, x, y, true)?.group ?? null
+}
+
+/** 签按避让后的实际框命中，返回所属的整堵聚合墙。 */
+export function orderFlowLabelHitFrame(frame: OrderFlowFrame, x: number, y: number): OrderFlowGroup | null {
+  const label = frame.labels.findLast(l => x >= minX(l.frame) && x <= maxX(l.frame) && y >= minY(l.frame) && y <= maxY(l.frame))
+  return label ? frame.bands.find(b => OrderFlowKey.equal(b.group.key, label.key))?.group ?? null : null
+}
+
+export function orderFlowLabelHit(r: ChartRenderer, x: number, y: number, W: number, H: number): OrderFlowGroup | null {
+  if (!orderFlowSnapshot(r) || r.state.input.series.isEmpty) return null
+  const L = r.layout(W, H)
+  if (!(x >= 0 && x <= L.plotW && y >= L.main.y && y <= L.main.y + L.main.h)) return null
+  return orderFlowLabelHitFrame(orderFlowBands(r, L.main, r.priceRange(W, H), L), x, y)
 }
 
 /** 轻点是不是点在一根 K 线上：横向落在那一根的格子里（不足 8 按 8），纵向在高低 ± 6 以内（收盘价画法只认收盘）。 */
@@ -959,7 +972,7 @@ export function orderFlowFocusBand(r: ChartRenderer, pane: Pane, range: PriceRan
   const frame = orderFlowBands(r, pane, range, L)
   const cross = r.state.overlay.crosshair
   if (cross) {
-    if (cross.pane != null) return null
+    if (cross.source === 'bigTrade' || cross.pane != null) return null
     const band = orderFlowHovered(r, frame.bands, pane, range, L)
     return band ? { group: band.group, band, hovered: true } : null
   }

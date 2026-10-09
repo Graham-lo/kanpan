@@ -31,7 +31,7 @@ import type { OrderFlowDisplay, OrderFlowGroupKey, OrderFlowSegment, OrderFlowSn
 import {
   OrderFlowStyle as S, OrderFlowWallCache, candleHit, drawOrderFlow, drawOrderFlowBracket, drawOrderFlowHover, drawOrderFlowLabels, hasOrderFlow,
   mixHex, orderFlowAmount, orderFlowBands, orderFlowBaseColor, orderFlowColor, orderFlowEntry, orderFlowFocus,
-  drawingLabelBoxes, orderFlowFrameUnfiltered, orderFlowHit, orderFlowHitBands, orderFlowHoversBand, orderFlowIsSelected, orderFlowLabelInk,
+  drawingLabelBoxes, orderFlowFrameUnfiltered, orderFlowHit, orderFlowHitBands, orderFlowHoversBand, orderFlowIsSelected, orderFlowLabelHitFrame, orderFlowLabelInk,
   orderFlowLabelWidth, orderFlowMergeGapMs, orderFlowMergeNoise, orderFlowMinLifeMs,
 } from '../src/m/chart/renderer.orderflow'
 import type { OrderFlowBand, OrderFlowFrame, OrderFlowLabel } from '../src/m/chart/renderer.orderflow'
@@ -208,6 +208,29 @@ function wallRig(): { g: Rig; step: number; b0: number } {
 
 const seg = (bucket: number, start: number, end: number | null): OrderFlowSegment =>
   ({ key: { bucket, side: 'ask', contract: true, start }, members: [], endMs: end })
+
+describe('金额签和大单定位的点击回归', () => {
+  it('移位签按实际框命中所属墙，实际排版的签也都能点中', () => {
+    const { g } = fixtureRig()
+    const f = g.frame(), band = f.bands[0]
+    const moved = { ...f, labels: [{ key: band.group.key, text: '10M', frame: { x: 120, y: 60, w: 48, h: 16 }, fill: band.color, ink: '#FFFFFF' }] }
+    expect(orderFlowLabelHitFrame(moved, 144, 68)?.key).toEqual(band.group.key)
+    expect(orderFlowLabelHitFrame(moved, 144, 90)).toBeNull()
+    for (const label of f.labels) expect(g.hit(midX(label.frame), midY(label.frame))?.key).toEqual(label.key)
+  })
+  it('同一根同一价格，大单定位不出挂单卡，手动检查仍能出卡', () => {
+    const { g, orders } = fixtureRig()
+    const c: Crosshair = { index: g.b.count - 2, pane: null, t: null, price: orders[0].price }
+    g.cross(c)
+    expect(g.focus()).not.toBeNull()
+    g.cross({ ...c, source: 'bigTrade' })
+    expect(g.focus()).toBeNull()
+    g.setFlow({ asOfMs: g.flow.asOfMs + 500 })
+    expect(g.focus()).toBeNull()
+    g.cross({ ...c, source: 'chart' })
+    expect(g.focus()).not.toBeNull()
+  })
+})
 
 /** 已结束的签落在规则允许的几处之一。 */
 function endedLabelAtAllowedSpot(label: OrderFlowLabel, band: OrderFlowBand, plotW: number): boolean {

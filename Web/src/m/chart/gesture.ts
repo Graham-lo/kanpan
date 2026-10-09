@@ -112,6 +112,7 @@ export class GestureState {
 
 /** 订单流那一半的命中函数由订单流移植提供；没提供时当作没命中。 */
 interface OrderFlowHitHooks {
+  orderFlowLabelHit?: (r: unknown, x: number, y: number, W: number, H: number) => { key: OrderFlowGroupKey } | null
   orderFlowHit?: (r: unknown, x: number, y: number, W: number, H: number) => { key: OrderFlowGroupKey } | null
   candleHit?: (r: unknown, x: number, y: number, W: number, H: number) => boolean
   orderFlowIsSelected?: (r: unknown, g: unknown) => boolean
@@ -735,7 +736,7 @@ export class ChartGestures {
     if (next < 0 || next >= b.count) return
     const wasOnClose = c.pane == null && c.price != null && c.index >= 0 && c.index < b.count
       && Math.abs((c.price ?? 0) - b.close[c.index]) < Number.EPSILON
-    const moved: Crosshair = { ...c, index: next, t: null }
+    const moved: Crosshair = { ...c, index: next, t: null, source: 'chart' }
     if (c.pane == null && (s.overlay.magnet || wasOnClose)) moved.price = b.close[next]
     let out = withOverlay(s, { crosshair: moved })
     const L = this.v.chartLayout
@@ -751,13 +752,13 @@ export class ChartGestures {
   }
 
   /** 十字线直接落到第 index 根的收盘价上（「大单与爆仓」每根条点一根）；那根在可视区外就把图挪过去 */
-  crosshairTo(index: number): void {
+  crosshairTo(index: number, source: Crosshair['source'] = 'chart'): void {
     const s = this.state
     if (!s) return
     const b = s.input.series
     if (!(index >= 0 && index < b.count)) return
-    const c: Crosshair = { index, pane: null, t: null, price: b.close[index] }
-    let out = withOverlay(s, { crosshair: c })
+    const c: Crosshair = { index, pane: null, t: null, price: b.close[index], source }
+    let out = withOverlay(s, { crosshair: c, orderFlowSelected: null })
     const L = this.v.chartLayout
     if (L && L.plotW > 0) {
       const x = s.viewport.view.x(b.time(index), L.plotW)
@@ -815,9 +816,15 @@ export class ChartGestures {
     g.lastPlotTap = { ms: now, x: p.x, y: p.y }
     // 提醒线（画线删了 / 藏了还在生效的提醒）：十字线没开时点中它就开提醒，不出十字线
     if (this.state?.overlay.crosshair == null && this.v.signalTap?.(p.x, p.y)) return
-    // 图上气泡（44 × 44 命中区，小圆点不算）：十字线没开时点中就交给宿主开「大单与爆仓」
-    if (this.state?.overlay.crosshair == null && this.v.bigTradeTap?.(p.x, p.y)) return
     const r = this.v.renderer
+    // 签为避让可移离细线；它画在最上层，优先于蜡烛与附近气泡的放宽热区。
+    const label = r && OF.orderFlowLabelHit?.(r, p.x, p.y, this.v.width, this.v.height)
+    if (label) {
+      this.selectOrderFlow(OF.orderFlowIsSelected?.(r, label) ? null : label.key)
+      return
+    }
+    // 图上气泡（44 × 44 命中区，小圆点不算）：点中交给宿主开「大单与爆仓」，清旧挂单焦点。
+    if (this.v.bigTradeTap?.(p.x, p.y)) return
     if (r && OF.orderFlowHit && OF.candleHit && !OF.candleHit(r, p.x, p.y, this.v.width, this.v.height)) {
       const hit = OF.orderFlowHit(r, p.x, p.y, this.v.width, this.v.height)
       if (hit) {

@@ -349,8 +349,10 @@ describe('大单与爆仓 · 十字线联动', () => {
 
   it('开着时点另一枚泡：只换根、不关', () => {
     const r = rig()
+    const spy = vi.spyOn(r.view, 'crosshairTo')
     const tap = (r.c as unknown as { tapSign(s: { t: number }): boolean }).tapSign.bind(r.c)
     expect(tap({ t: TB })).toBe(true)
+    expect(spy).toHaveBeenCalledWith(295, 'bigTrade')
     expect(r.sheet.closed).toBe(false)
     expect(r.sheet.last!.hero).toMatchObject({ title: hhmm(TB), rt: '15 分钟' })
   })
@@ -369,7 +371,7 @@ describe('大单与爆仓 · 十字线联动', () => {
     const r = rig()
     const spy = vi.spyOn(r.view, 'crosshairTo')
     ;(r.c as unknown as { pickBar(t: number): void }).pickBar(TB)
-    expect(spy).toHaveBeenCalledWith(295)
+    expect(spy).toHaveBeenCalledWith(295, 'bigTrade')
     expect(r.sheet.calls).toContain(`flash:${TB}`)
     r.emit('crosshair', { bar: { openTime: TB } })
     r.emit('interaction', 'ended')

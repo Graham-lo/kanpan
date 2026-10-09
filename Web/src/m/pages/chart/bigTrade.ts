@@ -157,6 +157,8 @@ export class BigTradeController {
 
   private tapSign(s: Sign): boolean {
     if (this.d.isLand()) return false
+    const series = this.series()
+    if (series?.count) this.d.chart.view.crosshairTo(series.index(s.t), 'bigTrade')
     if (this.isOpen) {
       this.pick = { t: s.t, from: 'sign' }
       this.clearReturn()
@@ -190,7 +192,7 @@ export class BigTradeController {
     const s = this.series()
     if (!s) return
     const i = s.index(t)
-    this.d.chart.view.crosshairTo(i)
+    this.d.chart.view.crosshairTo(i, 'bigTrade')
     try { navigator.vibrate?.(10) } catch { /* 不支持就算了 */ }
     this.layer.popAt(t)
     this.pick = { t, from: 'bars' }
