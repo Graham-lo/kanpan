@@ -61,7 +61,7 @@ export function sumLiq(rows: Iterable<LiqRow>, a: number, b: number): LiqSum {
   return s
 }
 
-interface Entry { rows: Map<number, LiqRow>; tracked: boolean | null; nextAt: number; busy: boolean; touched: number; ver: number }
+interface Entry { rows: Map<number, LiqRow>; tracked: boolean | null; nextAt: number; busy: boolean; touched: number; ver: number; updatedAtMs: number; failed: boolean }
 
 export class LiqStore {
   private map = new Map<string, Entry>()
@@ -74,7 +74,7 @@ export class LiqStore {
   private entry(base: string, now: number): Entry {
     let e = this.map.get(base)
     if (!e) {
-      e = { rows: new Map(), tracked: null, nextAt: 0, busy: false, touched: now, ver: 0 }
+      e = { rows: new Map(), tracked: null, nextAt: 0, busy: false, touched: now, ver: 0, updatedAtMs: 0, failed: false }
       this.map.set(base, e)
       if (this.map.size > LIQ_MAX_SYMBOLS) {
         const old = [...this.map.entries()].filter(([k]) => k !== base).sort((x, y) => x[1].touched - y[1].touched)[0]
@@ -102,6 +102,7 @@ export class LiqStore {
       const r = await this.fetcher(url)
       const body = r.status === 200 ? parseLiq(r.body) : null
       if (body) {
+        e.updatedAtMs = now; e.failed = false
         e.tracked = body.tracked
         for (const row of body.rows) e.rows.set(row[0], row)
         const cut = now - LIQ_KEEP_MS
@@ -109,16 +110,16 @@ export class LiqStore {
         e.ver++
         this.onUpdate?.()
         for (const fn of this.listeners) fn()
-      }
-    } catch { /* 30 秒后再试 */ }
+      } else e.failed = true
+    } catch { e.failed = true /* 30 秒后再试 */ }
     e.busy = false
     e.nextAt = now + LIQ_POLL_MS
   }
 
   /** null = 还没拉到过；tracked=false 且没有行 = 这只没数据 */
-  state(base: string): { rows: Map<number, LiqRow>; tracked: boolean | null; ver: number } | null {
+  state(base: string): { rows: Map<number, LiqRow>; tracked: boolean | null; ver: number; updatedAtMs?: number; failed?: boolean } | null {
     const e = this.map.get(base)
-    return e ? { rows: e.rows, tracked: e.tracked, ver: e.ver } : null
+    return e ? { rows: e.rows, tracked: e.tracked, ver: e.ver, updatedAtMs: e.updatedAtMs, failed: e.failed } : null
   }
   size(): number { return this.map.size }
 }

@@ -103,6 +103,34 @@ describe('订单流点击互斥', () => {
     v.gestures.moveCrosshair({ x: 150, y: 160 }, v.chartLayout!)
     expect(v.state!.overlay.crosshair?.source ?? 'chart').toBe('chart')
   })
+  it('洞察价区回图定位实际价位，保留来源互斥并拒绝非法价位', () => {
+    const v = rig(), i = v.state!.input.series.count - 10, price = 101.25
+    v.state = withOverlay(v.state!, { orderFlowSelected: { bucket: 1, side: 'bid', contract: true, start: 1 } })
+    v.crosshairTo(i, 'bigTrade', price)
+    expect(v.state!.overlay.crosshair).toMatchObject({ index: i, source: 'bigTrade', price })
+    expect(v.state!.overlay.orderFlowSelected).toBeNull()
+    for (const invalid of [NaN, Infinity, 0, -100]) {
+      v.crosshairTo(i, 'bigTrade', invalid)
+      expect(v.state!.overlay.crosshair?.price).toBe(v.state!.input.series.close[i])
+    }
+  })
+  it('显式证据价位在Y轴外也能看见；普通逐根定位保持价格视野', () => {
+    for (const mode of ['linear', 'log', 'percent'] as const) for (const side of ['above', 'below'] as const) {
+      const v = rig(), i = v.state!.input.series.count - 10
+      v.state = withViewport(v.state!, { price: { ...v.state!.viewport.price, mode } })
+      const before = v.renderer!.priceRange(v.width, v.height), original = v.state!.viewport.price
+      v.crosshairTo(i, 'bigTrade')
+      expect(v.state!.viewport.price).toEqual(original)
+      const price = side === 'above' ? before.hi * 1.5 : before.lo * .5
+      v.crosshairTo(i, 'bigTrade', price)
+      const after = v.renderer!.priceRange(v.width, v.height)
+      expect(after.lo).toBeLessThan(price)
+      expect(after.hi).toBeGreaterThan(price)
+      const y = v.renderer!.yOf(price, v.chartLayout!.main, after)
+      expect(y).toBeGreaterThan(v.chartLayout!.main.y)
+      expect(y).toBeLessThan(v.chartLayout!.main.y + v.chartLayout!.main.h)
+    }
+  })
 })
 
 describe('十字线归哪根手指（ChartGestureTests · 审查 B·P3-2）', () => {

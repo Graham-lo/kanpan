@@ -46,6 +46,8 @@ import { createOrderFlowCard } from './chart/orderFlowCard'
 import { createPagePort, type PagePort } from './chart/data'
 import { openAnalysis, openChartSettings, openOrderFlowEditor, thresholdsFor, type PanelContext, type AxisContext } from './chart/panels'
 import { BigTradeController, devForce } from './chart/bigTrade'
+import { shouldOpenInsightSwipe } from './chart/insights'
+import { INSIGHT } from './chart/insightLabels'
 import { createBench, reconcileLineAlerts, type Bench } from './chart/drawingBench'
 import { openNote, resumeNote, wireNoteRequests, flushNotes, wireNoteUploads } from './chart/note'
 import { openShare } from './chart/share'
@@ -300,6 +302,27 @@ export function initChart(root: HTMLElement): PageHandle {
     openThreshold: back => { openOrderFlowEditor(panelCtx, back) },
     force: btForce,
   })
+  // 起手区域完全在画布外；不截获图表平移、缩放和系统侧沿返回。
+  const insightEntry = el('button', 'cp-insight-entry')
+  insightEntry.type = 'button'; insightEntry.setAttribute('aria-label', INSIGHT.entry)
+  insightEntry.innerHTML = `<span aria-hidden="true">⌃</span><span>${INSIGHT.title}</span>`
+  page.append(insightEntry)
+  let insightSwipe: { x: number; y: number; at: number } | null = null, insightSuppress = 0
+  insightEntry.addEventListener('click', () => { if (performance.now() >= insightSuppress) panel(() => bt.open())() })
+  insightEntry.addEventListener('pointerdown', e => {
+    if (!e.isPrimary) return
+    insightSwipe = { x: e.clientX, y: e.clientY, at: performance.now() }
+    try { insightEntry.setPointerCapture(e.pointerId) } catch { /* 指针已经结束 */ }
+  })
+  insightEntry.addEventListener('pointerup', e => {
+    const start = insightSwipe; insightSwipe = null
+    if (!start) return
+    const dx = e.clientX - start.x, dy = e.clientY - start.y, now = performance.now()
+    // 浏览器可能在拖动结束后补发 click；任意明显拖动都吞掉，只有合格上滑才能打开。
+    if (Math.hypot(dx, dy) > 10) insightSuppress = now + 500
+    if (shouldOpenInsightSwipe(dx, dy, now - start.at, start.x, innerWidth)) panel(() => bt.open())()
+  })
+  insightEntry.addEventListener('pointercancel', () => { insightSwipe = null; insightSuppress = performance.now() + 500 })
   const axisCtx: AxisContext = { mode: () => effectivePriceMode(sym()), category: () => axisCategory(sym()) }
 
   // ---- 图上的事件 → st（手指一松就落盘）
@@ -376,6 +399,9 @@ export function initChart(root: HTMLElement): PageHandle {
     if (raf) { cancelAnimationFrame(raf); raf = 0 }
     const now = Date.now()
     const s = S.symbols.get(sym())
+    const insightsHidden = isMacroSym(sym()) || isLand() || !!replay
+    insightEntry.hidden = insightsHidden
+    page.classList.toggle('insight-hidden', insightsHidden)
     // 别家的品种看那一家的表（S.venues），币安 / 美元指数看全市场表
     const stale = isStale({ flag: st.stale, live: liveOf(sym()), lastTick: s?.lastTick ?? null, now }) || s?.closed === true
     topBar.render(sym(), nav.origin != null && nav.origin !== 'chart', st.compareSymbols.length >= MAX_COMPARE, pendingCount(sym()))

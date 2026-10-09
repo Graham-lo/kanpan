@@ -301,7 +301,7 @@ function orderFlowSectionHTML(ctx: PanelContext): string {
   of.push(`<div class="cp-row"><span class="cp-rn">${BT.chartMarks}</span>${sw(st.bigTradeSigns, 'bt-signs', BT.chartMarks)}</div>`)
   if (ctx.onBigTrade) {
     const t = ctx.bigTradeText?.() ?? ''
-    of.push(`<button type="button" class="cp-row cp-tap" data-act="bt-open"><span class="cp-rn">大单与爆仓</span><span class="cp-meta num" data-bt-meta>${esc(t)}</span>${chevron()}</button>`)
+    of.push(`<button type="button" class="cp-row cp-tap" data-act="bt-open"><span class="cp-rn">盘口洞察</span><span class="cp-meta num" data-bt-meta>${esc(t)}</span>${chevron()}</button>`)
   }
   if ((st.orderFlow || st.bigTradeSigns) && isValidBase(base)) {
     const meta = `${base} · ${st.orderFlowOverrides[base] ? '已改门槛' : '默认门槛'}`

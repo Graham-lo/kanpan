@@ -9,7 +9,9 @@
  * 页面藏起来时停 1 秒的钟；换品种时摘掉旧品种的历史监听。
  */
 import { st, save } from '../../app/store'
-import { S } from '../../../market'
+import { S, klines, viaRoute } from '../../../market'
+import { admit, noteStatus } from '../../../market/limit'
+import type { Bar } from '../../../chart/calc'
 import type { ChartHandle } from '../../chart'
 import type { PagePort } from './data'
 import { BigTradeLayer, bigTradeSource } from '../../chart/bigTradeLayer'
@@ -23,6 +25,7 @@ import { baseOfSymbol } from '../../../orderflow/settings'
 import type { Thresholds } from '../../../orderflow/types'
 import { BT, fill } from '../../../terms'
 import { orderFlowAmount } from '../../chart/renderer.orderflow'
+import { buildInsights, InsightPoller, beijingDayStart, matchesChart, type InsightBody, type InsightStatus, type InsightView } from './insights'
 import {
   BigTradeSheet, ladderRows, liqCells, summaryLine, LIQ_CELL_MS, LADDER_HOURS,
   type BtModel, type BarCol, type HeroModel, type LiqModel,
@@ -71,11 +74,39 @@ export class BigTradeController {
   private seen = { live: -1, ver: -1 }
   private openedAt = 0
   private shown = false
+  private insightBody: InsightBody | null = null
+  private insightState: InsightStatus = 'loading'
+  private minuteBars: Bar[] = []
+  private minuteGeneration = 0
+  private minuteLoading = false
+  private minuteAt = 0
+  private insightView: InsightView | null = null
+  private insightViewAt = 0
+  private readonly poller: InsightPoller
+  private readonly visibility = (): void => {
+    if (document.hidden) { this.poller.stop(); this.minuteGeneration++; this.minuteLoading = false }
+    else if (this.isOpen && this.shown) { this.startInsights(); this.refresh() }
+  }
   private readonly now: () => number
   private readonly onHist = (): void => { this.layer.invalidate(); this.refresh() }
 
   constructor(private readonly d: BigTradeDeps) {
     this.now = d.now ?? Date.now
+    this.poller = new InsightPoller(async (base, signal) => {
+      const url = `/v1/market/orderflow/insights?base=${encodeURIComponent(base)}`
+      const gw = await admit(url, false, () => !signal.aborted)
+      if (signal.aborted) throw new Error('cancelled')
+      const r = await fetch(viaRoute(url), { signal, cache: 'no-store', referrerPolicy: 'no-referrer' })
+      noteStatus(url, r.status, r.headers.get('Retry-After'), this.now(), gw)
+      if (!r.ok) throw new Error(String(r.status))
+      return r.json()
+    }, (body, state) => {
+      if (body) this.insightBody = body
+      this.insightState = state; this.insightViewAt = 0
+      if (body) this.pullMinutes()
+      this.refresh()
+    })
+    if (typeof document !== 'undefined') document.addEventListener?.('visibilitychange', this.visibility)
     this.liq = d.liq ?? new LiqStore()
     this.liq.onUpdate = () => { this.layer.invalidate(); this.refresh() }
     this.layer = new BigTradeLayer(d.chart.view, {
@@ -100,12 +131,15 @@ export class BigTradeController {
   sync(): void {
     const sym = this.d.symbol()
     if (sym !== this.sym) {
+      this.poller.stop(); this.minuteGeneration++; this.minuteLoading = false
+      this.minuteBars = []; this.minuteAt = 0; this.insightBody = null; this.insightState = 'loading'; this.insightViewAt = 0
       if (this.sym) detachFlows(this.onHist)
       this.sym = sym
       this.pick = null
       this.seen = { live: -1, ver: -1 }
       this.openedAt = this.now()
       if (this.shown) this.tick()
+      if (this.isOpen) this.startInsights()
     }
     const macro = this.d.isMacro()
     this.layer.setEnabled(st.bigTradeSigns && !macro)
@@ -125,9 +159,26 @@ export class BigTradeController {
     this.shown = false
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    this.poller.stop(); this.minuteGeneration++; this.minuteLoading = false
     this.close()
   }
-  destroy(): void { this.hide(); detachFlows(this.onHist); this.layer.destroy() }
+  destroy(): void { this.hide(); if (typeof document !== 'undefined') document.removeEventListener?.('visibilitychange', this.visibility); detachFlows(this.onHist); this.layer.destroy() }
+
+  private startInsights(): void {
+    if (typeof document !== 'undefined' && document.hidden) return
+    this.poller.start(baseOfSymbol(this.d.symbol()).base)
+    this.pullMinutes()
+  }
+
+  private pullMinutes(): void {
+    if (!this.isOpen || this.minuteLoading || (this.minuteAt > 0 && this.now() - this.minuteAt < 25_000)) return
+    const generation = this.minuteGeneration, symbol = this.d.symbol()
+    this.minuteLoading = true; this.minuteAt = this.now()
+    void klines(symbol, '1m', undefined, 70, false, false, () => generation === this.minuteGeneration && this.isOpen, 'low').then(r => {
+      if (generation !== this.minuteGeneration || symbol !== this.d.symbol() || !this.isOpen) return
+      this.minuteBars = r.ok ? r.bars : []; this.minuteLoading = false; this.insightViewAt = 0; this.refresh()
+    })
+  }
 
   /** 开弹层（分析面板那一行 / 深链）；t = 先看哪根 */
   open(t: number | null = null): void {
@@ -136,12 +187,15 @@ export class BigTradeController {
     if (this.isOpen) { this.refresh(); return }
     this.openedAt = this.now()
     this.sheet = new BigTradeSheet({
-      onClose: () => { this.sheet = null; this.pick = null; this.sync() },
+      onClose: () => { this.sheet = null; this.pick = null; this.clearReturn(); this.poller.stop(); this.minuteGeneration++; this.minuteLoading = false; this.sync() },
       onThreshold: () => this.threshold(),
       onPickBar: bt => this.pickBar(bt),
+      onLocate: (t, price) => { const s = this.series(); if (s?.count) this.d.chart.view.crosshairTo(s.index(t), 'bigTrade', price); this.close() },
     })
     this.sync()
+    this.startInsights()
     this.tick()
+    if (t != null) this.sheet?.showSelected()
   }
   close(): void { this.sheet?.close() }
 
@@ -163,6 +217,7 @@ export class BigTradeController {
       this.pick = { t: s.t, from: 'sign' }
       this.clearReturn()
       this.refresh()
+      this.sheet?.showSelected()
     } else this.open(s.t)
     return true
   }
@@ -270,10 +325,12 @@ export class BigTradeController {
     const i0 = s && n ? s.index(t0) : 0
     const t1 = s && i0 + 1 < n ? s.time(i0 + 1) : t0 + step
     const w = windows(f, t0, t1, now)
+    w.today = windowSum(f, beijingDayStart(now), now + 1, now)
 
     const offline = S.live === false || (typeof navigator !== 'undefined' && navigator.onLine === false)
     const lastTrade = port?.lastTradeMs ?? 0
-    const stale = force === 'stale' || offline || (lastTrade > 0 && now - lastTrade > STALE_MS && !meta?.closed)
+    // 没有大额成交并不等于断流；只按实际离线/请求状态处理有效性。
+    const stale = force === 'stale' || offline
     const stoppedAt = force === 'stale' ? now - 25_000 : lastTrade || now
     let rt: string
     if (stale) rt = fill(BT.staleSince, { t: this.label(stoppedAt, 60_000) })
@@ -299,18 +356,21 @@ export class BigTradeController {
 
     const mid = (n ? s!.close[n - 1] : NaN) || meta?.price || 0
     const pstep = port?.step ?? 0
-    const typ = s && n && step <= 15 * 60_000 ? (minute: number): number | null => {
-      const i = s.index(minute)
-      const a = s.time(i)
-      if (minute < a || minute >= a + step) return null
-      return (s.high[i] + s.low[i] + s.close[i]) / 3
-    } : null
-    const lv = priceLevels(f, pstep, now, typ, 999, LADDER_HOURS * 60)
+    // 页末旧价梯只用真实逐笔，不再将分钟 K 线典型价伪装成成交价区。
+    const lv = priceLevels(f, pstep, now, null, 999, LADDER_HOURS * 60)
     const ladder = ladderRows(lv, mid, pstep, nearestWalls(port?.snapshot?.orders ?? [], mid))
+
+    if (!this.insightView || now - this.insightViewAt >= 5000) {
+      const snapshot = port?.snapshot
+      const ownReady = snapshot?.phase === 'ready' && now - snapshot.asOfMs <= 30_000 && !!snapshot.venues?.some(v => v.ready && matchesChart(v.id, sym))
+      this.insightView = buildInsights({ symbol: sym, now, mid, dec: meta?.dec ?? 2, orders: snapshot?.orders ?? [], snapshotReady: ownReady,
+        body: this.insightBody, state: this.insightState, prices: this.minuteBars, stale, liq: this.liq.state(base) })
+      this.insightViewAt = now
+    }
 
     return {
       ...((subs: string[]) => ({ sub: subs[0], subs }))(this.subtitles(base, spot)), loading, stale, hero, liq, bars,
-      sel: this.pick ? t0 : null, ladder, thr: this.thrText(),
+      sel: this.pick ? t0 : null, ladder, thr: this.thrText(), insights: this.insightView,
     }
   }
 
@@ -325,7 +385,7 @@ export class BigTradeController {
     if (!stt || stt.tracked === null) return now - this.openedAt < LIQ_WAIT_MS ? empty : { ...empty, state: 'none' }
     if (stt.tracked === false && stt.rows.size === 0) return { ...empty, state: 'none' }
     const rows = [...stt.rows.values()]
-    const todayStart = Math.floor(now / DAY) * DAY // 和汇总的「今日」同一个起点：北京时间 8 点（UTC 0 点）
+    const todayStart = beijingDayStart(now)
     const hour = sumLiq(rows, now - HOUR, now + 1), today = sumLiq(rows, todayStart, now + 1), day = sumLiq(rows, now - DAY, now + 1)
     const { start, cells } = liqCells(rows, now)
     const mx = today.max

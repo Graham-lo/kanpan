@@ -752,12 +752,13 @@ export class ChartGestures {
   }
 
   /** 十字线直接落到第 index 根的收盘价上（「大单与爆仓」每根条点一根）；那根在可视区外就把图挪过去 */
-  crosshairTo(index: number, source: Crosshair['source'] = 'chart'): void {
+  crosshairTo(index: number, source: Crosshair['source'] = 'chart', price?: number): void {
     const s = this.state
     if (!s) return
     const b = s.input.series
     if (!(index >= 0 && index < b.count)) return
-    const c: Crosshair = { index, pane: null, t: null, price: b.close[index], source }
+    const explicitPrice = price != null && Number.isFinite(price) && price > 0 ? price : null
+    const c: Crosshair = { index, pane: null, t: null, price: explicitPrice ?? b.close[index], source }
     let out = withOverlay(s, { crosshair: c, orderFlowSelected: null })
     const L = this.v.chartLayout
     if (L && L.plotW > 0) {
@@ -766,6 +767,20 @@ export class ChartGestures {
       if (x < inset || x > L.plotW - inset) {
         const dx = x < inset ? x - inset : x - (L.plotW - inset)
         out = withViewport(out, { view: clampView(s.viewport.view.shifted(dx, L.plotW), b, L.plotW, s.input.options.anchor) })
+      }
+    }
+    const renderer = this.v.renderer
+    if (explicitPrice != null && renderer) {
+      const current = renderer.priceRange(this.v.width, this.v.height, out.viewport.view, out.viewport.price)
+      if (explicitPrice < current.lo || explicitPrice > current.hi) {
+        // 复用价格轴手动态，让回图价位落入可见范围；普通逐根定位保持原来的Y轴。
+        const automatic = renderer.priceRange(this.v.width, this.v.height, out.viewport.view, { ...out.viewport.price, zoom: 1, centerFraction: .5 })
+        const span = automatic.hi - automatic.lo, padding = span * .06
+        const lo = Math.min(current.lo, explicitPrice - padding), hi = Math.max(current.hi, explicitPrice + padding)
+        let zoom = Math.max(.03, Math.min(16, span / (hi - lo)))
+        if (Math.abs(zoom - 1) < .02) zoom = .97
+        const center = hi - lo > span / .03 ? explicitPrice : (lo + hi) / 2
+        out = withViewport(out, { price: { ...out.viewport.price, zoom, centerFraction: .5 }, axisScaleAnchor: center })
       }
     }
     this.state = out

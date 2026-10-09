@@ -8,8 +8,8 @@
   position: absolute; inset: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  grid-template-areas: "top" "head" "iv" "chart";
+  grid-template-rows: auto auto auto minmax(0, 1fr) 44px;
+  grid-template-areas: "top" "head" "iv" "chart" "insight";
   padding: var(--safe-top) var(--safe-right) calc(var(--tabbar-h) + var(--safe-bottom)) var(--safe-left);
   background: var(--chart); color: var(--ink);
 }
@@ -17,6 +17,11 @@
 .cp-head { grid-area: head }
 .cp-ivrow { grid-area: iv }
 .cp-chart { grid-area: chart; position: relative; min-height: 0; min-width: 0; overflow: hidden }
+.cp-insight-entry { grid-area: insight; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border: 0; border-top: var(--hairline) solid var(--line); background: transparent; color: var(--ink2); font: var(--t-footnote-emph); touch-action: none }
+.cp-insight-entry:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px }
+.cp.land .cp-insight-entry { display: none }
+.cp-insight-entry[hidden] { display: none }
+.cp.insight-hidden:not(.land) { grid-template-rows: auto auto auto minmax(0, 1fr); grid-template-areas: "top" "head" "iv" "chart" }
 /* 换品种 / 周期取数那一拍：图上还是上一张，淡下去（新的一到立刻恢复，不做淡入） */
 .cp-chart > .m-chart-scroll { transition: opacity .2s ease-out }
 .cp-chart.switching > .m-chart-scroll { opacity: .38; transition-delay: .08s }

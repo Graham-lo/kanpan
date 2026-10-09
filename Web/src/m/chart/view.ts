@@ -560,7 +560,7 @@ export class ChartView {
   get isAtLatest(): boolean { return this.gestures.isAtLatest }
   clearCrosshair(): void { this.gestures.clearCrosshair() }
   moveCrosshair(by: number): void { this.gestures.moveCrosshairBy(by) }
-  crosshairTo(index: number, source: Crosshair['source'] = 'chart'): void { this.gestures.crosshairTo(index, source) }
+  crosshairTo(index: number, source: Crosshair['source'] = 'chart', price?: number): void { this.gestures.crosshairTo(index, source, price) }
   resetPriceScale(): void { this.gestures.resetPriceScale() }
   nudge(dx: number): void { this.gestures.nudge(dx) }
   reveal(from: number, to: number): void { this.gestures.reveal(from, to) }

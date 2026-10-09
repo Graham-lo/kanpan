@@ -1,12 +1,9 @@
-/* Hkline 手机网页 · 「大单与爆仓」弹层（照 docs/原型-手机大单与爆仓-2026-10-08.html 的 sheet()）
- *
- * 一档到底：一开就是整页 780（本根 + 近 1 小时 / 今日、爆仓、每根、价位、24 小时爆仓、门槛），盖住底栏（挂在 #m-layer）、压暗背后。
- *   · 拖：拖拽条 / 标题行随便拖；正文滚到顶时往下拉接手。往下拉过 110（或甩一下）就关，不够就弹回。
- *   · 「‹」/ 点压暗处关；右上「门槛」开订单流门槛页，那页关了弹层升回来。
- *   · 本根卡片的数字换值时滚 200 ms，对撞条交汇点 240 ms 缓动；减少动效时一律直接换。
- * 这里只管 DOM 与手势；数从哪来、什么时候刷新在 bigTrade.ts。
+/* Hkline 手机网页 · 盘口洞察全屏页。
+ * 固定顶栏、100dvh纵向正文、主图同所挂单与真实成交价区、独立爆仓；逐根读数收进页末证据。
+ * 返回沿用系统返回栈，门槛编辑时保留现场，更新不替换焦点或折叠展开的依据。
+ * 这里只管 DOM；数据与请求生命周期在 bigTrade.ts / insights.ts。
  */
-import { el, esc, layer, reducedMotion, safeArea, setHTML, setText } from '../../ui/dom'
+import { el, esc, layer, reducedMotion, setHTML, setText, pressGate } from '../../ui/dom'
 import { icon } from '../../ui/icons'
 import { pushLayer } from '../../ui/sheet'
 import { liuliBackdropHTML } from '../../ui/liuli'
@@ -15,11 +12,13 @@ import type { WinSum, Level, Wall } from '../../../orderflow/summary'
 import type { LiqSum, LiqRow } from '../../../orderflow/liquidation'
 import { LIQ_EX } from '../../../orderflow/liquidation'
 import { BT, fill } from '../../../terms'
+import { INSIGHT as L } from './insightLabels'
+import type { InsightView, InsightSection } from './insights'
 import '../../styles/bigTrade.css'
 
-/** 弹层高度（屏幕矮时让出顶上安全区） */
+/** 保留旧测试调用口；实际页面高度由 CSS 100dvh 管理。 */
 export const SHEET_H = 780
-/** 往下拉过这么多就关 */
+/** 历史弹层兼容常量；全屏正文不再拦截下滑。 */
 export const CLOSE_PX = 110
 /** 开弹层后吞掉补发 click 的时长（毫秒） */
 const GHOST_MS = 400
@@ -89,6 +88,7 @@ export interface BtModel {
   sel: number | null
   ladder: LadderRow[] | null
   thr: string
+  insights?: InsightView
 }
 
 // ───────────────────────────── 纯函数（测试直接测）
@@ -284,6 +284,14 @@ export interface SheetHooks {
   onClose(): void
   onThreshold(): void
   onPickBar(t: number): void
+  onLocate?(t: number, price?: number): void
+}
+
+export function insightSectionHTML(s: InsightSection): string {
+  return `<div class="bt-card bt-insight-card" data-insight="${esc(s.id)}"><h5>${esc(s.title)}${s.subtitle ? `<span class="rt">${esc(s.subtitle)}</span>` : ''}</h5>
+    ${s.rows.length ? s.rows.map(r => `<div class="bt-insight-row"><div class="bt-insight-line"><span>${esc(r.title)}</span>${r.value ? `<b class="${r.tone ?? ''}">${esc(r.value)}</b>` : ''}</div>
+      <p>${esc(r.detail)}</p>${r.note ? `<small>${esc(r.note)}</small>` : ''}${r.main && r.time != null ? `<button type="button" class="bt-locate" data-locate="${r.time}"${r.price != null ? ` data-price="${r.price}"` : ''}>${L.chart} ›</button>` : ''}</div>`).join('') : `<p class="bt-insight-empty">${esc(s.empty ?? '')}</p>`}
+    <details class="bt-evidence"><summary>${L.evidence}</summary><p>${esc(s.evidence)}</p></details></div>`
 }
 
 export class BigTradeSheet {
@@ -306,17 +314,35 @@ export class BigTradeSheet {
   private flashT: number | null = null
   private flashTimer: ReturnType<typeof setTimeout> | null = null
   private scrolledRight = false
+  private insightEl: HTMLElement
+  private insightStatus: HTMLElement
+  private insightNote: HTMLElement
+  private evidenceEl: HTMLDetailsElement
+  private readonly opener = typeof document !== 'undefined' ? document.activeElement as HTMLElement | null : null
+  private previousInert = false
+  private previousOverflow = ''
+  private readonly keys = (e: KeyboardEvent): void => {
+    if (this.shut || this.parked || e.key !== 'Tab') return
+    const nodes = [...this.root.querySelectorAll<HTMLElement>('button:not([disabled]), summary, [tabindex="0"]')].filter(n => n.getClientRects().length > 0)
+    const first = nodes[0], last = nodes.at(-1)
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus() }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
+  }
 
   constructor(private readonly hooks: SheetHooks) {
     const wrap = this.wrap = el('div', 'bt-wrap')
     const scrim = el('div', 'bt-scrim')
     const root = this.root = el('div', 'bt-sheet')
     root.setAttribute('role', 'dialog')
-    root.setAttribute('aria-label', BT.title)
-    root.innerHTML = `${liuliBackdropHTML(true)}<div class="bt-grab" aria-hidden="true"><i></i></div>
-      <div class="bt-hdr"><button type="button" class="bt-bk" aria-label="${BT.collapse}">${icon('chevronLeft', 20)}</button>
-        <h4>${BT.title}<small class="bt-sub"></small></h4><button type="button" class="bt-pill">${BT.threshold}</button></div>
+    root.setAttribute('aria-label', L.title)
+    root.setAttribute('aria-modal', 'true')
+    root.innerHTML = `${liuliBackdropHTML(true)}
+      <div class="bt-hdr"><button type="button" class="bt-bk" aria-label="返回行情">${icon('chevronLeft', 20)}</button>
+        <h4>${L.title}<small class="bt-sub"></small></h4><button type="button" class="bt-pill">${BT.threshold}</button></div>
       <div class="bt-body">
+        <div class="bt-card bt-observation"><h5>${L.observation}</h5><p class="bt-insight-status"></p><small class="bt-insight-note"></small></div>
+        <div class="bt-insights"></div>
+        <details class="bt-bar-evidence"><summary>${L.barEvidence}</summary>
         <div class="bt-hero-skel" hidden>${heroSkelHTML()}</div>
         <div class="bt-card bt-hero" data-card="hero">
           <h5><span class="bt-live" aria-hidden="true"></span><span class="bt-ht">${BT.currentBar}</span><span class="rt"></span></h5>
@@ -332,12 +358,13 @@ export class BigTradeSheet {
           <div class="bt-hint bt-untracked" hidden>${BT.untracked}</div>
         </div>
         <div class="bt-liq"></div>
-        <div class="bt-bars"></div><div class="bt-lad"></div><div class="bt-liqday"></div>
+        <div class="bt-bars"></div><div class="bt-lad"></div><div class="bt-liqday"></div></details>
         <button type="button" class="bt-card thin bt-thr"><span class="l">${BT.threshold}</span><span class="v"></span><span class="go">›</span></button>
       </div>`
     wrap.append(scrim, root)
     const q = <T extends HTMLElement>(s: string): T => root.querySelector<T>(s)!
     this.body = q('.bt-body'); this.subEl = q('.bt-sub')
+    this.insightEl = q('.bt-insights'); this.insightStatus = q('.bt-insight-status'); this.insightNote = q('.bt-insight-note'); this.evidenceEl = q('.bt-bar-evidence')
     this.heroSkel = q('.bt-hero-skel'); this.hero = q('.bt-hero[data-card="hero"]')
     this.liqEl = q('.bt-liq')
     this.barsEl = q('.bt-bars'); this.ladderEl = q('.bt-lad'); this.liqDayEl = q('.bt-liqday'); this.thrEl = q('.bt-thr')
@@ -351,31 +378,42 @@ export class BigTradeSheet {
     const born = performance.now()
     wrap.addEventListener('click', e => { if (performance.now() - born < GHOST_MS) { e.stopPropagation(); e.preventDefault() } }, true)
     this.barsEl.addEventListener('click', e => this.pickBar(e))
-    this.wireDrag()
+    this.insightEl.addEventListener('click', e => { const hit = (e.target as Element).closest<HTMLElement>('[data-locate]'); if (hit) this.hooks.onLocate?.(+hit.dataset.locate!, hit.dataset.price ? +hit.dataset.price : undefined) })
+    this.root.addEventListener('keydown', this.keys)
 
     layer().appendChild(wrap)
     this.unback = pushLayer(() => this.close())
-    this.fitHeight()
+    const app = document.getElementById('m-app')
+    if (app) { this.previousInert = app.inert; app.inert = true }
+    this.previousOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden'
     if (reducedMotion()) wrap.classList.add('in')
     else requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('in')))
+    setTimeout(() => { if (!this.shut && !this.parked) q('.bt-bk').focus({ preventScroll: true }) }, reducedMotion() ? 0 : 300)
   }
 
   get closed(): boolean { return this.shut }
   get current(): BtModel | null { return this.model }
 
   /** 门槛页盖上来时先收下去（不关），那页关了再升回来 */
-  park(): void { if (this.shut || this.parked) return; this.parked = true; this.wrap.classList.add('parked') }
-  unpark(): void { if (this.shut || !this.parked) return; this.parked = false; this.wrap.classList.remove('parked') }
+  park(): void { if (this.shut || this.parked) return; this.parked = true; this.root.inert = true; this.root.setAttribute('aria-hidden', 'true'); this.wrap.classList.add('parked') }
+  unpark(): void { if (this.shut || !this.parked) return; this.parked = false; this.root.inert = false; this.root.removeAttribute('aria-hidden'); this.wrap.classList.remove('parked'); this.root.querySelector<HTMLElement>('.bt-pill')?.focus({ preventScroll: true }) }
 
   close(): void {
     if (this.shut) return
     this.shut = true
+    const app = document.getElementById('m-app'); if (app) app.inert = this.previousInert
+    document.body.style.overflow = this.previousOverflow
+    this.root.removeEventListener('keydown', this.keys)
     this.unback?.(); this.unback = null
     if (this.flashTimer) clearTimeout(this.flashTimer)
     this.wrap.classList.remove('in')
     setTimeout(() => this.wrap.remove(), reducedMotion() ? 0 : 300)
     this.hooks.onClose()
+    if (this.opener?.isConnected) this.opener.focus({ preventScroll: true })
   }
+
+  /** 点气泡进入同一页，展开并定位该根证据；保留图表大单来源的互斥定位。 */
+  showSelected(): void { this.evidenceEl.open = true; requestAnimationFrame(() => this.hero.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'instant' : 'smooth' })) }
 
   /** 每根里那一根闪 1.2 秒（点了一根之后） */
   flash(t: number): void {
@@ -404,6 +442,7 @@ export class BigTradeSheet {
     this.model = m
     this.fitSub(m)
     this.root.classList.toggle('stale', m.stale)
+    if (m.insights) this.renderInsights(m.insights)
     this.heroSkel.hidden = !m.loading
     this.hero.hidden = m.loading
     if (!m.loading) this.renderHero(m.hero)
@@ -412,6 +451,24 @@ export class BigTradeSheet {
     setHTML(this.ladderEl, ladderCardHTML(m.ladder))
     setHTML(this.liqDayEl, liqDayCardHTML(m.liq))
     setText(this.thrEl.querySelector('.v')!, m.thr)
+  }
+
+  private readonly updateGate = new Map<string, (fn: () => void) => void>()
+  private renderInsights(view: InsightView): void {
+    setText(this.insightStatus, view.status); setText(this.insightNote, view.note)
+    const ids = new Set(view.sections.map(s => s.id))
+    for (const n of this.insightEl.children) if (!ids.has((n as HTMLElement).dataset.section!)) n.remove()
+    for (const s of view.sections) {
+      let node = this.insightEl.querySelector<HTMLElement>(`[data-section="${s.id}"]`)
+      if (!node) { node = el('div'); node.dataset.section = s.id; this.insightEl.append(node); this.updateGate.set(s.id, pressGate(node)) }
+      const html = insightSectionHTML(s), target = node
+      this.updateGate.get(s.id)!(() => {
+        // Preserve the exact focused evidence control while live updates arrive.
+        if (target.contains(document.activeElement)) return
+        const open = !!target.querySelector<HTMLDetailsElement>('details')?.open, top = this.body.scrollTop
+        if (setHTML(target, html)) { const details = target.querySelector<HTMLDetailsElement>('details'); if (details) details.open = open; this.body.scrollTop = top }
+      })
+    }
   }
 
   // ------------------------------------------------------------ 本根卡片
@@ -480,56 +537,4 @@ export class BigTradeSheet {
     this.hooks.onPickBar(m.bars[i].t)
   }
 
-  // ------------------------------------------------------------ 高度与拖
-
-  private maxH(): number {
-    const vh = typeof innerHeight === 'number' && innerHeight > 0 ? innerHeight : 852
-    return Math.max(200, vh - safeArea().top - 10)
-  }
-
-  private fitHeight(): void { this.root.style.height = Math.min(SHEET_H, this.maxH()) + 'px' }
-
-  /** 只有一档：往下拉跟手，过 CLOSE_PX 或甩一下就关，不够就弹回 */
-  private wireDrag(): void {
-    let startY = 0, dy = 0, dragging = false, lastY = 0, lastT = 0, vel = 0
-    const root = this.root
-    const begin = (y: number): void => {
-      startY = lastY = y; lastT = performance.now(); dy = 0; vel = 0; dragging = true
-      root.classList.add('dragging')
-    }
-    const move = (y: number): void => {
-      const now = performance.now()
-      vel = (y - lastY) / Math.max(1, now - lastT); lastY = y; lastT = now
-      dy = y - startY
-      root.style.transform = dy > 0 ? `translateY(${dy}px)` : ''
-    }
-    const end = (): void => {
-      if (!dragging) return
-      dragging = false; root.classList.remove('dragging'); root.style.transform = ''
-      if (dy > 0 && (dy > CLOSE_PX || vel > 0.6)) this.close()
-    }
-    const zones = [root.querySelector<HTMLElement>('.bt-grab')!, root.querySelector<HTMLElement>('.bt-hdr')!]
-    for (const z of zones) {
-      z.addEventListener('pointerdown', e => {
-        if ((e.target as Element).closest('button')) return
-        try { z.setPointerCapture(e.pointerId) } catch { /* 合成事件没有指针 */ }
-        begin(e.clientY)
-      })
-      z.addEventListener('pointermove', e => { if (dragging) move(e.clientY) })
-      z.addEventListener('pointerup', end)
-      z.addEventListener('pointercancel', end)
-    }
-    // 正文：滚到顶再往下拉才接手
-    const body = this.body
-    let y0 = 0, armed = false
-    body.addEventListener('touchstart', e => { y0 = e.touches[0].clientY; armed = body.scrollTop <= 0 }, { passive: true })
-    body.addEventListener('touchmove', e => {
-      const y = e.touches[0].clientY
-      if (!dragging && armed && y - y0 > 6 && body.scrollTop <= 0) begin(y0)
-      if (dragging) { e.preventDefault(); move(y) }
-      else if (y < y0) armed = false
-    }, { passive: false })
-    body.addEventListener('touchend', end)
-    body.addEventListener('touchcancel', end)
-  }
 }
