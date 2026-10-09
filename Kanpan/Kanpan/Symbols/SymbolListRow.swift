@@ -162,6 +162,8 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
   let symbol: String
   let base: String
   let quote: String
+  /// 自选只连写品种与计价币（BTCUSDT），不带交易所缩写。
+  var compactName: Bool
   var asset: SymbolClassification.Asset?
   var isNew: Bool
   var first: Bool
@@ -191,7 +193,7 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
   /// 行高：66（琉璃版定稿值，不在这次整改范围内；字号放大时跟着长，不截）。
   static var height: CGFloat { 66 }
 
-  init(symbol: String, base: String, quote: String,
+  init(symbol: String, base: String, quote: String, compactName: Bool = false,
        asset: SymbolClassification.Asset? = nil, isNew: Bool = false, first: Bool,
        priceText: String, priceInk: Color? = nil, priceSkeleton: Bool = false, priceID: String,
        change: Double, changeText: String, changePending: Bool = false, changeMuted: Bool = false,
@@ -202,6 +204,7 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
     self.symbol = symbol
     self.base = base
     self.quote = quote
+    self.compactName = compactName
     self.asset = asset
     self.isNew = isNew
     self.first = first
@@ -226,15 +229,17 @@ struct LiuliSymbolRow<Detail: View, Accessory: View>: View {
       LiuliBadge(base: base, asset: asset)
       VStack(alignment: .leading, spacing: Space.xs) {
         HStack(alignment: .firstTextBaseline, spacing: Space.xs) {
-          // 品种前面先写它是哪家的（「币安 DOGE USDT」「HL BTC USDC」）：同一个币在几家交易所
-          // 各是一只，列表里靠这一截分（用户 2026-10-08，文字缩写、不用图标）。没有缩写的（美元指数）不写。
-          let venueTag = VenueRegistry.descriptor(forSymbol: symbol).shortName
-          if !venueTag.isEmpty {
-            Text(venueTag).font(SymbolRowFont.small).foregroundStyle(SymbolRowInk.faint(theme))
-              .accessibilityIdentifier("symbols.venue.\(symbol)")
+          if compactName {
+            Text(base + quote).font(SymbolRowFont.liuliName).foregroundStyle(theme.ink)
+          } else {
+            let venueTag = VenueRegistry.descriptor(forSymbol: symbol).shortName
+            if !venueTag.isEmpty {
+              Text(venueTag).font(SymbolRowFont.small).foregroundStyle(SymbolRowInk.faint(theme))
+                .accessibilityIdentifier("symbols.venue.\(symbol)")
+            }
+            Text(base).font(SymbolRowFont.liuliName).foregroundStyle(theme.ink)
+            Text(quote).font(SymbolRowFont.small).foregroundStyle(SymbolRowInk.faint(theme))
           }
-          Text(base).font(SymbolRowFont.liuliName).foregroundStyle(theme.ink)
-          Text(quote).font(SymbolRowFont.small).foregroundStyle(SymbolRowInk.faint(theme))
           if isNew {
             NewListingMark(symbol: symbol, accent: theme.amber)
           }
@@ -319,7 +324,6 @@ struct SymbolRowView: View {
   // 名字是逐段拼的 `Text`（命中片段换色），只能吃 `Font`，吃不了 `ScaledFont`，
   // 所以字号在这儿按同一条曲线量一份。
   @ScaledMetric(relativeTo: .subheadline) private var nameSize: CGFloat = TypeScale.body.size
-  @ScaledMetric(relativeTo: .caption) private var quoteSize: CGFloat = TypeScale.caption.size
 
   /// 星本身画多大。点击区另算（`Hit.min`）。
   static let starSize: CGFloat = 15
@@ -342,24 +346,17 @@ struct SymbolRowView: View {
                   size: ControlMetrics.listBadge)
         VStack(alignment: .leading, spacing: Space.xxs) {
           HStack(alignment: .firstTextBaseline, spacing: Space.xs) {
-            // 名字前面先写它是哪家的（「币安 BTC / USDT」「OKX BTC / USDT」）：几家所都有 BTC，
-            // 搜出来并排时靠它分（用户 2026-10-08：文字缩写，不用图标；币安也写）。没有缩写的（美元指数）不写。
-            let venueTag = VenueRegistry.descriptor(forSymbol: row.id).shortName
-            if !venueTag.isEmpty {
-              Text(venueTag)
-                .font(TypeScale.caption)
-                .foregroundStyle(theme.ink3)
-                .accessibilityIdentifier("symbols.venue.\(row.id)")
-            }
             name
             if NewListingMark.shows(row.info) {
               NewListingMark(symbol: row.id, accent: theme.amber)
             }
           }.lineLimit(1)
-          Text(row.meta)
-            .font(TypeScale.caption)
-            .foregroundStyle(theme.ink3)
-            .lineLimit(1)
+          if !row.meta.isEmpty {
+            Text(row.meta)
+              .font(TypeScale.caption)
+              .foregroundStyle(theme.ink3)
+              .lineLimit(1)
+          }
         }
         Spacer(minLength: Space.s)
         VStack(alignment: .trailing, spacing: Space.xxs) {
@@ -454,32 +451,14 @@ struct SymbolRowView: View {
     }
   }
 
-  /// `BTC` + 灰的 ` / USDT`；搜索命中的片段用强调色标出来（§10.5 匹配片段高亮）。
+  /// `BTCUSDT`，交易所由分组标题说明；搜索命中的片段用强调色标出来。
   private var name: Text {
-    let base = row.info.base
-    let quote = row.info.quote
     // `Text + Text` iOS 26 起废弃了，改用 `Text` 插值拼，逐段的字体/颜色照样保留。
     var out = Text("")
-    for seg in SymbolQuery.split(base, highlight: row.match.highlight, offset: 0) {
+    for seg in SymbolQuery.split(row.name, highlight: row.match.highlight, offset: 0) {
       let piece = Text(seg.text)
         .font(.system(size: nameSize, weight: .medium))
         .foregroundStyle(seg.hit ? theme.amber : theme.ink)
-      out = Text("\(out)\(piece)")
-    }
-    // 没有计价币的品种（美元指数）：不写斜杠，后面跟一截灰的中文名。
-    if quote.isEmpty {
-      if let name = SymbolAliases.names(base: base).first {
-        let piece = Text(" " + name).font(.system(size: quoteSize)).foregroundStyle(theme.ink3)
-        out = Text("\(out)\(piece)")
-      }
-      return out
-    }
-    let slash = Text(" / ").font(.system(size: quoteSize)).foregroundStyle(theme.ink3)
-    out = Text("\(out)\(slash)")
-    for seg in SymbolQuery.split(quote, highlight: row.match.highlight, offset: base.count) {
-      let piece = Text(seg.text)
-        .font(.system(size: quoteSize))
-        .foregroundStyle(seg.hit ? theme.amber : theme.ink3)
       out = Text("\(out)\(piece)")
     }
     return out

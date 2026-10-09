@@ -15,6 +15,13 @@ final class FavoritesStarFromSearchUITests: KanpanUICase {
 
   func testStarFromSearchLandsInTheGroupYouAreOn() throws {
     XCTAssertTrue(app.openFavorites(), "进不了自选页")
+    let btc = app.buttons["favorites.open." + testInstrumentKey("BTCUSDT")]
+    XCTAssertTrue(btc.staticTexts["BTCUSDT"].waitForExistence(timeout: Self.short), "自选应连写品种与计价币")
+    XCTAssertFalse(btc.staticTexts["币安"].exists, "自选不再展示交易所缩写")
+    let attachment = XCTAttachment(screenshot: app.screenshot())
+    attachment.name = "自选-品种计价币连写"
+    attachment.lifetime = .keepAlways
+    add(attachment)
     let chips = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "favorites.group."))
     func selectedChip() -> String { chips.allElementsBoundByIndex.filter(\.isSelected).map(\.identifier).joined(separator: ",") }
     let us = app.buttons["favorites.group.美股"]
@@ -31,6 +38,8 @@ final class FavoritesStarFromSearchUITests: KanpanUICase {
     let star = app.descendants(matching: .any)
       .matching(NSPredicate(format: "identifier == %@", "symbols.star." + testInstrumentKey("ADAUSDT"))).firstMatch
     XCTAssertTrue(star.waitForExistence(timeout: Self.long), "搜索结果里没有 ADA 的星")
+    XCTAssertTrue(app.staticTexts["ADAUSDT"].exists, "搜索行应连写品种与计价币")
+    XCTAssertFalse(app.staticTexts["ADAUSDT 永续"].exists, "搜索行不再重复永续信息")
     star.tap()
     app.buttons["search.cancel"].tap()
 

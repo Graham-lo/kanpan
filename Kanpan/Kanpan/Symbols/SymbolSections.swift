@@ -30,13 +30,11 @@ struct SymbolRow: Sendable, Equatable, Identifiable {
   /// 这一行的目录状态，`listing` 没给就按目录里那一档算。
   var catalogListing: SymbolListing { listing ?? .listed(info.status) }
 
-  /// 行首大字：`BTC`。
-  var name: String { info.base }
-  /// 大字后面那半截灰的：` / USDT`。
-  var quoteSuffix: String { info.quote.isEmpty ? "" : " / " + info.quote }
-  /// 第二行小字。原型这行放的是「内嵌了哪些周期」，属于原型特有；
-  /// 真 app 里放合约全称，和顶栏「BTCUSDT 永续 ▾」对上。
-  var meta: String { info.id.symbol + " " + info.id.productLabel }
+  /// 搜索行连写品种与计价币：`BTCUSDT`；交易所由分组标题说明。
+  var name: String { info.base + info.quote }
+  var quoteSuffix: String { "" }
+  /// 第二行只保留品种别名，不重复代号、交易所和永续 / 现货。
+  var meta: String { SymbolAliases.names(base: info.base).first ?? "" }
 
   /// 最新价。没有行情时原型给一个破折号 `—`。
   ///

@@ -838,7 +838,7 @@ struct FavoritesView: View {
     return FavoriteQuoteRow(
       symbol: symbol, info: info,
       base: info?.base ?? SymbolInfo.placeholder(symbol: symbol).base,
-      quote: quoteLabel(symbol),
+      quote: quoteAsset(symbol),
       first: first,
       // 这一行还有没有实时价可言，判据只有「目录里查出来的那一档」（审查 B-06 / 复核项 4）。
       stale: !model.listing(of: symbol).hasLivePrice,
@@ -861,17 +861,6 @@ struct FavoritesView: View {
   private func quoteAsset(_ symbol: String) -> String {
     model.info(for: symbol)?.quote ??
       SymbolInfo.placeholder(symbol: symbol).quote
-  }
-  /// 行里基础币后面那一小截。代号本身带分隔的（别家现货 `BTC-USD`）写成 `BTC/USD`，
-  /// 币安那种连写的代号照旧只写计价币。
-  /// 没有计价币的品种（美元指数）这一截写它的中文名。
-  private func quoteLabel(_ symbol: String) -> String {
-    let quote = quoteAsset(symbol)
-    if quote.isEmpty {
-      let base = model.info(for: symbol)?.base ?? SymbolInfo.placeholder(symbol: symbol).base
-      return SymbolAliases.names(base: base).first ?? ""
-    }
-    return InstrumentID(symbol).symbol.contains("-") ? "/" + quote : quote
   }
   private func open(_ symbol: String) {
     // 先冻结名单再开图：这一刻的顺序就是人眼里那张表的顺序，之后行情再跳也不改它。
@@ -1015,7 +1004,7 @@ private struct FavoriteQuoteRow: View {
     // 行本身（徽章、字号、药丸、左右边距、发丝线）是和板块内品种表共用的 `LiuliSymbolRow`
     // （UI 审查 2026-09-24：两份手抄已经漂开）。这一页只管往里填什么。
     return LiuliSymbolRow(
-      symbol: symbol, base: base, quote: quote,
+      symbol: symbol, base: base, quote: quote, compactName: true,
       asset: info.map { SymbolClassifier.classify($0).asset },
       isNew: NewListingMark.shows(info), first: first,
       priceText: SymbolRowText.price(price, decimals: decimals), priceInk: priceInk, priceSkeleton: skeleton,

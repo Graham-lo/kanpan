@@ -253,13 +253,14 @@ struct SymbolSectionsTests {
     #expect(SymbolSections.countText(catalog + [spot]) == "\(catalog.count) 个永续合约 · 1 个现货")
   }
 
-  @Test("现货行的小字写「现货」")
+  @Test("现货行连写美元计价，第二行保留别名")
   func spotMeta() {
     let spot = SymbolInfo(symbol: "coinbase/spot/BTC-USD", base: "BTC", quote: "USD",
                           pricePrecision: 2, tickSize: 0.01, underlyingType: "COIN")
     let rows = SymbolSections.build(catalog: [spot], tickers: [:], prefs: SymbolPrefs(), query: "")
       .first { $0.kind == .all }?.rows ?? []
-    #expect(rows.first?.meta == "BTC-USD 现货")
+    #expect(rows.first?.name == "BTCUSD")
+    #expect(rows.first?.meta == "比特币")
   }
 
   // ---------------------------------------------------------------- 行
@@ -268,9 +269,9 @@ struct SymbolSectionsTests {
   func rowFields() {
     let rows = build().first { $0.kind == .all }?.rows ?? []
     let btc = rows.first { $0.id == "binance/usd_m/BTCUSDT" }!
-    #expect(btc.name == "BTC")
-    #expect(btc.quoteSuffix == " / USDT")
-    #expect(btc.meta == "BTCUSDT 永续")
+    #expect(btc.name == "BTCUSDT")
+    #expect(btc.quoteSuffix == "")
+    #expect(btc.meta == "比特币")
     #expect(btc.priceText == "76,800.0")     // tickSize 0.1 → 1 位
     #expect(btc.changeText == "+1.24%")
     #expect(btc.isUp)
