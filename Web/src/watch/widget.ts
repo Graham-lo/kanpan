@@ -3,7 +3,7 @@
  * 图表页只留挂接点（installWatch / widgetWatch / mountWatch / watchClick / patchWatchRow / takeWatchUndo），
  * 列表的渲染、键盘、右键、拖动排序都在这里。
  *
- * 列固定三列：品种（交易所缩写灰小字 + 「DOGE/USDT」，2026-10-08 三端一致）· 最新价 · 涨跌幅，不给列设置；2026-10-07 用户说中文名、成交额都没必要，
+ * 列固定三列：品种（「DOGEUSDT」，2026-10-09 用户要求不带交易所与永续）· 最新价 · 涨跌幅，不给列设置；2026-10-07 用户说中文名、成交额都没必要，
  * 侧栏拉宽时的资金费 · 持仓额两列一并去掉。2026-10-08 用户嫌挤、字小，排版照 TradingView 自选：字 14、行高 34、
  * 数字列定宽各成一竖条（仍是三列，涨跌额不要）。
  * 键盘（焦点在列表里时，带 ⌘ / Ctrl / Alt 的一律放给全局）：
@@ -16,9 +16,10 @@
  */
 import { st, save } from '../app/store'
 import { S, TABS, baseOf, headName, kindOfUnderlying, type Kind } from '../market'
-import { $, $$, I, tgt } from '../ui/dom'
+import { $, $$, I, tgt, esc } from '../ui/dom'
 import { toast, menu, menuFrom } from '../ui/overlay'
-import { sym, pctText, cls, priceText, badge, listName } from '../ui/common'
+import { sym, pctText, cls, priceText, badge } from '../ui/common'
+import { marketOf } from '../venues'
 import { reorderWatch, undoClear, flashClass, FLASH_CLASSES, RowGate } from './logic'
 import { onSession } from '../account/session'
 
@@ -89,8 +90,9 @@ export function widgetWatch(): string {
 /** 品种表还没到（冷启动、本机也没留）：行先按本机自选的代号摆出来，徽标按代号猜、价格写「—」，表到了整张重画 */
 function watchRow(k: string, cur: string): string {
   const s = sym(k), g = ghost?.k === k, base = baseOf(k)
+  const name = (s?.code || base) + (s?.quote ?? marketOf(k)?.quote ?? '')
   return `<tr data-sym="${k}" draggable="${!g}" tabindex="${k === kb.cursor ? 0 : -1}" class="${k === cur ? 'sel' : ''} ${g ? 'wv-ghost' : ''}" aria-selected="${k === cur}">
-    <td><div class="sym">${badge(s ?? { base, kind: kindOfUnderlying(undefined, base) })}<span class="wv-name">${listName(k, s)}</span>${g ? `<span class="wv-off" data-tip="已移出自选，按空格收回">${I('starOff', 'icon-16')}</span>` : ''}</div></td>
+    <td><div class="sym">${badge(s ?? { base, kind: kindOfUnderlying(undefined, base) })}<span class="wv-name"><b>${esc(name)}</b></span>${g ? `<span class="wv-off" data-tip="已移出自选，按空格收回">${I('starOff', 'icon-16')}</span>` : ''}</div></td>
     <td class="num price-live wc-px" data-f="price">${priceText(s)}</td>
     <td class="num ${cls(s?.pct)} price-live wc-pct" data-f="pct">${pctText(s?.pct)}</td></tr>`
 }

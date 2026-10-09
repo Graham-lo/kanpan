@@ -19,8 +19,8 @@ describe('自选：行先摆出来', () => {
     expect(html).not.toContain('正在取行情')
     const rows = html.match(/<tr data-sym="([^"]+)"/g)!.map(x => x.slice(14, -1))
     expect(rows).toEqual(['BTCUSDT', 'ETHUSDT', '1000PEPEUSDT'])
-    expect(html).toContain('<b>BTC</b>')
-    expect(html).toContain('<b>PEPE</b>')        // 和品种表到了之后的展示代号一样，不会跳
+    expect(html).toContain('<b>BTCUSDT</b>')
+    expect(html).toContain('<b>PEPEUSDT</b>')    // 和品种表到了之后的展示代号一样，不会跳
     expect((html.match(/data-f="price">—</g) || []).length).toBe(3)
     expect(html).toMatch(/class="badge/)
   })
