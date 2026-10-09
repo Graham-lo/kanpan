@@ -69,6 +69,7 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
       if (r.settings.includes('compareSymbols')) refreshCompare()
       // 隐藏画线（手机分析面板那颗开关 / 别的电脑的眼睛）：各格跟着收起或放出画线
       if (r.settings.includes('drawingsHidden')) applyDrawingsHidden()
+      if (r.settings.includes('orderFlowHistory') && st.panel === 'flow') renderPanel()
       // 布局集（别的电脑另存 / 切换 / 换了品种）：各格平滑换成当前那套的品种与周期
       if (r.settings.includes(LAYOUTS_FIELD)) applyLayoutSet()
       // 图表设置（别的电脑改了）：十六格一起换

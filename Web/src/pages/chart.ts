@@ -1301,7 +1301,10 @@ function openIndicators(): void {
     if (t === inp && e.key === 'Enter') { e.preventDefault(); rowsEl[0]?.focus(); return }
     if ((e.key !== ' ' && e.key !== 'Enter') || !t.classList.contains('ind-row')) return
     e.preventDefault()
-    if (t.hasAttribute('data-of-row')) { indicatorRowClick(t); render(); $<HTMLElement>('[data-of-row]', d.dlg)?.focus() } else if (t.getAttribute('aria-disabled') !== 'true') toggle(t.dataset.id as IndicatorId)
+    if (t.hasAttribute('data-of-row') || t.hasAttribute('data-of-history')) {
+      const selector = t.hasAttribute('data-of-history') ? '[data-of-history]' : '[data-of-row]'
+      indicatorRowClick(t); render(); $<HTMLElement>(selector, d.dlg)?.focus()
+    } else if (t.getAttribute('aria-disabled') !== 'true') toggle(t.dataset.id as IndicatorId)
   })
   render(); $<HTMLElement>('.ind-row', list)?.focus()
 }

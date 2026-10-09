@@ -340,6 +340,16 @@ export function setOrderFlow(on: boolean): void {
   api?.renderToolbar()
 }
 
+/** 图上挂单历史的同一颗开关：指标弹窗与右侧面板共用。 */
+export function setOrderFlowHistory(on: boolean): void {
+  st.orderFlowHistory = on
+  OF.highlight = null
+  OF.version++
+  save()
+  api?.charts().forEach(c => { c.chart.dirty = true })
+  renderFlowPanel()
+}
+
 export function toggleHeat(): void {
   OF.prefs.heat = !OF.prefs.heat
   savePrefs()
@@ -371,9 +381,7 @@ export function indicatorRowHTML(): string {
 /** 指标面板的点击 / 回车：是订单流那一行就处理并返回 true（调用方随后重画列表）。 */
 export function indicatorRowClick(t: HTMLElement): boolean {
   if (t.closest('[data-of-history]')) {
-    st.orderFlowHistory = !st.orderFlowHistory
-    save(); OF.highlight = null; OF.version++
-    api?.charts().forEach(c => { c.chart.dirty = true })
+    setOrderFlowHistory(!st.orderFlowHistory)
     return true
   }
   const gear = t.closest<HTMLElement>('[data-of-set]')
@@ -398,6 +406,7 @@ const rr = (x: number, y: number, w: number, h: number, rx: number, c: string, o
 const QA = 'var(--ofq-a)', QU = 'var(--ofq-u)', QD = 'var(--ofq-d)', QH = 'var(--qac)', QM = 'var(--qtm)'
 let ofMask = 0
 const TILE: Record<string, () => string> = {
+  history: () => `<span class="tgi">${I('replay')}</span>`,
   flow: () => {
     const id = 'ofq' + (++ofMask)
     return `<span class="tgi">${svg18(
@@ -422,6 +431,7 @@ export function flowPanel(el: HTMLElement): void {
     <div class="scroll of-p">
       <div class="sec-title">显示</div>
       ${sw('flow', '图上订单流', st.orderFlow, '大额挂单画成横带垫在 K 线下面，成交的大单打点')}
+      ${sw('history', '历史大单', st.orderFlowHistory, '显示已结束的挂单；关闭时只看仍有效的挂单')}
       ${sw('ladder', '深度梯子', st.slots.ladder, '价格轴右边的一列各家合并盘口，和图同一根价格轴')}
       ${sw('drawer', '大单列表', st.slots.drawer, '图下面的抽屉，列出这只品种所有大单')}
       ${sw('heat', '深度热力', OF.prefs.heat, '每秒记一列挂单浓淡，之前的时段从服务端补')}
@@ -446,6 +456,7 @@ function onPanelClick(e: MouseEvent): void {
   switch (b.dataset.ofp) {
     case 'settings': { const a = api?.activeChart(); if (a) openOrderFlowSettings(a.symbol); return }
     case 'flow': setOrderFlow(!st.orderFlow); return
+    case 'history': setOrderFlowHistory(!st.orderFlowHistory); return
     case 'ladder': st.slots.ladder = !st.slots.ladder; save(); sync(); api?.layoutSlots(); b.setAttribute('aria-checked', String(st.slots.ladder)); return
     case 'drawer': st.slots.drawer = !st.slots.drawer; save(); sync(); api?.layoutSlots(); updateDrawer(true); b.setAttribute('aria-checked', String(st.slots.drawer)); return
     case 'heat': toggleHeat(); return
