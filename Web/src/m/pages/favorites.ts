@@ -176,7 +176,7 @@ export function initFavorites(root: HTMLElement): PageHandle {
       if (editing) setEditing(false)
     } else {
       empty.hidden = true
-      list.innerHTML = shown.map((sym, i) => liuliRowHTML(factsOf(sym, S.symbols.get(sym) ?? cachedSym(sym)), dataOf(sym), i === 0)).join('')
+      list.innerHTML = shown.map((sym, i) => liuliRowHTML(factsOf(sym, S.symbols.get(sym) ?? cachedSym(sym)), dataOf(sym), i === 0, { compactName: true })).join('')
       list.querySelectorAll<HTMLElement>('.lr').forEach(row => {
         const sym = row.dataset.sym!
         if (!editing) {

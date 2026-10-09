@@ -57,11 +57,14 @@ const priceCell = (d: LiuliData): { cls: string; text: string } => {
 /** 没有计价币的指数（美元指数）：代号后面不写斜杠，跟一截灰的中文名（照 iOS 行） */
 const idxName = (f: RowFacts): string => f.kind === 'idx' && !f.quote && f.cn ? f.cn : ''
 /** 琉璃行（高 66）：徽章 33 · 名字 + 成交额 · 价格 + 药丸；第一行不画顶上那道发丝线 */
-export function liuliRowHTML(f: RowFacts, d: LiuliData, first: boolean, extraCls = ''): string {
+export function liuliRowHTML(f: RowFacts, d: LiuliData, first: boolean, options: { extraCls?: string; compactName?: boolean } = {}): string {
   const price = priceCell(d)
+  const { extraCls = '', compactName = false } = options
+  const name = compactName ? `<span class="lr-base">${esc(f.base + f.quote)}</span>`
+    : `${f.venue ?? ''}<span class="lr-base">${esc(f.base)}</span>${f.quote ? `<span class="lr-quote">${esc(f.quote)}</span>` : idxName(f) ? `<span class="lr-quote">${esc(idxName(f))}</span>` : ''}`
   return `<div class="lr${first ? ' first' : ''}${extraCls ? ' ' + extraCls : ''}" data-sym="${esc(f.symbol)}" role="button" tabindex="0">`
     + `<div class="lr-in">${liuliBadgeHTML(f.mark ?? f.base, f.asset)}`
-    + `<div class="lr-name"><div class="lr-top">${f.venue ?? ''}<span class="lr-base">${esc(f.base)}</span>${f.quote ? `<span class="lr-quote">${esc(f.quote)}</span>` : idxName(f) ? `<span class="lr-quote">${esc(idxName(f))}</span>` : ''}${f.isNew ? NEW_MARK : ''}</div>`
+    + `<div class="lr-name"><div class="lr-top">${name}${f.isNew ? NEW_MARK : ''}</div>`
     + `<div class="lr-meta num"><span class="lr-vol">成交额 ${esc(volText(d.vol))}</span>${d.extra ?? ''}</div></div>`
     + `<div class="lr-right${d.trend === undefined ? ' solo' : ''}"><span class="${price.cls}">${esc(price.text)}</span>${d.trend === undefined ? pillHTML(d.pct, undefined, !!d.gone, !!d.closed)
       : `<span class="lr-tp"><span class="lr-trend">${d.trend}</span>${pillHTML(d.pct, undefined, !!d.gone, !!d.closed)}</span>`}</div>`

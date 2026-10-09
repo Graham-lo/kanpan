@@ -59,7 +59,7 @@ describe('列表行与顶部小字', () => {
     expect(venueTagHTML(CB)).toContain('>CB<')
     expect(venueTagHTML('DXY')).toBe('')
   })
-  it('搜索行、自选行带缩写；别家的行名字照品种表写', () => {
+  it('搜索与板块行带缩写，自选连写品种和计价币；别家的名字照品种表写', () => {
     const f = factsOf(HL, sym(HL, { venue: 'hyperliquid', quote: 'USDC', title: 'kPEPE', base: 'PEPE' }))
     expect(f.base).toBe('kPEPE')
     expect(f.quote).toBe('USDC')
@@ -69,6 +69,10 @@ describe('列表行与顶部小字', () => {
     expect(sr).toContain(`data-sym="${HL}"`)
     const lr = liuliRowHTML(factsOf('BTCUSDT', sym('BTCUSDT')), { price: 1, pct: 1, vol: 1 }, true)
     expect(lr).toContain('<span class="row-vtag">币安</span><span class="lr-base">BTC</span>')
+    const favorite = liuliRowHTML(f, { price: 1, pct: 1, vol: 1 }, true, { compactName: true })
+    expect(favorite).toContain('<span class="lr-base">kPEPEUSDC</span>')
+    expect(favorite).not.toContain('row-vtag')
+    expect(favorite).toContain(`data-sym="${HL}"`)
     expect(liuliRowHTML(factsOf('DXY', sym('DXY', { kind: 'idx', macro: true, quote: '' })), { price: 1, pct: 1, vol: null }, true)).not.toContain('row-vtag')
   })
   it('顶部小字和电脑版 chartSub 一字不差：「币安 USDT 永续」「HL USDC 永续」「CB USD 现货」「指数」', () => {
