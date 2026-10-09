@@ -30,11 +30,12 @@ extension ChartView {
     onBigTradeTap?(bubble)
   }
 
-  /// 十字线跳到开盘时间为 `t` 的那一根（没有正好的取其后最近一根）；滚出屏幕就把视野推到那一根的里侧。
-  public func placeCrosshair(atTime t: Int64) {
+  /// 十字线跳到时间 `t`（没有正好的取其后最近一根）；明确的证据价位保持真实价并纳入视野。
+  public func placeCrosshair(atTime t: Int64, price: Double? = nil) {
     guard var s = state, s.series.count > 0 else { return }
     let i = min(s.series.firstIndex(atOrAfter: t), s.series.count - 1)
-    s.crosshair = Crosshair(index: i, price: s.options.crossPrice == .close ? nil : s.series.close[i], source: .bigTrade)
+    let evidencePrice = price.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+    s.crosshair = Crosshair(index: i, price: evidencePrice ?? (s.options.crossPrice == .close ? nil : s.series.close[i]), source: .bigTrade)
     s.orderFlowSelected = nil
     if let L = chartLayout, L.plotW > 0 {
       let x = s.view.x(Double(s.series.time(at: i)), plotW: L.plotW)
@@ -43,6 +44,21 @@ extension ChartView {
         let dx = x < inset ? x - inset : x - (L.plotW - inset)
         s.view = clampView(s.view.shifted(byPx: dx, plotW: L.plotW),
                            series: s.series, plotW: L.plotW, anchor: s.options.anchor)
+      }
+    }
+    // Explicit evidence prices must be visible at their actual Y coordinate, including outside the candle range.
+    if let evidencePrice, let renderer, bounds.width > 0, bounds.height > 0 {
+      let current = renderer.priceRange(size: bounds.size, view: s.view, transform: s.price)
+      let pad = (current.hi - current.lo) * 0.04
+      if evidencePrice < current.lo + pad || evidencePrice > current.hi - pad {
+        var automatic = s.price; automatic.reset()
+        let auto = renderer.priceRange(size: bounds.size, view: s.view, transform: automatic)
+        let low = min(current.lo, evidencePrice), high = max(current.hi, evidencePrice)
+        let span = high - low
+        if span.isFinite, span > 0, auto.hi > auto.lo {
+          s.price.zoom = min(0.98, max(0.03, (auto.hi - auto.lo) / (span * 1.12)))
+          s.axisScaleAnchor = (low + high) / 2
+        }
       }
     }
     let viewMoved = s.view != state?.view

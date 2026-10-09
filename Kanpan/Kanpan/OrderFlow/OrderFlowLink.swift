@@ -62,6 +62,7 @@ final class OrderFlowLink {
   @ObservationIgnored let sheet = BigTradeSheetModel()
   /// 爆仓分钟账：图上气泡与弹层共读这一本（`MarketModel.syncLiquidations` 开停）。
   @ObservationIgnored let liquidations = LiquidationFeed()
+  @ObservationIgnored let insights = OrderFlowInsightsFeed()
   /// 用户改过的门槛 / 步长（`Prefs.orderFlowOverrides` 的镜像）。
   @ObservationIgnored private(set) var overrides: [String: OrderFlowOverride] = [:]
   /// 开关开着、在前台——此刻是否真的订着簿。

@@ -193,6 +193,22 @@ public actor RoutedMarketFeed {
     guard let catalog = (activeProvider as? any OrderFlowSourcing)?.orderFlowCatalog else { return nil }
     return await catalog.liquidations(base: base, fromMs: fromMs, toMs: toMs)
   }
+  /// Only the open insights page asks for these aggregates and this chart venue's minute candles.
+  public func orderFlowInsights(base: String, symbol viewed: String) async -> OrderFlowInsightsPage? {
+    guard InstrumentID.canonical(viewed) == InstrumentID.canonical(symbol),
+          let catalog = (activeProvider as? any OrderFlowSourcing)?.orderFlowCatalog else { return nil }
+    let selected = selection
+    let page = await catalog.insights(base: base)
+    guard !Task.isCancelled, selected == selection else { return nil }
+    return page
+  }
+  public func insightMinuteBars(symbol viewed: String) async -> [Bar]? {
+    guard InstrumentID.canonical(viewed) == InstrumentID.canonical(symbol), let provider = activeProvider else { return nil }
+    let selected = selection
+    let bars = try? await provider.klines(symbol: viewed, interval: .m1, limit: 70)
+    guard !Task.isCancelled, selected == selection else { return nil }
+    return bars
+  }
   /// 测试用：订单流这一格此刻记着的可视范围。
   var orderFlowViewForTesting: (symbol: String, from: Int64, to: Int64)? { orderFlow.view }
   private func startOrderFlow() {

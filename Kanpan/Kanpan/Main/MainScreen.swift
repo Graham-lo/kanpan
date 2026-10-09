@@ -793,6 +793,9 @@ struct MainScreen: View {
         captureCard
       } }
       replayControls
+      if !reviewChart.active && !draw.active && !landscape && !drawingCanvasOnly && market.capabilities.hasOrderFlow {
+        OrderFlowInsightEntryStrip { dismissPanel(); market.orderFlow.sheet.open(at: nil) }
+      }
       hairline
       if draw.active {
         DrawingBar(controller: draw, lineAlert: lineAlert)

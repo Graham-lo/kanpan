@@ -475,7 +475,7 @@ final class ChartProxy {
   /// 收掉十字线（图上那颗「创建提醒」点下去、弹新建提醒页时）。图还没建出来就当没这回事。
   func clearCrosshair() { box?.chart.clearCrosshair() }
   /// 十字线跳到开盘时间为 `t` 的那一根（大单与爆仓弹层的「每根」条）。
-  func placeCrosshair(atTime t: Int64) { box?.chart.placeCrosshair(atTime: t) }
+  func placeCrosshair(atTime t: Int64, price: Double? = nil) { box?.chart.placeCrosshair(atTime: t, price: price) }
 
   var isAtLatest: Bool { box?.chart.isAtLatest ?? true }
   /// 此刻图上真正在看的那段时间。视野归图自己管，外面要读就从这儿读

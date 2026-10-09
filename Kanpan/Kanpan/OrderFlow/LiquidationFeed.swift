@@ -18,6 +18,7 @@ final class LiquidationFeed {
   private(set) var book: LiquidationBook?
   /// 一页都没取到过且取失败（弹层显示「暂无爆仓数据」）。
   private(set) var unavailable = false
+  private(set) var updatedAtMs: Int64?
   /// 此刻在拉哪只（nil = 停着）。
   @ObservationIgnored private(set) var running: String?
   @ObservationIgnored private var task: Task<Void, Never>?
@@ -28,7 +29,7 @@ final class LiquidationFeed {
     task?.cancel(); task = nil
     running = base
     guard let base else { return }
-    if book?.base != base { book = LiquidationBook(base: base); unavailable = false }
+    if book?.base != base { book = LiquidationBook(base: base); unavailable = false; updatedAtMs = nil }
     task = Task { [weak self] in await self?.poll(base: base, fetch: fetch) }
   }
 
@@ -41,7 +42,8 @@ final class LiquidationFeed {
       if let page {
         book?.merge(page, nowMs: now)
         unavailable = false
-      } else if book?.tracked == nil {
+        updatedAtMs = Self.nowMs()
+      } else {
         unavailable = true
       }
       try? await Task.sleep(for: .milliseconds(LiquidationBook.pollMs))
