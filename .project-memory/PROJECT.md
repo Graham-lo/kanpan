@@ -1,6 +1,6 @@
 # Hkline（看盘 / Kanpan）跨窗口项目记忆
 
-更新：2026-10-04（§37 深度审查；旧注：第 8 节含 P0 价格精度返工；第 9 节为文档统一口径）。给任何新开的模型窗口恢复上下文用。用户当前指示优先；下面是整理时的快照，接手前用 `git log`、`git status` 和源码核对。
+更新：2026-10-09（最新部署见 §72，多交易所现行口径见 §71；前面各节保留其标注日期的历史快照）。给任何新开的模型窗口恢复上下文用。用户当前指示优先；接手前用 `git log`、`git status` 和源码核对；Codex 入口见 `CODEX.md`。
 
 ## 1. 身份与分工
 
@@ -2074,6 +2074,8 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 
 ## 71. 10-08：交易所模块框架——OKX 不再做币安替身，OKX / Bybit / Hyperliquid 成为独立交易所，三端品种按交易所分（分支 `claude/funny-turing-qp668m`）
 
+**2026-10-09 发布更新**：截至 `69b840ce` 的 20 个提交已快进合入并推送 main，后端 / Python 网关 / 电脑与手机网页已部署新加坡；下文开发期状态是 10-08 的快照，最新验证与回滚见 §72。iOS 真机包未安装。
+
 - **用户拍板**（2026-10-08，原话要点）：新加坡网关通币安，不要 OKX 兜底；像 TradingView / AICoin 那样同一个币在不同交易所是不同品种，搜索按交易所分区、加哪家只看哪家的 K 线 / 价格 / 持仓量，不混源；**主力订单流（大单 / 爆仓 / 足迹 / 热力）仍五家聚合**；同一家交易所取任何数据走同一个模块（一个限流器、一套解码、一张地址表），行情与订单流只是两个使用面；交易所本身是抽象，加一家只加一个目录 + 注册表一行；品种展示一律带交易所**文字缩写**（币安 / OKX / Bybit / HL / CB，美元指数不带）：顶栏「DOGE」+「币安 USDT 永续」，列表行名字前灰小字；限流严格按官方文档（按 IP 还是按接口、REST 与 WS 是否分开）；三端都改；全部完成后独立审查、不合格返工。
 - **设计**：`docs/多交易所-接入指南.md` 全文已改成新框架（§2 客户端 Venue / DTO / Provider / Wire，§3 服务端 `trait Venue` + `outbound`，§5 六家表，§6 各家官方限流口径，§7 展示规则）。本窗口的工作底稿在容器 scratchpad（框架设计 / 接口速查 / 限流对照表），不入库。
 - **状态**（都在分支 `claude/funny-turing-qp668m` 上，**已推送、未合 main、未部署、未真机验收**）：
@@ -2087,3 +2089,15 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   - **压测留给用户拍板的两处**：① 搜「PEPE」电脑版把去前缀的 PEPE 算打全、手机 / iOS 算包含，组序不同（命中相同）；② 网关档 Coinbase 订单流 level2 仍直连 coinbase.com（服务端 hub 不转 level2，要全走网关得先在服务端开中继）。
 - **已知留白**（不是本次范围，别当 bug）：新三家不接复盘 / 条件提醒 / 小组件补价；网页端新三家没有持仓量历史与多空比面板；Hyperliquid 24h 高低没有（NaN → 「—」）、费率每小时一期（用户 10-08「hl 费率也要接上，按照实际情况」：三端照实际口径接——`funding` 是一小时费率原样写、结算倒数到下一个整点，一期长度成了行情面能力位 `ProviderCapabilities.fundingPeriod` / `VenueMarket.fundingIntervalMs`，刚过点那几秒按一小时滚而不是八小时）；OKX / Coinbase 的 24h 成交额是「币量 × 现价」近似；币安网关档没有盘口（Python hub 不放行 depth）。所有新交易所的报文夹具都是按官方文档手写的，容器连不上交易所，**真实报文要在 Mac 上跑直连 / 网关两条线路各看一遍**（搜 BTC → 四家各一组 → 加自选 → 1m / 1h / 1w 有图 → 推送在动 → 顶栏小字对）。
 - **限流核对**（§6 表）：两处旧文档数字不一致（Bybit 每 5 分钟连接数、Hyperliquid 每 IP 连接数 10 vs 100）标 ⚠，要在 Mac 上对官方页面。
+
+## 72. 10-09：同步 Claude / Codex 项目记忆，多交易所最新代码部署新加坡
+
+- **本次授权**：用户要求同步 Claude 看盘项目记忆，并部署最新代码到新加坡 VPS。核对了 Claude 本机 `memory/MEMORY.md`、用户粘贴的完成记录、Git 和线上状态；补建 `.project-memory/CODEX.md`，刷新导入索引，并在 Claude 本机记忆索引加了指向本节的发布入口。旧记忆的美国主机 / OKX 替身等描述不覆盖当前事实。
+- **源码**：`claude/funny-turing-qp668m` 的 20 个提交截至 `69b840ce`，已快进合入并推送 main。没有新增数据库迁移，线上仍为 57。部署前线上后端 186 个文件 = 旧 main `c43ae419`；同步后后端 214 个文件、网关 15 个文件 = `origin/main`。
+- **已部署**：唯一公开主机 `kanpan-sg`（`43.160.232.253`，ubuntu + sudo）。后端 `/opt/kanpan-api`、Python 网关 `/opt/kanpan-gateway`、网页 `/var/www/kanpan/web`。先 API / worker（12:20:18 / 12:20:16 CST），再 Python 网关，Caddy 校验后移除 `/market/okx/stream`（12:20:56），再网页。API / worker / gateway / stream-hub / Caddy 全 active、后端 NRestarts 0，升级后 warning 级日志无新增条目。
+- **发布包**：Mac 经 machine-guard，`cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.35`；二进制 SHA-256 `db2c5d9c5c2ec9d9593c7ae5335d617c4d47d4256095d80ac48cf3008cf51222`。PC `assets/index-DBFsrL4N.js`，手机 `assets/m-DMfnLRMf.js`，线上入口与本机一致。
+- **备份 / 回滚**：`/opt/kanpan-backups/multi-venue-20261009-121902/`（47 MB，旧二进制、API 源码、网关、Caddy 与网页、迁移号）。旧二进制 `d2b3cf19…c9600`；回滚脚本已通过语法检查、未运行：`sudo /opt/kanpan-backups/multi-venue-20261009-121902/rollback.sh`，不回退数据库和密钥。
+- **验证**：Rust 752 通过 / 4 ignored、Python 网关 76 通过、网页 200 文件 / 2681 测试最终全过、TypeScript / 发布构建通过；Mac Data 3 + 296、Core 131 + 517 全过。Network 376 项中仅一项 WS 风暴末尾弱引用释放断言首次失败，点名复跑通过。app-logic 852 项中仅快捷入口一项的两个旧标题断言失配，更新为币安 / CB 缩写后 Symbols 247 项全过；Main 183 项中 ReviewBadgeIsolation 首屏重排计数首次失败，点名与 HeaderStats 合计 24 项复跑全过，帧探针独立通过。没有把首次全量失败写成全量全绿。
+- **线上真实数据**：四家 BTC K 线 REST 200 且有效、四家 WS 均收到真实 K 线帧；HL funding 234 行且 `intervalHours=1`；旧 OKX 路由 404，未授权同步 401。真实 Chrome 实开四家 PC 图表与手机网页，品种键、交易所标题与 K 线正常，零页面异常。只做轻量冒烟，没有线上压测或 Mac 网络配置修改。
+- **未做真机安装**：旧版 iOS 网关档依赖退役的 OKX 替身接口，需要装新包；本次服务器上线不等于 iOS 真机已更新。PEPE 搜索匹配差异和 Coinbase level2 网关中继仍按 §71 保留用户决定，不在部署中扩展。
+- 详细证据与限制：[新加坡部署验收报告](../docs/acceptance/新加坡部署-2026-10-09/验收报告.md)。原始日志与临时截图不入库。

@@ -35,9 +35,9 @@ struct HomeShortcutsTests {
   @Test("撞了币名的几格补上计价与交易所，没撞的照旧只写币名")
   func collidingBasesAreTold() {
     let items = HomeShortcuts.build(recents: ["binance/usd_m/BTCUSDT", "binance/usd_m/BTCUSDC", "coinbase/spot/BTC-USD"])
-    #expect(items.map(\.title) == ["BTC/USDT", "BTC/USDC", "BTC/USD Coinbase", "搜索"])
+    #expect(items.map(\.title) == ["币安 BTC/USDT", "币安 BTC/USDC", "CB BTC/USD", "搜索"])
     let mixed = HomeShortcuts.build(recents: ["binance/usd_m/ETHUSDT", "coinbase/spot/BTC-USD", "binance/usd_m/BTCUSDT"])
-    #expect(mixed.map(\.title) == ["ETH", "BTC/USD Coinbase", "BTC/USDT", "搜索"])
+    #expect(mixed.map(\.title) == ["ETH", "CB BTC/USD", "币安 BTC/USDT", "搜索"])
     // 撞名只看同一屏：第四个起没摆上去的不算。
     let crowded = HomeShortcuts.build(recents: ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT", "binance/usd_m/SOLUSDT", "coinbase/spot/BTC-USD"])
     #expect(crowded.map(\.title) == ["BTC", "ETH", "SOL", "搜索"])
