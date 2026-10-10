@@ -47,7 +47,7 @@ import { createPagePort, type PagePort } from './chart/data'
 import { openAnalysis, openChartSettings, openOrderFlowEditor, thresholdsFor, type PanelContext, type AxisContext } from './chart/panels'
 import { BigTradeController, devForce } from './chart/bigTrade'
 import { shouldOpenInsightSwipe } from './chart/insights'
-import { INSIGHT } from './chart/insightLabels'
+import { BT } from '../../terms'
 import { createBench, reconcileLineAlerts, type Bench } from './chart/drawingBench'
 import { openNote, resumeNote, wireNoteRequests, flushNotes, wireNoteUploads } from './chart/note'
 import { openShare } from './chart/share'
@@ -304,8 +304,9 @@ export function initChart(root: HTMLElement): PageHandle {
   })
   // 起手区域完全在画布外；不截获图表平移、缩放和系统侧沿返回。
   const insightEntry = el('button', 'cp-insight-entry')
-  insightEntry.type = 'button'; insightEntry.setAttribute('aria-label', INSIGHT.entry)
-  insightEntry.innerHTML = `<span aria-hidden="true">⌃</span><span>${INSIGHT.title}</span>`
+  insightEntry.type = 'button'; insightEntry.setAttribute('aria-label', BT.title)
+  // 本轮入口暂开 10-08 定版的「大单与爆仓」页；新「盘口要点」半页另行设计。
+  insightEntry.innerHTML = `<span aria-hidden="true">⌃</span><span>${BT.title}</span>`
   page.append(insightEntry)
   let insightSwipe: { x: number; y: number; at: number } | null = null, insightSuppress = 0
   insightEntry.addEventListener('click', () => { if (performance.now() >= insightSuppress) panel(() => bt.open())() })

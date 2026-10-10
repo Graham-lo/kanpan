@@ -164,7 +164,6 @@ class FakeSheet {
   last: BtModel | null = null
   update(m: BtModel): void { this.last = m }
   flash(t: number): void { this.calls.push(`flash:${t}`) }
-  showSelected(): void { this.calls.push('selected') }
   park(): void { this.calls.push('park') }
   unpark(): void { this.calls.push('unpark') }
   close(): void { this.closed = true }
@@ -291,12 +290,12 @@ describe('大单与爆仓 · 弹层各状态的模型', () => {
     expect(pulled).toEqual([])
   })
 
-  it('没有大额成交不代表断流；只按实际离线或明确停止状态显示停住', () => {
+  it('停住：20 秒没进成交 → 数字变灰、右上写「数据停于 hh:mm」；断网同样', () => {
     const r = rig()
     r.port.lastTradeMs = NOW - STALE_MS - 1000
     const m = model(r)
-    expect(m.stale).toBe(false)
-    expect(m.hero.rt).toBe('15 分钟')
+    expect(m.stale).toBe(true)
+    expect(m.hero.rt).toBe(`数据停于 ${new Date(NOW - STALE_MS - 1000 + 8 * 3600_000).toISOString().slice(11, 16)}`)
     r.port.lastTradeMs = NOW - 5000
     expect(model(r).stale).toBe(false)
     expect(model(rig({ force: 'stale' })).stale).toBe(true)
@@ -356,7 +355,6 @@ describe('大单与爆仓 · 十字线联动', () => {
     expect(spy).toHaveBeenCalledWith(295, 'bigTrade')
     expect(r.sheet.closed).toBe(false)
     expect(r.sheet.last!.hero).toMatchObject({ title: hhmm(TB), rt: '15 分钟' })
-    expect(r.sheet.calls).toContain('selected')
   })
 
   it('横屏只画泡不开弹层', () => {

@@ -1,13 +1,13 @@
 /* 「大单与爆仓」弹层（原型 docs/原型-手机大单与爆仓-2026-10-08.html · sheet()），只用既有令牌 */
-.bt-wrap { position: fixed; inset: 0; height: 100dvh; pointer-events: none; z-index: 1 }
+.bt-wrap { position: fixed; inset: 0; pointer-events: none; z-index: 1 }
 .bt-scrim { position: absolute; inset: 0; background: var(--scrim); opacity: 0; transition: opacity var(--dur) var(--ease-out); pointer-events: none }
 .bt-wrap.in .bt-scrim { opacity: 1; pointer-events: auto }
 .bt-sheet {
-  position: absolute; inset: 0; height: 100dvh; border-radius: 0; overflow: hidden; pointer-events: auto;
-  box-shadow: none;
+  position: absolute; left: 0; right: 0; bottom: 0; border-radius: 34px 34px 0 0; overflow: hidden; pointer-events: auto;
+  box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge), var(--toast-shadow);
   transform: translateY(105%); font: var(--t-footnote); color: var(--ink);
-  display: flex; flex-direction: column; padding: var(--safe-top, env(safe-area-inset-top)) var(--safe-right, env(safe-area-inset-right)) 0 var(--safe-left, env(safe-area-inset-left));
-  transition: transform 280ms var(--ease-spring);
+  display: flex; flex-direction: column; padding-bottom: var(--safe-bottom, 0px);
+  transition: transform 280ms var(--ease-spring), height 280ms var(--ease-spring);
 }
 .bt-wrap.in .bt-sheet { transform: translateY(0) }
 .bt-wrap.parked .bt-sheet { transform: translateY(105%) }
@@ -16,13 +16,13 @@
 .bt-sheet > :not(.lg-bg) { position: relative; z-index: 1 }
 .bt-grab { position: absolute !important; top: 0; left: 0; right: 0; height: 24px; touch-action: none; cursor: grab }
 .bt-grab i { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: 40px; height: 5px; border-radius: 3px; background: var(--ink3); opacity: .45 }
-.bt-hdr { display: flex; align-items: center; gap: 10px; padding: 8px 16px 12px; flex: none; border-bottom: var(--hairline) solid var(--line) }
+.bt-hdr { display: flex; align-items: center; gap: 10px; padding: 26px 16px 10px; touch-action: none; flex: none }
 .bt-hdr .bt-bk { width: var(--hit, 44px); height: var(--hit, 44px); display: grid; place-items: center; margin: -5px 0 -5px -13px; color: var(--accent); background: none; border: 0; padding: 0 }
 .bt-hdr .bt-bk svg { width: 20px; height: 20px; stroke-width: 2.2 }
 .bt-hdr h4 { flex: 1; min-width: 0; margin: 0; font: var(--t-title); letter-spacing: normal }
 .bt-hdr h4 small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: var(--t-caption-emph); color: var(--ink3); margin-top: 5px; letter-spacing: 0 }
-.bt-hdr .bt-pill { flex: none; white-space: nowrap; margin-left: auto; font: var(--t-control-on); color: var(--accent); background: var(--lg-glass); padding: 9px 12px; min-height: 44px; border-radius: 999px; border: 0; box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge) }
-.bt-body { flex: 1; min-height: 0; padding: 14px 16px calc(24px + var(--safe-bottom, env(safe-area-inset-bottom))); overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; scroll-padding-top: 12px }
+.bt-hdr .bt-pill { flex: none; white-space: nowrap; margin-left: auto; font: var(--t-control-on); color: var(--accent); background: var(--lg-glass); padding: 9px 12px; min-height: 32px; border-radius: 999px; border: 0; box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge) }
+.bt-body { flex: 1; min-height: 0; padding: 0 16px 24px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain }
 
 .bt-card { display: block; width: 100%; text-align: left; background: var(--lg-glass); border: 0; border-radius: 20px; padding: 14px 16px; margin: 0 0 10px; position: relative; color: inherit; font: inherit;
   box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge), 0 10px 30px -22px rgba(0, 0, 0, .35) }
@@ -106,25 +106,6 @@
 .bt-sheet.stale .bt-ends b, .bt-sheet.stale .bt-amts b, .bt-sheet.stale .bt-amts b span, .bt-sheet.stale .bt-mini b, .bt-sheet.stale .bt-vs .net, .bt-sheet.stale .bt-liqmax .v { color: var(--ink3) !important }
 .bt-sheet.stale .bt-vs .b, .bt-sheet.stale .bt-vs .a, .bt-sheet.stale .bt-ladder i, .bt-sheet.stale .bt-u, .bt-sheet.stale .bt-d { filter: saturate(.15) opacity(.6) }
 .bt-sheet.stale .bt-live { background: var(--ink3); animation: none }
-
-.bt-observation p { margin: 0 0 8px; font: var(--t-body-emph); line-height: 1.55 }
-.bt-observation small { font: var(--t-caption); line-height: 1.5; color: var(--ink3) }
-.bt-insight-card h5 { flex-wrap: wrap; font: var(--t-footnote-emph) }
-.bt-insight-card h5 .rt { font: var(--t-caption); line-height: 1.5 }
-.bt-insight-row { padding: 12px 0; border-top: var(--hairline) solid var(--line); font: var(--t-body); font-variant-numeric: tabular-nums }
-.bt-insight-line { display: flex; align-items: baseline; gap: 12px; justify-content: space-between; flex-wrap: wrap }
-.bt-insight-line b { font: var(--t-body-emph) }
-.bt-insight-row p { font: var(--t-body); line-height: 1.5; margin: 8px 0 4px; color: var(--ink2) }
-.bt-insight-row small { display: block; font: var(--t-footnote); color: var(--ink3); line-height: 1.5 }
-.bt-insight-empty { font: var(--t-body); color: var(--ink3); line-height: 1.5; margin: 10px 0 }
-.bt-locate { background: none; border: 0; color: var(--accent); font: var(--t-footnote-emph); padding: 10px 0; min-height: 44px; text-align: left }
-.bt-evidence summary, .bt-bar-evidence > summary { min-height: 44px; display: flex; align-items: center; gap: 8px; cursor: pointer; font: var(--t-footnote-emph); color: var(--accent) }
-.bt-evidence summary::before, .bt-bar-evidence > summary::before { content: '›'; display: inline-block; font: var(--t-body) }
-.bt-evidence[open] summary::before, .bt-bar-evidence[open] > summary::before { transform: rotate(90deg) }
-.bt-evidence p { margin: 2px 0 6px; font: var(--t-footnote); line-height: 1.6; color: var(--ink2); -webkit-user-select: text; user-select: text }
-.bt-bar-evidence > summary { padding: 0 14px; border-radius: 16px; background: var(--lg-glass); margin-bottom: 10px }
-.bt-bar-evidence .bt-liq, .bt-bar-evidence .bt-liqday, .bt-bar-evidence .bt-lad { display: none }
-.bt-sheet button:focus-visible, .bt-sheet summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px }
 
 @media (prefers-reduced-motion: reduce) {
   .bt-sheet, .bt-scrim, .bt-vs .b, .bt-vs .a, .bt-vs .net { transition: none }

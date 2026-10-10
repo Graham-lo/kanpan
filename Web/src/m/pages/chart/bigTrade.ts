@@ -25,7 +25,7 @@ import { baseOfSymbol } from '../../../orderflow/settings'
 import type { Thresholds } from '../../../orderflow/types'
 import { BT, fill } from '../../../terms'
 import { orderFlowAmount } from '../../chart/renderer.orderflow'
-import { buildInsights, InsightPoller, beijingDayStart, matchesChart, type InsightBody, type InsightStatus, type InsightView } from './insights'
+import { InsightPoller, type InsightBody, type InsightStatus } from './insights'
 import {
   BigTradeSheet, ladderRows, liqCells, summaryLine, LIQ_CELL_MS, LADDER_HOURS,
   type BtModel, type BarCol, type HeroModel, type LiqModel,
@@ -38,6 +38,8 @@ export const STALE_MS = 20_000
 /** 骨架最多挂多久（之后按「还没有」画） */
 export const SKELETON_MS = 1000
 const LIQ_WAIT_MS = 8000
+/** 盘口洞察轮询（/insights + 1m K 线）暂不启动：10-10 气泡页已回退到 10-08 定版，旧页不用这份数据；新「盘口要点」半页另行设计后再打开。 */
+const INSIGHTS_ENABLED = false as boolean
 const BARS = 40
 
 /** 测试与截图用的强制状态（只在开发构建里从 ?bt= 读） */
@@ -80,12 +82,10 @@ export class BigTradeController {
   private minuteGeneration = 0
   private minuteLoading = false
   private minuteAt = 0
-  private insightView: InsightView | null = null
-  private insightViewAt = 0
   private readonly poller: InsightPoller
   private readonly visibility = (): void => {
     if (document.hidden) { this.poller.stop(); this.minuteGeneration++; this.minuteLoading = false }
-    else if (this.isOpen && this.shown) { this.startInsights(); this.refresh() }
+    else if (INSIGHTS_ENABLED && this.isOpen && this.shown) { this.startInsights(); this.refresh() }
   }
   private readonly now: () => number
   private readonly onHist = (): void => { this.layer.invalidate(); this.refresh() }
@@ -102,7 +102,7 @@ export class BigTradeController {
       return r.json()
     }, (body, state) => {
       if (body) this.insightBody = body
-      this.insightState = state; this.insightViewAt = 0
+      this.insightState = state
       if (body) this.pullMinutes()
       this.refresh()
     })
@@ -132,14 +132,14 @@ export class BigTradeController {
     const sym = this.d.symbol()
     if (sym !== this.sym) {
       this.poller.stop(); this.minuteGeneration++; this.minuteLoading = false
-      this.minuteBars = []; this.minuteAt = 0; this.insightBody = null; this.insightState = 'loading'; this.insightViewAt = 0
+      this.minuteBars = []; this.minuteAt = 0; this.insightBody = null; this.insightState = 'loading'
       if (this.sym) detachFlows(this.onHist)
       this.sym = sym
       this.pick = null
       this.seen = { live: -1, ver: -1 }
       this.openedAt = this.now()
       if (this.shown) this.tick()
-      if (this.isOpen) this.startInsights()
+      if (INSIGHTS_ENABLED && this.isOpen) this.startInsights()
     }
     const macro = this.d.isMacro()
     this.layer.setEnabled(st.bigTradeSigns && !macro)
@@ -164,6 +164,11 @@ export class BigTradeController {
   }
   destroy(): void { this.hide(); if (typeof document !== 'undefined') document.removeEventListener?.('visibilitychange', this.visibility); detachFlows(this.onHist); this.layer.destroy() }
 
+  /** 盘口洞察原始数据（服务端 /insights + 同所 1m K 线）；留给以后的「盘口要点」半页读，当前不启动轮询。 */
+  insightData(): { body: InsightBody | null; state: InsightStatus; prices: readonly Bar[] } {
+    return { body: this.insightBody, state: this.insightState, prices: this.minuteBars }
+  }
+
   private startInsights(): void {
     if (typeof document !== 'undefined' && document.hidden) return
     this.poller.start(baseOfSymbol(this.d.symbol()).base)
@@ -176,7 +181,7 @@ export class BigTradeController {
     this.minuteLoading = true; this.minuteAt = this.now()
     void klines(symbol, '1m', undefined, 70, false, false, () => generation === this.minuteGeneration && this.isOpen, 'low').then(r => {
       if (generation !== this.minuteGeneration || symbol !== this.d.symbol() || !this.isOpen) return
-      this.minuteBars = r.ok ? r.bars : []; this.minuteLoading = false; this.insightViewAt = 0; this.refresh()
+      this.minuteBars = r.ok ? r.bars : []; this.minuteLoading = false; this.refresh()
     })
   }
 
@@ -187,15 +192,13 @@ export class BigTradeController {
     if (this.isOpen) { this.refresh(); return }
     this.openedAt = this.now()
     this.sheet = new BigTradeSheet({
-      onClose: () => { this.sheet = null; this.pick = null; this.clearReturn(); this.poller.stop(); this.minuteGeneration++; this.minuteLoading = false; this.sync() },
+      onClose: () => { this.sheet = null; this.pick = null; this.sync() },
       onThreshold: () => this.threshold(),
       onPickBar: bt => this.pickBar(bt),
-      onLocate: (t, price) => { const s = this.series(); if (s?.count) this.d.chart.view.crosshairTo(s.index(t), 'bigTrade', price); this.close() },
     })
     this.sync()
-    this.startInsights()
+    if (INSIGHTS_ENABLED) this.startInsights()
     this.tick()
-    if (t != null) this.sheet?.showSelected()
   }
   close(): void { this.sheet?.close() }
 
@@ -217,7 +220,6 @@ export class BigTradeController {
       this.pick = { t: s.t, from: 'sign' }
       this.clearReturn()
       this.refresh()
-      this.sheet?.showSelected()
     } else this.open(s.t)
     return true
   }
@@ -325,12 +327,10 @@ export class BigTradeController {
     const i0 = s && n ? s.index(t0) : 0
     const t1 = s && i0 + 1 < n ? s.time(i0 + 1) : t0 + step
     const w = windows(f, t0, t1, now)
-    w.today = windowSum(f, beijingDayStart(now), now + 1, now)
 
     const offline = S.live === false || (typeof navigator !== 'undefined' && navigator.onLine === false)
     const lastTrade = port?.lastTradeMs ?? 0
-    // 没有大额成交并不等于断流；只按实际离线/请求状态处理有效性。
-    const stale = force === 'stale' || offline
+    const stale = force === 'stale' || offline || (lastTrade > 0 && now - lastTrade > STALE_MS && !meta?.closed)
     const stoppedAt = force === 'stale' ? now - 25_000 : lastTrade || now
     let rt: string
     if (stale) rt = fill(BT.staleSince, { t: this.label(stoppedAt, 60_000) })
@@ -356,21 +356,18 @@ export class BigTradeController {
 
     const mid = (n ? s!.close[n - 1] : NaN) || meta?.price || 0
     const pstep = port?.step ?? 0
-    // 页末旧价梯只用真实逐笔，不再将分钟 K 线典型价伪装成成交价区。
-    const lv = priceLevels(f, pstep, now, null, 999, LADDER_HOURS * 60)
+    const typ = s && n && step <= 15 * 60_000 ? (minute: number): number | null => {
+      const i = s.index(minute)
+      const a = s.time(i)
+      if (minute < a || minute >= a + step) return null
+      return (s.high[i] + s.low[i] + s.close[i]) / 3
+    } : null
+    const lv = priceLevels(f, pstep, now, typ, 999, LADDER_HOURS * 60)
     const ladder = ladderRows(lv, mid, pstep, nearestWalls(port?.snapshot?.orders ?? [], mid))
-
-    if (!this.insightView || now - this.insightViewAt >= 5000) {
-      const snapshot = port?.snapshot
-      const ownReady = snapshot?.phase === 'ready' && now - snapshot.asOfMs <= 30_000 && !!snapshot.venues?.some(v => v.ready && matchesChart(v.id, sym))
-      this.insightView = buildInsights({ symbol: sym, now, mid, dec: meta?.dec ?? 2, orders: snapshot?.orders ?? [], snapshotReady: ownReady,
-        body: this.insightBody, state: this.insightState, prices: this.minuteBars, stale, liq: this.liq.state(base) })
-      this.insightViewAt = now
-    }
 
     return {
       ...((subs: string[]) => ({ sub: subs[0], subs }))(this.subtitles(base, spot)), loading, stale, hero, liq, bars,
-      sel: this.pick ? t0 : null, ladder, thr: this.thrText(), insights: this.insightView,
+      sel: this.pick ? t0 : null, ladder, thr: this.thrText(),
     }
   }
 
@@ -385,7 +382,7 @@ export class BigTradeController {
     if (!stt || stt.tracked === null) return now - this.openedAt < LIQ_WAIT_MS ? empty : { ...empty, state: 'none' }
     if (stt.tracked === false && stt.rows.size === 0) return { ...empty, state: 'none' }
     const rows = [...stt.rows.values()]
-    const todayStart = beijingDayStart(now)
+    const todayStart = Math.floor(now / DAY) * DAY // 和汇总的「今日」同一个起点：北京时间 8 点（UTC 0 点）
     const hour = sumLiq(rows, now - HOUR, now + 1), today = sumLiq(rows, todayStart, now + 1), day = sumLiq(rows, now - DAY, now + 1)
     const { start, cells } = liqCells(rows, now)
     const mx = today.max
