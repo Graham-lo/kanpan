@@ -21,7 +21,25 @@ struct TermsTests {
     let table = try #require(Terms.table["analysis"])
     #expect(Set(table.keys) == Set(AnalysisTerm.allCases.map(\.rawValue)))
     #expect(AnalysisTerm.fvg.text == "公允价值缺口")
-    #expect(Set(Terms.table.keys) == ["bigTrade", "analysis"])
+    #expect(Set(Terms.table.keys) == ["bigTrade", "analysis", "highlights"])
+  }
+
+  @Test("「要点」组：每个 HighlightTerm 都有一项、非空，也不混口语")
+  func highlightsGroup() throws {
+    let table = try #require(Terms.table["highlights"])
+    for k in HighlightTerm.allCases {
+      let v = try #require(table[k.rawValue], "\(k.rawValue) 在 terms.json 里没有")
+      #expect(!v.trimmingCharacters(in: .whitespaces).isEmpty, "\(k.rawValue) 是空的")
+    }
+    // 这一组手机网页也读，网页独有的键（重试、搜索这类）可以只在 JSON 里有；反过来 iOS 用到的每个键必须在。
+    #expect(Set(HighlightTerm.allCases.map(\.rawValue)).isSubset(of: Set(table.keys)))
+    #expect(HighlightTerm.title.text == "盘口要点")
+    #expect(HighlightTerm.tests.fill(["n": "2"]) == "测 2 次")
+    #expect(HighlightTerm.wRange.fill(["h": "31"]) == "区间 31 时")
+    let banned = ["挂着", "在场", "在减", "这只品种", "偏多", "偏空", "看涨", "看跌"]
+    for (k, v) in table {
+      for b in banned { #expect(!v.contains(b), "\(k)「\(v)」含「\(b)」") }
+    }
   }
 
   @Test("模板填空")

@@ -100,6 +100,124 @@ public enum AnalysisTerm: String, CaseIterable, Sendable {
   public var text: String { Terms.table["analysis"]?[rawValue] ?? rawValue }
 }
 
+/// 首页「异动 · 榜单」与行情页上滑「盘口要点」的用词，同在 `terms.json`（`highlights` 组；手机网页读同一份）。
+/// 接口只发枚举键，中文全在这一组；模板占位符用 `fill` 填。
+public enum HighlightTerm: String, CaseIterable, Sendable {
+  case home
+  case moves
+  case board
+  case `all`
+  case catBook
+  case catOi
+  case catFunding
+  case favScope
+  case hotScope
+  case guestHint
+  case updatedAt
+  case stoppedAt
+  case calmTitle
+  case calmSub
+  case newMoves
+  case offline
+  case justNow
+  case minutesAgo
+  case hoursAgo
+  case boardOi
+  case boardGainers
+  case boardLosers
+  case collapse
+  case win1h
+  case win4h
+  case win24h
+  case entry
+  case title
+  case staleSince
+  case flow
+  case flowCaption
+  case netTaker
+  case price
+  case oi
+  case w15m
+  case w1h
+  case w4h
+  case w24h
+  case wRange
+  case diverge
+  case flowLine
+  case levels
+  case wall
+  case fill
+  case liq
+  case now
+  case dist
+  case distPrice
+  case `range`
+  case rangeAge
+  case rangeEdges
+  case above
+  case below
+  case buyZone
+  case sellZone
+  case wallMeta
+  case fillMeta
+  case liqMeta
+  case tests
+  case heldFor
+  case minutes
+  case hours
+  case days
+  case fillBuySell
+  case touch
+  case overlap
+  case unbroken
+  case wallLive
+  case wallReducing
+  case wallBroken
+  case back
+  case refDayHigh
+  case refDayLow
+  case refPrevDayHigh
+  case refPrevDayLow
+  case refVwap
+  case refRangeHigh
+  case refRangeLow
+  case position
+  case positionCaption
+  case oi1h
+  case funding
+  case spotPremium
+  case oiUpPxUp
+  case oiDownPxUp
+  case oiUpPxDown
+  case oiDownPxDown
+  case pctile
+  case events
+  case eventsCaption
+  case buyWall
+  case sellWall
+  case wallEaten
+  case wallCancel
+  case takerBuy
+  case takerSell
+  case longLiq
+  case shortLiq
+  case oi5m
+  case broken
+  case pricePct
+  case oiPct
+  case window4h
+  case untracked
+  case quiet
+
+  /// 这一项的字。
+  public var text: String { Terms.table["highlights"]?[rawValue] ?? rawValue }
+
+  /// 填好占位符的字：`HighlightTerm.tests.fill(["n": "2"])` →「测 2 次」。
+  public func fill(_ args: [String: String]) -> String {
+    args.reduce(text) { $0.replacingOccurrences(of: "{" + $1.key + "}", with: $1.value) }
+  }
+}
+
 /// 包里那份 `terms.json`，解一次、常驻。
 public enum Terms {
   static var url: URL? { Bundle.module.url(forResource: "terms", withExtension: "json") }
