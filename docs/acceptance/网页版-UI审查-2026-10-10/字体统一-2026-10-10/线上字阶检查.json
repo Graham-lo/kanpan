@@ -1,0 +1,496 @@
+[
+  {
+    "label": "1920-浅-首页",
+    "overflow": false,
+    "samples": [
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".hm-hd h4",
+        "size": "13px",
+        "text": "异动",
+        "visible": true,
+        "weight": "600"
+      },
+      {
+        "selector": ".hm-row .tk",
+        "visible": false
+      },
+      {
+        "selector": ".rk-row .tk",
+        "visible": false
+      },
+      {
+        "color": "rgb(4, 112, 94)",
+        "selector": ".hm-pill",
+        "size": "12px",
+        "text": "+4.8%",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".sc-row .tk",
+        "size": "13px",
+        "text": "元宇宙",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "selector": ".sec-head h2",
+        "visible": false
+      },
+      {
+        "selector": ".sec-boards tbody tr:not(.sel) .sec-name",
+        "visible": false
+      },
+      {
+        "selector": ".sec-syms .sym b",
+        "visible": false
+      },
+      {
+        "selector": ".sec-syms td.up",
+        "visible": false
+      },
+      {
+        "selector": ".rv-login-t",
+        "visible": false
+      },
+      {
+        "selector": ".rv-top .rv-head h2",
+        "visible": false
+      },
+      {
+        "selector": "#page-me .me-body h2",
+        "visible": false
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".sp-head h3",
+        "size": "13px",
+        "text": "自选",
+        "visible": false,
+        "weight": "600"
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".widget-watch .tbl .sym b",
+        "size": "13px",
+        "text": "BTCUSDT",
+        "visible": false,
+        "weight": "500"
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".widget-watch .wc-pct",
+        "size": "12px",
+        "text": "+0.33%",
+        "visible": false,
+        "weight": "500"
+      }
+    ],
+    "script": "/web/assets/index-BAiv8zq1.js",
+    "size": [
+      1920,
+      1080
+    ],
+    "skin": "sage",
+    "theme": "light"
+  },
+  {
+    "label": "1920-浅-板块",
+    "overflow": false,
+    "samples": [
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".hm-hd h4",
+        "size": "13px",
+        "text": "异动",
+        "visible": false,
+        "weight": "600"
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".hm-row .tk",
+        "size": "13px",
+        "text": "MAV",
+        "visible": false,
+        "weight": "500"
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".rk-row .tk",
+        "size": "13px",
+        "text": "AIOT",
+        "visible": false,
+        "weight": "500"
+      },
+      {
+        "color": "rgb(4, 112, 94)",
+        "selector": ".hm-pill",
+        "size": "12px",
+        "text": "+13.1%",
+        "visible": false,
+        "weight": "500"
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".sc-row .tk",
+        "size": "13px",
+        "text": "元宇宙",
+        "visible": false,
+        "weight": "500"
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".sec-head h2",
+        "size": "13px",
+        "text": "板块",
+        "visible": true,
+        "weight": "600"
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".sec-boards tbody tr:not(.sel) .sec-name",
+        "size": "13px",
+        "text": "其他",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".sec-syms .sym b",
+        "size": "13px",
+        "text": "AXS",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "color": "rgb(4, 112, 94)",
+        "selector": ".sec-syms td.up",
+        "size": "12px",
+        "text": "+8.84%",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "selector": ".rv-login-t",
+        "visible": false
+      },
+      {
+        "selector": ".rv-top .rv-head h2",
+        "visible": false
+      },
+      {
+        "selector": "#page-me .me-body h2",
+        "visible": false
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".sp-head h3",
+        "size": "13px",
+        "text": "自选",
+        "visible": false,
+        "weight": "600"
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".widget-watch .tbl .sym b",
+        "size": "13px",
+        "text": "BTCUSDT",
+        "visible": false,
+        "weight": "500"
+      },
+      {
+        "color": "rgb(23, 32, 27)",
+        "selector": ".widget-watch .wc-pct",
+        "size": "12px",
+        "text": "+0.33%",
+        "visible": false,
+        "weight": "500"
+      }
+    ],
+    "script": "/web/assets/index-BAiv8zq1.js",
+    "size": [
+      1920,
+      1080
+    ],
+    "skin": "sage",
+    "theme": "light"
+  },
+  {
+    "label": "1920-浅-首页加载后",
+    "height": 1080,
+    "overflow": false,
+    "rows": [
+      {
+        "s": ".hm-hd h4",
+        "size": "13px",
+        "visible": true,
+        "weight": "600"
+      },
+      {
+        "s": ".hm-row .tk",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".rk-row .tk",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".hm-pill",
+        "size": "12px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".sc-row .tk",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      }
+    ],
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "label": "1920-深-首页",
+    "height": 1080,
+    "overflow": false,
+    "rows": [
+      {
+        "s": ".hm-hd h4",
+        "size": "13px",
+        "visible": true,
+        "weight": "600"
+      },
+      {
+        "s": ".hm-row .tk",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".rk-row .tk",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".hm-pill",
+        "size": "12px",
+        "visible": true,
+        "weight": "500"
+      }
+    ],
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "label": "1920-深-板块",
+    "height": 1080,
+    "overflow": false,
+    "rows": [
+      {
+        "s": ".sec-head h2",
+        "size": "13px",
+        "visible": true,
+        "weight": "600"
+      },
+      {
+        "s": ".sec-name",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".sec-syms .sym b",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".sec-syms td.up",
+        "size": "12px",
+        "visible": true,
+        "weight": "500"
+      }
+    ],
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "label": "1920-深-图表",
+    "height": 1080,
+    "overflow": false,
+    "rows": [
+      {
+        "s": ".sp-head h3",
+        "size": "13px",
+        "visible": true,
+        "weight": "600"
+      },
+      {
+        "s": ".widget-watch .tbl .sym b",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".widget-watch .wc-pct",
+        "size": "12px",
+        "visible": true,
+        "weight": "500"
+      }
+    ],
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "label": "1920-深-复盘未登录",
+    "height": 1080,
+    "overflow": false,
+    "rows": [
+      {
+        "s": ".rv-login-t",
+        "size": "13px",
+        "visible": true,
+        "weight": "600"
+      }
+    ],
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "label": "1920-深-我的",
+    "height": 1080,
+    "overflow": false,
+    "rows": [
+      {
+        "s": "#page-me .me-body h2",
+        "size": "13px",
+        "visible": true,
+        "weight": "600"
+      }
+    ],
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "label": "1280-浅-首页",
+    "height": 720,
+    "overflow": false,
+    "rows": [
+      {
+        "s": ".hm-hd h4",
+        "size": "13px",
+        "visible": true,
+        "weight": "600"
+      },
+      {
+        "s": ".rk-row .tk",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".hm-pill",
+        "size": "12px",
+        "visible": true,
+        "weight": "500"
+      }
+    ],
+    "theme": "light",
+    "width": 1280
+  },
+  {
+    "label": "1280-浅-板块",
+    "height": 720,
+    "overflow": false,
+    "rows": [
+      {
+        "s": ".sec-head h2",
+        "size": "13px",
+        "visible": true,
+        "weight": "600"
+      },
+      {
+        "s": ".sec-syms .sym b",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".sec-syms td.up",
+        "size": "12px",
+        "visible": true,
+        "weight": "500"
+      }
+    ],
+    "theme": "light",
+    "width": 1280
+  },
+  {
+    "label": "2560-浅-板块",
+    "height": 1440,
+    "overflow": false,
+    "rows": [
+      {
+        "s": ".sec-head h2",
+        "size": "13px",
+        "visible": true,
+        "weight": "600"
+      },
+      {
+        "s": ".sec-name",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".sec-syms .sym b",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      }
+    ],
+    "theme": "light",
+    "width": 2560
+  },
+  {
+    "label": "2560-浅-首页",
+    "height": 1440,
+    "overflow": false,
+    "rows": [
+      {
+        "s": ".hm-hd h4",
+        "size": "13px",
+        "visible": true,
+        "weight": "600"
+      },
+      {
+        "s": ".hm-row .tk",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".rk-row .tk",
+        "size": "13px",
+        "visible": true,
+        "weight": "500"
+      },
+      {
+        "s": ".hm-pill",
+        "size": "12px",
+        "visible": true,
+        "weight": "500"
+      }
+    ],
+    "theme": "light",
+    "width": 2560
+  }
+]
