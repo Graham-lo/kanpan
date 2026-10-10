@@ -1,7 +1,8 @@
 /* Hkline Web · 图标「质感」一套（2026-10-08 用户定版，照 docs/prototypes/web-visual-2026-10-08.html 原样搬过来）
  *
  * 字形 = SF Symbols 分层：主体 1，次要 .55，面与辅助 .22–.28；关键点（锚点 / 斐波那契亮档 / 当前部位的尖）一处强调墨，每个图标最多一处。
- * 几何语言：18 格；线 = 2.2 圆头条，锚点 = 实心圆点带底色内沿，面 = 淡填充，斐波那契 = 透明度递减的几根条。
+ * 几何语言：18 格；线 = 2 圆头条（2026-10-10 由 2.2 收到 2：底块一律 1:1 摆 18 px 字形，整数描边落在像素格上才不糊），
+ *   锚点 = 实心圆点带底色内沿，面 = 淡填充，斐波那契 = 透明度递减的几根条。
  * 颜色只走三个变量（随底块状态由 CSS 改，见 styles/icons.css）：
  *   --q1 主体（静止 = 主文字色混 20% 次文字色，悬停 = 主文字色，选中 = 白）
  *   --qa 强调墨（皮肤强调字色；选中 = 白）
@@ -101,7 +102,7 @@ export const G: Record<string, Op[]> = (() => {
     // 界面
     u_search: [f(cp(7.8, 7.8, 5.4), .22), l(cp(7.8, 7.8, 5.4)), l('M12 12L16 16', 'm', 1, 3)],
     u_bell: bell,
-    u_ind: [R(1.6, 1.8, 14.8, 14.4, 3, .28), l('M4.4 12.2L7.4 8.6L10 10.8L13.6 6'), a(13.6, 6, 0)],
+    u_ind: [R(1.6, 1.8, 14.8, 14.4, 3, .16), l('M4.4 12.2L7.4 8.6L10 10.8L13.6 6'), a(13.6, 6, 0)],
     u_cmp: [l('M2 11L6 13.2L10 8.8L16 10.8', 'm', .42), l('M2 14.6L6 9.6L10 12L15.4 5'), a(15.4, 5, 1)],
     u_note: [R(1.6, 1.4, 11.4, 15.2, 2.6, .3), R(4.2, 4.8, 6.2, 1.8, .9, .85), R(4.2, 8.4, 4.2, 1.8, .9, .6), l('M16 7.4L10.8 12.6', 'm', 1, 3.2), s('M9.3 14.1L8.4 16L10.3 15.1Z', 1)],
     u_heat: heat,
@@ -113,7 +114,7 @@ export const G: Record<string, Op[]> = (() => {
     u_set: [s(gear(), .9, null, 1), O(9, 9, 1.3, 1)],
     u_eyeOff: [cut('M2.6 2L16.2 15.8', 4.6, eye.map(o => Object.assign({}, o, { o: (o.o ?? 1) * .5 }))), l('M2.8 2.2L15.8 15.6')],
     u_star: [s(ST, 1, null, 1), s(star(9, 9.7, 3.6, 1.7), .35, 'w')],
-    u_list: [R(1.6, 1.8, 14.8, 14.4, 3, .28), s(star(5.4, 6.2, 2.6, 1.2), 1), R(8.4, 5.3, 5.8, 1.8, .9, .9), O(5.4, 9.6, 1.1, .7), R(8.4, 8.7, 5.8, 1.8, .9, .65), O(5.4, 13, 1.1, .5), R(8.4, 12.1, 4.2, 1.8, .9, .45)],
+    u_list: [R(1.6, 1.8, 14.8, 14.4, 3, .16), s(star(5.4, 6.2, 2.6, 1.2), 1), R(8.4, 5.3, 5.8, 1.8, .9, .9), O(5.4, 9.6, 1.1, .7), R(8.4, 8.7, 5.8, 1.8, .9, .65), O(5.4, 13, 1.1, .5), R(8.4, 12.1, 4.2, 1.8, .9, .45)],
     u_trades: [O(6.6, 11, 4.8, .9, 'up'), O(13.2, 5.6, 3.4, .9, 'dn'), O(14.4, 13.8, 1.9, .45), R(4.6, 10.2, 4, 1.6, .8, 1, 'w')],
     u_info: [O(9, 9, 7.4, .26), R(8.05, 7.8, 1.9, 6, .95, 1), O(9, 5.2, 1.25, 1)],
     u_sun: [O(9, 9, 3.7, 1), l('M9 1.6V3.2M9 14.8V16.4M1.6 9H3.2M14.8 9H16.4M3.8 3.8L4.9 4.9M13.1 13.1L14.2 14.2M3.8 14.2L4.9 13.1M13.1 4.9L14.2 3.8', 'm', .6, 1.8)],
@@ -151,7 +152,8 @@ Object.assign(G, {
   layout6: qGrid(3, 2), layout8: qGrid(4, 2), layout9: qGrid(3, 3), layout12: qGrid(4, 3), layout16: qGrid(4, 4),
 })
 
-const QO: Record<string, number> = { m: 1, k: 1, s: .55, g: .28, x: .3 }
+// 次层 / 面的透明度 2026-10-10 整体抬高（.55 → .66、.28 → .38）：淡层在 18 px 上会和底块糊成一片，抬到还能分层但看得清
+const QO: Record<string, number> = { m: 1, k: 1, s: .66, g: .38, x: .4 }
 const hasKey = (ops: Op[]): boolean => ops.some(o => (o.t === 'a' && o.s) || (o.ops && hasKey(o.ops)))
 let MID = 0
 const C1 = 'var(--q1,currentColor)', CA = 'var(--qa,currentColor)', CW = 'var(--qw,var(--surface))'
@@ -162,10 +164,10 @@ export function rQ(ops: Op[], big?: boolean): string {
   const op = (o: Op, def: number): number => +((o.o ?? def) * (o.c === 'dn' ? .55 : 1)).toFixed(3)
   return ops.map(o => {
     switch (o.t) {
-      case 'l': return `<path d="${o.d}" fill="none" stroke="${col(o.c)}" stroke-width="${o.w ?? 2.2}" stroke-linecap="round" stroke-linejoin="round" opacity="${op(o, QO[o.r as string])}"/>`
+      case 'l': return `<path d="${o.d}" fill="none" stroke="${col(o.c)}" stroke-width="${o.w ?? 2}" stroke-linecap="round" stroke-linejoin="round" opacity="${op(o, QO[o.r as string])}"/>`
       // 锚点：端点（大）用强调墨；中间点（小）用主体色——没有端点的图标，它的小点就是那一处强调
       case 'a': return `<circle cx="${o.x}" cy="${o.y}" r="${o.s ? 2.3 : 1.8}" fill="${o.s || !big ? CA : C1}" stroke="${CW}" stroke-width="1"/>`
-      case 'f': return `<path d="${o.d}" fill="${col(o.c)}" opacity="${op(o, .22)}"/>`
+      case 'f': return `<path d="${o.d}" fill="${col(o.c)}" opacity="${op(o, .3)}"/>`
       case 's': return `<path d="${o.d}" fill="${col(o.c)}" fill-rule="evenodd" stroke="${col(o.c)}" stroke-width=".9" stroke-linejoin="round" opacity="${op(o, 1)}"/>`
       case 'r': return `<rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" rx="${o.rx}" fill="${col(o.c)}" opacity="${op(o, 1)}"/>`
       case 'o': return `<circle cx="${o.cx}" cy="${o.cy}" r="${o.r}" fill="${col(o.c)}" opacity="${op(o, 1)}"/>`
