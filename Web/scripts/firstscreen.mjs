@@ -150,7 +150,7 @@ if (MODE === 'sectors') {
   await page.waitForTimeout(SEC * 1000)
   let lim = await page.evaluate(() => window.__limit())
   if (RELOAD) {
-    console.log(`第一次：合约权重 ${lim.fapi}，走势线 K 线 ${reqs.filter(r => r.endsWith('/fapi/v1/klines')).length} 个；刷新后：`)
+    console.log(`第一次：合约权重 ${lim.fapi}，K 线请求 ${reqs.filter(r => r.endsWith('/fapi/v1/klines')).length} 个；刷新后：`)
     reqs.length = 0
     const before = lim.fapi
     await page.reload({ waitUntil: 'domcontentloaded' })
@@ -159,12 +159,9 @@ if (MODE === 'sectors') {
     // 限流账本跨刷新留着（localStorage），这里只看刷新后的增量
     lim.fapi -= before
   }
-  const rows = await page.evaluate(() => [...document.querySelectorAll('tr[data-sec]')].map(tr => ({ name: tr.querySelector('.sec-name')?.textContent || '', spark: !!tr.querySelector('.sec-spark polyline') })))
+  const rows = await page.evaluate(() => [...document.querySelectorAll('tr[data-sec]')].map(tr => ({ name: tr.querySelector('.sec-name')?.textContent || '' })))
   const m = new Map(); for (const r of reqs) m.set(r, (m.get(r) || 0) + 1)
-  const want = ['比特币生态', '基础设施', '粉丝代币', 'DeFi 其他']
-  console.log(`板块页冷启动 ${SEC} 秒：合约权重 ${lim.fapi}、现货权重 ${lim.spot}；板块 ${rows.length} 个，有走势线 ${rows.filter(r => r.spark).length} 个`)
-  console.log('  点名：' + want.map(w => { const r = rows.find(x => x.name === w); return `${w} ${r ? (r.spark ? '有线' : '没线') : '不在表里'}` }).join('、'))
-  console.log('  没线的：' + (rows.filter(r => !r.spark).map(r => r.name).join('、') || '无'))
+  console.log(`板块页冷启动 ${SEC} 秒：合约权重 ${lim.fapi}、现货权重 ${lim.spot}；板块 ${rows.length} 个（走势线列 2026-10-10 已删，板块页不再拉成员 K 线）`)
   console.log('    ' + [...m].sort((a, b) => b[1] - a[1]).filter(([k]) => !/\.(js|css|svg|png|woff2?)$/.test(k)).slice(0, 12).map(([k, v]) => `${v}× ${k}`).join('\n    '))
   await ctx.close()
 }

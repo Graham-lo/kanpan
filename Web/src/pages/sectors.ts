@@ -1,6 +1,7 @@
 /* Hkline Web · 板块页
  *
- * 左：板块列表（加密 / 美股 · 今日 / 5 日），每行 板块名 · 走势 · 跑赢大盘 · 涨跌幅；
+ * 左：板块列表（加密 / 美股 · 今日 / 5 日），每行 板块名 · 跑赢大盘 · 涨跌幅（2026-10-10 删掉了「走势」迷你线一列：
+ *     用户嫌它「像一根线一样很丑都不搭配」；本页因此也不再为板块拉成员的小时 K 线）；
  * 右：点中的那个板块的品种列表（照自选列表：徽标、代号、中文名、最新价、涨跌幅、成交额），
  *     点品种直接去图表页。
  * 口径全部在 src/sectors/aggregate.ts，和手机端逐条一致；本页只管取数、排版与交互。
@@ -21,7 +22,6 @@ import {
 import type { SectorMarket, SectorStat, SectorWindow, SymbolRow } from '../sectors/aggregate'
 import { applyLive, feed, seedFromUniverse, startFeed, stopFeed } from '../sectors/feed'
 import { history, startHistory, stopHistory } from '../sectors/history'
-import { PER_BOARD, boardPath, sparkSVG, sparkSettled, stopSparks, wantSparks } from '../sectors/spark'
 import { pickWindow, shownWindow } from '../sectors/window'
 
 GLOSSARY['跑赢大盘'] = '这段时间里，板块成员跑赢全市场等权平均的有几只（分母是有行情的成员数）。'
@@ -94,7 +94,7 @@ function skeleton(): void {
   if (sp.built) return
   sp.built = '1'
   $('#secList').innerHTML = `<div class="page-head sec-head" id="secHead"></div>
-    <div class="scroll sec-scroll"><table class="tbl sec-boards"><colgroup><col class="c-name"><col class="c-spark"><col class="c-beat"><col class="c-pct"></colgroup>
+    <div class="scroll sec-scroll"><table class="tbl sec-boards"><colgroup><col class="c-name"><col class="c-beat"><col class="c-pct"></colgroup>
       <thead id="secThead"></thead><tbody id="secBody"></tbody></table><div id="secEmpty"></div></div>`
   $('#secMembers').innerHTML = `<div class="page-head sec-head" id="secMHead"></div>
     <div class="scroll sec-scroll"><table class="tbl sec-syms"><colgroup><col class="c-name"><col class="c-price"><col class="c-pct"><col class="c-vol"><col class="c-star"></colgroup>
@@ -109,7 +109,7 @@ function renderHead(hasD5: boolean): void {
       <button class="chip" data-win="today" aria-pressed="${sp.window === 'today'}">今日</button><button class="chip" data-win="d5" aria-pressed="${sp.window === 'd5'}">5 日</button></div>` : ''
   // 每 10 秒的重算也走这里：就地改（按钮节点留着），不整块换——换了指针下的按钮 / 提示要等下一次 mousemove 才回来
   morphHtml($('#secHead'), `<h2>板块</h2>${seg}${chips}`)
-  morphHtml($('#secThead'), `<tr><th>板块</th><th>走势</th><th>${term('跑赢大盘')}</th><th>${term('板块涨跌', '涨跌幅')}</th></tr>`)
+  morphHtml($('#secThead'), `<tr><th>板块</th><th>${term('跑赢大盘')}</th><th>${term('板块涨跌', '涨跌幅')}</th></tr>`)
 }
 
 function boardRow(s: SectorStat): string {
@@ -120,7 +120,6 @@ function boardRow(s: SectorStat): string {
     : `${outperformCount(s)}<span class="faint"> / ${n}</span>`
   return `<tr data-sec="${esc(s.id)}"${thin ? ' data-thin="1"' : ''} class="${s.id === sp.sel ? 'sel' : ''}" aria-selected="${s.id === sp.sel}" tabindex="0">
     <td><span class="sec-name">${esc(s.name)}</span></td>
-    ${sparkCell(s)}
     <td class="num">${beat}</td>
     <td class="num sec-pct ${cls(s.pct)}">${pctText(s.pct)}</td></tr>`
 }
@@ -193,35 +192,6 @@ function render(): void {
   renderHead(hasD5)
   renderBoards()
   renderMembers(title)
-  requestSparks()
-}
-
-// ------------------------------------------------------------ 走势
-
-function sparkMembers(s: SectorStat): string[] {
-  return membersOf(s.id).map(b => feed.quotes.get(b)).filter(q => q?.symbol && S.symbols.has(q.symbol) && Number.isFinite(q.quoteVolume))
-    .sort((a, b) => b!.quoteVolume - a!.quoteVolume).slice(0, PER_BOARD).map(q => q!.symbol as string)
-}
-/** 走势线的内容；none = 成员都取过了还画不出（或者根本没有能取的成员），格子写「—」而不是一直空着像在取 */
-function sparkOf(s: SectorStat): { svg: string; none: boolean } {
-  const members = sparkMembers(s)
-  const svg = sparkSVG(boardPath(members, sp.window, history.held.asof), cls(s.pct) as 'up' | 'down' | '')
-  return { svg, none: !svg && (!members.length || sparkSettled(members)) }
-}
-function sparkCell(s: SectorStat): string {
-  const { svg, none } = sparkOf(s)
-  return `<td class="sec-spark-cell${none ? ' nospark' : ''}"><svg class="sec-spark" data-spark="${esc(s.id)}" viewBox="0 0 160 32" preserveAspectRatio="none" aria-hidden="true">${svg}</svg><span class="faint sec-spark-none" data-tip="成员的小时收盘取不到，画不出走势">—</span></td>`
-}
-function requestSparks(): void {
-  wantSparks(sp.boards.flatMap(sparkMembers), () => {
-    if (st.page !== 'sectors') return
-    for (const s of sp.boards) {
-      const el = document.querySelector(`[data-spark="${CSS.escape(s.id)}"]`); if (!el) continue
-      const { svg, none } = sparkOf(s)
-      el.innerHTML = svg
-      el.parentElement?.classList.toggle('nospark', none)
-    }
-  })
 }
 
 // ------------------------------------------------------------ 推送
@@ -314,7 +284,7 @@ export function initSectors(): void {
     startFeed(render)
     startHistory(render)
   }
-  hooks.pageHidden.sectors = () => { sp.once = null; stopFeed(); stopHistory(); stopSparks(); sp.visible = []; refreshStreams() }
+  hooks.pageHidden.sectors = () => { sp.once = null; stopFeed(); stopHistory(); sp.visible = []; refreshStreams() }
   hooks.extraStreams.push(() => st.page === 'sectors' ? sp.visible.map(k => streamName.ticker(k)) : [])
   hooks.onTicks.push(patchTicks)
   hooks.booted.push(() => { if (st.page === 'sectors') render() })

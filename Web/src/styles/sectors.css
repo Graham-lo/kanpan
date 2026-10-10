@@ -1,7 +1,7 @@
 /* Hkline Web · 板块页（只用 app.css 已有的令牌与三套皮肤变量） */
 
-/* 两栏：板块列表 · 品种列表；旧版的预览图一栏不要了 */
-#page-sectors.page { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+/* 两栏：板块列表 ≈ 38% · 品种列表拿剩下的；旧版的预览图一栏不要了 */
+#page-sectors.page { grid-template-columns: minmax(0, 38fr) minmax(0, 62fr); }
 #page-sectors .sec-preview { display: none; }
 
 .sec-head { gap: var(--s4); }
@@ -11,28 +11,31 @@
 .sec-big { font-size: var(--t20); line-height: 28px; font-weight: 600; }
 .sec-scroll { flex: 1; min-height: 0; }
 
-/* 板块列表 */
-/* 名称列最多 320 px（窄屏按比例），其余三列不写宽度 → 固定布局下平分剩下的宽度，2K 上铺满不留空洞 */
-.sec-boards { table-layout: fixed; }
-.sec-boards col.c-name { width: min(320px, 34%); }
-.sec-boards td { height: 44px; }
-.sec-boards th:first-child, .sec-boards td:first-child { padding-left: var(--s4); }
-.sec-boards th:last-child, .sec-boards td:last-child { padding-right: var(--s4); }
-.sec-name { font-size: var(--t14); font-weight: 600; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; display: block; }
-.sec-pct { font-size: var(--t14); font-weight: 600; }
-.sec-spark { width: 100%; min-width: 120px; max-width: 360px; height: 28px; display: block; margin-left: auto; overflow: visible; pointer-events: none; } /* 纯装饰：命中落在行上，走势重画换 path 不影响指针下的节点 */
-.sec-spark-none { display: none; text-align: right; }
-.sec-spark-cell.nospark .sec-spark { display: none; }
-.sec-spark-cell.nospark .sec-spark-none { display: block; }
-.sec-zero { stroke: var(--line); stroke-width: 1; stroke-dasharray: 1 3; vector-effect: non-scaling-stroke; }
+/* 两张表同一套密度（照规范 5b「侧栏自选例外」·TradingView 自选）：行高 34、名与数字 14/500、表头 12。
+ * 列宽贴内容：数字列定宽（够放最长的数 + 列间 16）、右对齐等宽数字；名称列拿走其余全部宽度，
+ * 所以名字靠左、数字整块靠右收在一起，数字列之间不再有大段空白。 */
+.sec-boards, .sec-syms { table-layout: fixed; }
+.sec-boards th, .sec-syms th { font-size: var(--t12); }
+.sec-boards td, .sec-syms td { height: 34px; font-size: var(--t14); font-weight: 500; }
+.sec-boards th:not(:first-child), .sec-boards td:not(:first-child),
+.sec-syms th:not(:first-child), .sec-syms td:not(:first-child) { padding-left: var(--s4); }
+.sec-boards th:last-child, .sec-boards td:last-child,
+.sec-syms th:last-child, .sec-syms td:last-child { padding-right: var(--s4); }
 
-/* 品种列表：照自选列表 */
-/* 名称列最多 320 px，星标列 48 px，最新价 / 涨跌 / 成交额平分剩下的宽度 */
-.sec-syms { table-layout: fixed; }
-.sec-syms col.c-name { width: min(320px, 34%); }
-.sec-syms col.c-star { width: 48px; }
-.sec-syms td { height: 40px; }
-.sec-syms .sym .cn { max-width: 200px; }
+/* 板块列表：板块 · 跑赢大盘（「42 / 88」）· 涨跌幅（「+123.45%」） */
+.sec-boards col.c-beat { width: 104px; }
+.sec-boards col.c-pct { width: 104px; }
+.sec-name { color: var(--text-1); overflow: hidden; text-overflow: ellipsis; display: block; }
+.sec-boards .faint { font-weight: 400; }
+
+/* 品种列表：照自选列表。品种 · 最新价 · 涨跌 · 成交额 · 星 */
+.sec-syms col.c-price { width: 136px; }
+.sec-syms col.c-pct { width: 104px; }
+.sec-syms col.c-vol { width: 104px; }
+.sec-syms col.c-star { width: 56px; }
+.sec-syms td[data-f="price"] { color: var(--text-1); }
+.sec-syms .sym .cn { max-width: 240px; font-weight: 400; }
+.sec-syms td:last-child { padding-left: var(--s2); }
 .sec-lead {
   flex: none; height: 18px; padding: 0 6px; border-radius: var(--r-xs);
   font-size: var(--t11); line-height: 18px; font-weight: 500;

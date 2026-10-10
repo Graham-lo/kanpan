@@ -59,7 +59,7 @@ make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:51
 - 市值：`/v1/market/meta`（同源，kanpan-api）返回的 `totalSupply` × 现价。服务端没给供应量的品种（大宗等）不显示市值。
 - 时间统一用上海时间（UTC+8），不能改；日线在北京时间 8:00 换日。数额一律用 K / M / B / T。
 - 指标与叠加（2026-09-29，详见 `docs/网页版-吸收-指标-2026-09-29.md`）：主图「关键价位」一个开关（昨高低 / 上周高低 / 今开 / 裸昨控与昨值区，`src/chart/keyLevels.ts`）、VWAP、VPVR（≥ 4h 用 15m、≥ 1d 用 1h 细 K 线）、CVD（币安历史 + 三家实时、现货 / 合约分开）、副图「大单与散户累计量差」（实时三家逐笔 + 近 3 天服务端分钟历史 `GET /v1/market/orderflow/flow`）。
-- 压测遗留项根因修复（2026-09-30，详见 `docs/网页版-深度压测-2026-09-29/A-图表布局画线指标.md`「压测遗留项的根因修复」）：板块走势线来自服务端小时收盘（`GET /v1/market/hourly-closes`，每批 ≤ 200 只、不设上限；服务端不通时退回直连币安，取到的在 sessionStorage 留 5 分钟，`src/sectors/spark.ts`）；行情推送与 K 线并行建连（K 线在路上时推来的先攒着、到了再并，`src/chart/pushBuffer.ts`）；换品种后详情五格、持仓量副图、关键价位、订单流深度快照等停稳约半秒再取（`src/market/settle.ts`），连切时中间划过的品种一笔不取；「找相似」找完为空时直接说为什么空。首屏计时 `node scripts/firstscreen.mjs <地址> cold|switch|sectors`。
+- 压测遗留项根因修复（2026-09-30，详见 `docs/网页版-深度压测-2026-09-29/A-图表布局画线指标.md`「压测遗留项的根因修复」）：板块走势线曾来自服务端小时收盘（`GET /v1/market/hourly-closes`，`src/sectors/spark.ts`）——**2026-10-10 用户嫌「像一根线一样很丑」整列删掉，连同取数与缓存一起去掉**，板块页不再拉成员 K 线；行情推送与 K 线并行建连（K 线在路上时推来的先攒着、到了再并，`src/chart/pushBuffer.ts`）；换品种后详情五格、持仓量副图、关键价位、订单流深度快照等停稳约半秒再取（`src/market/settle.ts`），连切时中间划过的品种一笔不取；「找相似」找完为空时直接说为什么空。首屏计时 `node scripts/firstscreen.mjs <地址> cold|switch|sectors`。
 
 ### 多交易所（2026-10-08）
 
