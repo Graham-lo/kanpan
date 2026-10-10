@@ -2,7 +2,8 @@ import KanpanCore
 import KanpanNetwork
 import SwiftUI
 
-/// 首页（底栏最左一格，PROJECT.md §79）：「异动 · 涨跌 · 持仓」三段，顶上一排胶囊（照自选页分类条）。
+/// 首页（底栏最左一格，PROJECT.md §79）：「异动 · 涨跌 · 持仓 · 板块」四段，顶上一排胶囊（照自选页分类条）。
+/// 「板块」就是原底栏「板块分类」那一整页（`SectorPage`，宿主传进来），下钻进品种列表时顶上这排胶囊收起。
 ///
 /// - 异动：自选（登录后带上）∪ 服务端热点层里此刻值得看一眼的品种，每只一行、按服务端权重排，打开时定序。
 ///   点一行 → 去行情页、换到这只、自动升起「盘口要点」半页并展开那一条、图上画带子。
@@ -19,6 +20,10 @@ struct HomeScreen: View {
   let onStar: (String) -> Void
   let onOpenMove: (HighlightsBoard.Row) -> Void
   let onOpenBoard: (String) -> Void
+  /// 「板块」段的整页（宿主拼好的 `SectorPage`）。
+  let sectors: AnyView
+  /// 板块段已下钻进某个板块的品种列表：顶上的胶囊让给那一层自己的返回行。
+  let drilled: Bool
 
   @Environment(\.panelTheme) private var t
 
@@ -28,7 +33,7 @@ struct HomeScreen: View {
   var body: some View {
     let bases = self.bases
     VStack(spacing: 0) {
-      header
+      if !(model.segment == .sectors && drilled) { header }
       switch model.segment {
       case .moves: HomeMovesView(model: model, bases: bases, signedIn: signedIn, zone: zone, bottomInset: bottomInset,
                                  isFavorite: isFavorite, onStar: onStar, onOpen: open(row:),
@@ -37,6 +42,7 @@ struct HomeScreen: View {
         let segment = model.segment
         HomeBoardView(model: model, segment: segment, bottomInset: bottomInset, onOpen: onOpenBoard,
                       reload: { await model.loadBoards(segment: segment) { await catalog.marketBoard(kind: $0, window: $1) } })
+      case .sectors: sectors
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -47,6 +53,7 @@ struct HomeScreen: View {
       switch segment {
       case .moves: await model.pollMoves(bases: bases) { await catalog.highlightsBoard(bases: $0) }
       case .change, .oi: await model.pollBoards(segment: segment) { await catalog.marketBoard(kind: $0, window: $1) }
+      case .sectors: break  // 板块页自己在出现 / 消失时开关行情轮询
       }
     }
   }
@@ -61,6 +68,7 @@ struct HomeScreen: View {
     case .moves: HighlightTerm.moves.text
     case .change: HighlightTerm.segChange.text
     case .oi: HighlightTerm.segOi.text
+    case .sectors: HighlightTerm.segSectors.text
     }
   }
 
@@ -227,7 +235,7 @@ private struct HomeMovesView: View {
               HomeCalm(icon: "line.3.horizontal.decrease", title: HighlightTerm.noRows.text, sub: nil, id: "home.noRows")
             } else {
               let now = Int64(Date().timeIntervalSince1970 * 1000)
-              ForEach(Array(model.visibleRows.enumerated()), id: \.element.base) { i, row in
+              ForEach(Array(model.visibleRows.enumerated()), id: \.element.id) { i, row in
                 if i > 0 { Rectangle().fill(LiuliMaterial(t).rule).frame(height: 0.5).padding(.leading, 61).pageHorizontalInset() }
                 HomeMoveRow(row: row, zone: zone, now: now, favorite: row.favorite || isFavorite(row.base),
                             onStar: { onStar(row.base) }, onOpen: { onOpen(row) })
@@ -346,8 +354,9 @@ private struct HomeMoveRow: View {
         Text(HighlightsText.ago(row.atMs, now: now)).font(TypeScale.caption2).foregroundStyle(t.ink3).lineLimit(1)
       }
       .fixedSize()
-      if let pct = row.changePct {
-        ChangePill(value: pct, text: HighlightsText.signedPct(pct, decimals: 2))
+      // 波动行写这次急涨 / 急跌本身的幅度、按方向着色；其余行写 24 小时涨跌。
+      if let pill = HighlightsText.homePill(row) {
+        ChangePill(value: pill.pct, text: pill.text)
       } else {
         ChangePill(value: .nan, text: SymbolRowText.missing)
       }
@@ -357,7 +366,7 @@ private struct HomeMoveRow: View {
     .contentShape(Rectangle())
     .onTapGesture { Haptics.tap(); onOpen() }
     .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("home.row.\(row.base)")
+    .accessibilityIdentifier("home.row.\(row.cat.rawValue).\(row.base)")
   }
 
   private var tag: some View {

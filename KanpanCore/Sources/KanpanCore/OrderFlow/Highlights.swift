@@ -314,7 +314,9 @@ public struct HighlightsBoard: Sendable, Equatable, Decodable {
     public var price: Double?
     public var changePct: Double?
     public var atMs: Int64
-    public var id: String { base }
+    /// 一只币可以同时有两行（例如一条「波动」+ 一条「费率」），所以身份是「类别:币」，不是币名。
+    /// 不用服务端的事件 id：同一只同一类换了一条新事件仍算「这一行更新了」，就地换数不换位。
+    public var id: String { cat.rawValue + ":" + base }
 
     public init(base: String, favorite: Bool, count: Int, cat: Category, tier: Int, top: Top, price: Double?, changePct: Double?, atMs: Int64) {
       self.base = base; self.favorite = favorite; self.count = count; self.cat = cat; self.tier = tier

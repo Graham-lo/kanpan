@@ -338,7 +338,10 @@ struct HighlightsTests {
     guard case .move(let up) = wif.top else { Issue.record("WIF 不是波动行"); return }
     #expect(up.up && up.window == .m1)
     #expect(HighlightsText.moveTag(up) == "急涨")
-    #expect(HighlightsText.homeFact(wif, zone: Self.utc8).plain == "1 分 +2.4% · 额 3.2M")
+    #expect(HighlightsText.homeFact(wif, zone: Self.utc8).plain == "1 分 · 额 3.2M")
+    // 药丸写这次波动本身（不是 24 小时涨跌），方向跟着急涨 / 急跌。
+    #expect(HighlightsText.homePill(wif)?.text == "+2.4%")
+    #expect((HighlightsText.homePill(wif)?.pct ?? 0) > 0)
     #expect(HighlightsText.focusID(wif) == nil)
 
     let pepe = b.rows[1]
@@ -348,7 +351,18 @@ struct HighlightsTests {
     // 平铺的那一行：价格与时刻从行上拿；额为 0 不写。
     #expect(pepe.price == 0.0000123)
     #expect(pepe.atMs == 70)
-    #expect(HighlightsText.homeFact(pepe, zone: Self.utc8).plain == "5 分 \u{2212}3.1%")
+    #expect(HighlightsText.homeFact(pepe, zone: Self.utc8).plain == "5 分")
+    #expect(HighlightsText.homePill(pepe)?.text == "\u{2212}3.1%")
+    #expect((HighlightsText.homePill(pepe)?.pct ?? 0) < 0)
+    // 急跌行哪怕 24 小时涨了 14.96%，药丸也写这次的 −1.4%、跌色。
+    let era = HighlightsBoard.Row(base: "ERA", favorite: false, count: 1, cat: .move, tier: 2,
+                                  top: .move(HighlightMove(up: false, window: .m1, pct: -1.4, volUsd: 114_000_000)),
+                                  price: 0.08, changePct: 14.96, atMs: 1)
+    #expect(HighlightsText.homePill(era)?.text == "\u{2212}1.4%")
+    #expect((HighlightsText.homePill(era)?.pct ?? 0) < 0)
+    #expect(HighlightsText.homeFact(era, zone: Self.utc8).plain == "1 分 · 额 114M")
+    // 其余行照旧写 24 小时涨跌，2 位。
+    #expect(HighlightsText.homePill(b.rows[2])?.text == nil || HighlightsText.homePill(b.rows[2])?.text.hasSuffix("%") == true)
   }
 
   @Test("榜单：减仓榜的 kind 是 oidown")

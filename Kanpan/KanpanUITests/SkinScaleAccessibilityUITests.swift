@@ -57,7 +57,7 @@ final class SkinScaleAccessibilityUITests: KanpanUICase {
     ("interval.indicators", "周期行尾的分析"),
     ("bottom.chart", "底栏图表"),
     ("bottom.favorites", "底栏自选"),
-    ("bottom.sectors", "底栏板块分类"),
+    ("bottom.home", "底栏首页"),
     ("bottom.me", "底栏我的"),
   ]
 
@@ -123,9 +123,9 @@ final class SkinScaleAccessibilityUITests: KanpanUICase {
     XCTAssertTrue(symbolLabel.hasPrefix("当前品种 "), "顶栏品种名念出来是「\(symbolLabel)」")
     XCTAssertEqual(app.buttons[Ids.searchButton].label, "搜索品种",
                    "放大镜念出来是「\(app.buttons[Ids.searchButton].label)」")
-    // 2026-09-27 底栏四格：图表 · 自选 · 板块分类 · 我的；周期条行尾「分析」（画线、指标都在它里面）同样念中文。
-    for (id, title) in [("interval.indicators", "分析"), ("bottom.chart", "图表"),
-                        ("bottom.favorites", "自选"), ("bottom.sectors", "板块分类"),
+    // 2026-10-10 底栏四格：首页 · 图表 · 自选 · 我的；周期条行尾「分析」（画线、指标都在它里面）同样念中文。
+    for (id, title) in [("interval.indicators", "分析"), ("bottom.home", "首页"), ("bottom.chart", "图表"),
+                        ("bottom.favorites", "自选"),
                         ("bottom.me", "我的")] {
       XCTAssertEqual(app.buttons[id].label, title,
                      "\(id) 念出来是「\(app.buttons[id].label)」，不是中文的「\(title)」")

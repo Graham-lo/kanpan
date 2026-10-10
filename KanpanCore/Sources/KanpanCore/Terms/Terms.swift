@@ -116,6 +116,7 @@ public enum HighlightTerm: String, CaseIterable, Sendable {
   case moveVol
   case segChange
   case segOi
+  case segSectors
   case rankGainers
   case rankLosers
   case rankOiUp

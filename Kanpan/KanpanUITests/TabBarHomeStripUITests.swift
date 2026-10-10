@@ -39,7 +39,7 @@ final class TabBarHomeStripUITests: KanpanUICase {
     expectExists(favRow, Self.long, "自选页没有行")
     checkStrip(page: "自选")
 
-    app.buttons[Ids.bottomSectors].tap()
+    app.openSectors()
     expectExists(app.otherElements["sector.page"], Self.long, "点「板块分类」没进板块页")
     let sectorRow = app.descendants(matching: .any)
       .matching(NSPredicate(format: "identifier BEGINSWITH %@", "sector.row.")).firstMatch

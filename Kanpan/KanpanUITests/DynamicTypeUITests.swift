@@ -47,7 +47,7 @@ final class DynamicTypeUITests: KanpanUICase {
     assertInWindow(["favorites.more", Ids.bottomChart], page: "自选")
 
     // 板块页：板块列表 → 一个板块的品种表
-    app.buttons[Ids.bottomSectors].tap()
+    app.openSectors()
     expectExists(app.otherElements["sector.page"], Self.long, "AX3 下进不了板块页")
     let row = app.descendants(matching: .any).matching(
       NSPredicate(format: "identifier BEGINSWITH %@", "sector.row.")).firstMatch

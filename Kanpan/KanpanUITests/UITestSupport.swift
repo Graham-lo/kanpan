@@ -64,10 +64,13 @@ enum Ids {
   /// 待判定角标挂在「我的」记号右上（`bottomMeBadge`，0 时不画）。
   /// 要量图区下沿就用标签栏任意一格。
   ///
-  /// 「板块分类」那一格里加密／美股用顶部硬切换，不另占底栏（`kanpan-bottom-tab-bar`）。
+  /// 2026-10-10 起四格是「首页 · 图表 · 自选 · 我的」：「板块分类」一格并进首页成了第四段
+  /// （`homeSectors`），进板块页走 `app.openSectors()`（点「首页」再点「板块」胶囊）。
+  static let bottomHome = "bottom.home"
   static let bottomChart = "bottom.chart"
   static let bottomFavorites = "bottom.favorites"
-  static let bottomSectors = "bottom.sectors"
+  /// 首页顶上那排胶囊的「板块」：原来底栏「板块分类」那一页。
+  static let homeSectors = "home.segment.sectors"
   static let bottomMe = "bottom.me"
   /// 「我的」记号右上的复盘待判定数。
   static let bottomMeBadge = "bottom.me.badge"
@@ -468,6 +471,14 @@ class KanpanUICase: XCTestCase {
 }
 
 extension XCUIApplication {
+  /// 进板块页：底栏「首页」→ 顶上「板块」胶囊（2026-10-10 前是底栏「板块分类」一格）。
+  func openSectors() {
+    buttons[Ids.bottomHome].tap()
+    let seg = buttons[Ids.homeSectors]
+    _ = seg.waitForExistence(timeout: 5)
+    seg.tap()
+  }
+
   /// 账号页的出口。表里、以及账号页的子页（同步、设备……）是左上那颗 `account.back`；
   /// 「我的 › 账号」推进来的顶层（2026-09-27 起，原来是设置 → 账号）用的是系统返回，它没有我们的标识符。
   /// 账号页 / 朋友页在不在。从「我的」进去是推进「我的」那一叠，SwiftUI 会把

@@ -2,7 +2,7 @@ import Foundation
 import KanpanCore
 import KanpanNetwork
 
-/// 首页（PROJECT.md §79）：「异动」一列 +「涨跌」「持仓」两段榜单（各两张、各自记窗口）。挂在 `MainScreen` 的 `@State` 上——
+/// 首页（PROJECT.md §79）：「异动」一列 +「涨跌」「持仓」两段榜单（各两张、各自记窗口）+「板块」（原底栏「板块分类」那一页，2026-10-10 并进来）。挂在 `MainScreen` 的 `@State` 上——
 /// 首页每切走一次整页拆掉重建，列表的顺序、拉到的数、选的窗口都得活在页外面。
 ///
 /// 「异动」打开时定序，之后每 60 秒拉一次：已在列表里的行就地换数、不换位；新出现的、或同一只又有了更新的
@@ -11,12 +11,12 @@ import KanpanNetwork
 @Observable
 final class HomeModel {
   enum Segment: String, CaseIterable {
-    case moves, change, oi
+    case moves, change, oi, sectors
 
-    /// 这一段摆哪两张榜（异动段没有）。
+    /// 这一段摆哪两张榜（异动、板块两段没有）。
     var kinds: [MarketBoard.Kind] {
       switch self {
-      case .moves: []
+      case .moves, .sectors: []
       case .change: [.gainers, .losers]
       case .oi: [.oi, .oidown]
       }
@@ -25,7 +25,7 @@ final class HomeModel {
     /// 窗口记在本机的键。涨跌沿用旧「榜单」的键，升级上来的人选过的窗口不丢。
     var windowKey: String? {
       switch self {
-      case .moves: nil
+      case .moves, .sectors: nil
       case .change: "kanpan.home.boardWindow"
       case .oi: "kanpan.home.oiWindow"
       }
@@ -79,13 +79,13 @@ final class HomeModel {
 
   /// 新拉到的并进正在显示的：顺序不动，已有的换成新数据；没了的留着旧数据；新来的（或同一只更新了的）只计数。
   static func merge(shown: [HighlightsBoard.Row], latest: [HighlightsBoard.Row]) -> (rows: [HighlightsBoard.Row], fresh: Int) {
-    let byBase = Dictionary(latest.map { ($0.base, $0) }, uniquingKeysWith: { a, _ in a })
-    let had = Dictionary(shown.map { ($0.base, $0) }, uniquingKeysWith: { a, _ in a })
+    let byBase = Dictionary(latest.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let had = Dictionary(shown.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     let fresh = latest.reduce(0) { n, r in
-      guard let old = had[r.base] else { return n + 1 }
+      guard let old = had[r.id] else { return n + 1 }
       return r.atMs > old.atMs ? n + 1 : n
     }
-    return (shown.map { byBase[$0.base] ?? $0 }, fresh)
+    return (shown.map { byBase[$0.id] ?? $0 }, fresh)
   }
 
   /// 自选里的币名（去掉缩放前缀、去重、保序，最多 60 只）。

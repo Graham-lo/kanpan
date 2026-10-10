@@ -737,7 +737,7 @@ final class WalkthroughSectorsUITests: WalkthroughCase {
 
   func testSectorPage() throws {
     step("板块") {
-      app.buttons[Ids.bottomSectors].tap()
+      app.openSectors()
       guard app.otherElements["sector.page"].waitForExistence(timeout: 15) else { return false }
       let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "sector.row.")).firstMatch
       _ = waitUntil(timeout: 20) { row.exists }
@@ -935,7 +935,7 @@ final class WalkthroughMeUITests: WalkthroughCase {
             if done.waitForExistence(timeout: 3) { done.tap(); settle(0.6) }
           }
           if app.openFavorites() { settle(1.2); shot("自选-\(tag)\(mode)") }
-          app.buttons[Ids.bottomSectors].tap(); settle(2.0); shot("板块-\(tag)\(mode)")
+          app.openSectors(); settle(2.0); shot("板块-\(tag)\(mode)")
           if app.openMePage() { settle(1.0); shot("我的-\(tag)\(mode)") }
           backToChart()
           return true

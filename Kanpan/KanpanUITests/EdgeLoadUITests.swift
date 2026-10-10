@@ -221,7 +221,7 @@ final class EdgeLoadUITests: KanpanUICase {
     XCTAssertTrue(app.openFavorites(), "空自选下自选页没开出来")
     XCTAssertTrue(app.staticTexts["还没有自选"].waitForExistence(timeout: Self.short), "自选页没有空态")
     for _ in 0..<3 {
-      app.buttons[Ids.bottomSectors].tap(); dwell(0.5)
+      app.openSectors(); dwell(0.5)
       app.buttons[Ids.bottomMe].tap(); dwell(0.5)
       app.buttons[Ids.bottomFavorites].tap(); dwell(0.5)
       app.buttons[Ids.bottomChart].tap(); dwell(0.5)

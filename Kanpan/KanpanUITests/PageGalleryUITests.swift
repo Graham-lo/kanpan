@@ -223,7 +223,7 @@ final class PageGalleryUITests: KanpanUICase {
     }
 
     step("板块") {
-      app.buttons[Ids.bottomSectors].tap()
+      app.openSectors()
       guard app.otherElements["sector.page"].waitForExistence(timeout: 15) else { return false }
       let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "sector.row.")).firstMatch
       _ = waitUntil(timeout: 20) { row.exists }

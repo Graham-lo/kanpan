@@ -30,6 +30,8 @@ struct ReviewBadgeIsolationTests {
 
   @Test func tickingHeaderDoesNotRecountReviews() {
     let tick = Tick(); let review = ReviewFeature(); let host = Count()
+    // 只数这条底栏自己那颗角标：app 宿主的底栏也在画角标，总数里混着宿主那几趟。
+    func mine() -> Int { ReviewCountBadge.bodiesByReview[ObjectIdentifier(review), default: 0] }
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 120))
     let controller = UIHostingController(rootView: Host(tick: tick, review: review, count: host))
     window.rootViewController = controller
@@ -39,14 +41,14 @@ struct ReviewBadgeIsolationTests {
     // 用例挤在一组里跑时主线程忙，50 ms 不够首屏排完，起算点落在半道上就会把首屏自己的
     // 那几趟重排算成「跟着行情重算」（2026-10-08 全量回归里红过一次，单跑三遍全绿）。
     // 所以等到角标的求值次数连续两趟不再变才起算，上限两秒。
-    var settled = ReviewCountBadge.bodies
+    var settled = mine()
     for _ in 0..<40 {
       RunLoop.main.run(until: Date().addingTimeInterval(0.05))
       controller.view.layoutIfNeeded()
-      if ReviewCountBadge.bodies == settled { break }
-      settled = ReviewCountBadge.bodies
+      if mine() == settled { break }
+      settled = mine()
     }
-    let first = ReviewCountBadge.bodies; let hostFirst = host.bodies
+    let first = mine(); let hostFirst = host.bodies
     #expect(first >= 1, "角标一次都没画出来，量不到")
     for n in 1...20 {
       tick.n = n
@@ -58,7 +60,7 @@ struct ReviewBadgeIsolationTests {
     // 宿主确实跟着重画了……
     #expect(host.bodies - hostFirst >= 20, "父视图只重算了 \(host.bodies - hostFirst) 次，这条量不到")
     // ……而角标一次都没重算。
-    #expect(ReviewCountBadge.bodies == first, "宿主跳 20 口，角标重算了 \(ReviewCountBadge.bodies - first) 次")
+    #expect(mine() == first, "宿主跳 20 口，角标重算了 \(mine() - first) 次")
     window.isHidden = true
   }
 }

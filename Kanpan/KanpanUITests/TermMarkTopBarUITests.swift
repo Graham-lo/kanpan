@@ -315,7 +315,7 @@ final class TermMarkTopBarUITests: KanpanUICase {
   // ------------------------------------------------------------ 4 + 5：板块副文案、列表拉到底
 
   func testSectorSubtitleAndListBottomClearance() throws {
-    app.buttons[Ids.bottomSectors].tap()
+    app.openSectors()
     XCTAssertTrue(any("sector.page").waitForExistence(timeout: Self.long), "没进板块页")
     let breadth = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sector.board.breadth."))
     XCTAssertTrue(waitUntil(timeout: Self.long) { breadth.count > 0 }, "板块列表里没有副文案")
@@ -345,7 +345,7 @@ final class TermMarkTopBarUITests: KanpanUICase {
     let last = try XCTUnwrap(rows.max { $0.frame.maxY < $1.frame.maxY }, "列表里一行都没读到")
     // 真的滚过了：第一行已经出了屏幕上沿（否则这张列表一屏就装下了，底边距没被考到）。
     XCTAssertGreaterThan(last.frame.maxY, app.windows.firstMatch.frame.height * 0.6, "最后一行离底栏太远，列表没滚起来")
-    let barTop = app.buttons[Ids.bottomSectors].frame.minY
+    let barTop = app.buttons[Ids.bottomHome].frame.minY
     XCTAssertLessThanOrEqual(last.frame.maxY, barTop, "拉到底最后一行 \(last.frame) 压到底栏（上沿 \(barTop)）")
     shot("青苔浅-板块品种列表拉到底")
   }

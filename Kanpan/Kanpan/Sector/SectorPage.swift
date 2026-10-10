@@ -51,6 +51,9 @@ struct SectorPage: View {
   /// 存在自己身上的 `@State` 会跟着死掉——下钻到品种列表、点进行情页再返回，
   /// 人就被扔回板块列表了。挪到宿主手里，来回一趟才回得到原来那一层。
   @Binding var route: [SectorRoute]
+  /// 挂在首页「板块」段里（2026-10-10 起底栏不再有「板块分类」一格）：页头换成和涨跌 / 持仓
+  /// 同一种标题行，今日 / 5 日、加密 / 美股收成标题行右端的小胶囊；底由首页铺，这里不再铺一层。
+  var inHome = false
   /// 「5 日」要的日线收盘。取不到就是空，页面回到只有今日的样子，不提示。
   /// 由 `feed` 带着（宿主持有，审查 D-04），页面只读；线路、可见、前后台都由 `feed` 转过去。
   private var historyFeed: SectorHistoryFeed { feed.daily }
@@ -152,7 +155,7 @@ struct SectorPage: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background { SectorBackdrop(skin: skin, reduceMotion: reduceMotion).ignoresSafeArea() }
+    .background { if !inHome { SectorBackdrop(skin: skin, reduceMotion: reduceMotion).ignoresSafeArea() } }
     .tint(theme.amber)
     // 只是一层淡入淡出。弹跳、抖动、回弹一概没有。
     .animation(reduceMotion ? nil : .easeOut(duration: 0.24), value: route)
@@ -177,8 +180,12 @@ struct SectorPage: View {
 
   private func boardLayer(_ snap: Snapshot) -> some View {
     VStack(spacing: 0) {
-      header(snap)
-      if snap.hasD5 { windowBar(snap) }
+      if inHome {
+        homeHeader(snap)
+      } else {
+        header(snap)
+        if snap.hasD5 { windowBar(snap) }
+      }
       switch SectorBoardContent.of(showsEmptyState: feed.showsEmptyState, hasStats: !snap.stats.isEmpty) {
       case .failed:
         emptyState
@@ -291,6 +298,54 @@ struct SectorPage: View {
     // 不在页面上另存一份（复核项 4）。
     .accessibilityValue(snap.windowTitle)
     .accessibilityIdentifier("sector.window")
+  }
+
+  // MARK: 首页「板块」段的页头
+
+  /// 和涨跌 / 持仓同一种标题行：左边「板块」13 semibold `ink2` + 规模一行（放不下整句不出，不截成「28 个…」），
+  /// 右边今日 / 5 日（5 日那档真有东西可看时才有）与加密 / 美股两组小胶囊。标识沿用 `sector.window.<raw>` /
+  /// `sector.market.<raw>`。
+  private func homeHeader(_ snap: Snapshot) -> some View {
+    HStack(spacing: Space.s) {
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s) { homeTitle; headerStats(snap) }
+        homeTitle
+      }
+      Spacer(minLength: Space.s)
+      if snap.hasD5 {
+        HStack(spacing: Space.xs) {
+          ForEach([SectorWindow.today, .d5], id: \.self) { w in
+            HomeCapsule(title: SectorWindowChoice.title(w), on: snap.window == w, size: .small, id: "sector.window." + w.rawValue) {
+              guard w != snap.window else { return }
+              Haptics.tap()
+              SectorWindowChoice.pick(w, shown: snap.window, market: market, habits: habits, store: store)
+            }
+          }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityValue(snap.windowTitle)
+        .accessibilityIdentifier("sector.window")
+        .padding(.trailing, Space.xs)
+      }
+      HStack(spacing: Space.xs) {
+        ForEach(SectorMarket.allCases, id: \.self) { m in
+          HomeCapsule(title: MarketSector.title(m.rawValue), on: market == m, size: .small, id: "sector.market." + m.rawValue) {
+            guard m != market else { return }
+            Haptics.tap()
+            switchMarket(m)
+          }
+        }
+      }
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("sector.market")
+    }
+    .frame(minHeight: Hit.min)
+    .pageHorizontalInset()
+  }
+
+  private var homeTitle: some View {
+    Text(HighlightTerm.segSectors.text).font(TypeScale.controlOn).foregroundStyle(theme.ink2)
+      .accessibilityAddTraits(.isHeader)
   }
 
   /// 市场硬切换。两个市场永远不共处一屏，换一格就是换一整套板块。

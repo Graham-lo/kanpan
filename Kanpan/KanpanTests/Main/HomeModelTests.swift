@@ -97,7 +97,9 @@ import KanpanCore
   }
 
   @Test func segmentsRouteToTheirOwnBoards() async {
-    #expect(HomeModel.Segment.allCases == [.moves, .change, .oi])
+    #expect(HomeModel.Segment.allCases == [.moves, .change, .oi, .sectors])
+    #expect(HomeModel.Segment.sectors.kinds.isEmpty)
+    #expect(HomeModel.Segment.sectors.windowKey == nil)
     #expect(HomeModel.Segment.change.kinds == [.gainers, .losers])
     #expect(HomeModel.Segment.oi.kinds == [.oi, .oidown])
     #expect(HomeModel.Segment.moves.kinds.isEmpty)

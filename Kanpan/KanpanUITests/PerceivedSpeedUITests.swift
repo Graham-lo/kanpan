@@ -48,7 +48,7 @@ final class PerceivedSpeedUITests: KanpanUICase {
   }
 
   func testSectorPageShowsSkeletonRowsWhileTheFirstBatchIsOnTheWay() {
-    app.buttons[Ids.bottomSectors].tap()
+    app.openSectors()
     let skeleton = app.descendants(matching: .any)["sector.skeleton"]
     let board = app.descendants(matching: .any)["sector.board"]
     // 第一趟在路上：骨架（没赶上就说明这一趟太快——那正是想要的，也照样记下来）。

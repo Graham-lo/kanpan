@@ -22,17 +22,17 @@ import ReviewUI
 /// 六块收在一页上（`MePage`）。顶栏那颗复盘按钮撤了，复盘还欠着答案的条数改挂在「我的」
 /// 记号右上角（`ReviewCountBadge`）。
 ///
-/// 「板块分类」只有这一格——加密和美股是那一页顶上的硬切换，**不会**再为美股开一格。
+/// 2026-10-10 定的四格：**首页 · 图表 · 自选 · 我的**。最左加「首页」（异动 · 涨跌 · 持仓 · 板块，
+/// PROJECT.md §79），冷启动默认落在它上面；原来的「板块分类」一格并进首页成了第四段（那一页原样搬过去，
+/// 删格之前的最后一个提交打了 tag `before-merge-sectors-tab-2026-10-10`）。
 enum Tab: String, CaseIterable, Sendable {
-  // 2026-10-10 最左加「首页」（异动 · 榜单，PROJECT.md §79），冷启动默认落在它上面。
-  case home, chart, favorites, sectors, me
+  case home, chart, favorites, me
 
   var title: String {
     switch self {
     case .home: HighlightTerm.home.text
     case .chart: "图表"
     case .favorites: "自选"
-    case .sectors: "板块分类"
     case .me: "我的"
     }
   }
@@ -220,8 +220,7 @@ struct TabBar: View {
 /// - **图表**：三根圆角蜡烛，外侧两根主色、中间一根金的；外侧两根各带一截圆头影线。
 ///   影线是这枚记号唯一的细部，收在 2.8 宽的圆角柱里，不会退回线框那一路。
 /// - **自选**：一颗圆角饱满的五角星，整颗是金的。一栏里只有它是纯暖色，所以一眼找得到。
-/// - **板块分类**：四颗大小不一的气泡，两颗主色、一颗金、一颗浅主色。这正是板块页上那幅画面
-///   ——大小说幅度、位置说强弱——缩到一枚记号里，所以它不用画任何别的东西就已经说清楚了。
+/// - **首页**：一面雷达（见 `radar`）。原来那枚「板块分类」四颗气泡 2026-10-10 随那一格一起删了。
 /// - **我的**：一个人形——主色的肩身、金色的头，头和肩之间留一道缝。2026-09-27 替下了
 ///   「设置」那枚齿轮（设置成了「我的」里的一行）。和其余三枚同一种画法：实心、圆润、两支釉，
 ///   不是线框（`kanpan-icons-are-not-wireframes`）。
@@ -240,7 +239,6 @@ private struct TabGlyph: View {
       case .home: radar
       case .chart: candles
       case .favorites: star
-      case .sectors: bubbles
       case .me: person
       }
     }
@@ -261,8 +259,8 @@ private struct TabGlyph: View {
   /// 釉·主色：浅一档的主色 → 主色。和品种徽章、分类药丸同一支渐变、同一个方向
   /// （浅的一头在左上），只是从方块挪到了记号上。原型里这支叫 `gA`。
   private var accentGlaze: LinearGradient { glaze(TabBar.lift(theme.seed.accent, 0.42), theme.amber) }
-  /// 釉·浅主色：比上面那支再提亮半档。原型里这支叫 `gL`，只用在板块记号那颗最小的气泡上——
-  /// 它紧挨着一颗主色的大球，同色贴在一起会糊成一块。
+  /// 釉·浅主色：比上面那支再提亮半档。原型里这支叫 `gL`，原来只用在板块记号那颗最小的气泡上；
+  /// 板块格并进首页之后用在首页雷达中间那颗圆盘上——紧挨着主色的外圈，同色贴在一起会糊成一块。
   private var accentLightGlaze: LinearGradient {
     glaze(TabBar.lift(theme.seed.accent, 0.52), TabBar.lift(theme.seed.accent, 0.16))
   }
@@ -300,20 +298,6 @@ private struct TabGlyph: View {
       + ".81 4.67c.16.93-.82 1.64-1.66 1.2L12 17.76l-4.24 2.19c-.84.44-1.82-.27-1.66-1.2"
       + "l.81-4.67-3.45-3.28c-.68-.65-.31-1.8.62-1.93l4.78-.69L11 3.92c.2-.38.58-.62 1-.62z")])
       .fill(goldGlaze)
-  }
-
-  /// 板块分类：四颗大小不一的气泡。
-  ///
-  /// 这一格的记号不用另想——板块页上那幅画面本身就是几十颗大小不一的球，大小说幅度、
-  /// 位置说强弱。把它缩到 24 的框里就剩四颗：左上一颗主色的大球、右上一颗金的小球、
-  /// 右下一颗主色的中球、左下一颗浅主色的小球。四颗错开摆，留白也是构图的一部分，
-  /// 所以不要把它们排齐。
-  private var bubbles: some View {
-    ZStack {
-      shape([.circle(x: 8.1, y: 8.6, r: 5), .circle(x: 15.7, y: 16.4, r: 4.4)]).fill(accentGlaze)
-      shape([.circle(x: 17.4, y: 6.6, r: 2.9)]).fill(goldGlaze)
-      shape([.circle(x: 6.1, y: 18, r: 2.5)]).fill(accentLightGlaze)
-    }
   }
 
   /// 我的：一个人形。肩身是一块下沿平、上沿圆的主色，头是一颗金色的圆，两块之间留 1.3 的缝，
@@ -434,11 +418,15 @@ struct ReviewCountBadge: View, Equatable {
   #if DEBUG
     /// 测试用：这块 body 一共求值了几次。
     static var bodies = 0
+    /// 测试用：按复盘本那只对象分开数。单测跑在 app 宿主里，宿主自己那条底栏也挂着一颗角标
+    /// （首页 2026-10-10 成了冷启动落点之后，宿主首屏还在落定时会多画几趟），只看总数会把宿主那几趟算进来。
+    static var bodiesByReview: [ObjectIdentifier: Int] = [:]
   #endif
 
   var body: some View {
     #if DEBUG
       let _ = Self.bodies += 1
+      let _ = Self.bodiesByReview[ObjectIdentifier(review), default: 0] += 1
     #endif
     let count = review.pendingCount
     if count > 0 {

@@ -447,7 +447,7 @@ final class StressRegression0928UITests: KanpanUICase {
 
     phase("自选加减")
     // 板块：今日 / 5 日，点进一个板块，列表没有排序小块。
-    app.buttons[Ids.bottomSectors].tap()
+    app.openSectors()
     let d5 = app.buttons["sector.window.d5"], today = app.buttons["sector.window.today"]
     XCTAssertTrue(today.waitForExistence(timeout: Self.long), "板块页没有「今日」")
     if d5.waitForExistence(timeout: Self.short) {
@@ -684,7 +684,7 @@ final class StressRegression0928UITests: KanpanUICase {
       swipePrice(next: i % 7 != 6); usleep(400_000)
       if i % 5 == 4 { XCTAssertTrue(app.openIndicatorPage(), "第 \(i) 轮分析没开出来"); app.closeOpenPanel() }
       if i % 9 == 8 {
-        for tab in [Ids.bottomFavorites, Ids.bottomSectors, Ids.bottomMe] where app.buttons[tab].exists { app.buttons[tab].tap(); usleep(500_000) }
+        for tab in [Ids.bottomFavorites, Ids.bottomHome, Ids.bottomMe] where app.buttons[tab].exists { app.buttons[tab].tap(); usleep(500_000) }
         app.buttons[Ids.bottomChart].tap(); usleep(500_000)
       }
       i += 1

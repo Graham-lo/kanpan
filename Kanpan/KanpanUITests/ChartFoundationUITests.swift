@@ -566,7 +566,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["bottom.chart"].exists, "行情页上没有标签栏")
 
     // ③ 板块分类：整页，顶上是加密／美股的硬切换，不占底栏第六格。
-    app.buttons["bottom.sectors"].tap()
+    app.openSectors()
     XCTAssertTrue(app.otherElements["sector.page"].waitForExistence(timeout: 15), "点「板块分类」没进板块页")
     XCTAssertTrue(app.buttons["sector.market.us"].exists, "板块页顶上没有「美股」那一档")
     XCTAssertTrue(app.buttons[Ids.bottomMe].exists, "板块页上没有标签栏")

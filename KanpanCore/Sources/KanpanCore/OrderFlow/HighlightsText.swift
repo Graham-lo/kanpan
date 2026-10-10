@@ -381,8 +381,8 @@ public enum HighlightsText {
       let amount = l.wallUsd > 0 ? usd(l.wallUsd) : T.fillMeta.fill(["v": usd(l.fillUsd)])
       return levelHead(l, price: row.price, decimals: nil, scale: 1) + [HighlightRun(" " + zoneName(l.side) + " · " + amount)]
     case .move(let m):
-      // `1 分 +2.4% · 额 3.2M`（额为 0 / 没有时不写）。
-      var runs = [HighlightRun(moveWindowName(m.window) + " "), HighlightRun(signedPct(m.pct, decimals: 1), strong: true)]
+      // `1 分 · 额 114M`：只写窗口与成交额（额为 0 / 没有时只写窗口）；幅度在行尾药丸上（`homePill`）。
+      var runs = [HighlightRun(moveWindowName(m.window))]
       if let v = m.volUsd, v > 0 { runs.append(HighlightRun(" · " + T.moveVol.fill(["v": usd(v)]))) }
       return runs
     case .event(let e):
@@ -415,6 +415,17 @@ public enum HighlightsText {
   }
 
   /// 波动窗口：`1 分` / `5 分`。
+  /// 首页异动行尾的涨跌药丸：波动行写这次急涨 / 急跌本身的幅度（1 位小数，按方向着色），
+  /// 不写 24 小时涨跌——急跌行挂一颗绿色 +14.96% 读起来是反的；其余行写 24 小时涨跌（2 位）。没有就 nil。
+  public static func homePill(_ row: HighlightsBoard.Row) -> (pct: Double, text: String)? {
+    if case .move(let m) = row.top {
+      let pct = m.up ? abs(m.pct) : -abs(m.pct)
+      return (pct, signedPct(pct, decimals: 1))
+    }
+    guard let pct = row.changePct, pct.isFinite else { return nil }
+    return (pct, signedPct(pct, decimals: 2))
+  }
+
   public static func moveWindowName(_ w: HighlightMove.Window) -> String {
     T.minutes.fill(["n": w == .m1 ? "1" : "5"])
   }

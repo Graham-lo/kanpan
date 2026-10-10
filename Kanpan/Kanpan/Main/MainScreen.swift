@@ -382,8 +382,8 @@ struct MainScreen: View {
       .environment(\.symbolWarmup, symbolWarmup)
   }
 
-  /// 首页（异动 · 榜单）。点异动一行：去行情页、换到这只，「盘口要点」到了就展开那一条并升起半页；
-  /// 点榜单一行只开图。
+  /// 首页（异动 · 涨跌 · 持仓 · 板块）。点异动一行：去行情页、换到这只，「盘口要点」到了就展开那一条并升起半页；
+  /// 点榜单一行只开图。「板块」段挂的就是原来底栏「板块分类」那一页（2026-10-10 并进首页）。
   private var homePage: some View {
     HomeScreen(model: home, catalog: market.highlightsCatalog, favorites: picker.prefs.favorites,
                signedIn: account.user != nil, zone: prefs.timeZone.offsetMinutes,
@@ -394,7 +394,8 @@ struct MainScreen: View {
                  highlights.expect(base: row.base, focusID: HighlightsText.focusID(row), autoOpen: true)
                  open(linkedSymbol: homeSymbol(base: row.base))
                },
-               onOpenBoard: { open(linkedSymbol: homeSymbol(base: $0)) })
+               onOpenBoard: { open(linkedSymbol: homeSymbol(base: $0)) },
+               sectors: AnyView(sectorPage), drilled: !sectorRoute.isEmpty)
   }
 
   /// 自选里同一只币的那一条（去掉缩放前缀比）。
@@ -428,7 +429,7 @@ struct MainScreen: View {
                onListShown: { market.prefetchList($0) },
                onListHidden: { market.cancelListPrefetch() },
                previews: previews, picker: picker,
-               route: $sectorRoute)
+               route: $sectorRoute, inHome: true)
       .environment(\.symbolWarmup, symbolWarmup)
   }
 
@@ -707,7 +708,6 @@ struct MainScreen: View {
     case .home: FavoritesView.pageGround(theme)
     case .chart: nil
     case .favorites: FavoritesView.pageGround(theme)
-    case .sectors: SectorSkin(theme: theme).ground
     case .me: theme.app
     }
   }
@@ -720,7 +720,6 @@ struct MainScreen: View {
       case .favorites:
         if landingHeld, picker.prefs.favorites.isEmpty { FavoritesLandingPlaceholder() }
         else { favoritesPage }
-      case .sectors: sectorPage
       // 2026-09-27：第四格从「设置」换成「我的」，设置是那一页里推进去的一层。
       case .me: MePage(store: store, review: review, alerts: alerts, inbox: inbox,
                        path: $mePath, destination: meDestination,
@@ -795,9 +794,9 @@ struct MainScreen: View {
     // 底栏是常驻标签栏，自己点一格就是「回家」——上一次的来路作废，顶栏那颗返回
     // 跟着收起来；那张冻结的名单也跟着作废（§10.1）。见 `ChartTrail.tapped`。
     trail.tapped(next, on: tab)
-    // 再点一下已经站着的那一格 = 回到这一页的根。板块页下钻了两层时尤其需要：
-    // 底栏那一格是它唯一的出口。
-    if next == tab, next == .sectors { sectorRoute = [] }
+    // 再点一下已经站着的那一格 = 回到这一页的根。首页「板块」段下钻了两层时尤其需要：
+    // 底栏「首页」那一格是它唯一的出口（2026-10-10 板块并进首页之前是底栏「板块分类」那格）。
+    if next == tab, next == .home, home.segment == .sectors { sectorRoute = [] }
     guard next != tab else { return }
     if next != .chart { draw.finish() }
     tab = next

@@ -128,7 +128,7 @@ final class MainScreenUITests: KanpanUICase {
     check("favorites.price.binance/usd_m/1000SATSUSDT", digits: 8)
     check("favorites.price.binance/usd_m/BTCUSDT", digits: 1)
     shot("precision-favorites-crypto")
-    app.buttons[Ids.bottomSectors].tap()
+    app.openSectors()
     let usMarket = app.buttons["sector.market.us"]
     guard expectExists(usMarket, Self.long) else { return }
     usMarket.tap()
@@ -196,7 +196,7 @@ final class MainScreenUITests: KanpanUICase {
   /// 两件事一起验：顶栏那颗返回在「走进来」的图上要存在；退回去之后板块页下钻到
   /// 第几层就还在第几层（路由挪到宿主身上之前，切走一次就整页重建，人被扔回板块列表）。
   func testSectorDrillDownRoundTripsThroughChart() {
-    app.buttons[Ids.bottomSectors].tap()
+    app.openSectors()
     expectExists(app.otherElements["sector.page"], Self.long, "点「板块分类」没进板块页")
     let sectorRow = app.descendants(matching: .any).matching(
       NSPredicate(format: "identifier BEGINSWITH %@", "sector.row.")).firstMatch

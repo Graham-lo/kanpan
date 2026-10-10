@@ -335,7 +335,7 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     // 板块：下钻一层（板块列表 → 某个板块的品种列表）。
     // 注意全程不许在已经站在板块页时再点一次「板块分类」——那一下按规则要把下钻
     // 路径清回板块列表（`MainScreen.switchTo`），会把这条腿自己验的东西擦掉。
-    app.buttons[Ids.bottomSectors].tap()
+    app.openSectors()
     expectExists(app.otherElements["sector.page"], Self.long, "点「板块分类」没进板块页")
     let sectorRow = app.descendants(matching: .any).matching(
       NSPredicate(format: "identifier BEGINSWITH %@", "sector.row.")).firstMatch
@@ -368,7 +368,7 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     shot("逐页往返之后的图表")
 
     // 回板块：还站在第二层那张品种列表上，而且还是同一个板块（C-01 钉的就是它）。
-    app.buttons[Ids.bottomSectors].tap()
+    app.openSectors()
     XCTAssertTrue(listBack.waitForExistence(timeout: Self.long),
                   "切回板块，人被扔回板块列表了——下钻路径没被持有")
     XCTAssertTrue(app.buttons[sectorMemberID].waitForExistence(timeout: Self.long),

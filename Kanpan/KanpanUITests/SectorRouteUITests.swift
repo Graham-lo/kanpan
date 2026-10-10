@@ -44,7 +44,7 @@ final class SectorRouteUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.long) { source.label == "okx" },
                   "币安 REST 被按死之后行情源仍不是 okx（label=\(source.label)），这一趟没走网关")
 
-    app.buttons[Ids.bottomSectors].tap()
+    app.openSectors()
     expectExists(app.otherElements["sector.page"], Self.long, "点「板块分类」没进板块页")
 
     let row = app.descendants(matching: .any).matching(

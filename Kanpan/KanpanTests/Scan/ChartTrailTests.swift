@@ -18,8 +18,8 @@ struct ChartTrailTests {
     var trail = ChartTrail()
     trail.entered(from: .chart)
     #expect(trail.origin == nil)
-    trail.entered(from: .sectors)
-    #expect(trail.origin == .sectors)
+    trail.entered(from: .home)
+    #expect(trail.origin == .home)
   }
 
   @Test("行情页上再点「图表」只回到最新：来路和名单都留着（9414f44b）")
