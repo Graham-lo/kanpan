@@ -2171,3 +2171,13 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **第二轮审查改动**（用户：字体太大不精致、换首页 icon、按视觉设计师 / 交易员 / 产品设计师三视角对照 app 风格）：底栏五颗记号改成照 `TabBar.swift` 釉面实心（初版线描不合规），首页记号 = 雷达（主色釉环 + 金扫描扇 + 浅主色中心点）；涨跌药丸改自选行同款淡色（14% 底 + 0.5 pt 描边）；字阶收一档对齐 DesignTokens（名 13/semibold、价 14、事实 11、分段 12、胶囊 11.5，徽章 28，行高 58）；半页顶边从 156 改到 177（原来盖住涨跌行和第三行六格）；首页行改两行结构（事实整行不截断）。
 - **下一步**：用户定板后实现——服务端要点引擎（`highlights.rs` + 自选跟踪层 + `board.rs`），iOS（`Tab.home` / `HomeScreen` / `PanelHost` 高度档半页 / 入口条 / `RangeOverlayView` 多画笔），手机网页（`PAGES.home` / `pages/home.ts` / 半页）；先推能用的增量，整批做完做全面回归并带画线交叉验证。
 
+
+## 80. 2026-10-10：公允价值缺口（FVG）三端上线
+
+- **用户要的**：加 FVG 分析；定了三件事——入口放「分析」面板单独一项（不进指标列表）、已回补的缺口直接消失、三端一起做。界面名「公允价值缺口」，不出现英文缩写。
+- **口径（三端一份，不开放设置）**：只用已收线 K 线生成（多头 low[i] > high[i−2]，空头 high[i] < low[i−2]）；缺口 ≥ 0.25 × TR14（14 根真实波幅**简单均值**，不用 Wilder 递归，加载多少历史都一样、三端位对位一致）；从第 i+1 根起含正在走的那根回补到哪收缩到哪，完全穿过即删；只留最近 500 根内生成的、每边最多 6 个；不限周期。画在主力订单流上、K 线下：多头 `band` / 空头 `amber`（BOLL 那对，不用涨跌色免得和买卖墙撞），填充 0.12 无边框，原始 50% 中线 0.5pt 虚线 0.35、被回补过就不画；不撑价格区间；对比 / 百分比轴不画。参数 `KanpanCore/Sources/KanpanCore/Analysis/fvg.json`（网页经 Vite JSON import 同一份），黄金样例 `KanpanCoreTests/Fixtures/fvg.json` 15 例 Swift / vitest 同读。
+- **跟人走**：新字段 `autoLayers: [String]`（白名单 `["FVG"]`，`AutoLayer` 枚举在 KanpanCore），`PrefsFieldPlan .synced` → `settings-fields.json` → `sync.rs SETTINGS_FIELDS` + `sync_validation.rs` 值规则（白名单字符串数组、不许重复）。后端先部署再发客户端。新脚本 `Backend/kanpan-api/ops/sync-field-smoke.py`（一次性账号推合法 / 非法值、读回、删号）写进 AGENTS.md「加 / 删一个同步字段」第 5 步——**用户 10-10 明确：线上冒烟自己注册测试账号打、打完删**。
+- **已推送 main**：`d50781a8` 算法 / `1ac75ee4` 字段与契约 / `4b06d9b0` 冒烟脚本 / `14c09aea` 手机网页 / `f57ec021` 电脑网页（`ChartLayer` 新增 `beforeCandles` 钩子）/ `ec8f9160` iOS（`ChartRenderer+FVG`、`ChartState.autoLayers` + `lastBarLive`、`BarSeries.closedCount(nowMs:)`、`IndicatorPanel` 主图叠加后单独一张卡、画线台主图指标页同一行且跟「指标」胶囊一起收）。iOS 缓存键「序列戳 + 根数 + 已收线根数」，十字线 / 拖图不重算。
+- **已部署**：后端（autoLayers 校验）与网页（PC `index-C_T4h2dt.js`、手机 `m-B0ohAaB2.js`）都在线上。
+- **已验收**：BTC 1 时三端同一块空头缺口 84,120–84,965；电脑网页开开关 → 服务端 `["FVG"]` → 手机网页同账号登录后自动开并画出；线上字段冒烟五组全对；QA 账号已删。证据 [docs/acceptance/公允价值缺口-2026-10-10/](../docs/acceptance/公允价值缺口-2026-10-10/)。core 525 / chart 300 / 网页 2753 / UI 开关往返用例全过；`app-logic-test` 2 条失败与本轮无关（`d109ab70` 搜索展示对齐改了「DXY 指数」/ `gone.name`，另开任务修）。
+- **整批回归与真机**：见本节末尾追记。

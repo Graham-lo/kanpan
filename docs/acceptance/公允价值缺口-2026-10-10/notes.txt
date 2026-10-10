@@ -1,0 +1,9 @@
+panel-fvg-on|symbol=binance/usd_m/BTCUSDT|interval=1h|fvg=["bear", "bull"]|flow=|bands=0
+青苔浅-BTCUSDT-15m|symbol=binance/usd_m/BTCUSDT|interval=15m|fvg=["bull", "bull", "bull"]|flow=|bands=0
+青苔浅-BTCUSDT-1h|symbol=binance/usd_m/BTCUSDT|interval=1h|fvg=["bear", "bull"]|flow=|bands=0
+青苔深-BTCUSDT-15m|symbol=binance/usd_m/BTCUSDT|interval=15m|fvg=["bull", "bull", "bull"]|flow=|bands=0
+青苔深-BTCUSDT-1h|symbol=binance/usd_m/BTCUSDT|interval=1h|fvg=["bear", "bull"]|flow=|bands=0
+经典浅-BTCUSDT-15m|symbol=binance/usd_m/BTCUSDT|interval=15m|fvg=["bull", "bull", "bull"]|flow=|bands=0
+经典浅-BTCUSDT-1h|symbol=binance/usd_m/BTCUSDT|interval=1h|fvg=["bear", "bull"]|flow=|bands=0
+经典浅-BTCUSDT-15m-主力订单流同开|symbol=binance/usd_m/BTCUSDT|interval=15m|fvg=["bull", "bull", "bull"]|flow=ready|bands=10
+青苔深-BTCUSDT-15m-主力订单流同开|symbol=binance/usd_m/BTCUSDT|interval=15m|fvg=["bull", "bull", "bull"]|flow=ready|bands=11
