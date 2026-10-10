@@ -31,6 +31,7 @@ import { GEOM, drawGeom, geomHandles, geomOf, hitGeom } from './drawGeom'
 import type { DrawStyle } from './drawStyle'
 import { drawKeyLevels, drawKeyAxis } from './keyLevels'
 import { detachFlows } from './tradeFlow'
+import { layoutAxisLabels } from './axisLabels'
 import { linePriceAt } from '../alerts/shape'
 import { DEFAULTS as CS_DEFAULTS, crossText, dashOf, dayStartSh, marginRange, type ChartSettings } from './chartSettings'
 import { COMPARE_COLORS, alignCompare, compareBaseIndexFrom, comparePercentAt, comparePercentLabel, compareSegments, pctOf, percentTickLabel, percentTicks, priceOfPct, type Aligned, type CompareLine } from './compare'
@@ -310,6 +311,12 @@ interface DragAlert { kind: 'alert'; line: AlertLine | null; price: number; move
 type DragState = DragPan | DragDrawing | DragMeasure | DragAlert | DragPlace
 /** 价格轴左侧「+」建提醒的热区宽度 */
 const ALERT_CHIP_W = 22
+/** 价格轴标签的高 */
+const AXIS_TAG_H = 20
+/** 价格轴标签让位的优先级：大的先摆、最后被丢（最新价最高，永远完整） */
+const TAG_PRI = { line: 0, ind: 1, compare: 2, alert: 3, last: 4 } as const
+/** 一枚等着排的价格轴标签：y = 价位所在的 y（标签中心想放的地方） */
+interface AxisTag { y: number; text: string; bg: string; fg: string; pri: number }
 
 // ------------------------------------------------------------ 引擎
 export class TVChart {
@@ -443,6 +450,10 @@ export class TVChart {
   /** 提醒线（见 AlertSignal）：页面把这只品种上还在生效的画线提醒整份给，画哪几条由 signalsShown 定 */
   alertSignals: AlertSignal[] = []
   dead = false
+  /** 价格轴上画不画指标标签（多图 ≥ 4 格时布局那边关，见 setAxisLabels） */
+  private axisInd = true
+  /** 这一帧价格轴上实际画了哪些标签（中心 y、想放的 y）；回归脚本与截图验收读 */
+  axisTagsDrawn: { pane: string; text: string; y: number; want: number; pri: number }[] = []
   ro: ResizeObserver
   w = 10
   h = 10
@@ -701,45 +712,76 @@ export class TVChart {
     if (S.hiloLine) { const hl = this.visibleHiLo(); if (hl) { line(hl.hi, this.colors.text2); line(hl.lo, this.colors.text2) } }
     if (S.prevClose) { const v = this.prevDayClose(); if (v != null) line(v, this.colors.text3) }
   }
-  /** 价格轴上的一枚标签（和最新价标签一个样子） */
-  private axisTag(p: Pane, y: number, text: string, bg: string, fg = '#fff'): void {
-    const c = this.ctx, PW = this.plotW(), h = 20
-    if (y < p.y || y > p.y + p.h) return
-    const top = clamp(y - 10, p.y, p.y + p.h - h)
-    c.fillStyle = bg; roundRect(c, PW + 1, top, this.aw - 2, h, 3); c.fill()
+  /** 价格轴上的一枚标签（和最新价标签一个样子）；top = 标签上沿（已由 layoutAxisLabels 排好） */
+  private axisTagAt(top: number, text: string, bg: string, fg = '#fff'): void {
+    const c = this.ctx, PW = this.plotW()
+    c.fillStyle = bg; roundRect(c, PW + 1, top, this.aw - 2, AXIS_TAG_H, 3); c.fill()
     c.fillStyle = fg; c.textAlign = 'left'; c.font = this.font // TV 轴上标签不加粗
-    c.fillText(text, PW + 8, top + 10)
+    c.fillText(text, PW + 8, top + AXIS_TAG_H / 2)
     c.font = this.font
   }
-  /** 比例尺与线：指标最新值、最高最低价、前收盘价的轴标签（主图）。最新价标签最后画，压在最上面 */
-  private drawSettingLabels(p: Pane, r: PriceRange): void {
+  /**
+   * 一个窗格里的轴标签排成不重叠的一列再画（照 TV：撞在一起的按离自己价位最近的空位上下推开，
+   * 推开超过 1.5 枚高还放不下的不画；layoutAxisLabels）。优先级低的先画，最新价最后画、压在最上面。
+   * 十字线读数不在这里（drawCrosshair 最后画、不参与让位）。
+   */
+  private drawAxisTags(p: Pane, tags: AxisTag[]): void {
+    if (!tags.length) return
+    const ys = layoutAxisLabels(tags.map(t => ({ y: t.y, h: AXIS_TAG_H, priority: t.pri })), p.y, p.y + p.h)
+    const order = tags.map((_, k) => k).sort((a, b) => tags[a].pri - tags[b].pri || a - b)
+    for (const k of order) {
+      const y = ys[k]; if (y == null) continue
+      const t = tags[k]
+      this.axisTagAt(y - AXIS_TAG_H / 2, t.text, t.bg, t.fg)
+      this.axisTagsDrawn.push({ pane: p.id, text: t.text, y, want: t.y, pri: t.pri })
+    }
+  }
+  /** 比例尺与线：指标最新值、最高最低价、前收盘价的轴标签（主图），收进 out 等统一排 */
+  private settingTags(p: Pane, r: PriceRange, out: AxisTag[]): void {
     const S = this.cs(), C = this.colors, i = this.lastIndex()
+    const add = (v: number, bg: string, pri: number): void => {
+      const y = this.priceToY(v, p, r); if (y < p.y || y > p.y + p.h) return
+      out.push({ y, text: this.mainAxisText(v), bg, fg: '#fff', pri })
+    }
     // TV showStudyLastValue：每个主图指标的每条线都在价格轴上挂当前值（成交量分布、关键位、枢轴、分形、之字转向是图形，不挂）
-    if (S.indLabels) for (const id of MAIN_IDS) {
+    // 多图 ≥ 4 格时布局那边关掉（setAxisLabels），只留最新价与十字线读数
+    if (S.indLabels && this.axisInd) for (const id of MAIN_IDS) {
       if (NO_AXIS_TAG.has(id) || !mainOn(this.ind, id) || this.hidden.has(id)) continue
       const ser = this.series[id]; if (!ser) continue
       const cols = CATALOG[id].colors ?? []
-      ser.forEach((s, k) => { const v = s[i]; if (v != null && Number.isFinite(v)) this.axisTag(p, this.priceToY(v, p, r), this.mainAxisText(v), cols[k % cols.length] || C.text2) })
+      ser.forEach((s, k) => { const v = s[i]; if (v != null && Number.isFinite(v)) add(v, cols[k % cols.length] || C.text2, TAG_PRI.ind) })
     }
-    if (S.hiloLabel) { const hl = this.visibleHiLo(); if (hl) { this.axisTag(p, this.priceToY(hl.hi, p, r), this.mainAxisText(hl.hi), C.text2); this.axisTag(p, this.priceToY(hl.lo, p, r), this.mainAxisText(hl.lo), C.text2) } }
-    if (S.prevClose) { const v = this.prevDayClose(); if (v != null) this.axisTag(p, this.priceToY(v, p, r), this.mainAxisText(v), C.text3) }
+    if (S.hiloLabel) { const hl = this.visibleHiLo(); if (hl) { add(hl.hi, C.text2, TAG_PRI.line); add(hl.lo, C.text2, TAG_PRI.line) } }
+    if (S.prevClose) { const v = this.prevDayClose(); if (v != null) add(v, C.text3, TAG_PRI.line) }
   }
-  /** 副图指标每条线 / 柱的最新值标签（TV showStudyLastValue），柱子的标签色就是这根柱子的颜色 */
+  /** 副图指标每条线 / 柱的最新值标签（TV showStudyLastValue），柱子的标签色就是这根柱子的颜色；每个副图各排一列 */
   private drawSubLabels(panes: Pane[]): void {
-    if (!this.cs().indLabels) return
+    if (!this.cs().indLabels || !this.axisInd) return
     const i = this.lastIndex()
     for (const p of panes.slice(1)) {
       const id = p.id as SubId, r = this._ranges[p.id], ser = this.series[id]; if (!r || !ser || this.hidden.has(id)) continue
       const styles: readonly SubStyle[] = id === 'macd' ? ['line', 'line', 'hist4'] : subStyles(id) ?? []
       const cols = CATALOG[id]?.colors ?? []
       const h4 = this.hist4Colors()
+      const tags: AxisTag[] = []
       ser.forEach((s, k) => {
         const st = styles[k] ?? 'line', v = s[i]; if (v == null || !Number.isFinite(v)) return
         const col = st === 'hist' || st === 'hist4' || st === 'histTrend' ? this.histColor(st, v, s[i - 1] ?? v, h4) : cols[k % cols.length] || this.colors.text2
-        this.axisTag(p, this.priceToY(v, p, r), this.subFmt(id, v), col)
+        const y = this.priceToY(v, p, r); if (y < p.y || y > p.y + p.h) return
+        tags.push({ y, text: this.subFmt(id, v), bg: col, fg: '#fff', pri: TAG_PRI.ind })
       })
+      this.drawAxisTags(p, tags)
     }
   }
+  /**
+   * 价格轴上的指标标签开不开（主图均线等、副图 MACD / RSI 当前值）。由多图布局按格数定（≥ 4 格关），不是用户设置；
+   * 最新价、提醒价、对比线与十字线读数不受它管
+   */
+  setAxisLabels(o: { indicators: boolean }): void {
+    if (this.axisInd === o.indicators) return
+    this.axisInd = o.indicators; this.dirty = true
+  }
+  get axisIndicatorLabels(): boolean { return this.axisInd }
   /** 能不能新画、拖、改画线（复盘回放里不能） */
   editable(): boolean { return !this.readOnly && !this.pendingMeta }
   /** 把选中的画线挪 dx / dy 像素（方向键微调）；锁住的、只读时不动 */
@@ -1258,6 +1300,7 @@ export class TVChart {
     }
     c.font = this.font
 
+    this.axisTagsDrawn = []
     this.drawPriceLabels(mainPane, mr)
     this.drawSubLabels(panes)
     // 十字线以下到此画完：十字线在的话存一张底图（之后十字线再动只贴底图重画十字线），不在就记下主画布本身就是底图
@@ -1638,20 +1681,25 @@ export class TVChart {
   }
   drawPriceLabels(p: Pane, r: PriceRange): void {
     const c = this.ctx, C = this.colors, PW = this.plotW()
-    const label = (y: number, text: string, bg: string, fg: string) => {
-      const h = 20
-      const top = clamp(y - 10, p.y, p.y + p.h - h)
-      c.fillStyle = bg; roundRect(c, PW + 1, top, this.aw - 2, h, 3); c.fill()
-      c.fillStyle = fg; c.textAlign = 'left'; c.font = this.font // TV 轴上标签不加粗
-      c.fillText(text, PW + 8, top + 10)
-      c.font = this.font
-    }
     if (this.ind.keys && !this.hidden.has('keys')) drawKeyAxis(this, p, r)
+    const tags: AxisTag[] = []
     for (const a of this.alertsShown()) {
       const y = this.priceToY(a.price, p, r); if (y < p.y || y > p.y + p.h) continue
-      label(y, fmtAxis(a.price, this.meta.dec), C.alert, '#fff')
+      tags.push({ y, text: fmtAxis(a.price, this.meta.dec), bg: C.alert, fg: '#fff', pri: TAG_PRI.alert })
     }
-    // 价格轴上的「+」：点下去拖到位松手就建一条提醒
+    // 对比线的最新值：各自的颜色，压在主图最新价下面
+    const cb = this.compareBase()
+    if (cb) for (const cv of this.compareViews()) {
+      const v = cv.at(this.lastIndex()); if (v == null) continue
+      const y = this.priceToY(priceOfPct(v, cb.price), p, r); if (y < p.y || y > p.y + p.h) continue
+      tags.push({ y, text: comparePercentLabel(v), bg: cv.color, fg: '#fff', pri: TAG_PRI.compare })
+    }
+    this.settingTags(p, r, tags)
+    // 最新价：优先级最高，第一个摆、永远完整不挪（出了窗格就贴在上下沿），最后画、压在最上面
+    const b = this.lastBar()
+    if (b && this.cs().lastLabel) tags.push({ y: this.priceToY(b.c, p, r), text: this.mainAxisText(b.c), bg: this.lastColor(b), fg: '#fff', pri: TAG_PRI.last })
+    this.drawAxisTags(p, tags)
+    // 价格轴上的「+」：点下去拖到位松手就建一条提醒（跟着鼠标，不参与让位）
     if (this.axisHoverY != null && !this.drag && this.axisHoverY >= p.y && this.axisHoverY < p.y + p.h) {
       const y = this.axisHoverY, top = clamp(y - 9, p.y, p.y + p.h - 18)
       c.fillStyle = C.alert; roundRect(c, PW + 2, top, ALERT_CHIP_W - 4, 18, 4); c.fill()
@@ -1661,17 +1709,6 @@ export class TVChart {
       c.fillStyle = C.text; c.textAlign = 'left'; c.font = this.font
       c.fillText(fmtAxis(this.yToPrice(y, p, r), this.meta.dec), PW + ALERT_CHIP_W + 2, top + 9)
     }
-    // 对比线的最新值：各自的颜色，压在主图最新价下面
-    const cb = this.compareBase()
-    if (cb) for (const cv of this.compareViews()) {
-      const v = cv.at(this.lastIndex()); if (v == null) continue
-      const y = this.priceToY(priceOfPct(v, cb.price), p, r); if (y < p.y || y > p.y + p.h) continue
-      label(y, comparePercentLabel(v), cv.color, '#fff')
-    }
-    this.drawSettingLabels(p, r)
-    const b = this.lastBar(); if (!b || !this.cs().lastLabel) return
-    const y = this.priceToY(b.c, p, r)
-    label(y, this.mainAxisText(b.c), this.lastColor(b), '#fff')
     // 十字线标签画在最上层（drawCrosshair）
   }
   drawCrosshair(panes: Pane[]): void {
@@ -2402,6 +2439,8 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(naviga
 // ------------------------------------------------------------ 共用的一帧
 // 十六格各自挂一个 requestAnimationFrame 循环，每帧就是十六次回调；合成一个循环，挨个问脏没脏。
 const frames = new Set<TVChart>()
+/** el 里面（含 el 自己）挂着的图表实例：多图布局按格数给每格开关指标轴标签用 */
+export function chartsIn(el: Element): TVChart[] { return [...frames].filter(ch => el.contains(ch.host)) }
 let frameId = 0, inTick = false
 function tick(): void {
   frameId = 0
