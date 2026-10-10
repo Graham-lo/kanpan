@@ -15,7 +15,7 @@ import type { Alert } from '../alerts/shape'
 import { DEFAULT_WATCH, type Kind } from '../market/symbols'
 import {
   type Ctx, SETTINGS_FIELDS, SETTINGS_ID, alertId, applySettings, webSetting, decodeSetting, putSetting, decodeAlert, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
-  encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, lastTouched, resetSettings, syncableAlert, syncableDrawing, validSymbol, pausedLineAlerts, seenWhenUndecodable,
+  encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, keepLocalStyle, lastTouched, resetSettings, syncableAlert, syncableDrawing, validSymbol, pausedLineAlerts, seenWhenUndecodable,
 } from './codec'
 import { LAYOUTS_FIELD, cleanBook, liveBook, mergeBooks } from '../app/layouts'
 import type { Owned, SyncStore } from './store'
@@ -29,7 +29,8 @@ export type Prints = Partial<Record<Part, string>>
 export const OWNED: Owned = {
   settings: new Set(SETTINGS_FIELDS),
   favorites: new Set(['symbol', 'market', 'venue', 'groupId', 'order']),
-  drawings: new Set(['kind', 'anchors', 'color', 'lineWidth', 'locked', 'symbol', 'market', 'venue', 'dash', 'filled', 'hidden', 'levels']),
+  // style：网页独有的扩展样式，只有网页写，本机清掉时发 null（codec.WEB_ONLY_BODY_KEYS）
+  drawings: new Set(['kind', 'anchors', 'color', 'lineWidth', 'locked', 'symbol', 'market', 'venue', 'dash', 'filled', 'hidden', 'levels', 'style']),
   alerts: new Set(['kind', 'symbol', 'market', 'drawingID', 'lines', 'condition', 'armedAt', 'once', 'status', 'firedAt', 'firedPrice', 'dueAt', 'reviewID', 'title', 'created', 'note', 'webhook', 'webhookText', 'rule']),
 }
 
@@ -192,8 +193,13 @@ export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: bo
   if (!override) {
     for (const [sym, list] of Object.entries(s.drawings)) {
       for (const d of list) {
-        // 云端有这条（活的已经在 cloudDraw 里，墓碑说明别处删了）就听云端的
-        if (syncableDrawing(sym, d) && a.objects[keyOf('drawings', drawingId(sym, d.id))]) continue
+        // 云端有这条（活的已经在 cloudDraw 里，墓碑说明别处删了）就听云端的；云端从没写过 style 而本机有，扩展样式留本机的
+        const o = syncableDrawing(sym, d) ? a.objects[keyOf('drawings', drawingId(sym, d.id))] : undefined
+        if (o) {
+          const list = draw[sym], i = list ? list.findIndex(x => x.id === d.id) : -1
+          if (list && i >= 0 && !o.deleted) list[i] = keepLocalStyle(list[i], o.body, d)
+          continue
+        }
         ;(draw[sym] ||= []).push(d)
       }
     }

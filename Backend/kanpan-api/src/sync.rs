@@ -206,7 +206,15 @@ pub const SERVER_AHEAD_SETTINGS_FIELDS:&[&str]=&[];
 /// 单列在这里，`known_field` 认它、`sync_validation::field` 给值规则。
 /// `webChart`（2026-10-07）：网页「图表设置」（照 TradingView 的商品 / 状态栏 / 比例尺与线 / 画布），
 /// 只存和默认值不同的那几项，一个对象、序列化 ≤ 8 KB。手机端不读。
-pub const WEB_SETTINGS_FIELDS:&[&str]=&["webChart"];
+/// `webPrefs`（2026-10-10）：电脑网页用手改出来、别的端没有的习惯（自己的皮肤 / 深浅、网页独有指标的开关与参数、
+/// 超出共用字段上限的周期 / 副图、联动、侧栏与抽屉、订单流面板偏好、副图高与网格比例……），一个对象、序列化 ≤ 8 KB；
+/// 里面的键由网页自己清洗（Web/src/sync/webPrefs.ts）。手机端不读、原样留着。
+pub const WEB_SETTINGS_FIELDS:&[&str]=&["webChart","webPrefs"];
+/// 只有网页端写的画线字段：不在 iOS 的画线契约（contract/drawing-fields.json）里，所以不进 `DRAWING_FIELDS`
+/// （那张表和契约一一对上），单列在这里，`known_field` 认它、`sync_validation::field` 给值规则。
+/// `style`（2026-10-10）：TradingView 设置里主字段之外的扩展样式（成交量分布四色与各条线、延伸、可见周期……），
+/// 一个对象、序列化 ≤ 4 KB、键与值类型受限（`sync_validation::drawing_style`）。手机端不认、原样留着。
+pub const WEB_DRAWING_FIELDS:&[&str]=&["style"];
 // `variants/<palette tool>` is the drawing method last picked for that family in the style sheet
 // (trend → extended, hline → hray, vline → crossLine): the next line from that tool is drawn that way.
 pub const DRAWING_PREFERENCE_FIELDS:[&str;5]=["favorites","magnet","continuous","styles","variants"];
@@ -238,7 +246,7 @@ pub fn allowlist(c:&str)->&'static [&'static str] {
 }
 // Malformed paths are rejected; unknown-but-well-formed names are only dropped.
 fn valid_path(path:&str)->bool {!path.is_empty() && path.len()<=160 && !path.split('/').any(|p|p.is_empty()||p==".."||p.starts_with('_'))}
-fn known_field(c:&str,path:&str)->bool {let h=path.split('/').next().unwrap_or_default();allowlist(c).contains(&h)||(c==SETTINGS&&WEB_SETTINGS_FIELDS.contains(&h))}
+fn known_field(c:&str,path:&str)->bool {let h=path.split('/').next().unwrap_or_default();allowlist(c).contains(&h)||(c==SETTINGS&&WEB_SETTINGS_FIELDS.contains(&h))||(c==DRAWINGS&&WEB_DRAWING_FIELDS.contains(&h))}
 impl Operation {
  /// Well-formed paths this server has never heard of. A newer client always runs
  /// ahead of a deployed server, and rejecting the whole operation left it in the
@@ -535,8 +543,23 @@ mod tests {
    assert!(!known_field(FAVORITES,name),"{name}");
   }
   assert!(op(SETTINGS,&[("webChart",json!({"marginTop":20}))]).unknown_fields().is_empty());
+  assert!(op(SETTINGS,&[("webPrefs",json!({"theme":"dark","links":{"cross":true}}))]).unknown_fields().is_empty());
+  assert!(op(SETTINGS,&[("webPrefs",json!("dark"))]).validate().is_err());
+  assert_eq!(applied(SETTINGS,&[("webPrefs",json!({"skin":"terra"}))]).body["webPrefs"],json!({"skin":"terra"}));
   assert!(op(SETTINGS,&[("webChart",json!([1]))]).validate().is_err());
   assert_eq!(applied(SETTINGS,&[("webChart",json!({"marginTop":20}))]).body["webChart"],json!({"marginTop":20}));
+ }
+ // 网页独有的画线字段（style）：认得、能存，但不在和 iOS 画线契约对账的 DRAWING_FIELDS 里。
+ #[test] fn web_only_drawing_fields_are_known_but_not_in_the_ios_contract() {
+  for name in WEB_DRAWING_FIELDS {
+   assert!(!DRAWING_FIELDS.contains(name),"{name}");
+   assert!(known_field(DRAWINGS,name),"{name}");
+   assert!(!known_field(SETTINGS,name)&&!known_field(FAVORITES,name),"{name}");
+  }
+  assert!(op(DRAWINGS,&[("style",json!({"vp":true,"poc":{"on":true,"color":"#FF0000"}}))]).unknown_fields().is_empty());
+  assert!(op(DRAWINGS,&[("style",json!([1]))]).validate().is_err());
+  // 清掉扩展样式发 null：要收（不然网页「恢复默认」整条 400）
+  assert!(op(DRAWINGS,&[("style",Value::Null)]).validate().is_ok());
  }
  #[test] fn every_collection_constant_has_an_allowlist() {
   assert_eq!(COLLECTIONS,["settings","drawingPreferences","drawings","favorites","groups","alerts"]);

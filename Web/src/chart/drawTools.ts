@@ -16,7 +16,7 @@ import { fmt, hexA } from '../util/format'
 import type { Bar } from './calc'
 import { developingProfile, vpvr, type Developing, type Vpvr } from './overlays'
 import { drawProfile, isDarkBg, profileRows, splitAlpha } from './volumeProfile'
-import { profileInputs, profileLookOf, type ProfileInputs } from './drawStyle'
+import { cleanStyle, profileInputs, profileLookOf, type ProfileInputs } from './drawStyle'
 import { vwapWeight } from './indicators'
 import type { DrawPoint, Drawing, DrawingType, Pane, PriceRange, TVChart } from './chart'
 import { DRAWING_TEXT_LIMIT, DrawKind, type DrawingKind } from '../m/chart/draw/drawing'
@@ -101,6 +101,8 @@ export function cleanDrawing(raw: unknown): Drawing | null {
   if ('text' in x && !textOk(x.text)) delete d.text
   if ('levels' in x && !levelsOk(x.levels)) delete d.levels
   if ('filled' in x && typeof x.filled !== 'boolean') delete d.filled
+  // 扩展样式：坏键坏值丢掉、超上限整份丢（和服务端 drawing_style 同一组上限，见 drawStyle.cleanStyle）
+  if ('style' in x) { const st = cleanStyle(x.style); if (st) d.style = st; else delete d.style }
   return d
 }
 

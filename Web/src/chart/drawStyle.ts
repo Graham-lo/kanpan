@@ -59,3 +59,27 @@ export function profileLookOf(s: DrawStyle | undefined, dark: boolean): ProfileL
     bg: { on: typeof bg.on === 'boolean' ? bg.on : d.bg.on, color: styleColorOk(bg.color) ? bg.color : d.bg.color },
   }
 }
+
+// ------------------------------------------------------------ 清洗（读档、同步进出都走它）
+/** 和服务端 sync_validation `drawing_style` 同一组上限：序列化 ≤ 4 KB；键 1…32 个 ASCII 字母数字、字母打头；
+ *  值是布尔、有限数、≤ 64 字节的串，或同样规则的对象，最多套三层；不收数组与 null。 */
+export const STYLE_MAX_BYTES = 4096
+const STYLE_KEY = /^[A-Za-z][A-Za-z0-9]{0,31}$/
+const enc = new TextEncoder()
+function cleanLevel(v: Record<string, unknown>, depth: number): StyleObject {
+  const out: StyleObject = {}
+  for (const [k, x] of Object.entries(v)) {
+    if (!STYLE_KEY.test(k)) continue
+    if (typeof x === 'boolean' || (typeof x === 'number' && Number.isFinite(x) && Math.abs(x) <= 1e15)) out[k] = x
+    else if (typeof x === 'string' && enc.encode(x).length <= 64) out[k] = x
+    else if (isObj(x) && depth < 3) out[k] = cleanLevel(x, depth + 1)
+  }
+  return out
+}
+/** 扩展样式的规范形：坏键、坏值丢掉；整份超过上限或清完是空的返回 undefined（就是「没有扩展样式」） */
+export function cleanStyle(v: unknown): DrawStyle | undefined {
+  if (!isObj(v)) return undefined
+  const out = cleanLevel(v, 1)
+  if (!Object.keys(out).length || enc.encode(JSON.stringify(out)).length > STYLE_MAX_BYTES) return undefined
+  return out
+}

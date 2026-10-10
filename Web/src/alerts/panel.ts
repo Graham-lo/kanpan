@@ -25,8 +25,8 @@ import {
   parseIntField, parseNumField, rejectReason, ruleFromDraft, type ChartIndView, type Direction, type IndInterval, type IndicatorDraft, type IndicatorKind, type IndicatorRule, type MaType,
 } from './indicator'
 import { CATALOG } from '../chart/calc'
-import { isMacro } from '../market/macro'
 import { onRejected } from '../sync/engine'
+import { conditionAlertsOk } from '../sync/codec'
 import { alertLog, bareSymbol, logClock, logDays, logDetail, logName, logOwner } from './log'
 
 export interface AlertUIHooks {
@@ -213,15 +213,16 @@ export function openCreateAlert(symbol: string, price?: number | null, preset: C
   createDlg?.close()
   const s = sym(symbol), dec = decOf(symbol)
   const last = s?.price ?? null
-  const macro = isMacro(symbol)
-  // 美元指数只有价格提醒（服务端白名单不收条件提醒，也没有费率、持仓量）
-  const kind0: CKind = preset.kind && !(macro && preset.kind !== 'price') ? preset.kind : 'price'
+  // 只有币安 U 本位能建条件提醒（服务端 sync_validation：条件提醒的 market 必须是 binance/usd_m，四种条件的数据也只来自那里）；
+  // 美元指数、OKX / Bybit / Hyperliquid / Coinbase 只给价格提醒
+  const priceOnly = !conditionAlertsOk(symbol)
+  const kind0: CKind = preset.kind && !(priceOnly && preset.kind !== 'price') ? preset.kind : 'price'
   if (kind0 === 'price' && last == null && price == null) { toast('还没有这只品种的价格', '行情连上后再建', 'info'); return }
   let kind: CKind = kind0
   const p0 = price ?? last ?? 0
   const draft: IndicatorDraft = draftFromChart(chartIndView(preset.iv), preset.from)
   let off = (): void => { /* 下面挂上 */ }
-  const KINDS = macro ? KIND_LABEL.slice(0, 1) : KIND_LABEL
+  const KINDS = priceOnly ? KIND_LABEL.slice(0, 1) : KIND_LABEL
   const d = dialog(`${head('创建提醒', `<button class="btn ghost sm" id="aAll">全部提醒</button>`)}<div class="dialog-body"><div class="form-grid">
     <div class="sym-card">${badge(s, 'lg')}<div style="flex:1"><b>${esc(code(symbol))}</b><div class="muted" style="font-size:12px;line-height:16px">${esc(s?.cn || symbol)}</div></div><div style="text-align:right"><div class="num" style="font-weight:600">${last != null ? fmt(last, dec) : '—'}</div><div class="num ${cls(s?.pct)}" style="font-size:12px;line-height:16px">${pctText(s?.pct)}</div></div></div>
     ${KINDS.length > 1 ? `<div class="field"><label>条件</label>${segOf('aKind', KINDS, kind, 'k')}</div>` : ''}

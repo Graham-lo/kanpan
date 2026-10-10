@@ -188,6 +188,20 @@ fn lines(v:&Value)->bool {
     && ps.iter().all(|p|p.as_object().is_some_and(|o|o.len()==2)&&number(&p["t"],0.0,9e15)&&number(&p["p"],-1e15,1e15)))
  }))
 }
+/// 画线的扩展样式 `drawings.style`（网页独有，`crate::sync::WEB_DRAWING_FIELDS`；网页那份清洗在 Web/src/chart/drawStyle.ts `cleanStyle`，
+/// 两边同一组上限）：一个对象、序列化 ≤ 4 KB；键 1…32 个 ASCII 字母数字（字母打头）；值是布尔、有限数、≤ 64 字节的串，
+/// 或同样规则的对象，最多套三层；不收数组与 null（「恢复默认」是整个 style 发 null，见 `field` 的墓碑规则）。
+pub const DRAWING_STYLE_MAX_BYTES:usize=4096;
+fn drawing_style(v:&Value)->bool {
+ fn key(k:&str)->bool {(1..=32).contains(&k.len())&&k.as_bytes()[0].is_ascii_alphabetic()&&k.bytes().all(|c|c.is_ascii_alphanumeric())}
+ fn level(v:&Value,depth:usize)->bool {
+  v.as_object().is_some_and(|o|o.iter().all(|(k,x)|key(k)&&(x.is_boolean()||number(x,-1e15,1e15)||string(x,64)||depth<3&&level(x,depth+1))))
+ }
+ level(v,1)&&serde_json::to_string(v).is_ok_and(|s|s.len()<=DRAWING_STYLE_MAX_BYTES)
+}
+/// 电脑网页独有的习惯 `settings.webPrefs`（`crate::sync::WEB_SETTINGS_FIELDS`）：一个对象、序列化 ≤ 8 KB。
+/// 里面有哪些键由网页自己清洗（Web/src/sync/webPrefs.ts），服务端只管类型与体积——和 webChart 同一档。
+pub const WEB_PREFS_MAX_BYTES:usize=8192;
 fn style(v:&Value)->bool {v.as_object().is_some_and(|o|o.iter().all(|(k,v)|field(DRAWINGS,k,v))&&o.contains_key("lineWidth")&&o.contains_key("dash")&&o.contains_key("filled")&&o.contains_key("levels"))}
 /// 「对比 K 线」的一只品种：完整身份键 `venue/market/SYMBOL`，和 favorites 的 id 同一形态。
 ///
@@ -216,6 +230,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
  // firedAt / firedPrice 清掉；`kind` 从 drawing 改成别的时 drawingID 也会被清。
  // 客户端的 diff 把「这次不写这个 key」发成 null，拒收它就等于整条 op 400。
  if v.is_null(){return p.len()==1&&matches!(path,"color"|"groupId"|"text")
+  // 网页画线「恢复默认样式」：扩展样式整个清掉（`drawings.style`，网页独有）。
+  || collection==DRAWINGS&&path=="style"
   // note / webhook / webhookText（从图上加提醒）：客户端永远写出这三个键，空就是 null。
   || collection==ALERTS&&p.len()==1&&matches!(path,"drawingID"|"firedAt"|"firedPrice"|"dueAt"|"reviewID"|"note"|"webhook"|"webhookText"|"rule")
   || collection==SETTINGS&&p.len()>=2 || collection==DRAWING_PREFERENCES&&p.len()==2}
@@ -280,7 +296,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
     |"bigTradeSigns"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"candleKind"=>string(v,64),
    // 网页图表设置（crate::sync::WEB_SETTINGS_FIELDS）：一个对象，序列化 ≤ 8 KB；里面的键由网页自己清洗
-   "webChart"=>p.len()==1&&v.is_object()&&serde_json::to_string(v).is_ok_and(|s|s.len()<=8192),_=>false
+   "webChart"=>p.len()==1&&v.is_object()&&serde_json::to_string(v).is_ok_and(|s|s.len()<=8192),
+   "webPrefs"=>p.len()==1&&v.is_object()&&serde_json::to_string(v).is_ok_and(|s|s.len()<=WEB_PREFS_MAX_BYTES),_=>false
   }
  }
  if collection==DRAWING_PREFERENCES {return match path {"favorites"=>names(v,KINDS.len(),KINDS),"magnet"|"continuous"=>v.is_boolean(),
@@ -309,6 +326,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   // still stops someone pasting a novel; the per-field 64 KB rule in `Operation::validate` is
   // the real backstop. Whatever the client accepts, the server must be able to store.
   (DRAWINGS,"text")=>string(v,4096),
+  (DRAWINGS,"style")=>drawing_style(v),
   (FAVORITES,"groupId")=>string(v,100),
   (FAVORITES|GROUPS,"order")=>number(v,0.0,1e9),
   (GROUPS,"name")=>string(v,100),
@@ -510,6 +528,32 @@ mod tests {
  use super::*;
  use serde_json::json;
  use std::collections::BTreeMap;
+ /// 网页画线扩展样式：对象、键短、值是标量或再套对象（≤ 三层）、≤ 4 KB；数组、坏键、超长串、过深、过大一律拒。
+ #[test] fn drawing_style_is_a_small_flat_ish_object() {
+  assert!(field(DRAWINGS,"style",&json!({"vp":true,"widthPct":30,"up":"#26C6DA80","poc":{"on":true,"width":1.5,"dash":"dashed"},"bg":{"on":false}})));
+  assert!(field(DRAWINGS,"style",&json!({})));
+  assert!(field(DRAWINGS,"style",&json!({"a":{"b":{"c":1}}})),"三层可以");
+  assert!(!field(DRAWINGS,"style",&json!({"a":{"b":{"c":{"d":1}}}})),"四层不行");
+  assert!(!field(DRAWINGS,"style",&json!([1])));
+  assert!(!field(DRAWINGS,"style",&json!("x")));
+  assert!(!field(DRAWINGS,"style",&json!({"levels":[1,2]})),"不收数组");
+  assert!(!field(DRAWINGS,"style",&json!({"1x":true})),"键要字母打头");
+  assert!(!field(DRAWINGS,"style",&json!({"a-b":true})));
+  assert!(!field(DRAWINGS,"style",&json!({"t":"x".repeat(65)})));
+  assert!(!field(DRAWINGS,"style",&json!({"n":Value::Null})));
+  let big:serde_json::Map<String,Value>=(0..300).map(|i|(format!("k{i}"),json!("#26C6DA80"))).collect();
+  assert!(!field(DRAWINGS,"style",&Value::Object(big)),"超过 4 KB");
+  assert!(field(DRAWINGS,"style",&Value::Null),"整个清掉可以");
+  assert!(!field(SETTINGS,"style",&json!({})),"只在画线集合里认");
+ }
+ /// 电脑网页独有习惯：对象、≤ 8 KB，别的不管。
+ #[test] fn web_prefs_is_any_object_up_to_8kb() {
+  assert!(field(SETTINGS,"webPrefs",&json!({"theme":"dark","skin":"terra","subs":["macd","cvd","atr"],"links":{"cross":true}})));
+  assert!(!field(SETTINGS,"webPrefs",&json!(["dark"])));
+  assert!(!field(SETTINGS,"webPrefs",&json!(true)));
+  assert!(!field(SETTINGS,"webPrefs/theme",&json!("dark")),"只认整个对象");
+  assert!(!field(SETTINGS,"webPrefs",&json!({"x":"y".repeat(WEB_PREFS_MAX_BYTES)})));
+ }
  #[test] fn venue_identity_is_not_a_route() {
   assert!(identity("binance","usd_m","BTCUSDT"));
   assert!(identity("coinbase","spot","BTC-USD"));

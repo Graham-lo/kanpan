@@ -26,6 +26,7 @@ import { type Body, type Json, type SyncObject, same } from './types'
 import { MAX_OVERRIDES, isValidBase, normalizeOverride, type Override } from '../orderflow/settings'
 import { LAYOUTS_FIELD, bookFrom, cleanBook, liveBook, loadLive, type CellCfg, type Layout, type LayoutBook } from '../app/layouts'
 import { AUTO_LAYERS, type AutoLayerId } from '../analysis/fvg'
+import { cleanStyle } from '../chart/drawStyle'
 import { DEFAULTS as CHART_DEFAULTS, MAX_BYTES as CHART_MAX_BYTES, clean as cleanChart, diff as chartDiff, type ChartSettings } from '../chart/chartSettings'
 
 export interface Ctx {
@@ -51,6 +52,9 @@ export function webSymbol(s: string): boolean {
 }
 /** 提醒正文里的 market（`venue/market`） */
 export function alertMarketOf(symbol: string): string { return identityAlertMarket(symbol) }
+/** 这只品种能不能建条件提醒：只有币安 U 本位（服务端 sync_validation 拒收别家的条件提醒，费率 / 持仓量 / 大单的数据也只来自币安）。
+ *  美元指数、OKX / Bybit / Hyperliquid / Coinbase 只给价格 / 画线提醒 */
+export function conditionAlertsOk(symbol: string): boolean { return !isMacro(symbol) && alertMarketOf(symbol) === ALERT_MARKET }
 /** 同步正文里的三段 → 网页里存的键（币安回裸代号、美元指数回 DXY、别家完整键）；缺段回 null */
 function webOf(b: Body): string | null {
   const v = str(b.venue), m = str(b.market), s = str(b.symbol)
@@ -506,6 +510,9 @@ const TYPE_OF: Record<string, DrawingType> = WEB_TYPE
 export const ANCHORS: Record<string, number> = Object.fromEntries(Object.entries(CONTRACT_KIND).map(([t, k]) => [k, ANCHOR_COUNT[t as DrawingType]]))
 /** 网页写进 body 的键（对账用：必须是契约 syncFields 的子集） */
 export const WEB_BODY_KEYS = ['anchors', 'color', 'dash', 'filled', 'hidden', 'kind', 'levels', 'lineWidth', 'locked', 'market', 'symbol', 'text', 'venue'] as const
+/** 网页独有的画线键（不在手机的画线契约里；服务端 sync.rs WEB_DRAWING_FIELDS 单列）：
+ *  style = TradingView 设置里主字段之外的扩展样式（drawStyle.ts）。手机 / 手机网页不认、推送时原样带回 */
+export const WEB_ONLY_BODY_KEYS = ['style'] as const
 /** 手机 `Drawing` 的出厂值（Drawing.swift；刻度按种类，见 defaultLevels） */
 export const DRAWING_DEFAULTS = { dash: 'solid', filled: true, hidden: false, text: '', levels: [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1] as number[] }
 export const WEB_LINE_WIDTH = 2
@@ -519,6 +526,7 @@ function normDrawing(d: Drawing): Json {
     type: d.type, pts: d.pts.map(p => ({ t: p.t, p: p.p })), color: d.color && HEX.test(d.color) ? d.color : null, width: d.width ?? WEB_LINE_WIDTH, dash: d.dash ?? 'solid', locked: !!d.locked,
     // 刻度、填色、文字只比这把工具用得上的（别的种类手机也写，但网页不显示、不改，比了会无谓地来回覆盖）
     levels: usesLevels(d.type) ? levelsOf(d) : null, filled: usesFill(d.type) ? d.filled !== false : null, text: usesText(d.type) ? d.text ?? '' : null,
+    style: (cleanStyle(d.style) ?? null) as Json,
   }
 }
 
@@ -553,6 +561,8 @@ export function decodeDrawing(o: SyncObject): { symbol: string; d: Drawing } | n
   if (usesLevels(d.type) && levelsOk(b.levels) && b.levels.length) d.levels = [...b.levels]
   if (b.filled === false) d.filled = false
   if (typeof b.text === 'string' && b.text && textOk(b.text)) d.text = b.text
+  const style = cleanStyle(b.style)
+  if (style) d.style = style
   return { symbol: webOf(b)!, d }
 }
 
@@ -577,6 +587,10 @@ function encodeDrawing(symbol: string, d: Drawing, prev: SyncObject | undefined)
   body.lineWidth = Math.min(6, Math.max(0.5, d.width ?? WEB_LINE_WIDTH))
   body.dash = d.dash ?? 'solid'
   body.locked = !!d.locked
+  // 扩展样式：有就写；没有而云端那份有 → 去掉这个键（bridge.OWNED 认领 style，记账时发 null 清掉）
+  const style = cleanStyle(d.style)
+  if (style) body.style = style as Json
+  else delete body.style
   const vm = venueMarketOf(symbol)
   body.symbol = wireSymbol(symbol); body.market = vm.market; body.venue = vm.venue
   return { collection: 'drawings', id, body, fields: {}, revision: 0, deleted: false, generation: 0 }
@@ -602,14 +616,23 @@ export function encodeDrawings(drawings: Record<string, Drawing[]>, prevAll: Syn
 
 /** 云端画线装进网页：网页管不着的本地画线（量测、代号不合规的）原样留着，其余按云端来；
  *  已有画线保持原来的先后，新来的接在后面 */
+/** 云端这条没有 style 这个键（从没写过：手机画的、老服务端丢掉了这个字段）而本机那条有：本机的扩展样式留着。
+ *  云端写着 `style: null` 是别处明确清掉了，那就听云端的 */
+export function keepLocalStyle(cloud: Drawing, cloudBody: Body | undefined, local: Drawing | undefined): Drawing {
+  if (!local?.style || cloud.style || (cloudBody && 'style' in cloudBody)) return cloud
+  return { ...cloud, style: local.style }
+}
+
 export function decodeDrawings(all: SyncObject[], current: Record<string, Drawing[]>): Record<string, Drawing[]> {
   const cloud = new Map<string, Map<string, Drawing>>()
+  const bodies = new Map<string, Body>()
   for (const o of all) {
     if (o.deleted) continue
     const x = decodeDrawing(o)
     if (!x) continue
     let m = cloud.get(x.symbol); if (!m) cloud.set(x.symbol, m = new Map())
     m.set(x.d.id, x.d)
+    bodies.set(drawingId(x.symbol, x.d.id), o.body)
   }
   const out: Record<string, Drawing[]> = {}
   for (const s of new Set([...Object.keys(current), ...cloud.keys()])) {
@@ -617,8 +640,8 @@ export function decodeDrawings(all: SyncObject[], current: Record<string, Drawin
     const list: Drawing[] = []
     for (const d of current[s] ?? []) {
       if (!syncableDrawing(s, d)) { list.push(d); continue }
-      const c = m.get(d.id)
-      if (c) { list.push(same(normDrawing(c), normDrawing(d)) ? d : c); m.delete(d.id) }
+      const got = m.get(d.id)
+      if (got) { const c = keepLocalStyle(got, bodies.get(drawingId(s, d.id)), d); list.push(same(normDrawing(c), normDrawing(d)) ? d : c); m.delete(d.id) }
     }
     list.push(...m.values())
     if (list.length || current[s]) out[s] = list
@@ -670,8 +693,8 @@ export function syncableAlert(a: Alert): boolean { return a.status === 'active' 
 export function encodableAlert(a: Alert): boolean { return (a.status === 'active' || a.status === 'fired') && alertShapeOk(a) }
 function alertShapeOk(a: Alert): boolean {
   if (!webSymbol(a.symbol) || a.market !== alertMarketOf(a.symbol) || !a.id || a.id.includes('/')) return false
-  // 美元指数只有价格 / 画线提醒（服务端白名单不收条件提醒）
-  if (isMacro(a.symbol) && a.kind !== 'price' && a.kind !== 'drawing') return false
+  // 条件提醒只认币安 U 本位（服务端 object()：market 必须是 binance/usd_m）；美元指数与别家只有价格 / 画线提醒
+  if (a.kind !== 'price' && a.kind !== 'drawing' && !conditionAlertsOk(a.symbol)) return false
   if (a.kind === 'price' || a.kind === 'drawing') {
     if (!a.lines.length || !a.lines.every(l => l.points.length && l.points.every(p => isFinite(p.t) && isFinite(p.p)))) return false
     if (a.kind === 'drawing' && !a.drawingID) return false
