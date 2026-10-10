@@ -10,8 +10,10 @@ const OUT = process.argv[2] || '../docs/acceptance/首页与盘口要点-手机�
 const URL_ = process.argv[3] || 'http://localhost:5178/web/m/'
 mkdirSync(OUT, { recursive: true })
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Mobile/15E148 Safari/604.1'
-const SKINS = [['sage', '青苔'], ['terra', '陶土'], ['classic', '经典']]
-const THEMES = [['light', '浅'], ['dark', '深']]
+// 只跑一部分：SKINS=sage THEMES=light,dark
+const pick = (all, env) => (env ? all.filter(([id]) => env.split(',').includes(id)) : all)
+const SKINS = pick([['sage', '青苔'], ['terra', '陶土'], ['classic', '经典']], process.env.SKINS)
+const THEMES = pick([['light', '浅'], ['dark', '深']], process.env.THEMES)
 const browser = await chromium.launch({ executablePath: CHROME, headless: true })
 const problems = []
 

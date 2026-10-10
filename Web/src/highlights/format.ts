@@ -97,20 +97,30 @@ export const zoneWord = (side: 'bid' | 'ask'): string => (side === 'bid' ? HL.bu
 export const levelFill = (l: Level): number => l.fillBuyUsd + l.fillSellUsd
 export const levelTotal = (l: Level): number => l.wallUsd + levelFill(l) + l.liqUsd
 
-/** 价位一句话（入口条、首页行）：下方 <b>86,120</b> 买区 35M · 挂 48 分 · 测 2 次 */
-export function levelSentence(l: Level, opts: { held?: boolean; tests?: boolean } = {}): string {
-  const dir = l.distPct < 0 ? HL.below : HL.above
+/** 价区把现价包在里面（low ≤ 现价 ≤ high，或服务端距离正好是 0）：不说上方 / 下方，写「现价内」 */
+export function straddles(l: Level, price: number | null | undefined): boolean {
+  if (price != null && Number.isFinite(price) && price > 0 && l.low <= price && price <= l.high) return true
+  return l.distPct === 0
+}
+
+/** 价位一句话（入口条、首页行）：下方 <b>86,120</b> 买区 35M · 挂 48 分 · 测 2 次；
+ *  价区包住现价时：现价内 <b>63.405–63.659</b> 卖区 12M · 挂 9 分 */
+export function levelSentence(l: Level, opts: { held?: boolean; tests?: boolean; price?: number | null } = {}): string {
   const amount = l.wallUsd > 0 ? b(usd(l.wallUsd)) : `${HL.fill} ${b(usd(levelFill(l)))}`
-  const parts = [`${dir} ${b(levelPx(l.low))} ${zoneWord(l.side)} ${amount}`]
+  const head = straddles(l, opts.price)
+    ? `${HL.atPrice} ${b(bandPx(l.low, l.high))}`
+    : `${l.distPct < 0 ? HL.below : HL.above} ${b(levelPx(l.low))}`
+  const parts = [`${head} ${zoneWord(l.side)} ${amount}`]
   if (opts.held !== false && l.wallUsd > 0 && l.wallHeldMs > 0) parts.push(fill(HL.heldFor, { d: heldText(l.wallHeldMs) }))
   if (opts.tests !== false && l.tests > 0) parts.push(fill(HL.tests, { n: l.tests }))
   return parts.join(' · ')
 }
 
-/** 离现价最近的那条价位 */
-export function nearestLevel(levels: readonly Level[]): Level | null {
+/** 离现价最近的那条价位（包住现价的优先） */
+export function nearestLevel(levels: readonly Level[], price?: number | null): Level | null {
   let best: Level | null = null
-  for (const l of levels) if (!best || Math.abs(l.distPct) < Math.abs(best.distPct)) best = l
+  const key = (l: Level): number => (straddles(l, price) ? -1 : Math.abs(l.distPct))
+  for (const l of levels) if (!best || key(l) < key(best)) best = l
   return best
 }
 
@@ -188,7 +198,7 @@ export function rangeHead(r: RangeBox, now: number): { band: string; hours: numb
 /** 首页行第二行的事实（HTML） */
 export function boardFact(r: BoardRow): string {
   const t = r.top
-  if (t.kind === 'level') return levelSentence(t, { held: false, tests: false })
+  if (t.kind === 'level') return levelSentence(t, { held: false, tests: false, price: r.price })
   if (t.kind === 'event') return eventSentence(t)
   if (r.cat === 'funding') {
     const n = t.funding.pctile
@@ -199,9 +209,9 @@ export function boardFact(r: BoardRow): string {
 
 /** 入口条那一句（HTML）；null = 没有要点，出 16 的抓手。
  *  有价位写离现价最近那条；没有价位但近 4 小时有事件，写「1 时净主动 +46M」；都没有就是抓手 */
-export function stripSentence(levels: readonly Level[], events: readonly HlEvent[], flow: readonly FlowRow[] | null): string | null {
-  const l = nearestLevel(levels)
-  if (l) return levelSentence(l)
+export function stripSentence(levels: readonly Level[], events: readonly HlEvent[], flow: readonly FlowRow[] | null, price: number | null = null): string | null {
+  const l = nearestLevel(levels, price)
+  if (l) return levelSentence(l, { price })
   if (!events.length) return null
   const h1 = flow?.find(r => r.w === '1h')?.netUsd
   if (h1 != null) return esc(fill(HL.flowLine, { v: '\u0001' })).replace('\u0001', b(signedUsd(h1)))

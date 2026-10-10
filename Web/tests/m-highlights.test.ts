@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { parseHighlights, parseBoard, parseMarketBoard, boardUrl, highlightsUrl, marketBoardUrl } from '../src/highlights/api'
 import {
   usd, signedUsd, signedPct, levelPx, bandPx, distText, hhmm, spanText, heldText, agoText, wallStateWord,
-  levelSentence, nearestLevel, eventSentence, eventTime, stripSentence, boardFact, positionCells, fundingText, flowLabel,
+  levelSentence, nearestLevel, straddles, eventSentence, eventTime, stripSentence, boardFact, positionCells, fundingText, flowLabel,
 } from '../src/highlights/format'
 import { bodyHTML, flowBlockHTML, levelsBlockHTML, positionBlockHTML, eventsBlockHTML } from '../src/m/pages/chart/highlightsSheet'
 import { setHighlightIntent, takeHighlightIntent } from '../src/m/pages/chart/highlightIntent'
@@ -116,6 +116,32 @@ describe('盘口要点 · 拼字', () => {
     expect(stripSentence([], [], d.flow)).toBeNull()
     const noWall = { ...near, wallUsd: 0, fillBuyUsd: 30e6, fillSellUsd: 18e6, distPct: 1.1, side: 'ask' as const }
     expect(levelSentence(noWall)).toBe('上方 <b>82,609</b> 卖区 吃单 <b>48M</b> · 测 27 次')
+  })
+  it('价区包住现价：不说上方 / 下方，写「现价内」和整段价区', () => {
+    const d = parseHighlights(SAMPLE, 'BTC')!
+    const near = nearestLevel(d.levels)!
+    const at = { ...near, id: 'L:at', low: 63.405, high: 63.659, distPct: 0.08, side: 'ask' as const, wallUsd: 12e6, wallHeldMs: 9 * 60_000, tests: 0 }
+    expect(straddles(at, 63.5)).toBe(true)
+    expect(straddles(at, 63.7)).toBe(false)
+    expect(straddles({ ...at, distPct: 0 }, null)).toBe(true)
+    expect(levelSentence(at, { price: 63.5 })).toBe('现价内 <b>63.405–63.659</b> 卖区 <b>12M</b> · 挂 9 分')
+    expect(levelSentence({ ...at, distPct: 0 })).toBe('现价内 <b>63.405–63.659</b> 卖区 <b>12M</b> · 挂 9 分')
+    // 入口条：包住现价的那条优先，哪怕别的距离更近
+    const far = { ...at, id: 'L:far', low: 63.1, high: 63.2, distPct: -0.01, side: 'bid' as const }
+    expect(nearestLevel([far, at], 63.5)!.id).toBe('L:at')
+    expect(stripSentence([far, at], [], null, 63.5)).toMatch(/^现价内 /)
+    // 首页行（服务端带 price）
+    expect(boardFact({ atMs: 1, base: 'LTC', cat: 'book', changePct: -1, count: 1, favorite: false, price: 63.5, tier: 3, top: { kind: 'level', ...at } })).toMatch(/^现价内 <b>63.405–63.659<\/b> 卖区/)
+  })
+  it('关键价位：包住现价的那条紧贴现价线下面，距那格写「现价内」', () => {
+    const d = parseHighlights(SAMPLE, 'BTC')!
+    const lv = d.levels.map(l => (l.id === 'L:14163' ? { ...l, low: 82650, high: 82750, distPct: 0.02 } : l))
+    const h = levelsBlockHTML({ ...d, levels: lv }, 82700, null, GEN)
+    const iNow = h.indexOf('class="now"'), iAt = h.indexOf('data-lv="L:14163"')
+    expect(iAt).toBeGreaterThan(iNow)
+    const row = h.slice(iAt, h.indexOf('</button>', iAt))
+    expect(row).toContain('<small>现价内')
+    expect(row).not.toContain('距 ')
   })
   it('事件句与时刻列', () => {
     const d = parseHighlights(SAMPLE, 'BTC')!

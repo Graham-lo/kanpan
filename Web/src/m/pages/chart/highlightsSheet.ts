@@ -14,7 +14,7 @@ import { HL, fill } from '../../../terms'
 import type { Highlights, HlEvent, Level } from '../../../highlights/api'
 import {
   usd, signedUsd, signedPct, distText, bandPx, levelPx, hhmm, heldText, wallStateWord, refWord, levelFill, levelTotal,
-  eventTime, eventSentence, eventIcon, flowLabel, positionCells, rangeHead, type EventIcon,
+  eventTime, eventSentence, eventIcon, flowLabel, positionCells, rangeHead, straddles, type EventIcon,
 } from '../../../highlights/format'
 import '../../styles/highlights.css'
 
@@ -72,7 +72,7 @@ export function flowBlockHTML(d: Highlights, now: number): string {
     + `<div class="hl-flow"><span class="th"></span><span class="th">${HL.netTaker}</span><span class="th r">${HL.price}</span><span class="th r">${HL.oi}</span>${body}</div></div>`
 }
 
-function levelRowHTML(l: Level, mx: number, open: boolean): string {
+function levelRowHTML(l: Level, mx: number, open: boolean, price: number | null): string {
   const seg = (v: number, cls: string): string => (v > 0 ? `<i class="${cls}" style="width:${Math.max(1.5, (v / mx) * 100).toFixed(1)}%"></i>` : '')
   const ref = l.refs.length ? ` · = ${refWord(l.refs[0])}` : ''
   const fillUsd = levelFill(l)
@@ -81,7 +81,7 @@ function levelRowHTML(l: Level, mx: number, open: boolean): string {
     : `${escA(HL.fill)} <b>${usd(fillUsd)}</b>`
   const meta2 = `${l.liqUsd > 0 ? `${escA(fill(HL.liqMeta, { v: usd(l.liqUsd) }))} · ` : ''}${escA(fill(HL.tests, { n: l.tests }))}`
   const row = `<button type="button" class="row${open ? ' open' : ''} ${l.side}" data-lv="${escA(l.id)}" aria-expanded="${open}">`
-    + `<span class="px">${bandPx(l.low, l.high)}<small>${escA(fill(HL.dist, { v: distText(l.distPct) }))}${escA(ref)}</small></span>`
+    + `<span class="px">${bandPx(l.low, l.high)}<small>${escA(straddles(l, price) ? HL.atPrice : fill(HL.dist, { v: distText(l.distPct) }))}${escA(ref)}</small></span>`
     + `<span class="bar">${seg(l.wallUsd, 'w')}${seg(fillUsd, 'f')}${seg(l.liqUsd, 'q')}</span>`
     + `<span class="meta">${meta1}<br>${meta2}</span></button>`
   if (!open) return row
@@ -109,8 +109,10 @@ export function levelsBlockHTML(d: Highlights, price: number | null, open: strin
   let mx = 0
   for (const l of d.levels) mx = Math.max(mx, levelTotal(l))
   if (!(mx > 0)) mx = 1
-  const above = d.levels.filter(l => l.distPct > 0)
-  const below = d.levels.filter(l => l.distPct <= 0)
+  // 包住现价的那条紧贴在现价线下面（不算上方也不算下方）
+  const at = d.levels.filter(l => straddles(l, price))
+  const above = d.levels.filter(l => !at.includes(l) && l.distPct > 0)
+  const below = [...at, ...d.levels.filter(l => !at.includes(l) && l.distPct <= 0)]
   let rng = ''
   if (d.range) {
     const r = d.range, h = rangeHead(r, now)
@@ -121,7 +123,7 @@ export function levelsBlockHTML(d: Highlights, price: number | null, open: strin
   }
   const nowRow = `<div class="now"><i></i>${escA(fill(HL.now, { p: price != null ? levelPx(price) : '—' }))}<i></i></div>`
   return `<div class="hl-blk" data-blk="levels"><div class="bt"><h5>${HL.levels}</h5><span class="cap"><i></i>${HL.wall}<i class="f"></i>${HL.fill}<i class="q"></i>${HL.liq}</span></div>`
-    + `<div class="hl-lv">${rng}${above.map(l => levelRowHTML(l, mx, l.id === open)).join('')}${nowRow}${below.map(l => levelRowHTML(l, mx, l.id === open)).join('')}</div></div>`
+    + `<div class="hl-lv">${rng}${above.map(l => levelRowHTML(l, mx, l.id === open, price)).join('')}${nowRow}${below.map(l => levelRowHTML(l, mx, l.id === open, price)).join('')}</div></div>`
 }
 
 export function positionBlockHTML(d: Highlights): string {

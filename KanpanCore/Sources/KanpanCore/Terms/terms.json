@@ -134,6 +134,7 @@
     "rangeEdges": "下沿累计吃单 {a} · 测 {n} 次 ｜ 上沿 {b} · 测 {m} 次",
     "above": "上方",
     "below": "下方",
+    "atPrice": "现价内",
     "buyZone": "买区",
     "sellZone": "卖区",
     "wallMeta": "墙 {v} · 挂 {d}",

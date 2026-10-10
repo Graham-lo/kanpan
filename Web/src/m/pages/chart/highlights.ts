@@ -152,7 +152,7 @@ export class HighlightsController {
     const hidden = this.d.hidden()
     this.strip.hidden = hidden
     const data = this.entry()?.data
-    const html = data && data.tracked ? stripSentence(data.levels, data.events, data.flow) : null
+    const html = data && data.tracked ? stripSentence(data.levels, data.events, data.flow, this.d.price()) : null
     this.lastBase = this.base()
     this.strip.classList.toggle('thin', html == null)
     this.strip.classList.toggle('stale', !!data && data.staleMs != null && data.staleMs > 0)
