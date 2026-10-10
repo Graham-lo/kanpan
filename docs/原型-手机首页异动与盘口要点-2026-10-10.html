@@ -84,6 +84,64 @@ td:first-child{font-weight:600;white-space:nowrap}
 .per .an{color:var(--accent);font-weight:600}
 .chart{position:absolute;top:206px;left:0;right:0;height:520px}
 .chart svg{display:block}
+
+/* ---- 半页四块：流向 / 关键价位 / 三格 / 事件 ---- */
+.blk{background:var(--pane);border-radius:16px;padding:11px 14px 12px;box-shadow:0 0 0 .5px var(--edge),0 10px 30px -22px rgba(0,0,0,.35);position:relative}
+.blk .bt{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.blk .bt h5{font-size:13px;font-weight:600;color:var(--ink2);flex:1}
+.blk .bt .cap{font-size:10.5px;color:var(--ink3);display:flex;align-items:center;gap:4px}
+.blk .bt .cap i{width:8px;height:8px;border-radius:2px;display:inline-block;background:var(--ink3);margin-left:4px}
+.blk .bt .cap i.f{opacity:.5} .blk .bt .cap i.q{background:repeating-linear-gradient(135deg,var(--ink3) 0 2px,transparent 2px 4px)}
+/* 流向表 */
+.flow{display:grid;grid-template-columns:58px 1fr 50px 50px;gap:0 8px;font-size:12px;font-variant-numeric:tabular-nums;align-items:center}
+.flow .th{font-size:10.5px;color:var(--ink3);padding-bottom:3px}
+.flow .r{text-align:right}
+.flow .w{color:var(--ink2);display:flex;align-items:center;gap:4px;height:26px;white-space:nowrap}
+.flow .w.lg{color:var(--ink);font-weight:600}
+.flow .w .tag{font-style:normal;font-size:9.5px;font-weight:600;color:var(--amber);background:color-mix(in srgb,var(--amber) 14%,transparent);padding:1px 4px;border-radius:4px}
+.flow .nb{display:flex;align-items:center;gap:6px;height:26px}
+.flow .nb .trk{position:relative;flex:1;height:8px;background:var(--well);border-radius:4px;overflow:hidden}
+.flow .nb .trk:before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--ink3);opacity:.5}
+.flow .nb .trk i{position:absolute;top:0;bottom:0;border-radius:4px;opacity:.85}
+.flow .nb b{min-width:44px;text-align:right;font-weight:600}
+.flow .v{text-align:right;color:var(--ink)}
+/* 关键价位 */
+.lv .rng{display:flex;flex-direction:column;gap:3px;padding:6px 8px 8px;margin:-2px 0 6px;border-radius:10px;background:var(--well);font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.lv .rng .l1{display:flex;align-items:center;gap:8px} .lv .rng .l1 b{color:var(--ink);font-weight:600}
+.lv .rng .rt{position:relative;flex:1;height:4px;border-radius:2px;background:var(--line)} .lv .rng .rt i{position:absolute;top:-3px;width:10px;height:10px;border-radius:50%;background:var(--accent);margin-left:-5px;box-shadow:0 0 0 2px var(--raised)}
+.lv .rng .l2{font-size:11px;color:var(--ink3)}
+.lv .row{display:grid;grid-template-columns:112px 1fr auto;gap:0 8px;align-items:center;min-height:38px}
+.lv .px{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink);line-height:1.15}
+.lv .px small{display:block;font-size:10.5px;font-weight:500;color:var(--ink3);margin-top:2px}
+.lv .bar{display:flex;gap:1.5px;height:10px;border-radius:5px;background:var(--well);overflow:hidden}
+.lv .bar i{height:100%;flex:none;background:var(--s)} .lv .bar i.f{opacity:.5} .lv .bar i.q{background:repeating-linear-gradient(135deg,var(--s) 0 2px,transparent 2px 4px);opacity:.9}
+.lv .meta{font-size:10.5px;color:var(--ink3);text-align:right;white-space:nowrap;line-height:1.35;font-variant-numeric:tabular-nums}
+.lv .meta b{color:var(--ink2);font-weight:600}
+.lv .now{display:flex;align-items:center;gap:8px;height:20px;font-size:10.5px;color:var(--ink3);font-variant-numeric:tabular-nums}
+.lv .now i{flex:1;height:0;border-top:1px dashed var(--ink3);opacity:.45}
+.lv .row.open{background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:10px;margin:0 -8px;padding:0 8px;box-shadow:0 0 0 1px var(--accent)}
+.lv .lev{display:grid;grid-template-columns:30px 1fr;gap:4px 10px;padding:8px 8px 6px;margin:4px -8px 2px;font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.lv .lev s{text-decoration:none;color:var(--ink3);font-size:11px} .lv .lev b{color:var(--ink);font-weight:600}
+.lv .lev .go{grid-column:2;justify-self:end;color:var(--accent);font-weight:600;font-size:12px;display:flex;align-items:center;gap:3px;margin-top:2px}
+.lv .lev .go svg{width:12px;height:12px;stroke:var(--accent);stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+/* 三格 */
+.tri{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.tri .cell{background:var(--well);border-radius:10px;padding:8px 10px 9px}
+.tri .cell small{font-size:10.5px;color:var(--ink3);display:block;white-space:nowrap}
+.tri .cell b{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;display:block;margin-top:2px;color:var(--ink)}
+.tri .cell em{font-style:normal;font-size:10.5px;color:var(--ink2);display:block;white-space:nowrap}
+.tri .cell .pct{display:block;position:relative;height:3px;border-radius:2px;margin-top:8px;background:linear-gradient(90deg,color-mix(in srgb,var(--amber) 45%,transparent) 0 10%,var(--line) 10% 90%,color-mix(in srgb,var(--amber) 45%,transparent) 90%)}
+.tri .cell .pct i{position:absolute;top:-2.5px;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-left:-4px;box-shadow:0 0 0 1.5px var(--raised)}
+/* 事件 */
+.evl .it{display:grid;grid-template-columns:60px 14px 1fr auto;gap:0 6px;align-items:center;min-height:30px;font-size:12px;color:var(--ink2);box-shadow:inset 0 -.5px 0 var(--rule);font-variant-numeric:tabular-nums}
+.evl .it:last-child{box-shadow:none}
+.evl .t{font-size:11px;color:var(--ink3)} .evl .x b{color:var(--ink);font-weight:600} .evl .x{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evl .ic svg{width:14px;height:14px;stroke:var(--ink3);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;display:block}
+.evl .go svg{width:12px;height:12px;stroke:var(--accent);stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round;display:block}
+.half .quiet{font-size:12px;color:var(--ink3);text-align:center;padding:14px 0 4px}
+.blk.skel{height:150px} .blk.skel.s2{height:200px}
+.stale .flow .v,.stale .flow .nb b,.stale .lv .px,.stale .lv .meta b,.stale .tri .cell b{color:var(--ink3)!important} .stale .flow .nb .trk i,.stale .lv .bar i,.stale .tri .pct i{filter:saturate(.15) opacity(.6)}
+
 /* 入口条：有要点 44，没有要点 16 */
 .strip{position:absolute;left:0;right:0;top:726px;height:44px;display:flex;align-items:center;gap:8px;padding:0 16px;z-index:7;font-size:13px;font-variant-numeric:tabular-nums;box-shadow:inset 0 .5px 0 var(--rule)}
 .strip .ch{width:12px;height:12px;stroke:var(--accent);stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:none}
@@ -105,6 +163,7 @@ td:first-child{font-weight:600;white-space:nowrap}
 .half .hh .up{margin-left:auto;font-size:12px;color:var(--ink3);display:flex;align-items:center;gap:6px}
 .half .hh .live{width:6px;height:6px;border-radius:50%;background:var(--up);animation:pulse 1.6s ease-out infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--up) 55%,transparent)}100%{box-shadow:0 0 0 8px transparent}}
+.half .scr{position:relative;overflow:hidden;flex:1}
 .half .body{position:relative;padding:0 16px 40px;display:flex;flex-direction:column;gap:8px}
 .pt{background:var(--pane);border-radius:16px;padding:12px 14px 12px 16px;box-shadow:0 0 0 .5px var(--edge),0 10px 30px -22px rgba(0,0,0,.35);position:relative;overflow:hidden}
 .pt:before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 3px 3px 0;background:var(--c,var(--accent))}
@@ -221,7 +280,7 @@ td:first-child{font-weight:600;white-space:nowrap}
 <div class="row" id="rowBoard"></div>
 
 <h2><span class="n">03</span>行情页上滑：半页「盘口要点」</h2>
-<p class="l">入口条在图下方，有要点时 44 pt 一行写着排第一的那条；没有要点时收成 16 pt 一道抓手，把高度还给图。上滑或点按，半页升到行情头下沿停——现价与六格一直露着、实时跳。每条要点点开看证据，图上同时画出它的价区带或时段带。</p>
+<p class="l">只给事实，按价格结构组织、不按时间。半页 = 四块固定顺序：<b>流向</b>（现在多快：三行固定窗口 + 一行区间 / 24 时累计）→ <b>关键价位</b>（钱堆在哪：账本制，只累加、按价格行为过期，不设时间窗）→ <b>持仓 · 费率 · 现货溢价</b>（仓位怎么变：只在异常时出）→ <b>近 4 小时事件</b>。去掉了交易所数量、各所拆分、排位、首见、强度条、今日累计、现货 / 合约拆分、最大一笔、24 小时爆仓总额。入口条 44 pt 写距现价最近的价位，没有时收成 16 pt 抓手。半页升到行情头下沿停——现价与六格一直露着。</p>
 <div class="row" id="rowHalf"></div>
 
 <h2><span class="n">04</span>全部状态</h2>
@@ -289,59 +348,77 @@ td:first-child{font-weight:600;white-space:nowrap}
 <tr><td>异动行</td><td>最小高 58，圆角 14，内边距 9 / 12 / 9 / 10，行距 6；两行：第一行 徽章 28（圆角 8）· 名 13/semibold（= 自选行 <code>liuliName</code>）· 空心星 12 · 价 14/medium tabular · 涨跌药丸；第二行 类别签 10/semibold · 强度三格 · 事实 <code>caption2</code> 11 ink2（数值 ink/semibold）· 「+N」· 多久前 11 ink3。涨跌药丸照自选行：字 12/semibold，底 = 涨跌色 14%（深色 20%）+ 0.5 pt 30% 描边，圆角 8，最小宽 56，<b>不用实心色块</b></td></tr>
 <tr><td>强度条</td><td>3 根 3×(4/7/10) pt，按权重点亮 1–3 根；类别色</td></tr>
 <tr><td>榜单卡</td><td>圆角 16，内边距 11 / 14 / 4；标题 14/semibold；窗口分段高 24 字 10.5；行高 34 字 12.5；排名列 18（字 10）、徽章 22；金额 11.5 ink2；变化列 12.5/semibold 最小宽 62</td></tr>
-<tr><td>入口条</td><td>44 pt（有要点）/ 16 pt（抓手 36×4）；字 13；「要点」accent + 计数药丸 11 白字</td></tr>
+<tr><td>入口条</td><td>44 pt（有价位或事件）/ 16 pt（抓手 36×4）；字 13；「要点」accent/semibold，无计数</td></tr>
 <tr><td>半页</td><td>圆角 28（continuous），琉璃底 + 光斑；抓手 36×5；顶边 = 行情头下沿（价格 + 涨跌行 + 两列六格全露着，周期条以下全盖住；iPhone 17 Pro 上约 y=177）；标题 <code>title</code> 17</td></tr>
-<tr><td>要点卡</td><td>圆角 16，内边距 12 / 14 / 12 / 16；左侧 3 pt 类别色条；标题 <code>bodyEmph</code> 15 tabular；事实 <code>footnote</code> 13；元信息 11；展开后证据表 12，证据条高 8 圆角 4</td></tr>
+<tr><td>半页块</td><td>圆角 16，内边距 11 / 14 / 12；块标题 13/semibold ink2 + 右侧说明 10.5 ink3；块间距 8</td></tr>
+<tr><td>流向表</td><td>四列 58 / 1fr / 50 / 50，行高 26；净主动 = 中线分叉条高 8（涨绿右、跌红左，按四行最大值定尺）+ 数值 12/semibold；第四行名字加粗；「背离」标 9.5 amber 淡底</td></tr>
+<tr><td>关键价位</td><td>行高 38，三列 112 / 1fr / auto；价位 13/semibold + 距离 10.5 ink3；账本条高 10 圆角 5，三段 1.5 pt 缝：墙实色 / 吃单 50% / 爆仓斜纹，买侧 up 色、卖侧 down 色，按四行最大累计定尺；右侧 10.5 两行（撑了多久 / 测几次）；「现价」虚线分隔行高 20；区间行 well 底圆角 10，轨道 4 pt + 10 pt 圆点标现价位置；展开行 accent 8% 底 + 1 pt 描边，证据两列 30 / 1fr 字 12</td></tr>
+<tr><td>三格</td><td>三等分，格 well 底圆角 10 内边距 8 / 10；标签 10.5 ink3、值 14/semibold、说明 10.5 ink2；分位轨道 3 pt，两端 10% 用 amber 45% 标异常区，圆点 8 accent</td></tr>
+<tr><td>事件</td><td>行高 30，四列 48 / 14 / 1fr / auto；时间 11 ink3、类型小记号 14 线描 ink3（墙 / 爆仓 / 成交 / 持仓）、正文 12（数值 ink/semibold）、回图记号 12 accent；行间 0.5 pt rule</td></tr>
 <tr><td>图上带子</td><td>accent 16% 填充 + 0.8 pt 70% 边线；标签胶囊高 16 字 11/semibold 白字</td></tr>
 <tr><td>颜色</td><td>只用皮肤 seed：up / down / accent / amber / ink / ink2 / ink3 / raised / raised2 / line；琉璃 pane 0.64 / well ink 6%（深色 12%）。类别色：盘口 = accent，持仓 = amber，费率 = ink2；不新增色板</td></tr>
 </table>
 
-<h2><span class="n">11</span>数据口径与降噪规则（要点引擎）</h2>
-<p>引擎跑在 kanpan-api 的 serve 进程里，每分钟（分钟结束 + 3 s 宽限后）对每个跟踪品种算一遍，结果只放内存，接口加 20 s 缓存。输入全部是已有数据：挂单墙生命周期（live / 已成交 / 已撤 / 失联）、大单分钟桶、价位分桶成交、爆仓分钟、持仓（币安 / OKX / Bybit 透传）、费率、服务端自攒的 1 分钟中间价环（每品种 1440 根）。</p>
-<h3>候选怎么生成</h3>
+<h2><span class="n">11</span>数据口径（要点引擎 · 账本制）</h2>
+<p>引擎跑在 kanpan-api 的 serve 进程里，每分钟对每个跟踪品种算一遍；结果放内存，接口加 20 s 缓存。输入全部是已有订阅：挂单墙生命周期、全部成交（1 分钟 K 线自带主动买入量，净主动 = 2 × 主动买 − 总量，不新开流）、爆仓分钟、持仓 5 分钟序列、费率、现货与合约最新价。两套时间观：<b>速率看固定短窗，存量不设窗</b>。</p>
+<h3>① 流向（速率，固定窗）</h3>
 <ul>
-<li><b>价区型</b>（盘口）：以 8 bps 桶把现价上下 3 × ATR(1h) 范围切开；每桶累加 ① 当前挂着的墙金额 × 持续分钟权重 ② 近 24 h 该桶大单成交额 ③ 近 24 h 该桶爆仓额。相邻高桶合并（最多 5 桶宽）。</li>
-<li><b>时段型</b>（盘口）：按 5 分钟滑窗找 ① 大单净额 ② 爆仓额 的局部峰；峰两侧回落到 40% 以内为边界；时段至少 5 分钟、最长 60 分钟。附带同时段涨跌幅与持仓变化。</li>
-<li><b>事件型</b>（盘口）：近 30 分钟内结束的墙，初始金额过门槛且 ① 已成交 ≥ 60%（被吃）或 ② 已撤 ≥ 80% 且撤单时价格距墙 ≤ 0.1%（靠近即撤）。失联不算事件。</li>
-<li><b>持仓</b>：1h / 4h 持仓变化 ≥ 该品种近 3 天同窗口分布的 P95，附同窗口涨跌幅。</li>
-<li><b>费率</b>：当前费率绝对值 ≥ 近 3 天 P95 且 ≥ 0.05%，附持仓 4h 变化。</li>
+<li>三行固定：15 分 / 1 时 / 4 时；每行 = 净主动（合约 + 现货合并）、涨跌幅、持仓变化。</li>
+<li>第四行：区间成立时为「区间 N 时」（从区间起点累计）；否则「24 时」兜底——这是「一天」唯一出现的地方。</li>
+<li>「背离」标：净主动与涨跌幅异号，且 |净主动| ≥ 该品种近 30 天同窗口 P60、|涨跌| ≥ 0.5%。只标不解释。</li>
 </ul>
-<h3>怎么压噪音</h3>
-<ol>
-<li><b>按品种自己的历史定门槛</b>：每类候选的规模要 ≥ 该品种近 3 天同类的 P95；BTC 与山寨各用各的尺子。</li>
-<li><b>持续性</b>：墙 ≥ 10 分钟；时段 ≥ 5 分钟；单笔不算。</li>
-<li><b>与现在有关</b>：价区只看 3 × ATR 内；时段权重按 <code>exp(−age / 4h)</code> 衰减；事件按 <code>exp(−age / 30min)</code>。</li>
-<li><b>合并</b>：相邻价区并一条；重叠时段并一段；同一堵墙只出一次（挂着时在价区里，结束后变事件）。</li>
-<li><b>限量</b>：每品种 ≤ 5 条；图上已经画着的普通墙要过更高门槛（P98）才进列表。</li>
-<li><b>权重</b> = 规模分位 × 近度 × 新鲜度 × 叠加系数（墙 + 成交 + 爆仓同在一个价区时 ×1.5）。只用于排序，界面不显示数值；强度条按三分位点亮 1–3 根。</li>
-</ol>
-<h3>跨品种排行</h3>
+<h3>② 关键价位（存量，账本制）</h3>
 <ul>
-<li>范围 = 用户自选 ∪ 服务端热点层（30 只）。登录用户的自选由服务端自动补进跟踪集合（新增「自选层」，每用户 ≤ 30 只，7 天没登录就释放；总上限在 220 之外单独 +120）。未登录只给热点层。</li>
-<li>每品种取最高权重那条代表它；榜 ≤ 30 行；打开时定序。</li>
-<li>榜单（持仓变化 / 涨幅 / 跌幅）另走全市场扫描：24 h 行情一次拉全；1H / 4H 用服务端已有的小时收盘与持仓透传，5 分钟算一次，缓存 60 s。</li>
+<li>每品种按 8 bps 一格记账：挂单墙 ∑(金额 × 存在分钟)、主动成交额（买 / 卖分开）、爆仓额、触及次数、首次 / 末次触及。<b>只累加，不按时钟衰减。</b></li>
+<li>过期只由价格决定：收盘越过该格 ≥ 0.5 × ATR(1h) 且持续 ≥ 15 分钟 → 标「已破」，权重减半、进事件列表（支撑变阻力也要看）；距现价 > 4 × ATR(4h) 的格留账不展示，价格回来自动回到视野；7 天未触及才删。每品种 ≈ 200 格 × 6 个数，落盘。</li>
+<li>结构位只做参照：当日高 / 低、昨日高 / 低、VWAP、区间两沿。单独不成条；墙 / 成交 / 爆仓叠在上面时在证据里写「= 今日低点」。</li>
+<li>展示：相邻高格合并（≤ 5 格宽）；现价上下各取账本累计最大的 2 条；墙状态词只有三个：挂着 / 在减（撤 ≥ 40%）/ 已破。</li>
+<li>区间：从现在往回扩 1 小时 K 线，箱子（高 − 低）≤ 3 × ATR(4h) 就继续，长度 ≥ 6 小时成立；成立时出区间行（两沿、已走多久、现价位置、两沿各累计吃单与触及次数）。不识别形态、不判断往哪边破。</li>
+</ul>
+<h3>③ 持仓 · 费率 · 现货溢价（只在异常时出）</h3>
+<ul>
+<li>持仓 1 时变化 + 与涨跌的四种事实组合（增仓上涨 / 减仓上涨 / 增仓下跌 / 减仓下跌）；费率；现货溢价 =（现货 − 合约）/ 合约。</li>
+<li>三项各对自身近 30 天分位；任一项 ≥ P90 或 ≤ P10 时整行出现（三格一起出，给语境），否则整块不出。</li>
+</ul>
+<h3>④ 近 4 小时事件（≤ 4 条，时间倒序）</h3>
+<ul>
+<li>只收四类：墙被吃穿（成交 ≥ 60%）/ 墙撤单（撤 ≥ 80% 且撤时距价 ≤ 0.1%）；主动成交集中段（5 分钟滑窗净额局部峰，≥ 近 3 天 P95）；爆仓潮（同法）；持仓 5 分钟跳变 ≥ 1%。</li>
+<li>重叠时段并一段；同一堵墙只出一次（挂着时在价位里，结束后变事件）。</li>
+</ul>
+<h3>门槛与跨品种</h3>
+<ul>
+<li>所有门槛按品种自身历史分位（近 3 天 P95 / 近 30 天 P90），BTC 与山寨各用各的尺子；不给用户调。</li>
+<li>首页跨品种排行取每品种权重最高的一条代表它（权重 = 规模分位 × 近度 × 叠加系数，只用于排序；首页强度三格按三分位点亮）；范围 = 自选 ∪ 热点层，登录用户自选由服务端自动补跟（每用户 ≤ 30 只，7 天没登录释放）。</li>
+<li>榜单（持仓变化 / 涨幅 / 跌幅）另走全市场扫描，5 分钟算一次，缓存 60 s。</li>
 </ul>
 <h3>不做</h3>
-<p>多空比、山寨指数、BTC 市值占比、贪婪恐惧指数、全市场爆仓总额、爆仓排行 / 热力、异常强度分数、偏多 / 偏空标签、异动推送（这轮）。</p>
+<p>多空比、山寨指数、BTC 市值占比、贪婪恐惧指数、全市场爆仓总额、爆仓排行 / 热力、异常强度分数、偏多 / 偏空标签、形态识别、区间突破方向判断、异动推送（这轮）。</p>
 
 <h2><span class="n">12</span>接口</h2>
 <pre>GET /v1/market/orderflow/highlights?base=BTC
-{ "base":"BTC", "generatedAtMs":0, "tracked":true, "items":[
-  { "id":"z:82500", "kind":"zone", "cat":"book", "weight":0.92, "tier":3,
-    "low":82500, "high":82560, "sideHint":"below", "distPct":-0.2,
-    "facts":[ {"t":"wall","usd":35e6,"venues":3,"heldMs":2880000,"side":"buy"},
-              {"t":"trades","usd":21e6,"sinceMs":0}, {"t":"touches","n":2} ],
-    "rank3d":1, "firstMs":0, "lastMs":0 },
-  { "id":"s:0940", "kind":"span", "cat":"book", "weight":0.81, "tier":3,
-    "fromMs":0, "toMs":0,
-    "facts":[ {"t":"net","usd":46e6,"side":"buy"}, {"t":"px","pct":1.4}, {"t":"oi","pct":3.1} ],
-    "rank3d":2 },
-  { "id":"e:82880", "kind":"event", "cat":"book", "weight":0.63, "tier":2,
-    "atMs":0, "price":82880, "facts":[ {"t":"wallCancel","usd":19.6e6,"side":"sell","heldMs":1320000,"distPct":0.05} ] } ] }
+{ "base":"BTC", "generatedAtMs":0, "tracked":true, "staleMs":null,
+  "flow":{ "rows":[ {"w":"15m","netUsd":12e6,"pxPct":0.4,"oiPct":0.3,"diverge":false},
+                    {"w":"1h","netUsd":46e6,"pxPct":1.4,"oiPct":3.1,"diverge":false},
+                    {"w":"4h","netUsd":-8e6,"pxPct":0.9,"oiPct":2.0,"diverge":true},
+                    {"w":"range","sinceMs":0,"netUsd":230e6,"pxPct":0.3,"oiPct":9.0,"diverge":true} ] },
+  "range":{ "low":85400, "high":87450, "sinceMs":0, "lowFillUsd":120e6, "lowTests":5, "highFillUsd":48e6, "highTests":3 },
+  "levels":[ { "id":"L:86120", "low":86120, "high":86180, "side":"bid", "distPct":-0.4,
+               "wallUsd":35e6, "wallHeldMs":2880000, "wallState":"live",
+               "fillBuyUsd":21e6, "fillSellUsd":4e6, "liqUsd":0, "tests":2, "touchMs":[0,0],
+               "refs":["dayLow"] }, … ],
+  "position":{ "show":true,
+               "oi":{"pct1h":3.1,"combo":"oiUpPxUp","pctile":88},
+               "funding":{"rate":0.00045,"pctile":96},
+               "spotPremium":{"pct":0.08,"pctile":91} },
+  "events":[ { "id":"E:…", "t":"wallCancel", "atMs":0, "price":86880, "usd":19.6e6, "side":"sell", "distPct":0.05 },
+             { "id":"E:…", "t":"liqWave", "fromMs":0, "toMs":0, "usd":18e6, "side":"long", "pxPct":-1.1 },
+             { "id":"E:…", "t":"flowBurst", "fromMs":0, "toMs":0, "netUsd":46e6, "pxPct":1.4 },
+             { "id":"E:…", "t":"oiJump", "atMs":0, "pct":1.4 } ] }
 
 GET /v1/market/orderflow/highlights/board?bases=BTC,ETH,SOL,AXS   // 自选由客户端带上；服务端并入热点层
-{ "generatedAtMs":0, "rows":[ { "base":"AXS", "favorite":true, "count":2, "top":{ …同上一条 item… },
-                               "price":0.62, "changePct":5.2 }, … ] }
+{ "generatedAtMs":0, "rows":[ { "base":"AXS", "favorite":true, "count":2, "cat":"oi", "tier":3,
+                               "top":{ "kind":"level"|"event"|"position", …该条的事实字段… },
+                               "price":0.62, "changePct":5.2, "atMs":0 }, … ] }
 
 GET /v1/market/board?kind=oi|gainers|losers&window=1h|4h|24h
 { "generatedAtMs":0, "rows":[ { "base":"HO", "oiUsd":2.3e6, "changePct":640.9, "price":0.0 }, … ] }</pre>
@@ -386,9 +463,9 @@ GET /v1/market/board?kind=oi|gainers|losers&window=1h|4h|24h
 <tr><td>行按下 / 松开</td><td>按下卡片 scale .98 + 底加深 120 ms；松开切到图表格，行情页切品种后 240 ms 半页升起 spring(response .42, damping .86) 到行情头下沿，对应卡展开并描边 1.2 s 淡出</td><td>松开 <code>Haptics.press</code></td></tr>
 <tr><td>点空心星</td><td>星填充 + scale 1.25→1 弹一下 260 ms</td><td><code>Haptics.tap</code></td></tr>
 <tr><td>入口条上滑</td><td>手指跟随（interactive）；松手位移 ≥ 48 pt 则 spring 到位，否则回弹 200 ms；入口条 44↔16 高度切换 200 ms ease-in-out，图随之伸缩不闪帧</td><td>到位 <code>Haptics.press</code></td></tr>
-<tr><td>半页卡展开 / 收起</td><td>高度 spring(response .35, damping .85)；证据表 fade 150 ms；图上带子 fade-in 180 ms（收起时 120 ms 淡出）</td><td><code>Haptics.step</code></td></tr>
+<tr><td>价位行展开 / 收起</td><td>高度 spring(response .35, damping .85)；证据四行 fade 150 ms；图上带子 fade-in 180 ms（收起时 120 ms 淡出）</td><td><code>Haptics.step</code></td></tr>
 <tr><td>回图</td><td>图平移到带子居中 300 ms ease-in-out，十字线落在价区中线 / 时段中点</td><td><code>Haptics.step</code></td></tr>
-<tr><td>半页刷新</td><td>只换数字（<code>contentTransition(.numericText)</code> 250 ms）；新卡插尾、描边亮 600 ms</td><td>—</td></tr>
+<tr><td>半页刷新</td><td>只换数字（<code>contentTransition(.numericText)</code> 250 ms）；账本条长度 240 ms 过渡；价位行不换位（新进的价位插在该侧末尾、描边亮 600 ms）</td><td>—</td></tr>
 <tr><td>榜单窗口切换</td><td>段选 morph 200 ms；数值 numericText 250 ms；行不位移</td><td><code>Haptics.step</code></td></tr>
 <tr><td>价格 / 涨跌</td><td>不做跳价闪动（自选页同规矩）</td><td>—</td></tr>
 <tr><td>断流 / 恢复</td><td>提示条沿用全 app；列表置灰 200 ms；恢复后无感回色</td><td>—</td></tr>
@@ -594,7 +671,7 @@ function chartPage(spec,S,bars,T,sel,live){
  const itv=spec.interval||'15分';const pers=['5分','30分','1时','4时','1日','1周'];
  const px=bars[live].c,chg=px-bars[live-48].c,pct=chg/bars[live-48].c*100;const upc=chg>=0;
  const sym=spec.sym||'BTC';
- const strip=spec.strip==='none'?`<div class="strip thin"><i></i></div>`:`<div class="strip"><svg class="ch" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg><span class="k">要点<small>${spec.stripN||3}</small></span><span class="t">${spec.stripT||'下方 <b>82,500</b> 买区 · 35M · 3 所'}</span></div>`;
+ const strip=spec.strip==='none'?`<div class="strip thin"><i></i></div>`:`<div class="strip"><svg class="ch" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg><span class="k">要点</span><span class="t">${spec.stripT||'下方 <b>86,120</b> 买区 35M · 挂 48 分 · 测 2 次'}</span></div>`;
  return `<div class="top">${badge(sym,34)}<div class="nm">${sym}<em>${spec.spot?'现货':'币安 USDT 永续'}</em></div>
    <div class="disc"><i>${icon('bell')}</i><i>${icon('more')}</i><i>${icon('search')}</i></div></div>
  <div class="hd"><div><div class="px" style="color:${upc?S.up:S.down}">${fpx(px)}</div><div class="chg" style="color:${upc?S.up:S.down}">${chg>=0?'+':'−'}${Math.abs(chg).toFixed(1)}&nbsp;&nbsp;${chg>=0?'+':'−'}${Math.abs(pct).toFixed(2)}%</div></div>
@@ -605,20 +682,42 @@ function chartPage(spec,S,bars,T,sel,live){
  ${tabbar('chart')}`}
 
 /* ============================================================ 半页 */
-function pointCard(p,open){const c=CAT[p.cat];
- return `<div class="pt ${open?'open':''}" style="--c:var(--${c.c})"><div class="h"><span class="kind">${p.kind}</span><span class="ttl">${p.ttl}</span><span class="ago">${p.ago}</span></div>
-  <div class="f">${p.f}</div>
-  <div class="m">${meter(p.t)}<span>${p.rank}</span><span class="go">${ICON.locate}回图</span></div>
-  ${open&&p.ev?`<div class="ev">${p.ev.map(e=>`<s>${e[0]}</s><span class="bar">${e[1]}</span><b>${e[2]}</b>`).join('')}</div>`:''}</div>`}
+/* ============================================================ 半页「盘口要点」：四块 */
+const FLOW=[['15 分',12,0.4,0.3],['1 时',46,1.4,3.1],['4 时',-8,0.9,2.0]];
+const FLOW_LONG={range:['区间 31 时',230,0.3,9.0],day:['24 时',95,2.2,4.1]};
+const LEVELS={
+ above:[{band:'86,900–86,940',dist:'0.5%',side:'ask',wall:12.4,fill:4.1,liq:0,held:'挂 9 分',tests:1},
+        {band:'87,450',dist:'1.1%',side:'ask',wall:0,fill:48,liq:0,tests:3,refR:'区间上沿',refD:'= 今日高点'}],
+ below:[{id:'z1',band:'86,120–86,180',dist:'0.4%',side:'bid',wall:35,fill:21,liq:0,held:'挂 48 分',tests:2,
+         ev:[['吃单','买 <b>21M</b> · 卖 4M'],['墙','<b>35M</b> · 挂 48 分 · 挂着'],['触及','10:12 · 11:40 · 未破'],['叠加','= 今日低点']]},
+        {band:'85,400',dist:'1.3%',side:'bid',wall:0,fill:120,liq:18,tests:5,refR:'区间下沿',refD:'= 昨日低点'}]};
+const TRI=[{l:'持仓 1 时',v:'+3.1%',e:'增仓上涨',p:88},{l:'费率',v:'0.045%',e:'30 天第 96 位',p:96},{l:'现货溢价',v:'+0.08%',e:'30 天第 91 位',p:91}];
+const EVI={wall:'<svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M4 12h16"/></svg>',
+ liq:'<svg viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></svg>',
+ trade:'<svg viewBox="0 0 24 24"><path d="M4 9h13l-3-3M20 15H7l3 3"/></svg>',
+ oi:'<svg viewBox="0 0 24 24"><path d="M5 18V10M11 18V5M17 18v-7M3 21h18"/></svg>'};
+const EVENTS=[['12:33','wall','卖墙撤单 <b>19.6M</b> @ 86,880 · 距价 0.05%'],['10:20–35','liq','多单爆仓 <b>18M</b> · 价格 −1.1%'],['09:40–05','trade','主动买入 <b>+46M</b> · 价格 +1.4%'],['08:55','oi','持仓 5 分钟 <b>+1.4%</b>']];
+const sg=v=>(v>=0?'+':'−')+Math.abs(v).toFixed(1);
+function flowBlock(spec,S){const long=spec.range?FLOW_LONG.range:FLOW_LONG.day;const rows=[...FLOW,long];const mx=Math.max(...rows.map(r=>Math.abs(r[1])));
+ const row=(r,i)=>{const n=r[1];const div=(n>0)!==(r[2]>0)&&Math.abs(n)>=5&&Math.abs(r[2])>=0.5;const w=Math.abs(n)/mx*50;
+  return `<span class="w ${i===3?'lg':''}">${r[0]}${div?'<em class="tag">背离</em>':''}</span><span class="nb"><span class="trk"><i style="${n>=0?`left:50%;width:${w}%;background:var(--up)`:`right:50%;width:${w}%;background:var(--down)`}"></i></span><b style="color:${n>=0?S.up:S.down}">${n>=0?'+':'−'}${Math.abs(n)}M</b></span><span class="v">${sg(r[2])}%</span><span class="v">${sg(r[3])}%</span>`};
+ return `<div class="blk"><div class="bt"><h5>流向</h5><span class="cap">合约 + 现货 · 主动买 − 主动卖</span></div><div class="flow"><span class="th"></span><span class="th">净主动</span><span class="th r">价格</span><span class="th r">持仓</span>${rows.map(row).join('')}</div></div>`}
+function levelsBlock(spec){const open=spec.open;const mx=140;
+ const seg=(v,cls)=>v?`<i class="${cls}" style="width:${(v/mx*100).toFixed(1)}%"></i>`:'';
+ const row=l=>{const isOpen=l.id&&l.id===open;const col=l.side==='bid'?'var(--up)':'var(--down)';const ref=l.refR?' · '+(spec.range?l.refR:l.refD):'';
+  return `<div class="row ${isOpen?'open':''}" style="--s:${col}"><span class="px">${l.band}<small>距 ${l.dist}${ref}</small></span><span class="bar">${seg(l.wall,'w')}${seg(l.fill,'f')}${seg(l.liq,'q')}</span><span class="meta">${l.wall?`墙 <b>${l.wall}M</b> · ${l.held}`:`吃单 <b>${l.fill}M</b>`}<br>${l.liq?`爆仓 ${l.liq}M · `:''}测 ${l.tests} 次</span></div>${isOpen&&l.ev?`<div class="lev">${l.ev.map(e=>`<s>${e[0]}</s><span>${e[1]}</span>`).join('')}<span class="go">${ICON.locate}回图</span></div>`:''}`};
+ const rng=spec.range?`<div class="rng"><div class="l1"><span>区间 <b>85,400–87,450</b> · 已走 31 时</span><span class="rt"><i style="left:53%"></i></span></div><div class="l2">下沿累计吃单 120M · 测 5 次 ｜ 上沿 48M · 测 3 次</div></div>`:'';
+ return `<div class="blk"><div class="bt"><h5>关键价位</h5><span class="cap"><i></i>墙<i class="f"></i>吃单<i class="q"></i>爆仓</span></div><div class="lv">${rng}${LEVELS.above.slice().reverse().map(row).join('')}<div class="now"><i></i>现价 86,489.9<i></i></div>${LEVELS.below.map(row).join('')}</div></div>`}
+function triBlock(){return `<div class="blk"><div class="bt"><h5>持仓 · 费率 · 现货溢价</h5><span class="cap">对自身近 30 天 · 只在异常时出</span></div><div class="tri">${TRI.map(t=>`<div class="cell"><small>${t.l}</small><b>${t.v}</b><em>${t.e}</em><span class="pct"><i style="left:${t.p}%"></i></span></div>`).join('')}</div></div>`}
+function eventsBlock(n){return `<div class="blk"><div class="bt"><h5>近 4 小时</h5><span class="cap">点一条回图</span></div><div class="evl">${EVENTS.slice(0,n||4).map(e=>`<div class="it"><span class="t">${e[0]}</span><span class="ic">${EVI[e[1]]}</span><span class="x">${e[2]}</span><span class="go">${ICON.locate}</span></div>`).join('')}</div></div>`}
 function halfSheet(spec,S){
  const st=spec.state||'';let body='';
- const hdr=(cnt,right)=>`<div class="hh"><h4>盘口要点</h4>${cnt!=null?`<span class="cnt">${cnt}</span>`:''}<span class="up">${right}</span></div>`;
- if(st==='loading'){body=hdr(null,'')+`<div class="body">${[0,1].map(()=>`<div class="pt skel"><div class="h"><span class="kind skel" style="width:34px;height:18px;background:var(--well)"></span><span class="ttl skel" style="height:14px"></span></div><div class="f skel" style="height:30px"></div></div>`).join('')}</div>`}
- else if(st==='calm'){body=hdr(null,'12:31 更新')+`<div class="body"><div class="calm">${ICON.calm}<b>暂无要点</b><span>近 24 小时没有值得注意的价区或时段</span></div></div>`}
- else if(st==='untracked'){body=hdr(null,'')+`<div class="body"><div class="calm">${ICON.wifi}<b>打开后开始观察</b><span>这只品种从现在起纳入跟踪 · 10 分钟后有结果</span></div></div>`}
- else{const open=spec.open||null;const list=(spec.points||POINTS).slice(0,spec.cut||5);
-  body=hdr(list.length,st==='stale'?'数据停于 12:08':`<span class="live"></span>12:31`)+`<div class="body">${list.map(p=>pointCard(p,p.id===open)).join('')}</div>`}
- return `<div class="half">${lobes(S,'lobes')}<div class="grab"></div>${body}</div>`}
+ const hdr=right=>`<div class="hh"><h4>盘口要点</h4><span class="up">${right}</span></div>`;
+ if(st==='loading'){body=hdr('')+`<div class="body"><div class="blk skel"></div><div class="blk skel s2"></div></div>`}
+ else if(st==='calm'){body=hdr('<span class="live"></span>12:31')+`<div class="body">${flowBlock(spec,S)}<div class="quiet">近 4 小时没有值得注意的价位与事件</div></div>`}
+ else if(st==='untracked'){body=hdr('')+`<div class="body"><div class="calm">${ICON.wifi}<b>打开后开始观察</b><span>这只品种从现在起纳入跟踪 · 10 分钟后有结果</span></div></div>`}
+ else{body=hdr(st==='stale'?'数据停于 12:08':`<span class="live"></span>12:31`)+`<div class="body">${flowBlock(spec,S)}${levelsBlock(spec)}${spec.noTri?'':triBlock()}${eventsBlock(spec.events)}</div>`}
+ return `<div class="half">${lobes(S,'lobes')}<div class="grab"></div>${spec.scroll?body.replace('<div class="body">',`<div class="scr"><div class="body" style="margin-top:-${spec.scroll}px">`)+'</div>':body}</div>`}
 
 /* ============================================================ 场景 */
 function fig(spec,cap){const w=document.createElement('div');w.className='fig';w.appendChild(phone(spec));const c=document.createElement('div');c.className='cap';c.innerHTML=cap;w.appendChild(c);return w}
@@ -628,7 +727,7 @@ function mount(){
   fig({seed:7,page:'home',ann:[{x:150,y:56,t:'分类胶囊：盘口 / 持仓 / 费率；后续加「价格」「成交额」只是多一格',c:'d'},{x:214,y:244,t:'一行事实 + 3 根强度条；不打分、不写多空',c:'d'},{x:128,y:334,t:'热门但不在自选：名字后一颗空心星，点了就加自选',c:'d'}]},'<b>1 · 首页 · 异动（默认）</b>。顶部「异动 · 榜单」分段，胶囊「全部」。按权重排，自选与热门混排；每行：徽章 · 品种 · 类别签 · 强度 · 一行事实 ｜ 价格 · 涨跌药丸 · 多久前。「+2」表示这只还有 2 条。'),
   fig({seed:7,page:'home',chip:'book'},'<b>2 · 只看「盘口」</b>。胶囊筛类别，排序不变。盘口类四种形态都在：价区（买区 / 卖区）、时段（主动买入集中 / 爆仓潮）、事件（撤单）。'),
   fig({seed:7,page:'home',state:'new',ann:[{x:200,y:240,t:'拉到新数据不重排，只浮一枚药丸；点它才滚到顶重排',c:'d'}]},'<b>3 · 有新异动</b>。打开时定序，看的过程中列表不跳；每 60 秒拉一次，有变化浮一枚药丸。下拉刷新立即重排。'),
-  fig({seed:7,page:'chart',half:true,open:'z1',band:{lo:82500,hi:82560,label:'买区 35M'},ann:[{x:16,y:122,t:'从首页点进来：行情头露着，半页已展开那条，图上画着带子',c:'d'}]},'<b>4 · 点一行 → 行情页 + 半页已展开</b>。底栏切到「图表」，品种切到 BTC，半页自动升起并展开让它上榜的那条（卡有 accent 描边），图上同时画出价区带。')
+  fig({seed:7,page:'chart',half:true,open:'z1',band:{lo:86120,hi:86180,label:'买区 35M'},ann:[{x:16,y:122,t:'从首页点进来：行情头露着，半页已展开那个价位，图上画着带子',c:'d'}]},'<b>4 · 点一行 → 行情页 + 半页已展开</b>。底栏切到「图表」，品种切到 BTC，半页自动升起并展开让它上榜的那个价位（行有 accent 描边），图上同时画出价区带。')
  );
  const board=document.getElementById('rowBoard');board.innerHTML='';
  board.append(
@@ -637,11 +736,12 @@ function mount(){
  );
  const half=document.getElementById('rowHalf');half.innerHTML='';
  half.append(
-  fig({seed:7,page:'chart',ann:[{x:150,y:672,t:'入口条：要点 3 · 排第一那条。不打开也有信息',c:'d'}],finger:[196,748]},'<b>7 · 行情页 · 入口条</b>。图下方 44 pt：「要点 3」+ 排第一的那条。上滑 ≥ 48 pt 或点按打开。'),
-  fig({seed:7,page:'chart',strip:'none',ann:[{x:150,y:712,t:'没要点：缩成 16 pt 抓手，高度还给图',c:'d'}]},'<b>8 · 没有要点时</b>。入口条缩成一道抓手，图长高 28 pt；上滑仍可打开（看到「暂无要点」）。'),
-  fig({seed:7,page:'chart',half:true,ann:[{x:16,y:138,t:'半页顶边 = 行情头下沿；价格、涨跌、六格一直露着',c:'d'}]},'<b>9 · 半页「盘口要点」</b>。标题 + 计数 + 更新时刻。≤ 5 张卡，按权重排；每卡 = 类别签 · 位置 · 事实两行 · 强度 · 排位 · 回图。'),
-  fig({seed:7,page:'chart',half:true,open:'z1',band:{lo:82500,hi:82560,label:'买区 35M'}},'<b>10 · 展开价区</b>。证据表：各所墙额、买卖成交各多少；图上横向带子 + 右上角标签。再点收起，带子消失。'),
-  fig({seed:7,page:'chart',half:true,open:'s1',span:{from:14,to:9,label:'净买 +46M'}},'<b>11 · 展开时段</b>。图上竖向带子覆盖 09:40–10:05；「回图」把那段横向居中。')
+  fig({seed:7,page:'chart',ann:[{x:150,y:672,t:'入口条：最近的那个关键价位。不打开也有信息',c:'d'}],finger:[196,748]},'<b>7 · 行情页 · 入口条</b>。图下方 44 pt：「要点」+ 距现价最近的关键价位一句（没有价位时写 1 时净主动）。上滑 ≥ 48 pt 或点按打开。'),
+  fig({seed:7,page:'chart',strip:'none',ann:[{x:150,y:712,t:'没要点：缩成 16 pt 抓手，高度还给图',c:'d'}]},'<b>8 · 没有关键价位也没有事件时</b>。入口条缩成一道抓手，图长高 28 pt；上滑仍可打开（只有流向表）。'),
+  fig({seed:7,page:'chart',half:true,ann:[{x:16,y:138,t:'半页顶边 = 行情头下沿；价格、涨跌、六格一直露着',c:'d'}]},'<b>9 · 半页「盘口要点」· 四块固定顺序</b>。① 流向：15 分 / 1 时 / 4 时三行固定 + 第四行（区间成立时是「区间 N 时」，否则「24 时」兜底），净主动一根左右分叉条，价涨量出 / 价跌量进标「背离」。② 关键价位：上 2 · 现价 · 下 2，条 = 墙（实）+ 吃单（淡）+ 爆仓（斜纹）的账本累计，右边只写撑了多久、测了几次。③ 持仓 · 费率 · 现货溢价三格，只在任一项出自身 30 天 P90 之外时出现，小轨道标分位。④ 近 4 小时事件 ≤ 4 条。没内容的块整块不出。'),
+  fig({seed:7,page:'chart',half:true,open:'z1',band:{lo:86120,hi:86180,label:'买区 35M'}},'<b>10 · 展开一个价位</b>。行下展开四行证据：吃单买 / 卖、墙额与状态（挂着 / 在减 / 已破）、触及时刻、叠加的结构位（今日低点 / 区间沿 / VWAP）；图上同时画横向带子 + 右上角标签。再点收起，带子消失。没有「几所」「排位」「首见」。'),
+  fig({seed:7,page:'chart',half:true,range:true,scroll:548,ann:[{x:16,y:600,t:'三格只在任一项出自身 30 天 P90 之外时才出现；事件只收四类、≤ 4 条',c:'d'}]},'<b>11b · 半页滚到底</b>。③ 持仓 · 费率 · 现货溢价：值 + 事实词（增仓上涨 / 30 天第 96 位）+ 分位轨道，两端 10% 标异常区。④ 近 4 小时：时间 · 类型记号 · 一句事实（墙撤单 / 爆仓潮 / 主动成交集中 / 持仓跳变）· 回图。'),
+  fig({seed:7,page:'chart',half:true,range:true,events:3},'<b>11 · 区间成立时</b>。关键价位块顶上多一行「区间 85,400–87,450 · 已走 31 时」+ 现价在区间里的位置 + 两沿各累计多少、测几次；流向表第四行变成「区间 31 时」累计——价格没动、净主动与持仓却一直涨，这种背离只有这一行能看出来。区间规则：往回扩 1 小时 K 线，箱子（高 − 低）≤ 3 × ATR(4h) 就继续，≥ 6 小时成立。')
  );
  const states=document.getElementById('rowStates');states.innerHTML='';
  states.append(
@@ -649,17 +749,17 @@ function mount(){
   fig({seed:7,page:'home',state:'calm'},'<b>13 · 盘面平静</b>。一条都没过门槛：一行空态 + 更新时间，不画假图。'),
   fig({seed:7,page:'home',state:'guest'},'<b>14 · 未登录</b>。只有热门 30 只，副标题一句「登录后自选也会扫」；不弹登录框。'),
   fig({seed:7,page:'home',toast:'行情断了，正在重连',toastSub:'刚才',state:'stale'},'<b>15 · 断网</b>。提示条沿用全 app 那一条；列表变灰、副标题写「停于 12:08」。'),
-  fig({seed:7,page:'chart',half:true,state:'loading'},'<b>16 · 半页加载</b>。两张骨架卡。'),
-  fig({seed:7,page:'chart',strip:'none',half:true,state:'calm'},'<b>17 · 暂无要点</b>。一行空态；入口条同时是抓手状态。'),
+  fig({seed:7,page:'chart',half:true,state:'loading'},'<b>16 · 半页加载</b>。两块骨架。'),
+  fig({seed:7,page:'chart',strip:'none',half:true,state:'calm'},'<b>17 · 没有价位与事件</b>。流向表永远在（「现在没异常」本身是信息），下面一句空态；入口条是抓手状态。'),
   fig({seed:23,base:0.0423,sym:'MINA',page:'chart',strip:'none',half:true,state:'untracked'},'<b>18 · 未跟踪品种</b>。打开行情页即纳入按需跟踪；半页写一句「打开后开始观察」。'),
-  fig({seed:7,page:'chart',half:true,state:'stale',cut:3},'<b>19 · 数据停了</b>。卡变灰、右上写「数据停于 12:08」；恢复后无感回来。')
+  fig({seed:7,page:'chart',half:true,state:'stale',events:2},'<b>19 · 数据停了</b>。数字变灰、右上写「数据停于 12:08」；恢复后无感回来。')
  );
  const skins=document.getElementById('rowSkins');skins.innerHTML='';
  skins.append(
   fig({seed:7,page:'home',skin:'terra',dark:0},'<b>20 · 陶土 · 浅 · 首页</b>。'),
-  fig({seed:7,page:'chart',half:true,open:'z1',band:{lo:82500,hi:82560,label:'买区 35M'},skin:'classic',dark:0},'<b>21 · 经典 · 浅 · 半页</b>。白底无光斑。'),
+  fig({seed:7,page:'chart',half:true,open:'z1',band:{lo:86120,hi:86180,label:'买区 35M'},skin:'classic',dark:0},'<b>21 · 经典 · 浅 · 半页</b>。白底无光斑。'),
   fig({seed:7,page:'home',skin:'sage',dark:1},'<b>22 · 青苔 · 深 · 首页</b>。深色不画光斑，卡 6.5% 白。'),
-  fig({seed:7,page:'chart',half:true,open:'s1',span:{from:14,to:9,label:'净买 +46M'},skin:'terra',dark:1},'<b>23 · 陶土 · 深 · 半页</b>。')
+  fig({seed:7,page:'chart',half:true,range:true,skin:'terra',dark:1},'<b>23 · 陶土 · 深 · 半页</b>。')
  );
 }
 document.querySelectorAll('.seg').forEach(seg=>seg.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
