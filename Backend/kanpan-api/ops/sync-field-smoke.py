@@ -3,7 +3,8 @@
     python3 -I ops/sync-field-smoke.py autoLayers --good '["FVG"]' --bad '["X"]' --bad '"FVG"' --bad '["FVG","FVG"]'
 
 流程：注册一个随机用户名的测试账号 → 逐个推 `--good` 的值（期望 200，并从 bootstrap 读回同一个值）
-→ 逐个推 `--bad` 的值（期望 400 invalid_operation）→ 删掉这个账号 → 确认删后登录 401。
+→ 逐个推 `--bad` 的值（期望被拒：设置 / 画线偏好 2026-10-10 起只丢这个字段——200、回执 `invalidFields`
+点名它、bootstrap 读回不是这个值；别的集合整条 400）→ 删掉这个账号 → 确认删后登录 401。
 账号是一行测试数据，脚本结束时一定删（finally）；密码随机生成，不打印。
 只打 `/v1/auth/*` 与 `/v1/sync/*`，不碰别人的数据；注册有每 IP 每分钟 30 次的限额，连跑别超。
 """
@@ -12,7 +13,7 @@ import argparse, json, secrets, sys, time, uuid, urllib.error, urllib.request
 ap = argparse.ArgumentParser()
 ap.add_argument("field")
 ap.add_argument("--good", action="append", default=[], help="应被接受的 JSON 值，可多次")
-ap.add_argument("--bad", action="append", default=[], help="应被 400 拒绝的 JSON 值，可多次")
+ap.add_argument("--bad", action="append", default=[], help="应被拒的 JSON 值（400，或 200 但 invalidFields 点名），可多次")
 ap.add_argument("--base", default="https://kanpan.43-160-232-253.sslip.io")
 ap.add_argument("--collection", default="settings")
 ap.add_argument("--object", default="chart")
@@ -72,8 +73,16 @@ try:
         stored = next((o.get("body", {}).get(args.field) for o in objs if o.get("id") == args.object), None)
         check(f"bootstrap 读回 {args.field}={raw}", stored == value, f"status={st} stored={json.dumps(stored, ensure_ascii=False)}")
     for raw in args.bad:
-        st, b = push(json.loads(raw), token)
-        check(f"推 {args.field}={raw} 应 400", st == 400, f"status={st} {json.dumps(b, ensure_ascii=False)[:120]}")
+        value = json.loads(raw)
+        st, b = push(value, token)
+        if st == 200:
+            # 宽容集合：操作照常落地，但这个字段被丢掉、回执里点名，读回的不是这个值。
+            r = (b.get("data", {}).get("results") or [{}])[0]
+            stored = r.get("object", {}).get("body", {}).get(args.field)
+            ok = args.field in (r.get("invalidFields") or []) and stored != value
+            check(f"推 {args.field}={raw} 应只丢字段", ok, f"invalidFields={r.get('invalidFields')} stored={json.dumps(stored, ensure_ascii=False)}")
+        else:
+            check(f"推 {args.field}={raw} 应 400", st == 400, f"status={st} {json.dumps(b, ensure_ascii=False)[:120]}")
 finally:
     st, b = call("DELETE", "/v1/auth/account", {"password": password}, token)
     check("删掉测试账号", st == 200, f"status={st}")

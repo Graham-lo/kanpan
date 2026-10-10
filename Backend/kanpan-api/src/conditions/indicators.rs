@@ -15,7 +15,7 @@
 //! 响一次就完：`alerts::record_fired` 的 `WHERE status='active'` 是那道闸，这里另记一份「这次武装已经
 //! 响过」（[`Fired`]）挡住重读提醒表时的竞态。
 use super::{Bar,CondAlert,Hit,MA_RETRY_MS,MaClock,Observation,RULE_MAX_BYTES,Rule};
-use crate::{AppState,alerts,apns::Apns,error::{ApiError,Result}};
+use crate::{AppState,alerts,apns::Apns};
 use serde_json::{Map,Value,json};
 use std::collections::{BTreeMap,HashSet};
 use uuid::Uuid;
@@ -359,13 +359,17 @@ pub fn symbol_of(collection:&str,object_id:&str,action:&str,fields:&BTreeMap<Str
  object_id.split('/').nth(2).map(str::to_string)
 }
 
-/// 推上来的品种都得认得，否则 400 `indicator_symbol`。合约表取不到时放行（记一行日志）：
-/// 不该因为币安一次抖动把用户建提醒整个挡掉，真认不得的品种也只是永远不响。
-pub async fn check_symbols(symbols:&[String])->Result<()> {
- if symbols.is_empty() {return Ok(())}
+/// 推上来的品种里认不得的那几只（带着它们的 op 回 `indicator_symbol`）。合约表取不到时一只都不算
+/// 认不得、照常放行（记一行日志）：不该因为币安一次抖动把用户建提醒整个挡掉——那不是这条提醒的错，
+/// 回 400 会让客户端把它当坏操作隔离；真认不得的品种也只是永远不响。
+///
+/// 从前是「整批里有一只不认得就整批 400」（审查 2026-10-10 第 5 项）：同一批里别的设置、画线
+/// 跟着一起被拒，客户端二分到最后才找到是哪一条。现在交回名单，由 `sync::push` 只拒那一条。
+pub async fn unlisted(symbols:&[String])->std::collections::BTreeSet<String> {
+ if symbols.is_empty() {return Default::default()}
  match crate::market_meta::exchange_info().await {
-  Ok(info)=>if symbols.iter().all(|s|listed(&info,s)) {Ok(())} else {Err(ApiError::bad(code::SYMBOL))},
-  Err(_)=>{tracing::warn!("Indicator alerts: exchangeInfo unavailable, symbol not checked");Ok(())}
+  Ok(info)=>symbols.iter().filter(|s|!listed(&info,s)).cloned().collect(),
+  Err(_)=>{tracing::warn!("Indicator alerts: exchangeInfo unavailable, symbol not checked");Default::default()}
  }
 }
 

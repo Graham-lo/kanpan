@@ -106,20 +106,36 @@ fn one_of(v:&Value,all:&[&str])->bool {v.as_str().is_some_and(|s|all.contains(&s
 /// 线性 / 对数（百分比不学），板块只有今日 / 5 日，灵敏度系数 0.5…2。
 /// `settings.chartLayouts`：电脑网页版的多套图表布局（2026-10-07，Web/src/app/layouts.ts）。
 /// 只有网页版读写，手机端原样留着不认识的键；服务端只校验、不读。
-/// `{active, sets:[{id,name,layout,cells:[{symbol,iv,footprint?,…}]}]}`，最多 20 套、每套最多 16 格，整份 ≤ 32 KB。
-/// 格子里除了品种 / 周期 / 足迹，留最多 6 个短键给以后的格子配置（值只能是布尔、数、≤ 16 字的串），老服务端不挡新网页。
+/// `{active, sets:[{id,name,layout,cells:[{symbol,iv,footprint?,ha?,range?,…}]}]}`，最多 20 套、每套最多 16 格，整份 ≤ 32 KB。
+/// 格子里除了品种 / 周期 / 三个布尔开关（足迹 `footprint`、平均 K 线 `ha`、区间 K 线 `range`，和网页
+/// `CELL_FLAGS` 一一对上），留最多 6 个短键给以后的格子配置（值只能是布尔、数、≤ 16 字的串），老服务端不挡新网页。
+/// 品种两种写法，和网页 `validSymbol` 逐字对齐：裸代号（2–40 个字母数字与 `._-`），或者多交易所的
+/// `venue/market/代号`（交易所 2–20、市场 2–10，小写字母开头、只有小写字母数字与 `_`；代号 1–40）。
+/// 整串最长 72 字（20 + 1 + 10 + 1 + 40）：比「约 64」宽一点，是因为三段各自的上限就是网页那边的，
+/// 这里卡得比网页紧，网页存得下的格子推上来就会被当成坏值丢掉。
 const CHART_LAYOUTS_MAX_BYTES:usize=32_768;
 const CHART_LAYOUT_KINDS:&[&str]=&["1","2","2v","3","4","6","8","9","12","16"];
+/// 布局格子里的品种（见 `chart_layouts` 的说明）。
+fn cell_symbol(s:&str)->bool {
+ let code=|s:&str,min:usize|(min..=40).contains(&s.chars().count())&&s.chars().all(|c|c.is_alphanumeric()||matches!(c,'.'|'_'|'-'));
+ let tag=|s:&str,max:usize|(2..=max).contains(&s.len())&&s.as_bytes()[0].is_ascii_lowercase()&&s.bytes().all(|c|c.is_ascii_lowercase()||c.is_ascii_digit()||c==b'_');
+ match s.split('/').collect::<Vec<_>>()[..] {
+  [bare]=>code(bare,2),
+  [venue,market,symbol]=>tag(venue,20)&&tag(market,10)&&code(symbol,1),
+  _=>false,
+ }
+}
 fn chart_layouts(v:&Value)->bool {
  fn id(v:&Value)->bool {v.as_str().is_some_and(|s|(1..=32).contains(&s.len())&&s.bytes().all(|c|c.is_ascii_alphanumeric()||c==b'_'||c==b'-'))}
  fn cell(c:&Value)->bool {
   let Some(o)=c.as_object() else {return false};
-  let extra=o.keys().filter(|k|!matches!(k.as_str(),"symbol"|"iv"|"footprint")).count();
-  o.get("symbol").and_then(Value::as_str).is_some_and(|s|(2..=40).contains(&s.chars().count())&&s.chars().all(|c|c.is_alphanumeric()||matches!(c,'.'|'_'|'-')))
+  const CORE:[&str;5]=["symbol","iv","footprint","ha","range"];
+  let extra=o.keys().filter(|k|!CORE.contains(&k.as_str())).count();
+  o.get("symbol").and_then(Value::as_str).is_some_and(cell_symbol)
    && o.get("iv").and_then(Value::as_str).is_some_and(|s|(1..=8).contains(&s.len())&&s.bytes().all(|c|c.is_ascii_alphanumeric()))
-   && o.get("footprint").is_none_or(Value::is_boolean)
+   && ["footprint","ha","range"].iter().all(|k|o.get(*k).is_none_or(Value::is_boolean))
    && extra<=6
-   && o.iter().all(|(k,v)|matches!(k.as_str(),"symbol"|"iv"|"footprint")
+   && o.iter().all(|(k,v)|CORE.contains(&k.as_str())
      ||(1..=16).contains(&k.len())&&k.as_bytes()[0].is_ascii_alphabetic()&&k.bytes().all(|c|c.is_ascii_alphanumeric())
       &&(v.is_boolean()||number(v,-1e15,1e15)||v.as_str().is_some_and(|s|s.chars().count()<=16)))
  }
@@ -1127,6 +1143,31 @@ mod tests {
   assert!(!field("settings","webChart",&json!({"k":"x".repeat(8200)})));
   for bad in [json!([]),json!("x"),json!(1),json!(true),Value::Null] {assert!(!field("settings","webChart",&bad),"{bad}")}
   assert!(!field("settings","webChart/marginTop",&json!(10)));
+ }
+ // 网页布局格子（审查 2026-10-10 第 6 项）：多交易所的 `venue/market/代号` 和平均 K 线 / 区间 K 线
+ // 两个开关，和网页 `validSymbol` / `CELL_FLAGS` 对齐；从前它们一出现整份 chartLayouts 就是坏值。
+ #[test] fn chart_layout_cells_take_venue_symbols_and_the_three_flags() {
+  let with=|cell:Value|json!({"active":"d","sets":[{"id":"d","name":"a","layout":"1","cells":[cell]}]});
+  for good in [json!({"symbol":"okx/usd_m/BTC-USDT-SWAP","iv":"1h"}),json!({"symbol":"hyperliquid/usd_m/BTC","iv":"1h"}),
+               json!({"symbol":"coinbase/spot/BTC-USD","iv":"4h","ha":true}),json!({"symbol":"BTCUSDT","iv":"1h","range":false}),
+               json!({"symbol":"bybit/usd_m/币安人生USDT","iv":"1h","footprint":true,"ha":true,"range":true}),
+               // 三段各取网页上限：20 + 10 + 40，整串 72 字。
+               json!({"symbol":format!("{}/{}/{}","v".repeat(20),"m".repeat(10),"S".repeat(40)),"iv":"1h"}),
+               // 三个开关不占「以后的格子配置」那 6 个名额。
+               json!({"symbol":"BTCUSDT","iv":"1h","footprint":true,"ha":true,"range":true,"a":1,"b":1,"c":1,"d":1,"e":1,"f":1})] {
+   assert!(field("settings","chartLayouts",&with(good.clone())),"{good}");
+  }
+  for bad in [json!({"symbol":"okx/BTCUSDT","iv":"1h"}),json!({"symbol":"okx/usd_m/BTC/X","iv":"1h"}),
+              json!({"symbol":"OKX/usd_m/BTC","iv":"1h"}),json!({"symbol":"okx/USD_M/BTC","iv":"1h"}),
+              json!({"symbol":"1okx/usd_m/BTC","iv":"1h"}),json!({"symbol":"o/usd_m/BTC","iv":"1h"}),
+              json!({"symbol":"okx/usd_m/","iv":"1h"}),json!({"symbol":"okx/usd_m/BTC USDT","iv":"1h"}),
+              json!({"symbol":format!("{}/usd_m/BTC","v".repeat(21)),"iv":"1h"}),
+              json!({"symbol":format!("okx/{}/BTC","m".repeat(11)),"iv":"1h"}),
+              json!({"symbol":format!("okx/usd_m/{}","S".repeat(41)),"iv":"1h"}),
+              json!({"symbol":"BTCUSDT","iv":"1h","ha":1}),json!({"symbol":"BTCUSDT","iv":"1h","range":"yes"}),
+              json!({"symbol":"BTCUSDT","iv":"1h","a":1,"b":1,"c":1,"d":1,"e":1,"f":1,"g":1})] {
+   assert!(!field("settings","chartLayouts",&with(bad.clone())),"{bad}");
+  }
  }
 
  /// 同一只币四家同时在：自选 id、画线 id、提醒的 `market` 各带各的交易所，四个对象互不冒充；

@@ -225,7 +225,11 @@ async fn real_postgres_listing_notices_go_once_to_people_who_opted_in() {
  ]).await;
  assert_eq!(status,200,"{v}");
  assert!(v["data"]["results"][0]["droppedFields"].as_array().unwrap().is_empty(),"notifyListingChanges 不能被丢掉：{v}");
- assert_eq!(push(&e.app,&on,vec![operation(&on.device,"settings","chart",1,"patch",json!({"notifyListingChanges":"yes"}))]).await.0,400,"只收 bool");
+ // 只收 bool。设置里的坏值 2026-10-10 起只丢这个字段（回执 `invalidFields` 点名），不拒整条，存着的仍是 true。
+ let (status,v)=push(&e.app,&on,vec![operation(&on.device,"settings","chart",1,"patch",json!({"notifyListingChanges":"yes"}))]).await;
+ assert_eq!(status,200,"{v}");
+ assert_eq!(v["data"]["results"][0]["invalidFields"],json!(["notifyListingChanges"]),"{v}");
+ assert_eq!(v["data"]["results"][0]["object"]["body"]["notifyListingChanges"],json!(true),"只收 bool：{v}");
  // 没开的人自选里也有它，但照样不推。
  assert_eq!(push(&e.app,&off,vec![operation(&off.device,"favorites","binance/usd_m/ABCUSDT",0,"patch",json!({"venue":"binance","market":"usd_m","symbol":"ABCUSDT","order":0}))]).await.0,200);
 

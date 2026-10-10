@@ -128,6 +128,30 @@ pub fn strip_retired(object:&mut Object) {
  object.body.retain(|k,_|!retired_field(&c,k));
  object.fields.retain(|k,_|!retired_field(&c,k));
 }
+/// 把库里**存量**的、按现行值规则已经不合规的字段洗掉（连同它的字段戳），返回洗掉了哪几个。
+///
+/// 和 `strip_retired` 是同一类陷阱的另一半（审查 2026-10-10 第 4 项）：值规则一收紧，云端存量
+/// 老值就再也过不了 `sync_validation::object` 那一道整份校验，于是这条对象之后的**每一次**
+/// 写入都 400——用户改的是别的字段，被拒的理由却是一个他早就没碰过的旧值。准入校验只该管
+/// 「这一次写进来的」，那一半已经在 `validate` 里做过了（宽容集合的坏值在 `admit` 里丢掉），
+/// 所以走到这里还不合规的只可能是存量；洗掉它，读的一方按自己的默认值走，和退役字段同一个姿态。
+/// 在 `merge` 里跑，位置在字段合并、`clear_tombstones` / `strip_retired` 之后、整份校验之前。
+pub fn strip_invalid(object:&mut Object)->Vec<String> {
+ let c=object.collection.clone();
+ let bad:Vec<String>=object.body.iter().filter(|(k,v)|!crate::sync_validation::field(&c,k,v)).map(|(k,_)|k.clone()).collect();
+ for k in &bad {object.body.remove(k);object.fields.remove(k);}
+ bad
+}
+/// 值规则不过时**只丢这个字段**、不拒整条操作的集合。
+///
+/// 设置与画线工具偏好是两个单例大对象，几十个互不相干的字段挤在一条对象上：一个字段的值
+/// 永久不合规（客户端比服务端先放宽了规则、或者服务端规则写紧了），从前是整条 400，客户端
+/// 把这条操作隔离、拒绝记录按对象锁住整个设置——别处的改动从此进不了本机，每轮全量还要
+/// 再吃一次 400（审查 2026-10-10 第 3 项）。现在照未知字段那条路：丢掉、在 `droppedFields`
+/// 里报回，另在 `invalidFields` 里点名是「值不对」而不是「不认识」，其余字段照常合并。
+/// 画线、提醒、自选这些对象的字段彼此牵连（锚点数对不上种类、提醒没有线就是死提醒），
+/// 丢一个字段等于存下一份半截的对象，所以仍然整条拒。
+pub fn lenient(c:&str)->bool {matches!(c,SETTINGS|DRAWING_PREFERENCES)}
 // One enumerable allowlist per collection, mirroring what iOS actually sends.
 //
 // `settings` is not a hand-copy any more: it must equal, name for name, the `wireKeys` array
@@ -254,6 +278,29 @@ impl Operation {
  pub fn unknown_fields(&self)->Vec<String> {
   self.fields.keys().filter(|k|!known_field(&self.collection,k)).cloned().collect()
  }
+ /// 宽容集合（见 [`lenient`]）里认得、但值过不了规则的字段。别的集合永远是空的。
+ pub fn invalid_fields(&self)->Vec<String> {
+  if !lenient(&self.collection) {return vec![]}
+  // 超过单字段 64 KB 的不算「值不对」而算滥用，留给 `validate` 整条拒，不在回执里体面地丢掉。
+  self.fields.iter().filter(|(k,v)|valid_path(k)&&known_field(&self.collection,k)&&!crate::sync_validation::field(&self.collection,k,v)
+   &&serde_json::to_vec(v).is_ok_and(|s|s.len()<=64_000)).map(|(k,_)|k.clone()).collect()
+ }
+ /// 推送路径上的准入：把宽容集合里值不对的字段从这条操作里拿掉，返回（拿掉之后的操作，拿掉了哪几个）。
+ ///
+ /// `validate` 本身仍是严格的（复盘快照、单测都靠它判「这个值对不对」），宽容只发生在这一步：
+ /// 拿掉之后的那条再交给 `validate` / `merge`，幂等摘要仍按客户端发来的原样算。
+ pub fn admit(&self)->(Operation,Vec<String>) {
+  let invalid=self.invalid_fields();
+  let mut admitted=self.clone();
+  for k in &invalid {admitted.fields.remove(k);}
+  (admitted,invalid)
+ }
+ /// 回执里 `droppedFields` 的那张表：不认识的（含退役的）加上值不对被丢掉的，按名字排好、不重复。
+ pub fn dropped_fields(&self,invalid:&[String])->Vec<String> {
+  let mut all:Vec<String>=self.unknown_fields();
+  all.extend(invalid.iter().cloned());
+  all.sort();all.dedup();all
+ }
  pub fn validate(&self)->Result<()> {
   collection(&self.collection)?;
   // 技术指标提醒的条件不对，回具体的错误码（带中文原因），不折成笼统的 invalid_operation。
@@ -287,9 +334,15 @@ pub fn merge(mut object:Object,op:&Operation,now:i64)->Result<Object> {
    if accept {object.body.insert(path.clone(),value.clone());object.fields.insert(path.clone(),json!(stamp));}
   }
  }
- if let Some(v)=object.body.get("lineWidth")&& !v.as_f64().is_some_and(|n|n>0.0&&n<=12.0){return Err(ApiError::bad("invalid_line_width"))}
  crate::sync_validation::clear_tombstones(&mut object);
  strip_retired(&mut object);
+ // 这一条写进来的值上面 `validate` 已经判过；还过不了规则的只可能是库里的存量，洗掉、记一笔，不拒这次写入。
+ // 删了的对象不洗：`sync_validation::object` 也不看它，留到 restore 那一次合并再洗。
+ if !object.deleted {
+  let washed=strip_invalid(&mut object);
+  if !washed.is_empty() {tracing::warn!(collection=%object.collection,id=%object.id,fields=?washed,"Sync merge: stored values no longer valid were washed out");}
+ }
+ if let Some(v)=object.body.get("lineWidth")&& !v.as_f64().is_some_and(|n|n>0.0&&n<=12.0){return Err(ApiError::bad("invalid_line_width"))}
  crate::sync_validation::object(&object)?;
  object.revision=next;Ok(object)
 }
@@ -428,11 +481,41 @@ pub async fn apply_server_op(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:
  sqlx::query("INSERT INTO sync_changes(user_id,collection,object_id,revision,deleted) VALUES($1,$2,$3,$4,$5)").bind(owner).bind(&next.collection).bind(&next.id).bind(next.revision).bind(next.deleted).execute(&mut **tx).await?;
  Ok(next)
 }
-async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Json<Value>> {
+/// `POST /v1/sync/operations` 的查询串。`rejections=inline`：一条操作自己的毛病只拒它这一条，
+/// 写进它那一格结果（见 [`rejection`]），同一批里其余的照常合并、照常提交。
+///
+/// 不带这个参数的老客户端照旧：任何一条有毛病就整批 400——它们只会读成功回执的形状，
+/// 一格 `status:"rejected"` 会被当成解码失败，那比整批 400 更糟。
+#[derive(Deserialize,Default)]
+#[serde(deny_unknown_fields)]
+struct PushMode {rejections:Option<String>}
+/// 能落到「这一条」头上的错：值不对、设备不对、品种认不得、幂等摘要对不上。
+/// 409 `resync_required` / `batch_already_claimed` 和 5xx 仍是整批的事，照旧整批回。
+fn per_operation(e:&ApiError)->bool {e.0==axum::http::StatusCode::BAD_REQUEST||e.1=="idempotency_mismatch"}
+/// 一条被拒的操作在结果里的那一格。不进 `sync_operations`：拒绝不是回执，客户端改好了用同一个 id 重发要能重新判。
+fn rejection(id:Uuid,e:&ApiError)->Value {
+ let mut r=json!({"operationId":id,"status":"rejected","code":e.1});
+ if let Some(m)=crate::error::message(e.1) {r["message"]=json!(m)}
+ r
+}
+/// 一条操作进合并之前的准入：自己的值、这台设备、指标提醒的品种。纯函数，单测直接打它。
+/// `op` 是 `admit` 拿掉宽容集合坏值之后的那条。
+fn screen(op:&Operation,device:Uuid,unlisted:&std::collections::BTreeSet<String>)->Result<()> {
+ op.validate()?;
+ // 设备不对是这条操作的事，不是这一批的事：手机冷启动那一下用旧设备号记的改动、退出再登回来
+ // 遗留的那几条，客户端收到这一格会把未发出的改成当前设备号重发（审查 2026-10-10 第 1、5 项）。
+ if op.device_id!=device {return Err(ApiError::bad("invalid_device"))}
+ if crate::conditions::indicators::symbol_of(&op.collection,&op.object_id,&op.action,&op.fields).is_some_and(|s|unlisted.contains(&s)) {
+  return Err(ApiError::bad(crate::conditions::indicators::code::SYMBOL))
+ }
+ Ok(())
+}
+async fn push(State(s):State<AppState>,i:Identity,crate::error::Params(mode):crate::error::Params<PushMode>,Json(v):Json<Push>)->Result<Json<Value>> {
  if v.operations.is_empty()||v.operations.len()>100{return Err(ApiError::bad("invalid_batch"))}
+ let inline=mode.rejections.as_deref()==Some("inline");
  // 技术指标提醒只判币安 U 本位里正在交易的品种。查合约表可能出站，所以在开事务、上锁之前做。
  let indicator_symbols:Vec<String>=v.operations.iter().filter_map(|op|crate::conditions::indicators::symbol_of(&op.collection,&op.object_id,&op.action,&op.fields)).collect();
- crate::conditions::indicators::check_symbols(&indicator_symbols).await?;
+ let unlisted=crate::conditions::indicators::unlisted(&indicator_symbols).await;
  let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
  let device:Uuid=sqlx::query_scalar("SELECT device_id FROM account_sessions WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL").bind(i.session).bind(i.user).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::unauthorized)?;
  let mut results=vec![];
@@ -440,12 +523,24 @@ async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Js
  // 回滚了就当没报过，客户端重推时再发，不会多一封。
  let mut fires=vec![];
  for op in v.operations {
-  op.validate()?;if op.device_id!=device{return Err(ApiError::bad("invalid_device"))}
+  // 幂等摘要按客户端发来的原样算（拿掉坏值之前），重发同一条才对得上。
   let hash=digest(serde_json::to_vec(&op)?);
+  // 先看回执：已经落过库的那一条原样交回，哪怕它是换设备之前、旧会话发的——
+  // 那一次早就合并过了，现在再按设备号拒它，客户端只会把一条已经生效的改动当成失败。
   if let Some(r)=sqlx::query("SELECT digest,result FROM sync_operations WHERE user_id=$1 AND id=$2").bind(i.user).bind(op.id).fetch_optional(&mut *tx).await? {
-   if r.get::<String,_>("digest")!=hash{return Err(ApiError::conflict("idempotency_mismatch"))}
+   if r.get::<String,_>("digest")!=hash {
+    let e=ApiError::conflict("idempotency_mismatch");
+    if inline {results.push(rejection(op.id,&e));continue}
+    return Err(e)
+   }
    results.push(r.get::<Value,_>("result"));continue
   }
+  let (admitted,invalid)=op.admit();
+  if let Err(e)=screen(&admitted,device,&unlisted) {
+   if inline&&per_operation(&e) {results.push(rejection(op.id,&e));continue}
+   return Err(e)
+  }
+  if !invalid.is_empty() {tracing::info!(collection=%op.collection,fields=?invalid,"Sync push: invalid values dropped from the operation");}
   if let Some(batch)=op.import_batch {
    sqlx::query("INSERT INTO sync_claims(batch_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING").bind(batch).bind(i.user).execute(&mut *tx).await?;
    let claimed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sync_claims WHERE batch_id=$1 AND user_id=$2)").bind(batch).bind(i.user).fetch_one(&mut *tx).await?;
@@ -453,7 +548,12 @@ async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Js
   }
   let row=sqlx::query("SELECT * FROM sync_objects WHERE user_id=$1 AND collection=$2 AND id=$3 FOR UPDATE").bind(i.user).bind(&op.collection).bind(&op.object_id).fetch_optional(&mut *tx).await?;
   let old=match row {Some(ref r)=>object(r)?,None=>Object{collection:op.collection.clone(),id:op.object_id.clone(),body:BTreeMap::new(),fields:BTreeMap::new(),revision:0,deleted:false,generation:0}};
-  let next=merge(old,&op,Utc::now().timestamp_millis())?;
+  // `merge` 是纯函数，失败时这条什么都还没写，跳过它、接着合并下一条是安全的。
+  let next=match merge(old,&admitted,Utc::now().timestamp_millis()) {
+   Ok(next)=>next,
+   Err(e) if inline&&per_operation(&e)=>{results.push(rejection(op.id,&e));continue}
+   Err(e)=>return Err(e),
+  };
   sqlx::query("INSERT INTO sync_objects(user_id,collection,id,body,fields,revision,deleted,generation) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(user_id,collection,id) DO UPDATE SET body=excluded.body,fields=excluded.fields,revision=excluded.revision,deleted=excluded.deleted,generation=excluded.generation,changed_at=now()")
    .bind(i.user).bind(&next.collection).bind(&next.id).bind(json!(next.body)).bind(json!(next.fields)).bind(next.revision).bind(next.deleted).bind(next.generation).execute(&mut *tx).await?;
   // 提醒对象落库的同一口气里刷新物化表：评估器读的是 alert_watches，不是 sync_objects。
@@ -461,15 +561,22 @@ async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Js
   // 用户把被提醒的线拖到别处、客户端用同一个 alert id 重传 lines，下一帧就是新形状。
   if next.collection==ALERTS {fires.extend(crate::alerts::materialize(&mut tx,i.user,&next).await?);}
   let cursor:i64=sqlx::query_scalar("INSERT INTO sync_changes(user_id,collection,object_id,revision,deleted) VALUES($1,$2,$3,$4,$5) RETURNING sequence").bind(i.user).bind(&next.collection).bind(&next.id).bind(next.revision).bind(next.deleted).fetch_one(&mut *tx).await?;
-  // `droppedFields` is always present, so a client can tell "this server does not
-  // report drops" (field absent) from "nothing was dropped" (empty list). Older
-  // clients decode it as an unknown key and ignore it.
-  let result=json!({"operationId":op.id,"object":next,"cursor":cursor,"droppedFields":op.unknown_fields()});
+  let result=receipt(&op,&next,cursor,&invalid);
   sqlx::query("INSERT INTO sync_operations(user_id,id,digest,result) VALUES($1,$2,$3,$4)").bind(i.user).bind(op.id).bind(hash).bind(&result).execute(&mut *tx).await?;results.push(result);
  }
  tx.commit().await?;
  crate::alerts::send_reported(fires);
  Ok(envelope(json!({"results":results,"serverTime":Utc::now().timestamp_millis()})))
+}
+/// 一条合并成功的操作的回执。
+///
+/// `droppedFields` is always present, so a client can tell "this server does not
+/// report drops" (field absent) from "nothing was dropped" (empty list). Older
+/// clients decode it as an unknown key and ignore it.
+/// 它是「不认识的」与「值不对的」两类的并集；`invalidFields` 单独点出后一类——客户端对这一类
+/// 不该再重发同一个值（发多少次都还是被丢），而前一类等服务端升级之后是会落地的。
+fn receipt(op:&Operation,next:&Object,cursor:i64,invalid:&[String])->Value {
+ json!({"operationId":op.id,"object":next,"cursor":cursor,"droppedFields":op.dropped_fields(invalid),"invalidFields":invalid})
 }
 async fn bootstrap(State(s):State<AppState>,i:Identity,Query(v):Query<Scope>)->Result<Json<Value>> {
  if let Some(c)=&v.collection{collection(c)?}
@@ -842,6 +949,83 @@ mod tests {
   assert!(op("settings",&[("skin",json!("neon"))]).validate().is_err());
   assert!(op("settings",&[("interval",json!("7h"))]).validate().is_err());
   assert!(op("settings",&[("redUp",json!("yes"))]).validate().is_err());
+ }
+ /// 审查 2026-10-10 第 3 项：设置里一个值永久过不了规则，推送路径上只丢这一个字段、在回执里点名，
+ /// 同一条操作里的别的字段照常落库；`validate` 本身仍然严格（复盘快照靠它）。
+ #[test] fn a_bad_settings_value_loses_the_field_not_the_operation() {
+  let operation=op(SETTINGS,&[("barSpacing",json!(4000.0)),("skin",json!("terra")),("telepathy",json!(true))]);
+  assert!(operation.validate().is_err(),"validate 仍按原样严格");
+  let (admitted,invalid)=operation.admit();
+  assert_eq!(invalid,vec!["barSpacing".to_string()]);
+  assert!(screen(&admitted,Uuid::nil(),&Default::default()).is_ok(),"拿掉坏值之后这一条照常进合并");
+  let merged=merge(blank(SETTINGS,"chart"),&admitted,1_800_000_000_000).unwrap();
+  assert_eq!(merged.body["skin"],json!("terra"));
+  assert!(!merged.body.contains_key("barSpacing")&&!merged.fields.contains_key("barSpacing"),"坏值不落库");
+  let r=receipt(&operation,&merged,7,&invalid);
+  assert_eq!(r["droppedFields"],json!(["barSpacing","telepathy"]),"droppedFields 是两类的并集");
+  assert_eq!(r["invalidFields"],json!(["barSpacing"]),"值不对的单独点名");
+  // 画线工具偏好同理。
+  let (_,invalid)=op(DRAWING_PREFERENCES,&[("magnet",json!("yes")),("continuous",json!(true))]).admit();
+  assert_eq!(invalid,vec!["magnet".to_string()]);
+  // 字段彼此牵连的集合仍整条拒：丢一个字段就是存下半截对象。
+  let mut line=op(DRAWINGS,&[("lineWidth",json!(99))]);line.object_id="binance/usd_m/BTCUSDT/line-1".into();
+  let (admitted,invalid)=line.admit();
+  assert!(invalid.is_empty());
+  let e=screen(&admitted,Uuid::nil(),&Default::default()).unwrap_err();
+  assert_eq!((e.0,e.1),(axum::http::StatusCode::BAD_REQUEST,"invalid_operation"));
+  // 坏路径、超大的值不在「丢掉」之列，仍整条拒。
+  assert!(op(SETTINGS,&[("../x",json!(1))]).admit().1.is_empty());
+  let (huge,invalid)=op(SETTINGS,&[("theme",json!("x".repeat(100_000)))]).admit();
+  assert!(invalid.is_empty()&&huge.validate().is_err());
+ }
+ /// 审查 2026-10-10 第 4 项：库里存量的一个值按现行规则已经不合规（规则收紧过、或者绕过校验写进去的），
+ /// 之后对这条对象写**别的**字段不能被它拖死——它被洗掉，这次写入照常落库。
+ #[test] fn a_stored_value_that_no_longer_passes_is_washed_out_not_refused() {
+  let mut settings=blank(SETTINGS,"chart");
+  settings.body.insert("barSpacing".into(),json!(4000.0));
+  settings.fields.insert("barSpacing".into(),json!({"revision":1}));
+  settings.body.insert("skin".into(),json!("neon"));
+  settings.body.insert("redUp".into(),json!(true));
+  settings.revision=1;
+  let mut patch=op(SETTINGS,&[("interval",json!("1h"))]);patch.base_revision=1;
+  let merged=merge(settings,&patch,1_800_000_000_000).unwrap_or_else(|e|panic!("存量坏值把这次写入拖死了：{}",e.1));
+  assert_eq!(merged.body["interval"],json!("1h"));
+  assert_eq!(merged.body["redUp"],json!(true),"合规的存量原样留着");
+  assert!(!merged.body.contains_key("barSpacing")&&!merged.fields.contains_key("barSpacing"));
+  assert!(!merged.body.contains_key("skin"));
+  assert!(crate::sync_validation::object(&merged).is_ok());
+  // 存量的坏值也照样能被这一次写进来的好值盖掉。
+  let mut stored=blank(SETTINGS,"chart");stored.body.insert("skin".into(),json!("neon"));
+  assert_eq!(merge(stored,&op(SETTINGS,&[("skin",json!("sage"))]),1_800_000_000_000).unwrap().body["skin"],json!("sage"));
+ }
+ /// 审查 2026-10-10 第 5 项：设备号不对、指标提醒的品种认不得，都是**这一条**的事，`push` 把它写进
+ /// 这一条的结果格（`?rejections=inline`），不再整批 400。409 / 5xx 仍是整批的事。
+ #[test] fn per_operation_problems_stay_with_their_operation() {
+  let device=Uuid::from_u128(7);
+  let mut mine=op(SETTINGS,&[("skin",json!("terra"))]);mine.device_id=device;
+  assert!(screen(&mine,device,&Default::default()).is_ok());
+  let e=screen(&op(SETTINGS,&[("skin",json!("terra"))]),device,&Default::default()).unwrap_err();
+  assert_eq!((e.0,e.1),(axum::http::StatusCode::BAD_REQUEST,"invalid_device"));
+  assert!(per_operation(&e));
+  // 认不得的品种只拒带着它的那一条。
+  let rule=json!({"kind":"rsi_level","interval":"1h","period":14,"level":70,"direction":"up"});
+  let mut alert=op(ALERTS,&[("rule",rule)]);alert.object_id="binance/usd_m/NOPEUSDT/a1".into();alert.device_id=device;
+  let unlisted=std::collections::BTreeSet::from(["NOPEUSDT".to_string()]);
+  let e=screen(&alert,device,&unlisted).unwrap_err();
+  assert_eq!(e.1,crate::conditions::indicators::code::SYMBOL);
+  assert!(screen(&alert,device,&Default::default()).is_ok(),"合约表认得（或者取不到）就放行");
+  assert!(screen(&mine,device,&unlisted).is_ok(),"同一批里别的操作不受牵连");
+  // 结果格的形状：带 code，有中文原因的再带 message；拒绝不是回执，不带 object / cursor。
+  let r=rejection(alert.id,&e);
+  assert_eq!(r["status"],json!("rejected"));
+  assert_eq!(r["code"],json!(crate::conditions::indicators::code::SYMBOL));
+  assert!(r["message"].is_string()&&r.get("object").is_none()&&r.get("cursor").is_none());
+  assert!(rejection(alert.id,&ApiError::bad("invalid_device")).get("message").is_none());
+  // 整批的事：要重新拉取、导入批次被别人认领、数据库不可用。
+  assert!(per_operation(&ApiError::conflict("idempotency_mismatch")));
+  assert!(!per_operation(&ApiError::conflict("resync_required")));
+  assert!(!per_operation(&ApiError::conflict("batch_already_claimed")));
+  assert!(!per_operation(&ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"temporarily_unavailable")));
  }
  #[test] fn a_malformed_path_is_still_refused() {
   for path in ["","../secrets","params/../..","_internal","a//b",&"x".repeat(161)] {

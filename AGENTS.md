@@ -49,11 +49,11 @@
 
 1. 改 `PrefsFieldPlan.table`（判据只有一条：用手改出来的习惯 → `.synced`；这台机器 / 这张网的属性 → `.deviceOnly`；自动累积的统计 → `.derivedLocal`）。
 2. 仓库根跑 `make sync-contract` 重新生成契约。
-3. 新增 `.synced` 字段还要去 `Backend/kanpan-api/src/sync.rs` 的 `SETTINGS_FIELDS` 加名字（长度不用改，它是切片），**并且**去 `src/sync_validation.rs` 的 `field` 加值规则——只进白名单不配值规则，`_=>false` 会让整条同步操作 400，那个字段就是毒丸。
+3. 新增 `.synced` 字段还要去 `Backend/kanpan-api/src/sync.rs` 的 `SETTINGS_FIELDS` 加名字（长度不用改，它是切片），**并且**去 `src/sync_validation.rs` 的 `field` 加值规则——只进白名单不配值规则，`_=>false` 会让它的每一个值都被判成坏值（设置 / 画线偏好里是被丢掉、回执 `invalidFields` 点名，别的集合是整条 400），那个字段就是毒丸。
 4. 两边对账：`make app-logic-test` 与 `cd Backend/kanpan-api && cargo test --lib`。差在哪个键、该往哪边改，失败信息里写着。
 5. **先部署后端，再发客户端**（老后端收到新字段整条 400）。部署完用一次性测试账号打线上冒烟：
    `python3 -I Backend/kanpan-api/ops/sync-field-smoke.py <字段> --good '<合法值>' --bad '<非法值>'`
-   ——注册随机账号、推合法值应 200 并能 bootstrap 读回、推非法值应 400、最后把账号删掉。这是对项目自己后端的 QA，
+   ——注册随机账号、推合法值应 200 并能 bootstrap 读回、推非法值应被拒（设置 / 画线偏好 2026-10-10 起是 200 但回执 `invalidFields` 点名、读回没有它；别的集合 400）、最后把账号删掉。这是对项目自己后端的 QA，
    用户 2026-10-10 明确要求自己注册测试账号去打、打完删，不许以「需要账号」为由跳过。
 
 **加一把画线工具或一个指标也走同一条路。** 同一份契约除了字段清单还捎带两份词表——

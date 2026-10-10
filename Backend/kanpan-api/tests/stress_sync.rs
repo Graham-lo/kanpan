@@ -161,18 +161,25 @@ async fn two_devices_converge_under_concurrent_conflicting_pushes() {converge(4,
 #[tokio::test(flavor="multi_thread",worker_threads=8)] #[ignore]
 async fn two_devices_converge_heavy() {converge(20,3).await}
 
-/// 一批里夹一条毒丸：整批 400、一条都不落库；客户端改成逐条推（SyncEngine 的隔离路径）时
-/// 只有那一条被拒，其余 99 条全部成功。
+/// 一批里夹一条毒丸：老客户端（不带 `?rejections=inline`）整批 400、一条都不落库；客户端改成逐条推
+/// （SyncEngine 的隔离路径）时只有那一条被拒，其余 99 条全部成功。带 `?rejections=inline` 的新客户端
+/// 一趟就够：200，毒丸那一格 `status:"rejected"`，其余 99 条落库。
+/// 毒丸用画线（字段彼此牵连，仍整条拒）：设置里的坏值 2026-10-10 起只丢字段，已经毒不死一条操作。
 #[tokio::test(flavor="multi_thread",worker_threads=4)]
 async fn a_poison_operation_only_rejects_itself_one_by_one() {
  let w=boot().await;let (app,s)=production_app(&w).await;let (a,_,_)=two_devices(&app,"203.0.113.102").await;
  let now=chrono::Utc::now().timestamp_millis();
  let mut batch:Vec<Value>=(0..100).map(|n|op(a.id,"settings","chart","patch",now-n,0,json!({"barSpacing":2.0+n as f64/10.0}))).collect();
- batch[57]=op(a.id,"settings","chart","patch",now,0,json!({"theme":"x".repeat(65)}));
+ batch[57]=op(a.id,"drawings",&drawing_id(57),"patch",now,0,json!({"kind":"hline","symbol":"BTCUSDT","anchors":[{"t":1,"p":1}],"lineWidth":99}));
  let (st,v)=call(&app,"POST","/v1/sync/operations",&a.token,json!({"operations":batch}).to_string()).await;
  assert_eq!(st,400,"{v}");
  let (_,boot1)=call(&app,"GET","/v1/sync/bootstrap?collection=settings",&a.token,String::new()).await;
  assert!(boot1["data"]["objects"].as_array().unwrap().is_empty(),"a rejected batch left something behind");
+ let (st,v)=call(&app,"POST","/v1/sync/operations?rejections=inline",&a.token,json!({"operations":batch}).to_string()).await;
+ assert_eq!(st,200,"{v}");
+ let rejected:Vec<usize>=v["data"]["results"].as_array().unwrap().iter().enumerate().filter(|(_,r)|r["status"]==json!("rejected")).map(|(n,_)|n).collect();
+ assert_eq!(rejected,vec![57],"{v}");
+ assert_eq!(v["data"]["results"][57]["code"],json!("invalid_operation"));
  let mut refused=vec![];
  for (n,o) in batch.iter().enumerate() {let (st,_)=call(&app,"POST","/v1/sync/operations",&a.token,json!({"operations":[o]}).to_string()).await;if st!=200 {refused.push((n,st))}}
  assert_eq!(refused,vec![(57,StatusCode::BAD_REQUEST)]);
@@ -195,12 +202,13 @@ async fn extreme_values_are_refused_without_touching_state() {
   ("negative timestamp",json!({"operations":[op(a.id,"settings","chart","patch",-5,0,json!({"theme":"x"}))]}).to_string()),
   ("logical beyond i64",json!({"operations":[op(a.id,"settings","chart","patch",now,u64::MAX,json!({"theme":"x"}))]}).to_string()),
   ("theme too long",json!({"operations":[op(a.id,"settings","chart","patch",now,0,json!({"theme":"x".repeat(100_000)}))]}).to_string()),
-  ("bar spacing huge",json!({"operations":[op(a.id,"settings","chart","patch",now,0,json!({"barSpacing":1e308}))]}).to_string()),
-  ("bar spacing negative",json!({"operations":[op(a.id,"settings","chart","patch",now,0,json!({"barSpacing":-3}))]}).to_string()),
   ("number overflows f64",format!(r#"{{"operations":[{{"id":"{}","collection":"settings","objectId":"chart","deviceId":"{}","baseRevision":0,"generation":0,"timestamp":{now},"logical":0,"action":"patch","fields":{{"barSpacing":1e999}}}}]}}"#,Uuid::new_v4(),a.id)),
   ("deeply nested value",json!({"operations":[op(a.id,"settings","chart","patch",now,0,json!({"params":deep}))]}).to_string()),
   ("257+ fields",json!({"operations":[op(a.id,"settings","chart","patch",now,0,Value::Object(many))]}).to_string()),
+  // 不带 `?rejections=inline` 的老客户端：设备不对仍然整批 400。
   ("wrong device",json!({"operations":[op(Uuid::new_v4(),"settings","chart","patch",now,0,json!({"theme":"x"}))]}).to_string()),
+  // 设置里值不对的字段 2026-10-10 起只丢字段（见下一条测试）；画线这种字段彼此牵连的仍整条拒。
+  ("drawing line width",json!({"operations":[op(a.id,"drawings",&drawing_id(0),"patch",now,0,json!({"kind":"hline","symbol":"BTCUSDT","anchors":[{"t":1,"p":1}],"lineWidth":99}))]}).to_string()),
   ("unknown collection",json!({"operations":[op(a.id,"secrets","chart","patch",now,0,json!({"theme":"x"}))]}).to_string()),
   ("huge group",json!({"operations":[op(a.id,"groups","g1","patch",now,0,json!({"name":"g","order":1,"members":vec!["BTCUSDT";2001]}))]}).to_string()),
   ("101 operations",json!({"operations":(0..101).map(|_|op(a.id,"settings","chart","patch",now,0,json!({"theme":"x"}))).collect::<Vec<_>>()}).to_string()),
@@ -218,6 +226,39 @@ async fn extreme_values_are_refused_without_touching_state() {
  eprintln!("extreme values: {}",report.join("; "));
  let (_,after)=call(&app,"GET","/v1/sync/bootstrap?collection=settings",&a.token,String::new()).await;
  assert_eq!(before["data"]["objects"],after["data"]["objects"]);
+ s.pool.close().await;w.close().await;
+}
+
+/// 审查 2026-10-10 第 3、5 项，走真的 `POST /v1/sync/operations`：
+/// - 设置里值不对的字段只丢它自己（`droppedFields` + `invalidFields`），同一条里别的字段落库；
+/// - 带 `?rejections=inline` 时，设备不对的那一条只拒它自己（结果格 `status:"rejected"`），同一批里别的照常提交，
+///   而且被拒的那一条不留回执：改好设备号用同一个 id 重发能落地。
+#[tokio::test(flavor="multi_thread",worker_threads=4)]
+async fn one_bad_operation_does_not_take_the_batch_down() {
+ let w=boot().await;let (app,s)=production_app(&w).await;let (a,_,_)=two_devices(&app,"203.0.113.108").await;
+ let now=chrono::Utc::now().timestamp_millis();
+ let mixed=op(a.id,"settings","chart","patch",now,0,json!({"barSpacing":-3,"skin":"terra"}));
+ let (st,v)=call(&app,"POST","/v1/sync/operations",&a.token,json!({"operations":[mixed]}).to_string()).await;
+ assert_eq!(st,200,"{v}");
+ let r=&v["data"]["results"][0];
+ assert_eq!(r["droppedFields"],json!(["barSpacing"]),"{v}");assert_eq!(r["invalidFields"],json!(["barSpacing"]),"{v}");
+ assert_eq!(r["object"]["body"]["skin"],json!("terra"));assert!(r["object"]["body"].get("barSpacing").is_none(),"{v}");
+
+ let stranger=Uuid::new_v4();
+ let mut wrong=op(stranger,"settings","chart","patch",now+1,0,json!({"theme":"x"}));
+ let good=op(a.id,"favorites","binance/usd_m/BTCUSDT","patch",now+2,0,json!({"symbol":"BTCUSDT","market":"usd_m","venue":"binance","order":1}));
+ let (st,v)=call(&app,"POST","/v1/sync/operations?rejections=inline",&a.token,json!({"operations":[wrong.clone(),good]}).to_string()).await;
+ assert_eq!(st,200,"{v}");
+ let results=v["data"]["results"].as_array().unwrap();
+ assert_eq!(results[0]["status"],json!("rejected"),"{v}");assert_eq!(results[0]["code"],json!("invalid_device"),"{v}");
+ assert_eq!(results[1]["object"]["body"]["symbol"],json!("BTCUSDT"),"同一批里的好操作照常落库：{v}");
+ // 老客户端（不带参数）照旧整批 400。
+ let (st,_)=call(&app,"POST","/v1/sync/operations",&a.token,json!({"operations":[wrong.clone()]}).to_string()).await;
+ assert_eq!(st,400);
+ // 同一个 id 换成本机设备号重发：拒绝没有留回执，所以不会撞上 idempotency_mismatch。
+ wrong["deviceId"]=json!(a.id);
+ let (st,v)=call(&app,"POST","/v1/sync/operations?rejections=inline",&a.token,json!({"operations":[wrong]}).to_string()).await;
+ assert_eq!(st,200,"{v}");assert_eq!(v["data"]["results"][0]["object"]["body"]["theme"],json!("x"),"{v}");
  s.pool.close().await;w.close().await;
 }
 
