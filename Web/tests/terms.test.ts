@@ -11,7 +11,7 @@ describe('三端共用词表 terms.json', () => {
   it('「分析」组与组清单', () => {
     expect(AN.fvg).toBe('公允价值缺口')
     expect(Object.keys(AN)).toEqual(['fvg'])
-    expect(Object.keys(termsJson).sort()).toEqual(['analysis', 'bigTrade'])
+    expect(Object.keys(termsJson).sort()).toEqual(['analysis', 'bigTrade', 'highlights'])
   })
   it('不出现口语化、含糊的说法', () => {
     const banned = ['空爆', '多爆', '被打', '被平', '还在走', '稳着', '该根', '这根', '这只品种', '第一次打开', '一笔']

@@ -1,4 +1,4 @@
-/* Hkline Web · 三端共用的用词（「大单与爆仓」BT、「分析」AN）
+/* Hkline Web · 三端共用的用词（「大单与爆仓」BT、「分析」AN、「首页 · 盘口要点」HL）
  *
  * 唯一的一份在 KanpanCore/Sources/KanpanCore/Terms/terms.json；iOS（BigTradeTerm / AnalysisTerm）与这里读的都是它。
  * 改字只改那一个文件，界面代码里不再写这些字面量。模板里的 {n} {t} {v} {h} {side} 用 fill 填。
@@ -14,6 +14,11 @@ export type AnalysisTermKey = keyof typeof termsJson.analysis
 
 /** 「分析」里自动画的那几样的用词：AN.fvg →「公允价值缺口」（iOS AnalysisTerm） */
 export const AN: Readonly<Record<AnalysisTermKey, string>> = termsJson.analysis
+
+export type HighlightTermKey = keyof typeof termsJson.highlights
+
+/** 「首页 · 异动 / 榜单」与「盘口要点」半页的用词：HL.title →「盘口要点」（iOS HighlightTerm；网页独有的几个键 iOS 不读） */
+export const HL: Readonly<Record<HighlightTermKey, string>> = termsJson.highlights
 
 /** 填好占位符：fill(BT.buyCount, { n: 12 }) →「买 12 笔」 */
 export function fill(tpl: string, args: Record<string, string | number>): string {

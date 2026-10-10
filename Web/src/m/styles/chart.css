@@ -8,7 +8,7 @@
   position: absolute; inset: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto minmax(0, 1fr) 44px;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   grid-template-areas: "top" "head" "iv" "chart" "insight";
   padding: var(--safe-top) var(--safe-right) calc(var(--tabbar-h) + var(--safe-bottom)) var(--safe-left);
   background: var(--chart); color: var(--ink);

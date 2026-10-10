@@ -46,8 +46,7 @@ import { createOrderFlowCard } from './chart/orderFlowCard'
 import { createPagePort, type PagePort } from './chart/data'
 import { openAnalysis, openChartSettings, openOrderFlowEditor, thresholdsFor, type PanelContext, type AxisContext } from './chart/panels'
 import { BigTradeController, devForce } from './chart/bigTrade'
-import { shouldOpenInsightSwipe } from './chart/insights'
-import { BT } from '../../terms'
+import { HighlightsController } from './chart/highlights'
 import { createBench, reconcileLineAlerts, type Bench } from './chart/drawingBench'
 import { openNote, resumeNote, wireNoteRequests, flushNotes, wireNoteUploads } from './chart/note'
 import { openShare } from './chart/share'
@@ -306,28 +305,14 @@ export function initChart(root: HTMLElement): PageHandle {
     openThreshold: back => { openOrderFlowEditor(panelCtx, back) },
     force: btForce,
   })
-  // 起手区域完全在画布外；不截获图表平移、缩放和系统侧沿返回。
-  const insightEntry = el('button', 'cp-insight-entry')
-  insightEntry.type = 'button'; insightEntry.setAttribute('aria-label', BT.title)
-  // 本轮入口暂开 10-08 定版的「大单与爆仓」页；新「盘口要点」半页另行设计。
-  insightEntry.innerHTML = `<span aria-hidden="true">⌃</span><span>${BT.title}</span>`
-  page.append(insightEntry)
-  let insightSwipe: { x: number; y: number; at: number } | null = null, insightSuppress = 0
-  insightEntry.addEventListener('click', () => { if (performance.now() >= insightSuppress) panel(() => bt.open())() })
-  insightEntry.addEventListener('pointerdown', e => {
-    if (!e.isPrimary) return
-    insightSwipe = { x: e.clientX, y: e.clientY, at: performance.now() }
-    try { insightEntry.setPointerCapture(e.pointerId) } catch { /* 指针已经结束 */ }
+  // 图下方的「要点」入口条 + 半页「盘口要点」（10-10）：起手区域完全在画布外，不截获图表平移、缩放和系统侧沿返回。
+  const hl = new HighlightsController({
+    page, chart, symbol: sym,
+    head: () => header.el,
+    hidden: () => isMacroSym(sym()) || isLand() || !!replay,
+    price: () => S.symbols.get(sym())?.price ?? null,
+    beforeOpen: () => ivBar.closeGrid(),
   })
-  insightEntry.addEventListener('pointerup', e => {
-    const start = insightSwipe; insightSwipe = null
-    if (!start) return
-    const dx = e.clientX - start.x, dy = e.clientY - start.y, now = performance.now()
-    // 浏览器可能在拖动结束后补发 click；任意明显拖动都吞掉，只有合格上滑才能打开。
-    if (Math.hypot(dx, dy) > 10) insightSuppress = now + 500
-    if (shouldOpenInsightSwipe(dx, dy, now - start.at, start.x, innerWidth)) panel(() => bt.open())()
-  })
-  insightEntry.addEventListener('pointercancel', () => { insightSwipe = null; insightSuppress = performance.now() + 500 })
   const axisCtx: AxisContext = { mode: () => effectivePriceMode(sym()), category: () => axisCategory(sym()) }
 
   // ---- 图上的事件 → st（手指一松就落盘）
@@ -406,7 +391,7 @@ export function initChart(root: HTMLElement): PageHandle {
     const now = Date.now()
     const s = S.symbols.get(sym())
     const insightsHidden = isMacroSym(sym()) || isLand() || !!replay
-    insightEntry.hidden = insightsHidden
+    if (hl.strip.hidden !== insightsHidden) hl.sync()
     page.classList.toggle('insight-hidden', insightsHidden)
     // 别家的品种看那一家的表（S.venues），币安 / 美元指数看全市场表
     const stale = isStale({ flag: st.stale, live: liveOf(sym()), lastTick: s?.lastTick ?? null, now }) || s?.closed === true
@@ -454,6 +439,7 @@ export function initChart(root: HTMLElement): PageHandle {
     const learned = learnedInterval(s, st.interval)
     if (learned) { st.interval = learned; save() }
     syncChart()
+    hl.onSymbol()
     // 别家的品种：那一家的品种表拉上（精度、计价、图表头名字；已经拉到的不再拉），到了 universe 重画
     void ensureVenuesFor([s, ...st.compareSymbols])
   })
@@ -463,7 +449,7 @@ export function initChart(root: HTMLElement): PageHandle {
     if (ch.drawingPreferences) bench.pullPreferences()
     if (ch.alerts) bench.refreshAlerts()
   })
-  hooks.onTheme.push(() => { topBar.invalidate(); lookKey = ''; syncChart(); bench.render(); bt.layer.invalidate(); bt.refresh() })
+  hooks.onTheme.push(() => { topBar.invalidate(); lookKey = ''; syncChart(); bench.render(); bt.layer.invalidate(); bt.refresh(); hl.invalidate() })
   hooks.onForeground.push(() => { if (shown) { render(); void flushNotes() } })
 
   // ---- 深链（验收截图用）
@@ -571,6 +557,7 @@ export function initChart(root: HTMLElement): PageHandle {
       clearInterval(tick)
       tick = window.setInterval(render, 1000)
       bt.show()
+      hl.show()
       void flushNotes()
       deepLink()
       takeIntent()
@@ -580,6 +567,7 @@ export function initChart(root: HTMLElement): PageHandle {
       endReplay()
       clearInterval(tick)
       bt.hide()
+      hl.hide()
       if (bench.active) bench.setActive(false)
       bench.closeSheets()
       wantDraw = false; guide.hidden = true

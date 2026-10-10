@@ -185,6 +185,13 @@
     "oiPct": "持仓 {v}",
     "window4h": "4 小时",
     "untracked": "打开后开始观察",
-    "quiet": "近 4 小时没有值得注意的价位与事件"
+    "quiet": "近 4 小时没有值得注意的价位与事件",
+    "open": "打开盘口要点",
+    "failed": "暂时取不到",
+    "retry": "重试",
+    "wallReducingPct": "撤单 {p}",
+    "addFavorite": "加入自选",
+    "search": "搜索",
+    "noRows": "暂无"
   }
 }

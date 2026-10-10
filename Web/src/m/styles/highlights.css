@@ -1,0 +1,146 @@
+/* Hkline 手机网页 · 「盘口要点」入口条 + 半页（照 docs/原型-手机首页异动与盘口要点-2026-10-10.html §10 尺寸表）
+ * 颜色只用皮肤令牌：up / down / accent / amber / ink 三级 / raised / line，琉璃 pane / well / rule。 */
+
+/* ───────────── 入口条：有要点 44，没有 16 的抓手；高度 200 ms ───────────── */
+.cp-insight-entry.hl-strip {
+  min-height: 0; height: 44px; justify-content: flex-start; gap: 8px; padding: 0 16px; overflow: hidden;
+  border-top: 0; box-shadow: inset 0 var(--hairline) 0 var(--lg-rule);
+  font: 400 13px/1.2 var(--font-ui); font-variant-numeric: tabular-nums; color: var(--ink2);
+  transition: height 200ms ease-in-out; position: relative;
+}
+.hl-strip .ch { width: 12px; height: 12px; flex: none; fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+.hl-strip .k { font-weight: 600; color: var(--accent); white-space: nowrap; flex: none }
+.hl-strip .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left }
+.hl-strip .t b { color: var(--ink); font-weight: 600 }
+.hl-strip .hd { display: none }
+.hl-strip.stale .t b { color: var(--ink3) }
+.cp-insight-entry.hl-strip.thin { height: 16px; justify-content: center; box-shadow: none }
+.hl-strip.thin .ch, .hl-strip.thin .k, .hl-strip.thin .t { display: none }
+.hl-strip.thin .hd { display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--ink3); opacity: .35 }
+.hl-strip:active:not(.thin) { background: color-mix(in srgb, var(--ink) 4%, transparent) }
+@media (prefers-reduced-motion: reduce) { .cp-insight-entry.hl-strip { transition: none } }
+
+/* ───────────── 半页 ───────────── */
+.hl-wrap { position: fixed; inset: 0; pointer-events: none; z-index: 1 }
+.hl-catch { position: absolute; left: 0; right: 0; top: 0; pointer-events: auto }
+.hl-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; top: 177px; border-radius: 28px 28px 0 0; overflow: hidden; pointer-events: auto;
+  box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge), 0 -18px 50px -20px rgba(0, 0, 0, .35);
+  transform: translateY(105%); color: var(--ink); font: 400 12px/1.3 var(--font-ui);
+  display: flex; flex-direction: column;
+  transition: transform 420ms cubic-bezier(.22, 1, .36, 1);
+}
+.hl-wrap.in .hl-sheet { transform: translateY(0) }
+.hl-sheet.dragging { transition: none }
+.hl-sheet > :not(.lg-bg) { position: relative; z-index: 1 }
+.hl-grab { position: absolute !important; top: 0; left: 0; right: 0; height: 22px; touch-action: none; cursor: grab }
+.hl-grab i { position: absolute; top: 7px; left: 50%; transform: translateX(-50%); width: 36px; height: 5px; border-radius: 3px; background: var(--ink3); opacity: .45 }
+.hl-hdr { display: flex; align-items: center; gap: 8px; padding: 20px 16px 8px; touch-action: none; flex: none }
+.hl-hdr h4 { margin: 0; font: 600 17px/1 var(--font-ui); letter-spacing: normal }
+.hl-up { margin-left: auto; display: flex; align-items: center; gap: 6px; font: 400 12px/1 var(--font-ui); color: var(--ink3); font-variant-numeric: tabular-nums }
+.hl-live { width: 6px; height: 6px; border-radius: 50%; background: var(--up); animation: hl-pulse 1.6s ease-out infinite }
+.hl-live[hidden] { display: none }
+@keyframes hl-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--up) 55%, transparent) } 100% { box-shadow: 0 0 0 8px transparent } }
+.hl-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  padding: 0 16px calc(24px + var(--safe-bottom, 0px)); display: flex; flex-direction: column; gap: 8px }
+
+/* 块 */
+.hl-blk { background: var(--lg-glass); border-radius: 16px; padding: 11px 14px 12px; position: relative; flex: none;
+  box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge), 0 10px 30px -22px rgba(0, 0, 0, .35); transition: box-shadow 600ms ease-out }
+.hl-blk.fresh { animation: hl-fresh 600ms ease-out }
+@keyframes hl-fresh { 0% { box-shadow: 0 0 0 1.5px var(--accent) } 100% { box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge) } }
+.hl-blk.flash, .hl-evl .it.flash { animation: hl-flash 1.2s ease-out }
+@keyframes hl-flash { 0%, 60% { box-shadow: 0 0 0 1.5px var(--accent) } 100% { box-shadow: 0 0 0 0 transparent } }
+.hl-blk .bt { display: flex; align-items: center; gap: 8px; margin-bottom: 8px }
+.hl-blk .bt h5 { margin: 0; flex: 1; font: 600 13px/1.2 var(--font-ui); color: var(--ink2); letter-spacing: normal }
+.hl-blk .bt .cap { font: 400 10.5px/1 var(--font-ui); color: var(--ink3); display: flex; align-items: center; gap: 4px }
+.hl-blk .bt .cap i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; background: var(--ink3); margin-left: 4px }
+.hl-blk .bt .cap i.f { opacity: .5 }
+.hl-blk .bt .cap i.q { background: repeating-linear-gradient(135deg, var(--ink3) 0 2px, transparent 2px 4px) }
+.hl-sheet .up { color: var(--up) } .hl-sheet .down { color: var(--down) }
+
+/* ① 流向 */
+.hl-flow { display: grid; grid-template-columns: 58px 1fr 50px 50px; gap: 0 8px; font-size: 12px; font-variant-numeric: tabular-nums; align-items: center }
+.hl-flow .th { font-size: 10.5px; color: var(--ink3); padding-bottom: 3px }
+.hl-flow .r { text-align: right }
+.hl-flow .w { color: var(--ink2); display: flex; align-items: center; gap: 4px; height: 26px; white-space: nowrap }
+.hl-flow .w.lg { color: var(--ink); font-weight: 600 }
+.hl-flow .w .tag { font-style: normal; font-size: 9.5px; font-weight: 600; color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); padding: 1px 4px; border-radius: 4px }
+.hl-flow .nb { display: flex; align-items: center; gap: 6px; height: 26px; min-width: 0 }
+.hl-flow .trk { position: relative; flex: 1; height: 8px; background: var(--lg-well); border-radius: 4px; overflow: hidden }
+.hl-flow .trk::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--ink3); opacity: .5 }
+.hl-flow .trk i { position: absolute; top: 0; bottom: 0; border-radius: 4px; opacity: .85; transition: width 250ms ease-in-out }
+.hl-flow .trk i.u { background: var(--up) } .hl-flow .trk i.d { background: var(--down) }
+.hl-flow .nb b { min-width: 44px; text-align: right; font-weight: 600 }
+.hl-flow .v { text-align: right; color: var(--ink) }
+
+/* ② 关键价位 */
+.hl-lv .rng { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px 8px; margin: -2px 0 6px; border-radius: 10px; background: var(--lg-well); font-size: 12px; color: var(--ink2); font-variant-numeric: tabular-nums }
+.hl-lv .rng .l1 { display: flex; align-items: center; gap: 8px }
+.hl-lv .rng .l1 b { color: var(--ink); font-weight: 600 }
+.hl-lv .rng .rt { position: relative; flex: 1; height: 4px; border-radius: 2px; background: var(--line) }
+.hl-lv .rng .rt i { position: absolute; top: -3px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); margin-left: -5px; box-shadow: 0 0 0 2px var(--raised) }
+.hl-lv .rng .l2 { font-size: 11px; color: var(--ink3) }
+.hl-lv .row { display: grid; grid-template-columns: 112px 1fr auto; gap: 0 8px; align-items: center; min-height: 38px; width: 100%;
+  border: 0; background: transparent; color: inherit; font: inherit; text-align: left; padding: 0; border-radius: 10px;
+  transition: transform 120ms ease-out, background-color 200ms ease-out }
+.hl-lv .row:active { transform: scale(.98) }
+.hl-lv .row.bid { --s: var(--up) } .hl-lv .row.ask { --s: var(--down) }
+.hl-lv .px { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); line-height: 1.15; white-space: nowrap }
+.hl-lv .px small { display: block; font-size: 10.5px; font-weight: 500; color: var(--ink3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis }
+.hl-lv .bar { display: flex; gap: 1.5px; height: 10px; border-radius: 5px; background: var(--lg-well); overflow: hidden; min-width: 0 }
+.hl-lv .bar i { height: 100%; flex: none; background: var(--s) }
+.hl-lv .bar i.f { opacity: .5 }
+.hl-lv .bar i.q { background: repeating-linear-gradient(135deg, var(--s) 0 2px, transparent 2px 4px); opacity: .9 }
+.hl-lv .meta { font-size: 10.5px; color: var(--ink3); text-align: right; white-space: nowrap; line-height: 1.35; font-variant-numeric: tabular-nums }
+.hl-lv .meta b { color: var(--ink2); font-weight: 600 }
+.hl-lv .now { display: flex; align-items: center; gap: 8px; height: 20px; font-size: 10.5px; color: var(--ink3); font-variant-numeric: tabular-nums; white-space: nowrap }
+.hl-lv .now i { flex: 1; height: 0; border-top: 1px dashed var(--ink3); opacity: .45 }
+.hl-lv .row.open { background: color-mix(in srgb, var(--accent) 8%, transparent); margin: 0 -8px; padding: 0 8px; width: calc(100% + 16px); box-shadow: 0 0 0 1px var(--accent) }
+.hl-lv .row.flash { animation: hl-flash 1.2s ease-out }
+.hl-lv .lev { display: grid; grid-template-columns: 30px 1fr; gap: 4px 10px; padding: 8px 8px 6px; margin: 4px -8px 2px; font-size: 12px; color: var(--ink2); font-variant-numeric: tabular-nums; animation: hl-in 150ms ease-out }
+@keyframes hl-in { from { opacity: 0 } to { opacity: 1 } }
+.hl-lv .lev s { text-decoration: none; color: var(--ink3); font-size: 11px }
+.hl-lv .lev b { color: var(--ink); font-weight: 600 }
+.hl-lv .lev .go { grid-column: 2; justify-self: end; color: var(--accent); font: 600 12px/1 var(--font-ui); display: flex; align-items: center; gap: 3px; margin-top: 2px;
+  border: 0; background: none; padding: 8px 0 8px 12px; margin-bottom: -6px }
+.hl-sheet svg.loc { width: 12px; height: 12px; stroke: var(--accent); stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; display: block }
+
+/* ③ 持仓 · 费率 · 现货溢价 */
+.hl-tri { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px }
+.hl-tri .cell { background: var(--lg-well); border-radius: 10px; padding: 8px 10px 9px; min-width: 0 }
+.hl-tri .cell small { font-size: 10.5px; color: var(--ink3); display: block; white-space: nowrap }
+.hl-tri .cell b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; display: block; margin-top: 2px; color: var(--ink); white-space: nowrap }
+.hl-tri .cell em { font-style: normal; font-size: 10.5px; color: var(--ink2); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.hl-tri .cell .pct { display: block; position: relative; height: 3px; border-radius: 2px; margin-top: 8px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--amber) 45%, transparent) 0 10%, var(--line) 10% 90%, color-mix(in srgb, var(--amber) 45%, transparent) 90%) }
+.hl-tri .cell .pct i { position: absolute; top: -2.5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-left: -4px; box-shadow: 0 0 0 1.5px var(--raised) }
+
+/* ④ 近 4 小时 */
+.hl-evl .it { display: grid; grid-template-columns: 60px 14px 1fr auto; gap: 0 6px; align-items: center; min-height: 30px; width: 100%;
+  font: 400 12px/1.3 var(--font-ui); color: var(--ink2); box-shadow: inset 0 -.5px 0 var(--lg-rule); font-variant-numeric: tabular-nums;
+  border: 0; background: none; padding: 0; text-align: left; border-radius: 6px; transition: transform 120ms ease-out }
+.hl-evl .it:active { transform: scale(.98) }
+.hl-evl .it:last-child { box-shadow: none }
+.hl-evl .t { font-size: 11px; color: var(--ink3); white-space: nowrap }
+.hl-evl .x { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0 }
+.hl-evl .x b { color: var(--ink); font-weight: 600 }
+.hl-evl svg.evi { width: 14px; height: 14px; stroke: var(--ink3); stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; display: block }
+
+/* 状态 */
+.hl-quiet { font-size: 12px; color: var(--ink3); text-align: center; padding: 14px 0 4px }
+.hl-calm { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 0 14px; color: var(--ink3); font-size: 13px; text-align: center }
+.hl-calm b { color: var(--ink); font-weight: 600; font-size: 15px }
+.hl-calm svg.big { width: 36px; height: 36px; stroke: var(--ink3); stroke-width: 1.4; fill: none; stroke-linecap: round; opacity: .7; margin-bottom: 4px }
+.hl-retry { margin-top: 6px; border: 0; border-radius: 999px; padding: 8px 16px; background: var(--lg-glass); color: var(--accent); font: 600 12px/1 var(--font-ui); box-shadow: 0 0 0 var(--hairline) var(--lg-card-edge) }
+.hl-skel { height: 150px; background: linear-gradient(90deg, var(--lg-well), color-mix(in srgb, var(--lg-well) 40%, transparent), var(--lg-well)); background-size: 200% 100%; animation: hl-sk 1.4s linear infinite; box-shadow: none }
+.hl-skel.s2 { height: 200px }
+@keyframes hl-sk { from { background-position: 200% 0 } to { background-position: 0 0 } }
+.hl-sheet.stale .hl-blk b, .hl-sheet.stale .hl-flow .v, .hl-sheet.stale .hl-lv .px { color: var(--ink3) !important }
+.hl-sheet.stale .hl-flow .trk i, .hl-sheet.stale .hl-lv .bar i { filter: saturate(.15) opacity(.6) }
+
+@media (prefers-reduced-motion: reduce) {
+  .hl-sheet { transition: opacity 120ms linear; transform: none; opacity: 0 }
+  .hl-wrap.in .hl-sheet { opacity: 1 }
+  .hl-blk.fresh, .hl-lv .lev { animation: none }
+}
