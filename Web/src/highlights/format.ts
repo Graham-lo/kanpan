@@ -207,10 +207,15 @@ export function rangeHead(r: RangeBox, now: number): { band: string; hours: numb
 }
 
 /** 首页行第二行的事实（HTML） */
-/** 波动一行的事实：「1 分 <b>+2.4%</b> · 额 3.2M」；没有成交额就只写前半 */
+/** 波动一行的事实：只写窗口与成交额「1 分 · 额 114M」（涨跌幅在右边药丸里）；没有成交额只写窗口 */
 export function moveFact(m: Move): string {
   const w = fill(HL.minutes, { n: m.window === '1m' ? 1 : 5 })
-  return `${esc(w)} ${b(signedPct(m.pct))}${m.volUsd != null ? ' · ' + esc(fill(HL.moveVol, { v: usd(m.volUsd) })) : ''}`
+  return `${esc(w)}${m.volUsd != null ? ' · ' + esc(fill(HL.moveVol, { v: usd(m.volUsd) })) : ''}`
+}
+
+/** 波动行右边的药丸：写这次波动本身的涨跌幅（+1.4% / −1.4%），颜色跟急涨 / 急跌走，不用 24 时涨跌 */
+export function movePill(m: Move): { text: string; cls: 'up' | 'down' } {
+  return { text: signedPct(m.pct), cls: m.dir === 'up' ? 'up' : 'down' }
 }
 
 export function boardFact(r: BoardRow): string {

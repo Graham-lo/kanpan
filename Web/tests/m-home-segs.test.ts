@@ -3,7 +3,7 @@
  *   波动行（急涨 / 急跌）的解析与事实句；服务端还没上新字段（没有波动行、减仓榜 400、缺字段）时不出错 */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseBoard, parseMarketBoard, marketBoardUrl, type BoardRow } from '../src/highlights/api'
-import { boardFact, moveFact } from '../src/highlights/format'
+import { boardFact, moveFact, movePill } from '../src/highlights/format'
 import { RANK_KINDS, chipCounts, filterRows, focusOf, mergeBoard, parseHomeLocal } from '../src/highlights/home'
 import { HL } from '../src/terms'
 import shellSource from '../src/m/app/shell.ts?raw'
@@ -93,11 +93,15 @@ describe('波动行（急涨 / 急跌）', () => {
     expect(b.rows[0]).toMatchObject({ key: 'move:PEPE', cat: 'move', changePct: null, count: 1, price: 0.0123, tier: 2, atMs: 50, top: { kind: 'move', dir: 'up', window: '1m', pct: 2.4, volUsd: 3.2e6 } })
     expect(b.rows[1].top).toEqual({ kind: 'move', dir: 'down', window: '5m', pct: -1.8, volUsd: null })
   })
-  it('事实句：「1 分 +2.4% · 额 3.2M」；没有成交额只写前半', () => {
+  it('事实句只写窗口与成交额「1 分 · 额 3.2M」，没有成交额只写窗口；药丸写波动本身、按方向着色', () => {
     const b = parseBoard({ generatedAtMs: 99, rows: [move(), move({ base: 'WIF', kind: 'moveDown', window: '5m', pct: -1.8, volUsd: 0 })] })!
-    expect(boardFact(b.rows[0])).toBe('1 分 <b>+2.4%</b> · 额 3.2M')
-    expect(boardFact(b.rows[1])).toBe('5 分 <b>−1.8%</b>')
-    expect(moveFact({ dir: 'up', window: '5m', pct: 12.06, volUsd: 1.25e9 })).toBe('5 分 <b>+12.1%</b> · 额 1.3B')
+    expect(boardFact(b.rows[0])).toBe('1 分 · 额 3.2M')
+    expect(boardFact(b.rows[1])).toBe('5 分')
+    expect(moveFact({ dir: 'up', window: '5m', pct: 12.06, volUsd: 1.25e9 })).toBe('5 分 · 额 1.3B')
+    expect(moveFact({ dir: 'down', window: '1m', pct: -1.4, volUsd: 1.14e8 })).toBe('1 分 · 额 114M')
+    // 急跌行哪怕 24 时大涨，药丸也是这次的 −1.4%、红色
+    expect(movePill({ dir: 'down', window: '1m', pct: -1.4, volUsd: 1.14e8 })).toEqual({ text: '−1.4%', cls: 'down' })
+    expect(movePill({ dir: 'up', window: '5m', pct: 1.4, volUsd: null })).toEqual({ text: '+1.4%', cls: 'up' })
     expect([HL.catMove, HL.moveUp, HL.moveDown]).toEqual(['波动', '急涨', '急跌'])
   })
   it('认不出的整行不要（方向 / 窗口 / 涨跌幅缺一样），不抛错', () => {

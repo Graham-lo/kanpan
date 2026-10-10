@@ -30,7 +30,7 @@ import { session, onSession } from '../../account/session'
 import { baseOfSymbol } from '../../orderflow/settings'
 import { HL, fill } from '../../terms'
 import { fetchBoard, fetchMarketBoard, type BoardRow, type BoardCat, type MarketKind, type MarketRow, type MarketWindow } from '../../highlights/api'
-import { agoText, boardFact, hhmm, levelPx, signedPct, usd } from '../../highlights/format'
+import { agoText, boardFact, hhmm, levelPx, movePill, signedPct, usd } from '../../highlights/format'
 import { RANK_KINDS, chipCounts, favoriteBases, filterRows, focusOf, mergeBoard, parseHomeLocal, symbolFor, type Chip, type HomeLocal, type RankPage } from '../../highlights/home'
 
 const LS_KEY = 'hkline-m-home-v1'
@@ -87,10 +87,12 @@ export function rowTag(r: BoardRow): { tag: string; color: string } {
 export function moveRowHTML(r: BoardRow, now: number): string {
   const star = isFav(r.base) ? '' : `<button type="button" class="st" data-star="${esc(r.base)}" aria-label="${esc(HL.addFavorite)}">${STAR}</button>`
   const { tag, color } = rowTag(r)
-  // 波动行服务端不带涨跌幅：用品种表里的 24 时涨跌
-  const pct = r.changePct ?? (r.cat === 'move' ? S.symbols.get(symOf(r.base))?.pct ?? null : null)
+  // 波动行：药丸写这次波动本身（1 分 / 5 分的涨跌幅），按急涨 / 急跌着色，不写 24 时涨跌
+  const right = r.top.kind === 'move'
+    ? ((p) => `<span class="hm-pill ${p.cls}">${esc(p.text)}</span>`)(movePill(r.top))
+    : pill(r.changePct)
   return `<div class="hm-row" role="listitem" data-key="${esc(r.key)}" style="--c:${color}">${badge(r.base, 28)}<div class="mid">
-    <div class="l1"><span class="nm"><span class="tk">${esc(r.base)}</span>${star}</span><span class="p">${esc(pxText(r.base, r.price))}</span>${pill(pct)}</div>
+    <div class="l1"><span class="nm"><span class="tk">${esc(r.base)}</span>${star}</span><span class="p">${esc(pxText(r.base, r.price))}</span>${right}</div>
     <div class="pt1"><span class="kind">${esc(tag)}</span>${meter(r.tier)}<span class="tx">${boardFact(r)}</span>${r.count > 1 ? `<span class="plus">+${r.count - 1}</span>` : ''}<span class="ago">${esc(agoText(r.atMs, now))}</span></div>
   </div></div>`
 }
