@@ -141,14 +141,28 @@ export function eventsBlockHTML(d: Highlights): string {
   return `<div class="hl-blk" data-blk="events"><div class="bt"><h5>${HL.events}</h5><span class="cap">${HL.eventsCaption}</span></div><div class="hl-evl">${items}</div></div>`
 }
 
+/** 价位与事件都还没有时那一句：服务端开盯不到 15 分钟 →「观察中 · 约 N 分钟」（N = 离 15 分钟还剩几分钟，至少 1）；
+ *  盯满 15 分钟（或服务端没给开盯时刻）还什么都没有 →「近 4 小时没有值得注意的价位与事件」；有价位就都不写 */
+export const OBSERVE_MS = 15 * 60_000
+export type QuietState = { kind: 'none' } | { kind: 'observing'; minutes: number } | { kind: 'calm' }
+export function quietState(d: Pick<Highlights, 'levels' | 'range' | 'events' | 'observingSinceMs'>, now: number): QuietState {
+  if (d.levels.length) return { kind: 'none' }
+  const since = d.observingSinceMs
+  if (since != null && now - since < OBSERVE_MS) return { kind: 'observing', minutes: Math.max(1, Math.ceil((OBSERVE_MS - Math.max(0, now - since)) / 60_000)) }
+  return !d.range && !d.events.length ? { kind: 'calm' } : { kind: 'none' }
+}
+
 export function bodyHTML(s: SheetState, open: string | null): string {
   if (s.kind === 'loading') return '<div class="hl-blk hl-skel"></div><div class="hl-blk hl-skel s2"></div>'
   if (s.kind === 'failed') return `<div class="hl-calm">${svg(WIFI, 'big')}<b>${HL.failed}</b><button type="button" class="hl-retry">${HL.retry}</button></div>`
   const d = s.data
   if (!d.tracked) return `<div class="hl-calm">${svg(WIFI, 'big')}<b>${HL.untracked}</b></div>`
-  const quiet = !d.levels.length && !d.range && !d.events.length
-  return flowBlockHTML(d, s.now) + levelsBlockHTML(d, s.price, open, s.now) + positionBlockHTML(d) + eventsBlockHTML(d)
-    + (quiet ? `<div class="hl-quiet">${HL.quiet}</div>` : '')
+  const q = quietState(d, s.now)
+  const line = q.kind === 'observing' ? `<div class="hl-quiet obs">${escA(fill(HL.observing, { n: q.minutes }))}</div>`
+    : q.kind === 'calm' ? `<div class="hl-quiet">${HL.quiet}</div>` : ''
+  // 观察中那句紧跟在流向下面（价位、事件还没攒出来）；平静那句照旧在最后
+  return flowBlockHTML(d, s.now) + (q.kind === 'observing' ? line : '') + levelsBlockHTML(d, s.price, open, s.now) + positionBlockHTML(d) + eventsBlockHTML(d)
+    + (q.kind === 'calm' ? line : '')
 }
 
 // ───────────────────────────── 弹层

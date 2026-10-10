@@ -6,7 +6,7 @@ import {
   usd, signedUsd, signedPct, levelPx, bandPx, distText, hhmm, spanText, heldText, agoText, wallStateWord,
   levelSentence, nearestLevel, straddles, levelMeta2, rangeEdgesText, eventSentence, eventTime, stripSentence, boardFact, positionCells, fundingText, flowLabel,
 } from '../src/highlights/format'
-import { bodyHTML, flowBlockHTML, levelsBlockHTML, positionBlockHTML, eventsBlockHTML } from '../src/m/pages/chart/highlightsSheet'
+import { bodyHTML, quietState, flowBlockHTML, levelsBlockHTML, positionBlockHTML, eventsBlockHTML } from '../src/m/pages/chart/highlightsSheet'
 import { setHighlightIntent, takeHighlightIntent } from '../src/m/pages/chart/highlightIntent'
 import { barAt } from '../src/m/chart/highlightBand'
 import { HL } from '../src/terms'
@@ -220,6 +220,38 @@ describe('盘口要点 · 半页片段', () => {
     const h = bodyHTML({ kind: 'data', data: calm, price: 1, now: GEN }, null)
     expect(h).toContain(HL.quiet)
     expect(h).toContain('data-blk="flow"')
+  })
+  it('刚开盯的品种（tracked + observingSinceMs）：价位为空且不到 15 分钟写「观察中 · 约 N 分钟」紧跟流向，不写平静；满 15 分钟才写平静；有价位都不写', () => {
+    const MIN = 60_000
+    const raw = { ...SAMPLE, levels: [], range: null, events: [], observingSinceMs: GEN - 3 * MIN, partial: true }
+    const o = parseHighlights(raw, 'BTC')!
+    expect(o.observingSinceMs).toBe(GEN - 3 * MIN)
+    expect(o.partial).toBe(true)
+    expect(quietState(o, GEN)).toEqual({ kind: 'observing', minutes: 12 })
+    const h = bodyHTML({ kind: 'data', data: o, price: 1, now: GEN }, null)
+    expect(h).toContain('关键价位与事件观察中 · 约 12 分钟')
+    expect(h).not.toContain(HL.quiet)
+    expect(h).not.toContain(HL.untracked)
+    expect(h.indexOf('hl-quiet obs')).toBeGreaterThan(h.indexOf('data-blk="flow"'))       // 在流向下面
+    expect(h.indexOf('hl-quiet obs')).toBeLessThan(h.indexOf('data-blk="position"'))      // 在持仓 · 费率上面
+    // 快满 15 分钟：至少写 1 分钟
+    expect(quietState(o, GEN - 3 * MIN + 15 * MIN - 1000)).toEqual({ kind: 'observing', minutes: 1 })
+    // 满 15 分钟还是什么都没有：平静
+    expect(quietState(o, GEN + 12 * MIN)).toEqual({ kind: 'calm' })
+    expect(bodyHTML({ kind: 'data', data: o, price: 1, now: GEN + 12 * MIN }, null)).toContain(HL.quiet)
+    // 观察中但已经有事件：价位为空仍写观察中；不到 15 分钟有价位 → 都不写
+    expect(quietState({ ...o, events: d.events }, GEN)).toEqual({ kind: 'observing', minutes: 12 })
+    expect(quietState({ ...o, levels: d.levels }, GEN)).toEqual({ kind: 'none' })
+    // 满 15 分钟、没价位但有事件：不写平静
+    expect(quietState({ ...o, events: d.events }, GEN + 12 * MIN)).toEqual({ kind: 'none' })
+    // 服务端没给开盯时刻（旧服务端）：照旧
+    const old = parseHighlights({ ...SAMPLE, levels: [], range: null, events: [] }, 'BTC')!
+    expect(old.observingSinceMs).toBeNull()
+    expect(quietState(old, GEN)).toEqual({ kind: 'calm' })
+    expect(parseHighlights({ ...raw, observingSinceMs: 'x', partial: 1 }, 'BTC')).toMatchObject({ observingSinceMs: null, partial: false })
+    // tracked:false 仍走老的「打开后开始观察」
+    const u = parseHighlights({ ...raw, tracked: false }, 'BTC')!
+    expect(bodyHTML({ kind: 'data', data: u, price: null, now: GEN }, null)).toContain(HL.untracked)
   })
 })
 

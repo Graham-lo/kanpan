@@ -36,6 +36,8 @@ export type HlEvent =
 
 export interface Highlights {
   base: string; generatedAtMs: number; tracked: boolean; staleMs: number | null
+  /** 服务端从什么时候开始盯这只（第一次有人打开时补齐流向与持仓，价位与事件要攒一会）；partial = 还在补 */
+  observingSinceMs: number | null; partial: boolean
   flow: FlowRow[] | null; range: RangeBox | null; levels: Level[]; position: Position | null; events: HlEvent[]
 }
 
@@ -136,6 +138,7 @@ export function parseHighlights(raw: unknown, base: string): Highlights | null {
   const flow = obj(raw.flow) && Array.isArray(raw.flow.rows) ? list(raw.flow.rows, parseFlowRow) : null
   return {
     base, generatedAtMs: raw.generatedAtMs, tracked: raw.tracked, staleMs: numOr(raw.staleMs),
+    observingSinceMs: num(raw.observingSinceMs) && raw.observingSinceMs > 0 ? raw.observingSinceMs : null, partial: raw.partial === true,
     flow: flow && flow.length ? flow : null,
     range: parseRange(raw.range),
     levels: list(raw.levels, parseLevel).sort((a, b) => b.low - a.low),
