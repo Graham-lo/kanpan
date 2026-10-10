@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="zh-CN" data-skin="sage" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hkline 电脑网页 · 布局与图标提案 2026-10-10</title>
+<style>
+:root{
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+  --tv-green:#089981;--tv-red:#F23645;
+  --up:var(--tv-green);--down:var(--tv-red);--up-text:#04705E;--down-text:#BC2434;--amber:#A86A00;
+}
+[data-theme="dark"]{--up-text:#34C5A4;--down-text:#FF6874;--amber:#E0A341}
+*{box-sizing:border-box}
+html{color-scheme:light}html[data-theme="dark"]{color-scheme:dark}
+body{margin:0;background:var(--frame);color:var(--t1);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.num,.mock{font-variant-numeric:tabular-nums}
+b{font-weight:600}
+
+/* 控制条 */
+.ctl{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;padding:10px 24px;
+  background:color-mix(in srgb,var(--frame) 86%,transparent);backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--fline)}
+.ctl .ttl{font-weight:650;font-size:15px;display:flex;align-items:center;gap:8px}.ctl .ttl small{font-weight:400;color:var(--t3);font-size:12px}
+.seg{display:inline-flex;align-items:center;background:color-mix(in srgb,var(--t1) 6%,transparent);border-radius:8px;padding:2px;gap:2px}
+.seg button{height:28px;padding:0 12px;border-radius:6px;color:var(--t2);font-size:13px;white-space:nowrap}
+.seg button[aria-pressed=true]{background:var(--surface);color:var(--t1);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.ctl .lab{font-size:12px;color:var(--t3);margin-right:-10px}
+.ctl nav{margin-left:auto;display:flex;gap:2px;flex-wrap:wrap}.ctl nav a{color:var(--t2);text-decoration:none;font-size:13px;padding:4px 10px;border-radius:6px}.ctl nav a:hover{background:var(--fh);color:var(--t1)}
+main{max-width:2560px;margin:0 auto;padding:28px 24px 80px}
+section{margin:0 0 64px;scroll-margin-top:72px}
+h2{font-size:20px;line-height:28px;font-weight:650;margin:0 0 2px}
+h3{font-size:14px;font-weight:600;margin:24px 0 10px}
+.lede{color:var(--t2);margin:0 0 14px;font-size:13px;max-width:1100px}.lede b{color:var(--t1)}
+.stage{position:relative;width:100%;overflow:hidden}.stage>.scaler{transform-origin:0 0}
+.note{font-size:12px;color:var(--t3);margin:8px 0 0}
+.pick{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--atext);background:var(--soft);padding:2px 8px;border-radius:999px;font-weight:600;margin-left:8px;vertical-align:2px}
+
+/* ---------- 质感图标（与 Web/src/styles/icons.css 同构，变体用 data-ic） ---------- */
+svg.q{overflow:visible;display:block;flex:none;width:32px;height:32px;padding:6px;border-radius:8px;
+  --q1:var(--qr);--qa:var(--qac);--qw:var(--qtm);
+  background:linear-gradient(180deg,var(--qt0),var(--qt1));
+  box-shadow:inset 0 0 0 .5px var(--qline),inset 0 1px 0 var(--qhi),0 1px 1.5px var(--qsh)}
+svg.q.s22{width:22px;height:22px;padding:3.5px;border-radius:6px}svg.q.s28{width:28px;height:28px;padding:5px}
+.hov>svg.q,.st-hov>svg.q{--q1:var(--qh);--qw:var(--qhm);background:linear-gradient(180deg,var(--qh0),var(--qh1))}
+.on>svg.q,.st-on>svg.q{--q1:#fff;--qa:#fff;--qw:var(--qsm);background:linear-gradient(180deg,var(--qs0),var(--qs1));
+  box-shadow:inset 0 0 0 .5px rgba(255,255,255,.18),inset 0 1px 0 rgba(255,255,255,.25),0 2px 6px var(--qsg)}
+/* 现状（中性） */
+[data-ic="now"]{--qr:color-mix(in srgb,var(--t1) 80%,var(--t2));--qh:var(--t1);--qac:var(--atext);
+  --qt0:color-mix(in srgb,var(--frame) 44%,#fff);--qt1:color-mix(in srgb,var(--frame) 58%,#fff);--qh0:color-mix(in srgb,var(--frame) 70%,#fff);--qh1:color-mix(in srgb,var(--frame) 84%,#fff);
+  --qhi:rgba(255,255,255,.5);--qsh:rgba(0,0,0,.06);--qline:color-mix(in srgb,var(--t1) 8%,transparent)}
+[data-theme="dark"] [data-ic="now"]{--qt0:color-mix(in srgb,var(--frame) 92.5%,#fff);--qt1:color-mix(in srgb,var(--frame) 95.5%,#fff);--qh0:color-mix(in srgb,var(--frame) 87.5%,#fff);--qh1:color-mix(in srgb,var(--frame) 90.8%,#fff);--qhi:rgba(255,255,255,.06);--qsh:rgba(0,0,0,.25)}
+/* 方案 A · 皮肤墨色：字形是皮肤色系的「墨」，底块带皮肤色的毛玻璃 */
+[data-ic="ink"]{--qr:color-mix(in oklch,var(--accent) 62%,var(--t1));--qh:color-mix(in oklch,var(--accent) 80%,var(--t1));--qac:var(--accent);
+  --qt0:color-mix(in srgb,var(--accent) 7%,#fff);--qt1:color-mix(in srgb,var(--accent) 12%,color-mix(in srgb,var(--frame) 40%,#fff));
+  --qh0:color-mix(in srgb,var(--accent) 14%,#fff);--qh1:color-mix(in srgb,var(--accent) 20%,color-mix(in srgb,var(--frame) 40%,#fff));
+  --qhi:rgba(255,255,255,.6);--qsh:color-mix(in srgb,var(--accent) 10%,transparent);--qline:color-mix(in srgb,var(--accent) 16%,transparent)}
+[data-theme="dark"] [data-ic="ink"]{--qr:color-mix(in oklch,var(--accent) 70%,var(--t1));--qh:color-mix(in oklch,var(--accent) 88%,#fff);
+  --qt0:color-mix(in srgb,var(--accent) 16%,var(--surface));--qt1:color-mix(in srgb,var(--accent) 10%,var(--frame));
+  --qh0:color-mix(in srgb,var(--accent) 26%,var(--surface));--qh1:color-mix(in srgb,var(--accent) 18%,var(--frame));
+  --qhi:color-mix(in srgb,var(--accent) 22%,transparent);--qsh:rgba(0,0,0,.3);--qline:color-mix(in srgb,var(--accent) 24%,transparent)}
+/* 方案 B · 双色：字形主体是带皮肤色倾向的深墨，每个图标那一处强调点用足皮肤色；底块比 A 淡 */
+[data-ic="duo"]{--qr:color-mix(in oklch,var(--accent) 30%,var(--t1));--qh:var(--t1);--qac:var(--accent);
+  --qt0:color-mix(in srgb,var(--accent) 4%,#fff);--qt1:color-mix(in srgb,var(--accent) 8%,color-mix(in srgb,var(--frame) 40%,#fff));
+  --qh0:color-mix(in srgb,var(--accent) 10%,#fff);--qh1:color-mix(in srgb,var(--accent) 16%,color-mix(in srgb,var(--frame) 40%,#fff));
+  --qhi:rgba(255,255,255,.6);--qsh:rgba(0,0,0,.05);--qline:color-mix(in srgb,var(--accent) 12%,transparent)}
+[data-theme="dark"] [data-ic="duo"]{--qr:color-mix(in oklch,var(--accent) 35%,var(--t1));--qh:#fff;
+  --qt0:color-mix(in srgb,var(--accent) 10%,var(--surface));--qt1:color-mix(in srgb,var(--accent) 6%,var(--frame));
+  --qh0:color-mix(in srgb,var(--accent) 18%,var(--surface));--qh1:color-mix(in srgb,var(--accent) 12%,var(--frame));
+  --qhi:color-mix(in srgb,var(--accent) 16%,transparent);--qsh:rgba(0,0,0,.3);--qline:color-mix(in srgb,var(--accent) 18%,transparent)}
+[data-ic]{--qtm:color-mix(in srgb,var(--qt0),var(--qt1));--qhm:color-mix(in srgb,var(--qh0),var(--qh1));--qsb:var(--accent);
+  --qs0:color-mix(in srgb,var(--qsb) 94%,#fff);--qs1:color-mix(in srgb,var(--qsb) 94%,#000);--qsm:var(--qsb);--qsg:color-mix(in srgb,var(--qsb) 30%,transparent)}
+[data-theme="dark"][data-skin="sage"] [data-ic],[data-theme="dark"][data-skin="sage"][data-ic]{--qsb:#2E7D6B}
+[data-theme="dark"][data-skin="terra"] [data-ic]{--qsb:#B25735}
+[data-theme="dark"][data-skin="classic"] [data-ic]{--qsb:#2B63F0}
+
+/* 图标对比台 */
+.icgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.iccard{background:var(--surface);border-radius:12px;padding:16px 18px 14px;box-shadow:0 0 0 1px var(--edge)}
+.iccard h4{margin:0 0 2px;font-size:14px}.iccard p{margin:0 0 12px;font-size:12px;color:var(--t2);min-height:36px}
+.icrow{display:flex;align-items:center;gap:6px;margin:8px 0}.icrow .cap{width:72px;font-size:12px;color:var(--t3);flex:none}
+.icrow .bar{display:flex;align-items:center;gap:4px;padding:6px;border-radius:10px;background:var(--frame)}
+.icrow .bar.v{flex-direction:column}
+.tbtn{display:flex;align-items:center;gap:5px;height:32px;padding:0 10px 0 6px;border-radius:6px;font-size:13px;color:var(--t1);white-space:nowrap}
+.tbtn.hov{background:var(--fh)}
+
+/* ---------- 页面 mock ---------- */
+.mock{position:relative;width:2560px;height:1440px;display:grid;background:var(--frame);color:var(--t1);font:13px/1.4 var(--sans);overflow:hidden;border-radius:12px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.06),0 24px 64px -24px rgba(0,0,0,.35);user-select:none;grid-template-rows:48px minmax(0,1fr);grid-template-columns:minmax(0,1fr)}
+.m-hd{display:flex;align-items:center;gap:20px;padding:0 12px 0 16px;min-width:0}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px}.brand i{width:24px;height:24px;border-radius:7px;background:var(--accent);display:grid;place-items:center}
+.brand i::before{content:"";width:12px;height:12px;border-left:2.4px solid #fff;border-right:2.4px solid #fff}
+.m-nav{display:flex;gap:4px;align-self:stretch}.m-nav a{display:flex;align-items:center;padding:0 10px;color:var(--t2);font-size:14px;position:relative}
+.m-nav a.on{color:var(--t1);font-weight:600}.m-nav a.on::after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:2px;background:var(--accent);border-radius:2px 2px 0 0}
+.m-srch{display:flex;align-items:center;gap:8px;height:32px;width:360px;border-radius:8px;padding:0 10px;color:var(--t3);background:var(--surface)}
+.m-srch kbd{margin-left:auto;font:11px/16px var(--sans);padding:0 5px;border-radius:4px;color:var(--t3);box-shadow:inset 0 0 0 1px var(--line)}
+.hd-r{margin-left:auto;display:flex;align-items:center;gap:6px}
+.avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;display:grid;place-items:center;font-size:12px;font-weight:600;margin-left:6px}
+.card{background:var(--surface);border-radius:8px;box-shadow:inset 0 0 0 1px var(--edge);display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
+.pill{display:inline-flex;align-items:center;justify-content:center;min-width:74px;height:26px;padding:0 10px;border-radius:7px;font-size:13px;font-weight:600;color:#fff}
+.pill.up{background:var(--up)}.pill.down{background:var(--down)}.pill.none{background:var(--s3);color:var(--t2)}
+.coin{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;flex:none}
+.tk{font-weight:600;font-size:14px}
+.chips{display:flex;gap:4px}.chips button{height:28px;padding:0 12px;border-radius:999px;font-size:13px;color:var(--t2);display:flex;align-items:center;gap:6px}
+.chips button i{width:7px;height:7px;border-radius:50%;background:var(--c)}.chips button b{font-weight:500;color:var(--t3);font-size:12px}
+.chips button.on{background:var(--soft);color:var(--atext);font-weight:600}.chips button.on b{color:var(--atext)}
+.wins{display:inline-flex;background:color-mix(in srgb,var(--t1) 6%,transparent);border-radius:7px;padding:2px;gap:2px}
+.wins button{height:24px;padding:0 10px;border-radius:5px;font-size:12px;color:var(--t2)}.wins button.on{background:var(--surface);color:var(--t1);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.mt{display:inline-flex;align-items:flex-end;gap:1.5px;height:10px;margin:0 2px}.mt i{width:3px;border-radius:1px;background:var(--line-strong)}.mt i.on{background:var(--c)}
+
+/* 首页 */
+.home{grid-row:2;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.95fr);gap:4px;padding:0 4px 4px;min-height:0}
+.hm-hd{height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;box-shadow:inset 0 -1px 0 var(--line)}
+.hm-hd h4{margin:0;font-size:16px;font-weight:650}.hm-hd .sub{font-size:12px;color:var(--t3);margin-left:auto}
+.hm-list{overflow:hidden;padding:4px 8px}
+.hm-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:0 12px;align-items:center;padding:9px 10px;border-radius:8px}
+.hm-row:hover{background:var(--s3)}
+.hm-row .l1{display:flex;align-items:center;gap:10px}.hm-row .p{margin-left:auto;font-weight:500;font-size:14px}
+.hm-row .l2{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hm-row .kind{color:var(--c);font-weight:600}.hm-row .ago{color:var(--t3);margin-left:auto}.hm-row .plus{color:var(--t3)}
+.hm-row .l2 b{color:var(--t1);font-weight:600}
+.hm-row .star{width:16px;height:16px;color:var(--t3);opacity:0}.hm-row:hover .star{opacity:1}
+.rk{display:flex;flex-direction:column;min-height:0}
+.rk-sh{display:flex;align-items:center;gap:10px;padding:14px 16px 6px}.rk-sh h5{margin:0;font-size:14px;font-weight:650}.rk-sh .more{margin-left:auto;font-size:12px;color:var(--atext)}
+.rk-row{display:grid;grid-template-columns:22px 28px minmax(0,1fr) auto 86px;gap:12px;align-items:center;height:40px;padding:0 16px;font-size:14px}
+.rk-row:hover{background:var(--s3)}.rk-row .i{color:var(--t3);font-size:12px}.rk-row .v{color:var(--t2);font-weight:500}
+.rk-row:nth-child(-n+3) .i{color:var(--atext);font-weight:600}
+.sc-row{display:grid;grid-template-columns:minmax(0,1fr) 90px 86px;gap:12px;align-items:center;height:40px;padding:0 16px;font-size:14px}
+.sc-row:hover{background:var(--s3)}.sc-row .beat{color:var(--t2);text-align:right;font-weight:500}.sc-row .nm{display:flex;flex-direction:column;gap:3px}
+.sc-row .bar{height:4px;border-radius:2px;background:var(--line);width:160px;position:relative}.sc-row .bar i{position:absolute;top:0;bottom:0;border-radius:2px}
+.scbtn{margin:auto 16px 14px;height:32px;border-radius:6px;background:var(--soft);color:var(--atext);font-weight:600;font-size:13px}
+
+/* 图表页外框 */
+.chart{grid-row:2;display:grid;grid-template-columns:52px minmax(0,1fr) 320px 48px;grid-template-rows:38px minmax(0,1fr);gap:4px;padding:0 4px 4px;min-height:0}
+.m-tb{grid-column:1/3;display:flex;align-items:center;gap:2px;padding:0 8px 0 10px;white-space:nowrap}
+.sym{display:flex;align-items:center;gap:6px;height:32px;padding:0 8px 0 4px}.sym b{font-size:16px;font-weight:650}.sym .pk{font-size:12px;color:var(--t2)}
+.ivs{display:flex;align-items:center;background:color-mix(in srgb,var(--t1) 5%,transparent);border-radius:8px;padding:2px;margin:0 8px 0 6px}
+.ivs button{height:28px;min-width:38px;padding:0 7px;border-radius:6px;color:var(--t2);font-size:13px}.ivs button.on{background:var(--surface);color:var(--atext);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.tsep{width:1px;height:20px;background:var(--line);margin:0 6px}
+.m-db{grid-column:1;display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:4px}
+.m-rail{grid-column:4;grid-row:1/3;display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:4px}
+.m-main{grid-column:2;display:flex;flex-direction:column;gap:4px;min-height:0;min-width:0}.m-main>.cell{flex:1}
+.m-side{grid-column:3;grid-row:1/3;display:flex;flex-direction:column;gap:4px;min-height:0}
+.cell{position:relative;background:var(--surface);border-radius:8px;overflow:hidden;min-height:0;box-shadow:inset 0 0 0 1px var(--edge)}
+.cell canvas{position:absolute;inset:0;width:100%;height:100%}
+.cell.act::after{content:"";position:absolute;inset:0;border-radius:8px;box-shadow:inset 0 0 0 2px var(--accent);pointer-events:none}
+.legend{position:absolute;left:10px;top:6px;z-index:2;line-height:22px;white-space:nowrap;font-size:13px}
+.legend .tt{font-weight:650;font-size:14px}.legend .tt i{font-style:normal;font-weight:400;color:var(--t2);font-size:12px;margin-left:2px}
+.legend .lb{color:var(--t2);font-size:12px}.legend .v{font-weight:500}
+.cfoot{position:absolute;right:8px;bottom:6px;display:flex;gap:2px;z-index:2;opacity:0;font-size:12px;color:var(--t2)}
+.cell:hover .cfoot,.cell.act .cfoot{opacity:1}.cfoot span{padding:0 6px;height:20px;line-height:20px;border-radius:4px;background:color-mix(in srgb,var(--surface) 80%,transparent)}
+.cfoot .on{color:var(--atext);font-weight:600}
+.gfoot{height:32px;flex:none;display:flex;align-items:center;gap:2px;padding:0 8px;font-size:12px;color:var(--t2);border-radius:8px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--edge)}
+.gfoot span{padding:0 8px;height:24px;line-height:24px;border-radius:5px}.gfoot .r{margin-left:auto;display:flex;align-items:center;gap:2px}.gfoot .on{color:var(--atext);font-weight:600;background:var(--soft)}
+.gfoot .act{color:var(--t1);font-weight:600;margin-right:6px}
+.cells{display:grid;gap:4px;flex:1;min-height:0}
+.cells.g4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}.cells.g16{grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(4,1fr)}
+.cells.g16 .legend{font-size:12px;line-height:18px}.cells.g16 .legend .tt{font-size:13px}
+/* 右侧自选栏（分节） */
+.w-hd{height:40px;flex:none;display:flex;align-items:center;gap:6px;padding:0 8px 0 12px;box-shadow:inset 0 -1px 0 var(--line)}
+.w-hd b{font-size:14px}.w-hd .cnt{color:var(--t3);font-size:12px;font-weight:400}
+.w-grp{display:flex;align-items:center;gap:6px;height:28px;padding:0 12px;font-size:12px;color:var(--t2);font-weight:600;background:var(--s2);position:sticky;top:0}
+.w-grp .n{color:var(--t3);font-weight:400}.w-grp .chev{margin-left:auto;color:var(--t3);font-size:10px}
+.w-row{display:grid;grid-template-columns:minmax(0,1fr) auto 70px;gap:8px;align-items:center;height:34px;padding:0 10px 0 12px;font-size:14px;font-weight:500}
+.w-row:hover{background:var(--s3)}.w-row.cur{background:var(--soft)}.w-row.cur .nm{color:var(--atext);font-weight:650}
+.w-row .nm{display:flex;align-items:center;gap:6px}.w-row .nm small{font-size:11px;color:var(--t3);font-weight:400}
+.w-row .px{color:var(--t1)}.w-row .pc{text-align:right;font-weight:600}.pc.up{color:var(--up-text)}.pc.down{color:var(--down-text)}
+.w-row .act{display:none;gap:2px}.w-row:hover .act{display:flex}.w-row:hover .pc{display:none}
+.w-row .act i{width:24px;height:24px;border-radius:5px;display:grid;place-items:center;color:var(--t2);background:var(--s2)}
+.w-list{overflow:hidden;flex:1}
+.w-detail{flex:none;padding:12px 12px 10px;box-shadow:inset 0 1px 0 var(--line);display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;font-size:12px;color:var(--t2)}
+.w-detail .big{grid-column:1/-1;display:flex;align-items:baseline;gap:8px}.w-detail .big b{font-size:20px;font-weight:650;color:var(--t1)}
+.w-detail .kv{display:flex;justify-content:space-between}.w-detail .kv b{color:var(--t1);font-weight:500}
+.w-detail .rng{grid-column:1/-1}.w-detail .rng .bar{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--down),var(--up));position:relative;margin:6px 0 4px}
+.w-detail .rng .bar i{position:absolute;top:-3px;width:10px;height:10px;border-radius:50%;background:var(--t1);box-shadow:0 0 0 2px var(--surface)}
+.w-detail .rng .lh{display:flex;justify-content:space-between}
+.w-detail .tags{grid-column:1/-1;display:flex;gap:4px;flex-wrap:wrap}.w-detail .tags span{padding:1px 7px;border-radius:4px;background:var(--s2);font-size:11px}
+/* 订单流弹层（替代整栏面板） */
+.pop{position:absolute;right:56px;top:140px;width:320px;background:var(--overlay);border-radius:10px;box-shadow:0 0 0 1px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.14);padding:8px 0;z-index:5}
+.pop h5{margin:4px 14px 6px;font-size:12px;color:var(--t3);font-weight:600}
+.pop .row{display:flex;align-items:center;gap:10px;height:36px;padding:0 14px}.pop .row .t{flex:1;font-size:13px}
+.sw{width:34px;height:20px;border-radius:10px;background:var(--control-line);position:relative}.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.sw.on{background:var(--accent)}.sw.on::after{left:16px}
+.pop .thr{display:grid;grid-template-columns:1fr auto;gap:6px 10px;padding:4px 14px 6px;font-size:12px;color:var(--t2)}.pop .thr b{font-weight:500;color:var(--t1);font-variant-numeric:tabular-nums}
+.tgi{width:22px;height:22px;border-radius:6px;background:var(--s2);display:grid;place-items:center}
+/* 板块页 */
+.sec{grid-row:2;display:grid;grid-template-columns:minmax(0,38fr) minmax(0,62fr);gap:4px;padding:0 4px 4px;min-height:0}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}.tbl th{height:36px;font-size:12px;font-weight:600;color:var(--t3);text-align:right;padding:0 16px;position:sticky;top:0;background:var(--surface)}
+.tbl th:first-child,.tbl td:first-child{text-align:left}.tbl td{height:36px;padding:0 16px;text-align:right;font-weight:500;white-space:nowrap}
+.tbl tr:hover td{background:var(--s3)}.tbl tr.cur td{background:var(--soft)}.tbl tr.cur td:first-child{color:var(--atext);font-weight:650}
+.tbl td .sb{display:inline-block;width:72px;height:4px;border-radius:2px;background:var(--line);vertical-align:middle;margin-left:10px;position:relative}.tbl td .sb i{position:absolute;top:0;bottom:0;border-radius:2px}
+.tbl .cn{display:flex;align-items:center;gap:10px}.tbl .st{color:var(--t3)}.tbl .st.on{color:var(--accent)}
+.sec-hd{height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;box-shadow:inset 0 -1px 0 var(--line)}
+.sec-hd h4{margin:0;font-size:16px;font-weight:650}.sec-hd .sub{color:var(--t3);font-size:12px}.sec-hd .r{margin-left:auto;display:flex;gap:4px}
+.up-t{color:var(--up-text)}.down-t{color:var(--down-text)}
+</style>
+</head>
+<body>
+<div class="ctl">
+  <div class="ttl">Hkline 电脑网页 <small>布局与图标提案 · 2026-10-10 · 2560×1440 缩放预览</small></div>
+  <span class="lab">皮肤</span><div class="seg" data-k="skin"><button data-v="sage">青苔</button><button data-v="classic">经典</button><button data-v="terra">陶土</button></div>
+  <span class="lab">深浅</span><div class="seg" data-k="theme"><button data-v="light">浅色</button><button data-v="dark">深色</button></div>
+  <span class="lab">图标</span><div class="seg" data-k="ic"><button data-v="ink">A 皮肤墨色</button><button data-v="duo">B 双色</button><button data-v="now">现状</button></div>
+  <nav><a href="#s1">1 图标</a><a href="#s2">2 首页榜单</a><a href="#s3">3 右侧栏</a><a href="#s4">4 多图</a><a href="#s5">5 板块页</a></nav>
+</div>
+<main>
+
+<section id="s1">
+  <h2>1 · 图标配色 <span class="pick">推荐 A</span></h2>
+  <p class="lede">现状的字形是深灰、底块几乎白，看着就是黑白线描。两个方案都不加新颜色、不按类别上色：<b>A 皮肤墨色</b>把字形染成这套皮肤的「墨」（青苔是墨绿、陶土是赭、经典是藏青），底块是带一点皮肤色的毛玻璃，整屏只剩皮肤一个色相；<b>B 双色</b>字形仍是深墨但有皮肤倾向，每个图标那一处强调点（铃舌、星、光标芯）用足皮肤色，底块比 A 淡。上面「图标」开关切换三者，整页所有 mock 一起变。</p>
+  <div class="icgrid" id="icgrid"></div>
+</section>
+
+<section id="s2">
+  <h2>2 · 首页榜单（电脑版）</h2>
+  <p class="lede">顶栏一级入口改成 <b>首页 · 图表 · 板块 · 复盘</b>，首页是启动默认。手机端的四段（异动 · 涨跌 · 持仓 · 板块）在 2560 宽上一屏四栏并排、不用切段：异动最宽（第二行要放事实句），涨跌 / 持仓各自两张榜上下叠、窗口胶囊在栏头，板块栏是精简榜（点板块进板块页）。数据与手机端同一口径（`/highlights/board` 与 `/market/board`，60 秒一拉、就地换数不换位、新异动浮药丸）。窄于 1800 宽时板块栏并进持仓栏下方。点任一行进图表页。</p>
+  <div class="stage"><div class="scaler"><div class="mock" id="home"></div></div></div>
+</section>
+
+<section id="s3">
+  <h2>3 · 右侧栏：分节自选 + 弹层式面板</h2>
+  <p class="lede">自选栏按分类<b>分节连续列出</b>（组头可折叠、带数量，吸顶），当前品种所在行用强调软底；行尾悬停出「铃 · 星」两个快捷块（涨跌数让位）；底部详情卡加 24 小时区间条，板块标签换行不截断。主力订单流 / 提醒 / 笔记的<b>设置类面板改成从右侧栏图标点出的弹层</b>（示例里打开了订单流弹层），自选栏不再被顶掉，K 线宽度不变。</p>
+  <div class="stage"><div class="scaler"><div class="mock" id="side"></div></div></div>
+</section>
+
+<section id="s4">
+  <h2>4 · 多图布局的 chrome</h2>
+  <p class="lede">每格不再各带整条底栏。<b>底栏只有一条、在整个图区下面</b>，作用于当前激活格（左端写着「作用于 · 格 2」）；每格只在悬停或激活时右下角浮出「对数 / 自动」两个小字。十六图默认只留主图 + 成交量、不画指标轴标签，K 线高度从 120 回到 300 左右。左为四图、右为十六图。</p>
+  <div class="stage"><div class="scaler"><div class="mock" id="grid4"></div></div></div>
+  <div class="stage" style="margin-top:16px"><div class="scaler"><div class="mock" id="grid16"></div></div></div>
+</section>
+
+<section id="s5">
+  <h2>5 · 板块页重排</h2>
+  <p class="lede">走势列删掉（已在改）。左表收到 38%：板块 · 涨跌幅（带 4 px 强弱条）· 跑赢大盘，列贴内容、数字右对齐；右侧成分表铺满整高并补三列：<b>成交额 · 持仓变化 · 费率</b>，表头吸顶，行高 36，星在行尾。</p>
+  <div class="stage"><div class="scaler"><div class="mock" id="sectors"></div></div></div>
+</section>
+</main>
+
+<script id="qi" type="application/json">{"u_search":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M2.3999999999999995 7.8a5.4 5.4 0 1 0 10.8 0a5.4 5.4 0 1 0 -10.8 0Z\" fill=\"var(--q1,currentColor)\" opacity=\"0.22\"/><path d=\"M2.3999999999999995 7.8a5.4 5.4 0 1 0 10.8 0a5.4 5.4 0 1 0 -10.8 0Z\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><path d=\"M12 12L16 16\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/></svg>","u_bell":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M9 1.6c.55 0 1 .45 1 1v.55a4.9 4.9 0 0 1 3.9 4.8v2.7l1.35 2.05a.9.9 0 0 1-.75 1.4H3.5a.9.9 0 0 1-.75-1.4L4.1 10.65V7.95A4.9 4.9 0 0 1 8 3.15V2.6c0-.55.45-1 1-1Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"0.9\"/><path d=\"M6.9 15.2h4.2a2.1 2.1 0 0 1-4.2 0Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"1\"/><rect x=\"5.9\" y=\"6.6\" width=\"1.5\" height=\"3.6\" rx=\"0.75\" fill=\"var(--qw,var(--surface))\" opacity=\"0.55\"/></svg>","u_bellPlus":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><mask id=\"qm1\" maskUnits=\"userSpaceOnUse\" x=\"-2\" y=\"-2\" width=\"22\" height=\"22\"><rect x=\"-2\" y=\"-2\" width=\"22\" height=\"22\" fill=\"#fff\"/><path d=\"M14.2 4.2h.01\" stroke=\"#000\" stroke-width=\"7.6\" stroke-linecap=\"round\"/></mask><g mask=\"url(#qm1)\"><path d=\"M9 1.6c.55 0 1 .45 1 1v.55a4.9 4.9 0 0 1 3.9 4.8v2.7l1.35 2.05a.9.9 0 0 1-.75 1.4H3.5a.9.9 0 0 1-.75-1.4L4.1 10.65V7.95A4.9 4.9 0 0 1 8 3.15V2.6c0-.55.45-1 1-1Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"0.9\"/><path d=\"M6.9 15.2h4.2a2.1 2.1 0 0 1-4.2 0Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"1\"/><rect x=\"5.9\" y=\"6.6\" width=\"1.5\" height=\"3.6\" rx=\"0.75\" fill=\"var(--qw,var(--surface))\" opacity=\"0.55\"/></g><path d=\"M14.2 1.8V6.6M11.8 4.2H16.6\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/></svg>","u_ind":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><rect x=\"1.6\" y=\"1.8\" width=\"14.8\" height=\"14.4\" rx=\"3\" fill=\"var(--q1,currentColor)\" opacity=\"0.28\"/><path d=\"M4.4 12.2L7.4 8.6L10 10.8L13.6 6\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><circle cx=\"13.6\" cy=\"6\" r=\"1.8\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/></svg>","u_cmp":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M2 11L6 13.2L10 8.8L16 10.8\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.42\"/><path d=\"M2 14.6L6 9.6L10 12L15.4 5\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><circle cx=\"15.4\" cy=\"5\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/></svg>","u_note":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><rect x=\"1.6\" y=\"1.4\" width=\"11.4\" height=\"15.2\" rx=\"2.6\" fill=\"var(--q1,currentColor)\" opacity=\"0.3\"/><rect x=\"4.2\" y=\"4.8\" width=\"6.2\" height=\"1.8\" rx=\"0.9\" fill=\"var(--q1,currentColor)\" opacity=\"0.85\"/><rect x=\"4.2\" y=\"8.4\" width=\"4.2\" height=\"1.8\" rx=\"0.9\" fill=\"var(--q1,currentColor)\" opacity=\"0.6\"/><path d=\"M16 7.4L10.8 12.6\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"3.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><path d=\"M9.3 14.1L8.4 16L10.3 15.1Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"1\"/></svg>","u_heat":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><rect x=\"1\" y=\"1\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.25\"/><rect x=\"1\" y=\"5.2\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.81\"/><rect x=\"1\" y=\"9.4\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.58\"/><rect x=\"1\" y=\"13.600000000000001\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.36\"/><rect x=\"5.2\" y=\"1\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.58\"/><rect x=\"5.2\" y=\"5.2\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.36\"/><rect x=\"5.2\" y=\"9.4\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.92\"/><rect x=\"5.2\" y=\"13.600000000000001\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.69\"/><rect x=\"9.4\" y=\"1\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.92\"/><rect x=\"9.4\" y=\"5.2\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.69\"/><rect x=\"9.4\" y=\"9.4\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.47\"/><rect x=\"9.4\" y=\"13.600000000000001\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.25\"/><rect x=\"13.600000000000001\" y=\"1\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.47\"/><rect x=\"13.600000000000001\" y=\"5.2\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.25\"/><rect x=\"13.600000000000001\" y=\"9.4\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.81\"/><rect x=\"13.600000000000001\" y=\"13.600000000000001\" width=\"3.4\" height=\"3.4\" rx=\"0.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.58\"/></svg>","u_flow":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><mask id=\"qm2\" maskUnits=\"userSpaceOnUse\" x=\"-2\" y=\"-2\" width=\"22\" height=\"22\"><rect x=\"-2\" y=\"-2\" width=\"22\" height=\"22\" fill=\"#fff\"/><path d=\"M6 .5V17.5M12 3.5V16.5\" stroke=\"#000\" stroke-width=\"4.2\" stroke-linecap=\"round\"/></mask><g mask=\"url(#qm2)\"><rect x=\"1\" y=\"4\" width=\"16\" height=\"3\" rx=\"1.5\" fill=\"var(--q1,currentColor)\" opacity=\"0.3\"/><rect x=\"1\" y=\"11\" width=\"16\" height=\"3\" rx=\"1.5\" fill=\"var(--q1,currentColor)\" opacity=\"0.55\"/></g><rect x=\"5\" y=\"2\" width=\"2\" height=\"14\" rx=\"1\" fill=\"var(--q1,currentColor)\" opacity=\"1\"/><rect x=\"11\" y=\"5\" width=\"2\" height=\"10\" rx=\"1\" fill=\"var(--q1,currentColor)\" opacity=\"0.55\"/></svg>","u_layout":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><rect x=\"1.6\" y=\"2.4\" width=\"6.8\" height=\"13.2\" rx=\"2\" fill=\"var(--q1,currentColor)\" opacity=\"0.9\"/><rect x=\"9.6\" y=\"2.4\" width=\"6.8\" height=\"6.2\" rx=\"2\" fill=\"var(--q1,currentColor)\" opacity=\"0.5\"/><rect x=\"9.6\" y=\"9.8\" width=\"6.8\" height=\"5.8\" rx=\"2\" fill=\"var(--q1,currentColor)\" opacity=\"0.3\"/></svg>","u_camera":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M6.6 3.4h4.8a1 1 0 0 1 .85.47L13 5.4h1.6a2 2 0 0 1 2 2v6.6a2 2 0 0 1-2 2H3.4a2 2 0 0 1-2-2V7.4a2 2 0 0 1 2-2H5l.75-1.53a1 1 0 0 1 .85-.47Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"0.9\"/><circle cx=\"9\" cy=\"10.4\" r=\"3.5\" fill=\"var(--qw,var(--surface))\" opacity=\"1\"/><circle cx=\"9\" cy=\"10.4\" r=\"1.9\" fill=\"var(--q1,currentColor)\" opacity=\"1\"/></svg>","u_full":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><rect x=\"5.6\" y=\"5.6\" width=\"6.8\" height=\"6.8\" rx=\"1.6\" fill=\"var(--q1,currentColor)\" opacity=\"0.3\"/><path d=\"M2 6.4V3.6A1.6 1.6 0 0 1 3.6 2H6.4M11.6 2H14.4A1.6 1.6 0 0 1 16 3.6V6.4M16 11.6V14.4A1.6 1.6 0 0 1 14.4 16H11.6M6.4 16H3.6A1.6 1.6 0 0 1 2 14.4V11.6\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/></svg>","u_undo":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M6.6 6.4H11A4.6 4.6 0 0 1 11 15.6H6.4\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.62\"/><path d=\"M1.8 6.4L6.8 2.3V10.5Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"1\"/></svg>","u_redo":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><g transform=\"matrix(-1 0 0 1 18 0)\"><path d=\"M6.6 6.4H11A4.6 4.6 0 0 1 11 15.6H6.4\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.62\"/><path d=\"M1.8 6.4L6.8 2.3V10.5Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"1\"/></g></svg>","u_set":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M7.32 3.55L7.62 1.42L10.38 1.42L10.68 3.55A5.7 5.7 0 0 1 11.66 3.96L11.66 3.96L13.38 2.67L15.33 4.62L14.04 6.34A5.7 5.7 0 0 1 14.45 7.32L14.45 7.32L16.58 7.62L16.58 10.38L14.45 10.68A5.7 5.7 0 0 1 14.04 11.66L14.04 11.66L15.33 13.38L13.38 15.33L11.66 14.04A5.7 5.7 0 0 1 10.68 14.45L10.68 14.45L10.38 16.58L7.62 16.58L7.32 14.45A5.7 5.7 0 0 1 6.34 14.04L6.34 14.04L4.62 15.33L2.67 13.38L3.96 11.66A5.7 5.7 0 0 1 3.55 10.68L3.55 10.68L1.42 10.38L1.42 7.62L3.55 7.32A5.7 5.7 0 0 1 3.96 6.34L3.96 6.34L2.67 4.62L4.62 2.67L6.34 3.96A5.7 5.7 0 0 1 7.32 3.55ZM6.3 9a2.7 2.7 0 1 1 5.4 0a2.7 2.7 0 1 1 -5.4 0Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"0.9\"/><circle cx=\"9\" cy=\"9\" r=\"1.3\" fill=\"var(--q1,currentColor)\" opacity=\"1\"/></svg>","eye":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M1.4 9C3.4 5.2 5.9 3.6 9 3.6S14.6 5.2 16.6 9C14.6 12.8 12.1 14.4 9 14.4S3.4 12.8 1.4 9Z\" fill=\"var(--q1,currentColor)\" opacity=\"0.26\"/><path d=\"M1.4 9C3.4 5.2 5.9 3.6 9 3.6S14.6 5.2 16.6 9C14.6 12.8 12.1 14.4 9 14.4S3.4 12.8 1.4 9Z\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><circle cx=\"9\" cy=\"9\" r=\"3.1\" fill=\"var(--q1,currentColor)\" opacity=\"1\"/><circle cx=\"10.15\" cy=\"7.85\" r=\"1\" fill=\"var(--qw,var(--surface))\" opacity=\"1\"/></svg>","u_star":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M9.00 1.80L11.23 6.63L16.51 7.26L12.61 10.87L13.64 16.09L9.00 13.50L4.36 16.09L5.39 10.87L1.49 7.26L6.77 6.63Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"1\"/><path d=\"M9.00 6.10L10.00 8.32L12.42 8.59L10.62 10.23L11.12 12.61L9.00 11.40L6.88 12.61L7.38 10.23L5.58 8.59L8.00 8.32Z\" fill=\"var(--qw,var(--surface))\" fill-rule=\"evenodd\" stroke=\"var(--qw,var(--surface))\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"0.35\"/></svg>","u_list":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><rect x=\"1.6\" y=\"1.8\" width=\"14.8\" height=\"14.4\" rx=\"3\" fill=\"var(--q1,currentColor)\" opacity=\"0.28\"/><path d=\"M5.40 3.60L6.11 5.23L7.87 5.40L6.54 6.57L6.93 8.30L5.40 7.40L3.87 8.30L4.26 6.57L2.93 5.40L4.69 5.23Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"1\"/><rect x=\"8.4\" y=\"5.3\" width=\"5.8\" height=\"1.8\" rx=\"0.9\" fill=\"var(--q1,currentColor)\" opacity=\"0.9\"/><circle cx=\"5.4\" cy=\"9.6\" r=\"1.1\" fill=\"var(--q1,currentColor)\" opacity=\"0.7\"/><rect x=\"8.4\" y=\"8.7\" width=\"5.8\" height=\"1.8\" rx=\"0.9\" fill=\"var(--q1,currentColor)\" opacity=\"0.65\"/><circle cx=\"5.4\" cy=\"13\" r=\"1.1\" fill=\"var(--q1,currentColor)\" opacity=\"0.5\"/><rect x=\"8.4\" y=\"12.1\" width=\"4.2\" height=\"1.8\" rx=\"0.9\" fill=\"var(--q1,currentColor)\" opacity=\"0.45\"/></svg>","u_trades":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><circle cx=\"6.6\" cy=\"11\" r=\"4.8\" fill=\"var(--q1,currentColor)\" opacity=\"0.9\"/><circle cx=\"13.2\" cy=\"5.6\" r=\"3.4\" fill=\"var(--q1,currentColor)\" opacity=\"0.495\"/><circle cx=\"14.4\" cy=\"13.8\" r=\"1.9\" fill=\"var(--q1,currentColor)\" opacity=\"0.45\"/><rect x=\"4.6\" y=\"10.2\" width=\"4\" height=\"1.6\" rx=\"0.8\" fill=\"var(--qw,var(--surface))\" opacity=\"1\"/></svg>","u_sun":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><circle cx=\"9\" cy=\"9\" r=\"3.7\" fill=\"var(--q1,currentColor)\" opacity=\"1\"/><path d=\"M9 1.6V3.2M9 14.8V16.4M1.6 9H3.2M14.8 9H16.4M3.8 3.8L4.9 4.9M13.1 13.1L14.2 14.2M3.8 14.2L4.9 13.1M13.1 4.9L14.2 3.8\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.6\"/></svg>","u_moon":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M10.2 2.2A6.9 6.9 0 1 0 15.8 11.9A5.4 5.4 0 0 1 10.2 2.2Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"0.9\"/><circle cx=\"11.6\" cy=\"6.2\" r=\"0.9\" fill=\"var(--q1,currentColor)\" opacity=\"0.5\"/></svg>","u_share":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M3.4 9.8V13.8A2.2 2.2 0 0 0 5.6 16H12.4A2.2 2.2 0 0 0 14.6 13.8V9.8\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.55\"/><path d=\"M9 11.4V5\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><path d=\"M9 1.6L12.8 5.8H5.2Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"1\"/></svg>","cursor":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M9 1.8V6M9 12V16.2M1.8 9H6M12 9H16.2\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><circle cx=\"9\" cy=\"9\" r=\"1.7\" fill=\"var(--qa,currentColor)\" opacity=\"1\"/></svg>","magnet":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M2.6 2.6H7.4V10A1.6 1.6 0 0 0 10.6 10V2.6H15.4V10A6.4 6.4 0 0 1 2.6 10Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"0.55\"/><rect x=\"2.6\" y=\"2.6\" width=\"4.8\" height=\"3.4\" rx=\"1\" fill=\"var(--q1,currentColor)\" opacity=\"1\"/><rect x=\"10.6\" y=\"2.6\" width=\"4.8\" height=\"3.4\" rx=\"1\" fill=\"var(--q1,currentColor)\" opacity=\"1\"/></svg>","lock":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M5.8 8.2V5.6A3.2 3.2 0 0 1 12.2 5.6V8.2\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.6\"/><rect x=\"3\" y=\"7.8\" width=\"12\" height=\"8.8\" rx=\"2.4\" fill=\"var(--q1,currentColor)\" opacity=\"1\"/><rect x=\"8.15\" y=\"10.6\" width=\"1.7\" height=\"3.6\" rx=\"0.85\" fill=\"var(--qw,var(--surface))\" opacity=\"1\"/></svg>","trash":"<svg class=\"q q q-del\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M4.2 6.2H13.8L12.9 16.2H5.1Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"0.9\"/><path d=\"M2.4 4.2H15.6\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><path d=\"M6.8 4V2.6H11.2V4\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><rect x=\"6.9\" y=\"8.4\" width=\"1.5\" height=\"5.4\" rx=\"0.75\" fill=\"var(--qw,var(--surface))\" opacity=\"0.85\"/><rect x=\"9.6\" y=\"8.4\" width=\"1.5\" height=\"5.4\" rx=\"0.75\" fill=\"var(--qw,var(--surface))\" opacity=\"0.85\"/></svg>","measure":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M2.4 1.8L16.2 15.6H2.4ZM5 8.4V12.8H9.4Z\" fill=\"var(--q1,currentColor)\" fill-rule=\"evenodd\" stroke=\"var(--q1,currentColor)\" stroke-width=\".9\" stroke-linejoin=\"round\" opacity=\"0.9\"/></svg>","hline":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><rect x=\"3.4\" y=\"10.9\" width=\"2.6\" height=\"5.2\" rx=\"1.3\" fill=\"var(--q1,currentColor)\" opacity=\"0.3\"/><rect x=\"12\" y=\"2.1\" width=\"2.6\" height=\"5\" rx=\"1.3\" fill=\"var(--q1,currentColor)\" opacity=\"0.3\"/><path d=\"M1.6 9H16.4\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><circle cx=\"9\" cy=\"9\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/></svg>","trend":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M3 15L15 3\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><circle cx=\"3\" cy=\"15\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/><circle cx=\"15\" cy=\"3\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/></svg>","ray":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M10 8L16.6 1.4\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.3\"/><path d=\"M3 15L10 8\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><circle cx=\"3\" cy=\"15\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/><circle cx=\"10\" cy=\"8\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/></svg>","fib":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M2 6.8H16V11.2H2Z\" fill=\"var(--q1,currentColor)\" opacity=\"0.14\"/><path d=\"M2 2.6H16\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><path d=\"M2 6.8H16\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.74\"/><path d=\"M2 11.2H16\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.5\"/><path d=\"M2 15.4H16\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.3\"/><path d=\"M4.2 15.4L13.8 2.6\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.38\"/><circle cx=\"4.2\" cy=\"15.4\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/><circle cx=\"13.8\" cy=\"2.6\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/></svg>","rect":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M2.4 4H15.6V14H2.4Z\" fill=\"var(--q1,currentColor)\" opacity=\"0.22\"/><path d=\"M2.4 4H15.6V14H2.4Z\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><circle cx=\"2.4\" cy=\"4\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/><circle cx=\"15.6\" cy=\"14\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/></svg>","vline":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><rect x=\"2.6\" y=\"3.4\" width=\"2.6\" height=\"6.2\" rx=\"1.3\" fill=\"var(--q1,currentColor)\" opacity=\"0.3\"/><rect x=\"12.8\" y=\"8.4\" width=\"2.6\" height=\"6.2\" rx=\"1.3\" fill=\"var(--q1,currentColor)\" opacity=\"0.3\"/><path d=\"M9 1.6V16.4\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><circle cx=\"9\" cy=\"9\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/></svg>","channel":"<svg class=\"q q\" viewBox=\"0 0 18 18\" aria-hidden=\"true\"><path d=\"M2 10.5L16 3V8L2 15.5Z\" fill=\"var(--q1,currentColor)\" opacity=\"0.22\"/><path d=\"M2 10.5L16 3M2 15.5L16 8\" fill=\"none\" stroke=\"var(--q1,currentColor)\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"1\"/><circle cx=\"2\" cy=\"10.5\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/><circle cx=\"16\" cy=\"3\" r=\"2.3\" fill=\"var(--qa,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/><circle cx=\"9\" cy=\"11.75\" r=\"1.8\" fill=\"var(--q1,currentColor)\" stroke=\"var(--qw,var(--surface))\" stroke-width=\"1\"/></svg>"}</script>
+<script>
+const Q = JSON.parse(document.getElementById('qi').textContent);
+const q = (k, cls='') => (Q[k] || '').replace('class="q q"', `class="q ${cls}"`);
+
+/* 皮肤令牌（照 Web/src/styles/app.css） */
+const TOK = {
+  classic: { light: { frame:'#E7EAEE', fh:'#DCE0E6', fline:'#D3D8DF', surface:'#F8F9FA', s2:'#F0F2F4', s3:'#E8EBEF', overlay:'#FFFFFF', t1:'#161A22', t2:'#4D5462', t3:'#5C6270', line:'#E2E5EA', lineS:'#CDD2DB', cl:'#8C93A1', accent:'#2B63F0', soft:'#E7EEFF', atext:'#1F52D6', accent2:'#5B7CFA', edge:'transparent' },
+             dark:  { frame:'#0A0C10', fh:'#161A22', fline:'#1D222B', surface:'#14171D', s2:'#1B1F27', s3:'#222732', overlay:'#1D2129', t1:'#E4E7ED', t2:'#A2A8B4', t3:'#8E94A0', line:'#242A35', lineS:'#363C4A', cl:'#62687A', accent:'#4C7DFF', soft:'#1B2747', atext:'#7FA2FF', accent2:'#7FA2FF', edge:'#242A35' } },
+  sage:    { light: { frame:'#E4EAE6', fh:'#D9E1DC', fline:'#CFD9D3', surface:'#F8FAF8', s2:'#F0F4F1', s3:'#E8EEEA', overlay:'#FFFFFF', t1:'#17201B', t2:'#4A5A52', t3:'#58665F', line:'#E0E7E2', lineS:'#C3D1C8', cl:'#74897F', accent:'#2E7D6B', soft:'#DCEEE8', atext:'#256859', accent2:'#4FA58F', edge:'transparent' },
+             dark:  { frame:'#090D0B', fh:'#151C18', fline:'#1A221E', surface:'#121815', s2:'#182019', s3:'#1F2823', overlay:'#1A221E', t1:'#E6ECE8', t2:'#A3B2AA', t3:'#8C9A93', line:'#212B26', lineS:'#33413A', cl:'#5E6F67', accent:'#4FB69C', soft:'#16302A', atext:'#7CD2BC', accent2:'#2E7D6B', edge:'#212B26' } },
+  terra:   { light: { frame:'#ECE4DA', fh:'#E2D8CC', fline:'#DCD0C2', surface:'#FBF8F4', s2:'#F4EEE7', s3:'#EDE5DB', overlay:'#FFFFFF', t1:'#231A13', t2:'#67574A', t3:'#6B5C50', line:'#E9DFD3', lineS:'#D3C2B0', cl:'#8C7A6A', accent:'#B25735', soft:'#F6E1D6', atext:'#8C4327', accent2:'#D98A62', edge:'transparent' },
+             dark:  { frame:'#0C0805', fh:'#1A130D', fline:'#21180F', surface:'#18120C', s2:'#201811', s3:'#291F16', overlay:'#231A12', t1:'#F2EAE1', t2:'#BFAB98', t3:'#A39486', line:'#2C2118', lineS:'#46362A', cl:'#6E5B4B', accent:'#E2874F', soft:'#3A2517', atext:'#F0A574', accent2:'#B25735', edge:'#2C2118' } },
+};
+const state = { skin:'sage', theme:'light', ic:'ink' };
+function applyTok(){
+  const t = TOK[state.skin][state.theme], r = document.documentElement.style;
+  const map = { frame:'--frame', fh:'--fh', fline:'--fline', surface:'--surface', s2:'--s2', s3:'--s3', overlay:'--overlay', t1:'--t1', t2:'--t2', t3:'--t3', line:'--line', lineS:'--line-strong', cl:'--control-line', accent:'--accent', soft:'--soft', atext:'--atext', accent2:'--accent2', edge:'--edge' };
+  for (const k in map) r.setProperty(map[k], t[k]);
+  document.documentElement.dataset.skin = state.skin; document.documentElement.dataset.theme = state.theme; document.documentElement.dataset.ic = state.ic;
+  document.querySelectorAll('.seg').forEach(s => s.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === state[s.dataset.k]))));
+  drawAll();
+}
+document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { state[b.closest('.seg').dataset.k] = b.dataset.v; applyTok(); }));
+const qs = new URLSearchParams(location.search); for (const k of ['skin','theme','ic']) if (qs.get(k)) state[k] = qs.get(k);
+
+/* ---------- 1 图标对比台 ---------- */
+(function(){
+  const DB = ['cursor','trend','hline','ray','fib','rect','channel','note','measure','magnet','lock','eye','trash'];
+  const RAIL = ['u_list','u_flow','u_bell','u_note','u_trades','u_set'];
+  const TB = [['u_ind','指标'],['u_bell','提醒'],['u_cmp','对比'],['u_note','记一笔']];
+  const stateOf = (i) => i === 0 ? 'on' : i === 2 ? 'hov' : '';
+  const card = (ic, title, desc) => `<div class="iccard" data-ic="${ic}"><h4>${title}</h4><p>${desc}</p>
+    <div class="icrow"><span class="cap">左画线栏</span><div class="bar">${DB.map((k,i)=>`<span class="${stateOf(i)}">${q(k)}</span>`).join('')}</div></div>
+    <div class="icrow"><span class="cap">右侧栏</span><div class="bar">${RAIL.map((k,i)=>`<span class="${i===0?'on':i===1?'hov':''}">${q(k)}</span>`).join('')}</div>
+      <span class="cap" style="width:auto;margin-left:10px">顶栏</span><div class="bar"><span class="">${q('u_bell','s28')}</span><span class="hov">${q('u_sun','s28')}</span></div></div>
+    <div class="icrow"><span class="cap">工具条</span><div class="bar">${TB.map(([k,t],i)=>`<span class="tbtn ${i===1?'hov':''}">${q(k,'s22')}${t}</span>`).join('')}<span class="tbtn on">${q('u_layout','s22')}布局</span></div></div>
+    <div class="note">静止 · 悬停 · 选中三态都在上面（第 1 颗选中、第 3 颗悬停）</div></div>`;
+  document.getElementById('icgrid').innerHTML =
+    card('ink','A · 皮肤墨色（推荐）','字形 = 皮肤强调色 62% 掺主文字色（青苔→墨绿、经典→藏青、陶土→赭）；底块 = 强调色 7–12% 的毛玻璃；悬停加深到 80% 掺；选中强调色玻璃块 + 白字形。全屏只有一个色相，和周期分段、自选选中底同族。')
+  + card('duo','B · 双色','字形主体 = 强调色 30% 掺主文字色（偏墨、不发灰）；每个图标那一处点睛（铃舌、星、光标芯、锁孔）用足强调色；底块比 A 更淡（4–8%）。比 A 更「黑白」一点、但有一处亮色提神。')
+  + card('now','现状','主文字色 80% 掺次文字色；底块是框架 44–58% 掺白的中性灰。用户 10-10：「都是黑白配色，看起来不舒服」。');
+})();
+
+/* ---------- 公用 ---------- */
+const COIN = { BTC:'#F7931A', ETH:'#627EEA', SOL:'#9945FF', DOGE:'#C2A633', XRP:'#23292F', PEPE:'#3D8F3D', SUI:'#4DA2FF', BNB:'#F0B90B', WIF:'#B5651D', ARB:'#2D374B', LINK:'#2A5ADA', AVAX:'#E84142', TON:'#0098EA', ORDI:'#111', TIA:'#7B2BF9', NEAR:'#00C08B', APT:'#1B1B1B', OP:'#FF0420', SEI:'#9B1C31', INJ:'#00F2FE', LTC:'#345D9D', ADA:'#0033AD', DOT:'#E6007A', TRX:'#EF0027', HYPE:'#50E3C2', ENA:'#2D2D2D', JUP:'#00BEF0', WLD:'#222', FET:'#1F2A44', AAVE:'#B6509E', TAO:'#222', NVDA:'#76B900', TSLA:'#CC0000', XAU:'#D4AF37' };
+const coin = (b, s=28) => `<span class="coin" style="width:${s}px;height:${s}px;background:${COIN[b]||'#6B7280'};font-size:${s>24?11:9}px">${b.slice(0,3)}</span>`;
+const pct = (v, cls='pill') => `<span class="${cls} ${v>=0?'up':'down'}">${v>=0?'+':'−'}${Math.abs(v).toFixed(1)}%</span>`;
+const pctT = (v) => `<span class="${v>=0?'up-t':'down-t'}" style="font-weight:600">${v>=0?'+':'−'}${Math.abs(v).toFixed(2)}%</span>`;
+const header = (on) => `<div class="m-hd"><div class="brand"><i></i>Hkline</div><div class="m-nav">${['首页','图表','板块','复盘'].map(n=>`<a class="${n===on?'on':''}">${n}</a>`).join('')}</div>
+  <div class="m-srch">${q('u_search','s22').replace('class="q s22"','class="q s22" style="width:16px;height:16px;padding:0;background:none;box-shadow:none"')}搜索品种<kbd>/</kbd></div>
+  <div class="hd-r"><span>${q('u_bell','s28')}</span><span>${q('u_sun','s28')}</span><div class="avatar">G</div></div></div>`;
+const meter = (t,c) => `<span class="mt" style="--c:${c}"><i class="${t>=1?'on':''}" style="height:4px"></i><i class="${t>=2?'on':''}" style="height:7px"></i><i class="${t>=3?'on':''}" style="height:10px"></i></span>`;
+
+/* ---------- 2 首页 ---------- */
+(function(){
+  const CAT = { book:['盘口','var(--accent)'], oi:['持仓','var(--amber)'], funding:['费率','var(--t2)'], up:['急涨','var(--up-text)'], down:['急跌','var(--down-text)'] };
+  const MOVES = [
+    ['BTC','book',3,'82,751.7',0.8,'下方 <b>82,120</b> 买区 <b>35M</b>','3 分钟前',2],
+    ['ETH','oi',2,'3,924.5',2.1,'持仓 1 时 <b>+2.4%</b> · 增仓上涨','6 分钟前',0],
+    ['DOGE','up',3,'0.2415',null,'1 分 · 额 <b>114M</b>','刚刚',0,1.4],
+    ['SOL','funding',2,'186.42',-0.6,'费率 <b>0.0450%</b> · 第 96 百分位','12 分钟前',0],
+    ['XRP','book',2,'2.446',1.2,'卖墙被吃 <b>19.6M</b> @ 2.446','14 分钟前',1],
+    ['PEPE','down',2,'0.00001192',null,'5 分 · 额 <b>62M</b>','15 分钟前',0,-2.1],
+    ['SUI','oi',1,'3.512',4.3,'持仓 1 时 <b>+3.1%</b> · 增仓上涨','18 分钟前',0],
+    ['WIF','book',2,'2.084',-3.2,'现价内 <b>2.080–2.092</b> 卖区 <b>8.4M</b>','22 分钟前',0],
+    ['LINK','funding',1,'18.92',0.4,'费率 <b>−0.0312%</b> · 第 3 百分位','25 分钟前',0],
+    ['HYPE','up',2,'28.64',null,'5 分 · 额 <b>41M</b>','31 分钟前',0,3.6],
+    ['ARB','oi',2,'0.842',-1.8,'持仓 1 时 <b>−2.6%</b> · 减仓下跌','34 分钟前',0],
+    ['TON','book',1,'5.62',0.9,'下方 <b>5.58</b> 买区 <b>4.2M</b>','40 分钟前',0],
+    ['AVAX','book',2,'31.08',-0.3,'买墙撤单 <b>6.1M</b> @ 30.90 · 距价 0.6%','44 分钟前',1],
+    ['NEAR','funding',1,'5.84',1.1,'费率 <b>0.0388%</b> · 第 91 百分位','52 分钟前',0],
+    ['ORDI','down',1,'38.20',null,'1 分 · 额 <b>19M</b>','58 分钟前',0,-1.6],
+    ['TIA','oi',1,'6.42',2.7,'持仓 1 时 <b>+1.9%</b> · 增仓上涨','1 小时前',0],
+    ['APT','book',1,'9.86',0.2,'下方 <b>9.80</b> 买区 <b>3.1M</b>','1 小时前',0],
+    ['OP','funding',1,'1.924',-0.9,'费率 <b>0.0301%</b> · 第 88 百分位','2 小时前',0],
+  ];
+  const chips = [['all','全部',null,18],['book','盘口','var(--accent)',7],['oi','持仓','var(--amber)',4],['funding','费率','var(--t2)',4],['move','波动','linear-gradient(135deg,var(--up) 50%,var(--down) 50%)',3]];
+  const movesHTML = `<div class="card"><div class="hm-hd"><h4>异动</h4><div class="chips">${chips.map(([id,l,c,n],i)=>`<button class="${i===0?'on':''}" style="--c:${c||''}">${c?'<i></i>':''}${l}<b>${n}</b></button>`).join('')}</div><span class="sub">自选 24 只 · 14:32 更新</span></div>
+    <div class="hm-list">${MOVES.map(([b,cat,t,px,chg,fact,ago,plus,mv])=>{const [tag,c]=CAT[cat];return `<div class="hm-row" style="--c:${c}">${coin(b)}<div><div class="l1"><span class="tk">${b}</span><svg class="star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.85 1.03-6L3.3 9.6l6-.9z"/></svg><span class="p">${px}</span></div>
+      <div class="l2"><span class="kind">${tag}</span>${meter(t,c)}<span>${fact}</span>${plus?`<span class="plus">+${plus}</span>`:''}<span class="ago">${ago}</span></div></div>${mv!=null?pct(mv):pct(chg)}</div>`}).join('')}</div></div>`;
+  const G = [['HYPE','28.64',12.4],['SUI','3.512',8.9],['WIF','2.084',7.3],['TIA','6.42',6.8],['SEI','0.412',6.1],['ENA','0.618',5.7],['JUP','0.942',5.2],['NEAR','5.84',4.9]];
+  const L = [['PEPE','0.00001192',-6.3],['ORDI','38.20',-5.8],['WLD','1.824',-4.9],['FET','1.302',-4.4],['ARB','0.842',-3.9],['OP','1.924',-3.5],['TAO','412.6',-3.1],['INJ','21.40',-2.8]];
+  const OU = [['ETH','9.8B',6.4],['SOL','3.2B',5.1],['SUI','612M',4.8],['XRP','1.9B',3.9],['DOGE','1.4B',3.2],['HYPE','488M',2.9],['BTC','21.4B',2.1],['LINK','392M',1.8]];
+  const OD = [['ARB','214M',-5.2],['PEPE','318M',-4.6],['WIF','196M',-4.1],['OP','88M',-3.4],['AVAX','242M',-2.9],['TON','121M',-2.3],['APT','104M',-1.9],['NEAR','98M',-1.4]];
+  const rank = (title, rows, first, oi) => `<div class="rk"><div class="rk-sh"><h5>${title}</h5>${first?`<div class="wins"><button>1 时</button><button class="on">4 时</button><button>24 时</button></div>`:''}<span class="more">全部</span></div>
+    ${rows.map(([b,v,p],i)=>`<div class="rk-row"><span class="i">${i+1}</span>${coin(b)}<span class="tk">${b}</span><span class="v num">${v}</span>${pct(p)}</div>`).join('')}</div>`;
+  const rankCol = (h, sub, a, b, oi) => `<div class="card"><div class="hm-hd"><h4>${h}</h4><span class="sub">${sub}</span></div>${a}${b}</div>`;
+  const SEC = [['AI 概念',6.2,3.9,'#7057B8'],['Solana 生态',4.8,2.5,'#9945FF'],['Layer 2',3.1,0.8,'#2F6F8F'],['Meme',2.4,0.1,'#C2A633'],['DeFi',1.6,-0.7,'#4FA58F'],['公链',1.2,-1.1,'#2E7D6B'],['比特币生态',0.4,-1.9,'#F7931A'],['存储',-0.8,-3.1,'#58665F'],['游戏',-1.9,-4.2,'#D98A62'],['RWA',-2.6,-4.9,'#B25735'],['隐私',-3.4,-5.7,'#6B7280'],['交易所平台币',-4.1,-6.4,'#F0B90B']];
+  const secHTML = `<div class="card"><div class="hm-hd"><h4>板块</h4><span class="sub">大盘 +2.3% · 4 时</span></div>
+    ${SEC.map(([n,p,beat])=>`<div class="sc-row"><div class="nm"><span class="tk">${n}</span><span class="bar"><i style="left:${p>=0?50:50+p*7}%;width:${Math.abs(p)*7}%;background:${p>=0?'var(--up)':'var(--down)'}"></i></span></div><span class="beat">${beat>=0?'跑赢 ':'落后 '}${Math.abs(beat).toFixed(1)}%</span>${pct(p)}</div>`).join('')}
+    <button class="scbtn">全部板块 →</button></div>`;
+  document.getElementById('home').innerHTML = header('首页') + `<div class="home">${movesHTML}${rankCol('涨跌','币安永续 · 4 时', rank('涨幅榜',G,true), rank('跌幅榜',L,false))}${rankCol('持仓','持仓变化 · 4 时', rank('增仓榜',OU,true,true), rank('减仓榜',OD,false,true))}${secHTML}</div>`;
+})();
+
+/* ---------- 图表页骨架 ---------- */
+function toolbar(){
+  return `<div class="m-tb"><div class="sym">${coin('BTC',20)}<b>BTC</b><span class="pk">币安 USDT 永续</span></div>
+    <div class="ivs">${['1分','5分','15分','1时','4时','日','周','更多 ▾'].map(x=>`<button class="${x==='1时'?'on':''}">${x}</button>`).join('')}</div><span class="tsep"></span>
+    <span class="tbtn">${q('u_ind','s22')}指标</span><span class="tbtn">${q('u_bell','s22')}提醒</span><span class="tbtn">${q('u_cmp','s22')}对比</span><span class="tbtn">${q('u_note','s22')}记一笔</span>
+    <span style="margin-left:auto;display:flex;gap:2px">${['u_undo','u_redo','u_layout','u_camera','u_share','u_full','u_set'].map(k=>`<span style="width:32px;height:32px;display:grid;place-items:center">${q(k,'s22').replace('class="q s22"','class="q s22" style="width:18px;height:18px;padding:0;background:none;box-shadow:none"')}</span>`).join('')}</span></div>`;
+}
+const DB = ['cursor','trend','hline','ray','fib','rect','channel','note','measure','magnet','lock','eye','trash'];
+const drawbar = () => `<div class="m-db">${DB.map((k,i)=>`<span class="${i===0?'on':''}">${q(k)}</span>`).join('')}</div>`;
+const rail = (on) => `<div class="m-rail">${['u_list','u_flow','u_bell','u_note','u_trades','u_set'].map((k,i)=>`<span class="${k===on?'on':''}">${q(k)}</span>`).join('')}</div>`;
+const legend = (b, iv='1小时', small=false) => `<div class="legend"><div><span class="tt">${b}<i> · ${iv} · 币安永续</i></span> <span class="lb">开</span> <span class="v up-t">82,815.1</span> <span class="lb">高</span> <span class="v up-t">82,837.1</span> <span class="lb">低</span> <span class="v up-t">82,748.9</span> <span class="lb">收</span> <span class="v down-t">82,751.7</span> <span class="down-t">−0.08%</span></div>
+  ${small?'':`<div><span class="lb">MA</span> <span class="lb">10 30 120 256</span> <span class="v" style="color:var(--ma1)">82,708.0</span> <span class="v" style="color:var(--ma2)">82,658.6</span> <span class="v" style="color:var(--ma3)">83,709.5</span> <span class="v" style="color:var(--ma4)">84,243.0</span></div>`}
+  <div><span class="lb">成交量</span> <span class="v down-t">71.55M</span></div></div>`;
+const cfoot = () => `<div class="cfoot"><span>对数</span><span class="on">自动</span></div>`;
+const gfoot = (cellLabel) => `<div class="gfoot">${cellLabel?`<span class="act">作用于 · ${cellLabel}</span>`:''}<span>默认 ▾</span><span>相机</span><span>回放</span><span>导出</span><span class="r">${['1天','5天','1月','3月','1年','全部'].map(x=>`<span class="${x==='1月'?'on':''}">${x}</span>`).join('')}<span class="tsep"></span><span>14:32 (UTC+8)</span><span class="tsep"></span><span>对数</span><span class="on">自动</span></span></div>`;
+
+/* ---------- 3 右侧栏 ---------- */
+(function(){
+  const GROUPS = [['主流',[['BTC','82,751.7',-0.08,true],['ETH','3,924.5',2.14],['SOL','186.42',-0.62],['BNB','612.4',0.31],['XRP','2.446',1.20]]],
+    ['山寨',[['DOGE','0.2415',1.42],['SUI','3.512',4.31],['WIF','2.084',-3.18],['HYPE','28.64',12.4],['LINK','18.92',0.42],['ARB','0.842',-1.84],['TON','5.62',0.91],['AVAX','31.08',-0.33],['NEAR','5.84',1.12],['TIA','6.42',2.70],['APT','9.86',0.20],['OP','1.924',-0.94],['SEI','0.412',6.10],['ENA','0.618',5.70],['JUP','0.942',5.20]]],
+    ['美股 · 金属',[['NVDA','184.20',1.86],['TSLA','412.9',-2.31],['XAU','4,012.5',0.44]]]];
+  const rows = GROUPS.map(([g,rs])=>`<div class="w-grp">${g}<span class="n">${rs.length}</span><span class="chev">▾</span></div>`+rs.map(([b,px,p,cur])=>`<div class="w-row ${cur?'cur':''}"><span class="nm">${coin(b,18)}${b}<small>永续</small></span><span class="px num">${px}</span><span class="pc ${p>=0?'up':'down'}">${p>=0?'+':'−'}${Math.abs(p).toFixed(2)}%</span><span class="act"><i>${q('u_bell','s22').replace('class="q s22"','class="q s22" style="width:16px;height:16px;padding:0;background:none;box-shadow:none"')}</i><i>${q('u_star','s22').replace('class="q s22"','class="q s22" style="width:16px;height:16px;padding:0;background:none;box-shadow:none"')}</i></span></div>`).join('')).join('');
+  const side = `<div class="m-side"><div class="card" style="flex:1"><div class="w-hd"><b>自选</b><span class="cnt">23 只</span><span style="margin-left:auto"></span>${q('u_search','s22')}${q('u_set','s22')}</div><div class="w-list">${rows}</div>
+    <div class="w-detail"><div class="big"><b class="num">82,751.7</b><span class="down-t" style="font-weight:600">−63.4 (−0.08%)</span></div>
+      <div class="rng"><div class="lh"><span>24h 低 <b class="num">81,902.0</b></span><span>24h 高 <b class="num">83,412.5</b></span></div><div class="bar"><i style="left:56%"></i></div></div>
+      <div class="kv"><span>持仓</span><b class="num">21.4B</b></div><div class="kv"><span>24h 额</span><b class="num">38.2B</b></div><div class="kv"><span>费率</span><b class="num">0.0100%</b></div><div class="kv"><span>结算</span><b class="num">3:28:14</b></div>
+      <div class="tags"><span>比特币生态</span><span>POW</span><span>Layer 1</span></div></div></div></div>`;
+  const pop = `<div class="pop"><h5>主力订单流</h5>
+    ${[['大额挂单','挂单墙画在图上',true],['历史大单','大额挂单画成横带垫在 K 线下面',true],['主动成交','大单气泡',true],['深度热力','盘口热力图',false],['爆仓','分钟聚合',false]].map(([t,d,on])=>`<div class="row"><span class="tgi"></span><span class="t">${t}<span style="display:block;font-size:11px;color:var(--t3)">${d}</span></span><span class="sw ${on?'on':''}"></span></div>`).join('')}
+    <h5 style="margin-top:8px">门槛</h5><div class="thr"><span>挂单</span><b>≥ 2.0M</b><span>成交</span><b>≥ 1.0M</b><span>爆仓</span><b>≥ 500K</b></div></div>`;
+  document.getElementById('side').innerHTML = header('图表') + `<div class="chart">${toolbar()}${drawbar()}<div class="m-main"><div class="cell act"><canvas data-n="80"></canvas>${legend('BTC')}</div>${gfoot('')}</div>${side}${rail('u_flow')}${pop}</div>`;
+})();
+
+/* ---------- 4 多图 ---------- */
+(function(){
+  const syms = ['BTC','ETH','SOL','DOGE','XRP','SUI','WIF','HYPE','LINK','ARB','TON','AVAX','NEAR','TIA','APT','OP'];
+  const cells = (n, cls) => `<div class="cells ${cls}">${syms.slice(0,n).map((s,i)=>`<div class="cell ${i===1?'act':''}"><canvas data-n="${n===4?60:28}" data-vol="${n===16?1:0}"></canvas>${legend(s,'1小时',n===16)}${cfoot()}</div>`).join('')}</div>`;
+  const watch = `<div class="m-side"><div class="card" style="flex:1"><div class="w-hd"><b>自选</b><span class="cnt">23 只</span></div><div class="w-list">${['BTC','ETH','SOL','BNB','XRP','DOGE','SUI','WIF','HYPE','LINK','ARB','TON'].map((b,i)=>`<div class="w-row ${i===1?'cur':''}"><span class="nm">${coin(b,18)}${b}</span><span class="px num">—</span><span class="pc up">+0.00%</span></div>`).join('')}</div></div></div>`;
+  document.getElementById('grid4').innerHTML = header('图表') + `<div class="chart">${toolbar()}${drawbar()}<div class="m-main">${cells(4,'g4')}${gfoot('格 2 · ETH')}</div>${watch}${rail('u_list')}</div>`;
+  document.getElementById('grid16').innerHTML = header('图表') + `<div class="chart">${toolbar()}${drawbar()}<div class="m-main">${cells(16,'g16')}${gfoot('格 2 · ETH')}</div>${watch}${rail('u_list')}</div>`;
+})();
+
+/* ---------- 5 板块页 ---------- */
+(function(){
+  const SEC = [['AI 概念',6.2,3.9],['Solana 生态',4.8,2.5],['Layer 2',3.1,0.8],['Meme',2.4,0.1],['DeFi',1.6,-0.7],['公链',1.2,-1.1],['比特币生态',0.4,-1.9],['存储',-0.8,-3.1],['游戏',-1.9,-4.2],['RWA',-2.6,-4.9],['隐私',-3.4,-5.7],['交易所平台币',-4.1,-6.4],['预言机',-0.2,-2.5],['跨链',1.9,-0.4],['NFT',-2.2,-4.5],['社交',0.9,-1.4],['稳定币',0.0,-2.3],['流动性质押',2.8,0.5],['衍生品',3.6,1.3],['以太坊生态',2.1,-0.2],['波卡生态',-1.2,-3.5],['Cosmos 生态',1.4,-0.9],['Base 生态',5.1,2.8],['TON 生态',0.7,-1.6],['铭文',-3.9,-6.2],['基础设施',1.1,-1.2],['美股',1.3,-1.0],['金属',0.5,-1.8]];
+  const left = `<div class="card"><div class="sec-hd"><h4>板块</h4><span class="sub">28 个 · 大盘 +2.3% · 4 时</span><div class="r"><div class="wins"><button>1 时</button><button class="on">4 时</button><button>24 时</button></div></div></div>
+    <div style="overflow:hidden"><table class="tbl"><thead><tr><th>板块</th><th>涨跌幅</th><th>跑赢大盘</th></tr></thead><tbody>${SEC.map(([n,p,b],i)=>`<tr class="${i===0?'cur':''}"><td>${n}</td><td><span class="${p>=0?'up-t':'down-t'}">${p>=0?'+':'−'}${Math.abs(p).toFixed(1)}%</span><span class="sb"><i style="left:${p>=0?50:50+p*7}%;width:${Math.abs(p)*7}%;background:${p>=0?'var(--up)':'var(--down)'}"></i></span></td><td class="${b>=0?'up-t':'down-t'}">${b>=0?'+':'−'}${Math.abs(b).toFixed(1)}%</td></tr>`).join('')}</tbody></table></div></div>`;
+  const M = [['TAO','412.6',-3.1,'1.2B','+2.1%','0.0100%',true],['FET','1.302',-4.4,'418M','−1.4%','0.0088%',false],['WLD','1.824',-4.9,'980M','+4.6%','0.0210%',true],['RENDER','5.21',6.8,'312M','+3.2%','0.0100%',false],['NEAR','5.84',1.1,'640M','+1.9%','0.0388%',true],['AGIX','0.612',8.2,'96M','+0.7%','0.0100%',false],['ARKM','1.084',5.4,'142M','+2.8%','0.0120%',false],['AI','0.742',12.3,'88M','+6.1%','0.0450%',false],['OCEAN','0.512',4.1,'54M','+1.1%','0.0100%',false],['RNDR','5.19',6.6,'280M','+3.0%','0.0100%',false],['GRT','0.182',2.4,'112M','−0.4%','0.0100%',false],['AKT','2.84',3.9,'38M','+1.6%','0.0100%',false],['TURBO','0.0061',14.2,'72M','+8.9%','0.0520%',false],['IO','1.92',7.1,'61M','+2.2%','0.0100%',false],['ATH','0.048',3.3,'29M','+0.9%','0.0100%',false],['NMR','14.2',1.8,'18M','−1.2%','0.0100%',false],['PAAL','0.142',5.0,'11M','+0.3%','0.0100%',false],['ALI','0.019',2.1,'9M','+0.1%','0.0100%',false],['CGPT','0.164',4.4,'14M','+1.4%','0.0100%',false],['VIRTUAL','1.42',9.6,'210M','+5.2%','0.0310%',false],['AIXBT','0.212',11.8,'96M','+7.4%','0.0470%',false],['ZEREBRO','0.034',-2.1,'22M','−3.0%','0.0100%',false],['GOAT','0.318',6.2,'48M','+2.6%','0.0100%',false],['ACT','0.096',3.8,'31M','+0.8%','0.0100%',false],['FARTCOIN','0.842',15.1,'184M','+9.3%','0.0560%',false],['SWARMS','0.028',4.0,'8M','+0.5%','0.0100%',false],['AVA','0.412',2.9,'6M','−0.2%','0.0100%',false],['PHA','0.118',1.2,'7M','+0.2%','0.0100%',false]];
+  const right = `<div class="card"><div class="sec-hd"><h4>AI 概念</h4><span class="sub">28 只 · 涨跌幅 +6.2% · 跑赢大盘 +3.9%</span><div class="r"><span class="chips"><button class="on">涨跌幅</button><button>成交额</button><button>持仓变化</button></span></div></div>
+    <div style="overflow:hidden"><table class="tbl"><thead><tr><th>品种</th><th>最新价</th><th>4 时涨跌</th><th>成交额</th><th>持仓变化</th><th>费率</th><th style="width:48px"></th></tr></thead><tbody>${M.map(([b,px,p,vol,oi,fr,st])=>`<tr><td><span class="cn">${coin(b,22)}<span class="tk">${b}</span><span style="font-size:11px;color:var(--t3)">永续</span></span></td><td class="num">${px}</td><td>${pctT(p)}</td><td class="num">${vol}</td><td class="num ${oi.startsWith('+')?'up-t':'down-t'}">${oi}</td><td class="num">${fr}</td><td><span class="st ${st?'on':''}">${st?'★':'☆'}</span></td></tr>`).join('')}</tbody></table></div></div>`;
+  document.getElementById('sectors').innerHTML = header('板块') + `<div class="sec">${left}${right}</div>`;
+})();
+
+/* ---------- 假 K 线 ---------- */
+function drawAll(){
+  const t = TOK[state.skin][state.theme], dark = state.theme === 'dark';
+  document.documentElement.style.setProperty('--ma1', dark?'#F6C309':'#8A6A00'); document.documentElement.style.setProperty('--ma2', dark?'#F57C00':'#9A4A00');
+  document.documentElement.style.setProperty('--ma3', dark?'#E91E63':'#B0144A'); document.documentElement.style.setProperty('--ma4', dark?'#9C27B0':'#6A1B86');
+  document.querySelectorAll('.cell canvas').forEach((c, idx) => {
+    const r = c.getBoundingClientRect(); if (!r.width) return;
+    const sc = r.width / c.parentElement.offsetWidth; const W = c.parentElement.offsetWidth, H = c.parentElement.offsetHeight;
+    c.width = W; c.height = H; const g = c.getContext('2d');
+    g.fillStyle = t.surface; g.fillRect(0,0,W,H);
+    g.strokeStyle = dark ? 'rgba(242,242,242,.12)' : 'rgba(46,46,46,.12)'; g.lineWidth = 1;
+    for (let y = 40; y < H; y += 60) { g.beginPath(); g.moveTo(0,y+.5); g.lineTo(W-64,y+.5); g.stroke(); }
+    const n = +c.dataset.n, vol = c.dataset.vol === '1';
+    let seed = idx * 7 + 3; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+    const top = 56, bot = vol ? H - 90 : H - 110, cw = (W - 80) / n; let p = 100;
+    const pts = [];
+    for (let i = 0; i < n; i++) { const o = p; p += (rnd() - .48) * 6; const h = Math.max(o,p) + rnd()*3, l = Math.min(o,p) - rnd()*3; pts.push([o,p,h,l]); }
+    const hi = Math.max(...pts.map(x=>x[2])), lo = Math.min(...pts.map(x=>x[3])); const y = v => top + (hi - v) / (hi - lo) * (bot - top);
+    pts.forEach(([o,cl,h,l], i) => { const x = 10 + i * cw + cw/2; const up = cl >= o; g.strokeStyle = g.fillStyle = up ? '#089981' : '#F23645';
+      g.beginPath(); g.moveTo(x, y(h)); g.lineTo(x, y(l)); g.stroke(); g.fillRect(x - cw*.3, y(Math.max(o,cl)), cw*.6, Math.max(1, Math.abs(y(o)-y(cl)))); });
+    [['#F6C309',3],['#F57C00',8]].forEach(([col,k]) => { g.strokeStyle = col; g.lineWidth = 1.5; g.beginPath(); pts.forEach(([o,cl],i) => { if (i < k) return; const m = pts.slice(i-k,i).reduce((s,x)=>s+x[1],0)/k; const x = 10 + i*cw + cw/2; i===k?g.moveTo(x,y(m)):g.lineTo(x,y(m)); }); g.stroke(); });
+    const vb = vol ? H - 84 : H - 104; pts.forEach(([o,cl], i) => { const x = 10 + i*cw; g.fillStyle = (cl>=o?'rgba(8,153,129,.45)':'rgba(242,54,69,.45)'); const vh = 10 + rnd()*40; g.fillRect(x+cw*.2, vb + 40 - vh, cw*.6, vh); });
+    g.fillStyle = dark ? '#B4B9C2' : '#2A2E37'; g.font = '12px -apple-system, "PingFang SC"'; g.textAlign = 'left';
+    for (let i = 0; i < 5; i++) { const v = hi - (hi-lo)*i/4; g.fillText((82000 + v*8).toLocaleString('en-US',{maximumFractionDigits:1}), W-58, y(v)+4); }
+    g.fillStyle = state.theme==='dark' ? '#3A404C' : '#161A22'; g.fillRect(W-64, y(pts[n-1][1])-9, 62, 18); g.fillStyle = '#fff'; g.fillText((82000+pts[n-1][1]*8).toLocaleString('en-US',{maximumFractionDigits:1}), W-58, y(pts[n-1][1])+4);
+    g.strokeStyle = dark ? '#363C4A' : '#CDD2DB'; g.beginPath(); g.moveTo(W-64.5, 0); g.lineTo(W-64.5, H); g.stroke();
+  });
+}
+function fit(){ document.querySelectorAll('.stage').forEach(s => { const sc = s.querySelector('.scaler'); const k = Math.min(1, s.clientWidth / 2560); sc.style.transform = `scale(${k})`; s.style.height = (1440 * k) + 'px'; }); drawAll(); }
+addEventListener('resize', fit);
+applyTok(); fit();
+</script>
+</body>
+</html>
