@@ -57,6 +57,15 @@ for (const [skin, skinCn] of SKINS) for (const [theme, themeCn] of THEMES) {
   await sleep(600)
 
   if (process.env.SEGS === '1') {
+    // 波动胶囊：服务端有急涨 / 急跌行时截一张
+    const moves = await p.$eval('.hm-chips [data-chip=move] b', b => Number(b.textContent)).catch(() => 0)
+    if (moves > 0) {
+      await p.click('.hm-chips [data-chip=move]')
+      await sleep(500)
+      await shot('2b-波动')
+      await p.click('.hm-chips [data-chip=all]')
+      await sleep(300)
+    } else problems.push(`${tag} 看板里暂无波动行（没截 2b-波动）`)
     await p.click('.hm-caps [data-seg=change]')
     await p.waitForSelector('.hm-rank[data-page=change] .hm-rr[data-base]', { timeout: 20000 }).catch(() => problems.push(`${tag} 涨跌没出行`))
     await sleep(900)
