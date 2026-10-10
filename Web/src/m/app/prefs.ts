@@ -8,14 +8,18 @@
  * 2026-10-10 三端退役 portraitHeight（竖屏主图占比，永远 0.5，图上用常量）与 indicatorLayouts（周期分组那阵子的分叉）：
  * 老档里的这两个键读时忽略，删除前的代码在 tag sync-fields-before-retire-2026-10-10。
  * 服务端对含未知字段的操作整条拒绝，多发一个键就会把整条队列堵死，所以宁可少不可多。
+ *
+ * 值规则（2026-10-10「同步字段解耦」）：开关、几选一、数、周期、指标列表、计次表这些**通用规则**的字段，
+ * 清洗一律读契约 `rules`（sync/settingsRules.ts 的 `cleanField`），这里不再手写类型 / 枚举 / 范围；
+ * 只有契约里标 `custom` 的（对比品种、订单流门槛、学到的结论、指标参数 / 颜色 / 副图高）还手写在下面。
+ * 产品上的再加工（常用周期排序后只钉 6 档、副图最多三个、横屏根宽缺了取竖屏的）在通用清洗之后另做。
  */
 
 import { compareKey } from '../../sync/codec'
+import { cleanField } from '../../sync/settingsRules'
 import { syncKeyOf } from '../../market/identity'
-import { isDrawingKind } from '../chart/draw/drawing'
-import { ANALYSIS_SECTIONS, isAnalysisSection } from '../pages/chart/analysisRank'
 import { defaultParams } from '../indicator/ids'
-import { AUTO_LAYERS, type AutoLayerId } from '../../analysis/fvg'
+import type { AutoLayerId } from '../../analysis/fvg'
 
 export type IntervalId = '1m' | '3m' | '5m' | '15m' | '30m' | '1h' | '2h' | '4h' | '6h' | '12h' | '1d' | '1w' | '1M' | '1y'
 export const INTERVALS: readonly IntervalId[] = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w', '1M', '1y']
@@ -166,8 +170,6 @@ export function defaultPrefs(): Prefs {
 }
 
 const oneOf = <T extends string>(v: unknown, list: readonly T[], d: T): T => (list as readonly unknown[]).includes(v) ? v as T : d
-const bool = (v: unknown, d: boolean): boolean => typeof v === 'boolean' ? v : d
-const num = (v: unknown, d: number, lo = -Infinity, hi = Infinity): number => typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d
 const obj = <T>(v: unknown, d: T): T => v && typeof v === 'object' && !Array.isArray(v) ? v as T : d
 const strs = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
@@ -175,10 +177,8 @@ const ALL_IDS: readonly IndicatorId[] = [...OVERLAY_IDS, ...SUB_IDS]
 const isId = (x: unknown): x is IndicatorId => (ALL_IDS as readonly unknown[]).includes(x)
 const isSub = (x: unknown): x is IndicatorId => (SUB_IDS as readonly unknown[]).includes(x)
 
-// ───────── 取值范围（与 iOS Prefs、服务端 sync_validation.rs 同一组数） ─────────
+// ───────── custom 字段的取值范围（与 iOS Prefs、服务端 sync_validation::custom_setting 同一组数；根宽等通用规则的数在契约里） ─────────
 
-/** Prefs.clampSpacing：AICoinBehavior 的 1.6…40 pt */
-export const BAR_SPACING = [1.6, 40] as const
 /** IndicatorLayout.sanitized：副图高度倍数（KanpanCore `SubPaneResize.minimumScale` / `maximumScale`，2026-10-10 下界 0.5 → 0.25） */
 export const SUB_HEIGHT = [0.25, 2] as const
 /** 对比品种最多三个（compareSymbols） */
@@ -245,30 +245,10 @@ export function cleanOrderFlowOverrides(v: unknown): Record<string, OrderFlowOve
   }
   return out
 }
-/** iOS Prefs.cleanDrawToolUsage / 服务端 draw_tool_usage：键是画线种类、值是 1…100000 的整数、最多 12 个键 */
-export function cleanDrawToolUsage(v: unknown): Record<string, number> {
-  const out: Record<string, number> = {}
-  if (!isRecord(v)) return out
-  const kept = Object.entries(v)
-    .filter((e): e is [string, number] => isDrawingKind(e[0]) && Number.isInteger(e[1]) && (e[1] as number) > 0)
-    .map(([k, n]) => [k, Math.min(n, 100_000)] as const)
-    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-    .slice(0, 12)
-  for (const [k, n] of kept) out[k] = n
-  return out
-}
-/** iOS Prefs.cleanAnalysisUsage / 服务端 analysis_usage：键只认四个节名、值是 1…100000 的整数、最多 4 个键 */
-export function cleanAnalysisUsage(v: unknown): Record<string, number> {
-  const out: Record<string, number> = {}
-  if (!isRecord(v)) return out
-  const kept = Object.entries(v)
-    .filter((e): e is [string, number] => isAnalysisSection(e[0]) && Number.isInteger(e[1]) && (e[1] as number) > 0)
-    .map(([k, n]) => [k, Math.min(n, 100_000)] as const)
-    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-    .slice(0, ANALYSIS_SECTIONS.length)
-  for (const [k, n] of kept) out[k] = n
-  return out
-}
+/** iOS Prefs.cleanDrawToolUsage：契约 `rules.drawToolUsage`（键是画线种类、值 1…100000 的整数、最多 12 个键） */
+export const cleanDrawToolUsage = (v: unknown): Record<string, number> => cleanField('drawToolUsage', v, {})
+/** iOS Prefs.cleanAnalysisUsage：契约 `rules.analysisUsage`（键只认四个节名、值 1…100000 的整数） */
+export const cleanAnalysisUsage = (v: unknown): Record<string, number> => cleanField('analysisUsage', v, {})
 /** LearnedDefaults.sanitized：每条恰好 {v, n, at}；整份 ≤ 16 KB（超了按最旧的先丢） */
 export function cleanLearned(v: unknown): LearnedDefaults {
   const r = isRecord(v) ? v : {}
@@ -305,9 +285,8 @@ export function cappedSubs(subs: readonly IndicatorId[]): IndicatorId[] {
   const nonVol = subs.filter(x => x !== 'VOL')
   return subs.filter(x => x === 'VOL' || nonVol.indexOf(x) < MAX_SUBS)
 }
-/** 自动分析层：认不出的名字丢掉、去重（iOS `Prefs.cleanAutoLayers`） */
-export const autoLayerList = (v: unknown): AutoLayerId[] => [...new Set(strs(v).filter(x => (AUTO_LAYERS as readonly string[]).includes(x)))] as AutoLayerId[]
-const idList = (v: unknown, pool: readonly IndicatorId[]): IndicatorId[] => [...new Set(strs(v).filter(x => (pool as readonly string[]).includes(x)))] as IndicatorId[]
+/** 自动分析层：认不出的名字丢掉、去重（iOS `Prefs.cleanAutoLayers`；词表是契约 `rules.autoLayers`） */
+export const autoLayerList = (v: unknown): AutoLayerId[] => cleanField<AutoLayerId[]>('autoLayers', strs(v), [])
 
 // ───────── 指标布局：只有一份，跟人走（照 iOS Settings/Model/IndicatorLayouts.swift） ─────────
 //
@@ -335,12 +314,13 @@ function canon(v: unknown): string {
 export function sanitizeLayout(raw: unknown, base: IndicatorLayout = factoryLayout()): IndicatorLayout {
   const r = isRecord(raw) ? raw : {}
   return {
-    overlays: Array.isArray(r.overlays) ? idList(r.overlays, OVERLAY_IDS) : [...base.overlays],
-    subs: cappedSubs(Array.isArray(r.subs) ? idList(r.subs, SUB_IDS) : base.subs),
+    // 数组里夹着非字符串的照样一项一项滤（不整份退回）；词表、条数上限是契约 `rules.overlays` / `rules.subs`
+    overlays: Array.isArray(r.overlays) ? cleanField<IndicatorId[]>('overlays', strs(r.overlays), []) : [...base.overlays],
+    subs: cappedSubs(Array.isArray(r.subs) ? cleanField<IndicatorId[]>('subs', strs(r.subs), []) : base.subs),
     params: isRecord(r.params) ? cleanParamTable(r.params) : clone(base.params),
     subHeightOverrides: isRecord(r.subHeightOverrides) ? cleanSubHeights(r.subHeightOverrides) : cleanSubHeights(base.subHeightOverrides),
-    candleKind: oneOf(r.candleKind, ['candle', 'heikin', 'line'] as const, base.candleKind),
-    priceMode: oneOf(r.priceMode, ['linear', 'log', 'percent'] as const, base.priceMode),
+    candleKind: cleanField('candleKind', r.candleKind, base.candleKind),
+    priceMode: cleanField('priceMode', r.priceMode, base.priceMode),
   }
 }
 export function factoryLayout(): IndicatorLayout { return currentLayout(defaultPrefs()) }
@@ -360,56 +340,62 @@ export function setCurrentLayout(p: Prefs, l: IndicatorLayout): void {
 export function normalizePrefs(raw: unknown): Prefs {
   const d = defaultPrefs()
   const r = obj<Record<string, unknown>>(raw, {})
-  const quick = [...new Set(strs(r.quickIntervals).filter(x => (INTERVALS as readonly string[]).includes(x)))]
-    .sort((a, b) => INTERVALS.indexOf(a as IntervalId) - INTERVALS.indexOf(b as IntervalId)).slice(0, MAX_QUICK) as IntervalId[]
+  // 通用清洗（契约 `rules.quickIntervals`：现行周期、去重、服务端上限 10 档）之后，产品上再按周期从短到长排、只钉 6 档。
+  // 先排再截：存档里七八档的老用户截出来是最短的六档，与 iOS PrefsCodec 同一个顺序。
+  // 契约截 10 档在排序之前——老档十档以上的极少，截掉的那几档本来也进不了前六，差别只在极端手改档。
+  const quick = cleanField<IntervalId[]>('quickIntervals', strs(r.quickIntervals), [])
+    .sort((a, b) => INTERVALS.indexOf(a) - INTERVALS.indexOf(b)).slice(0, MAX_QUICK)
+  const g = <K extends keyof Prefs>(k: K): Prefs[K] => cleanField(k, r[k], d[k])
+  const barSpacing = g('barSpacing')
   const top = sanitizeLayout({
     overlays: r.overlays, subs: r.subs, params: isRecord(r.params) ? r.params : undefined,
     subHeightOverrides: r.subHeightOverrides, candleKind: r.candleKind, priceMode: r.priceMode,
   }, currentLayout(d))
   const out: Prefs = {
-    interval: oneOf(r.interval, INTERVALS, d.interval),
+    interval: g('interval'),
     quickIntervals: quick.length ? quick : d.quickIntervals,
-    theme: oneOf(r.theme, ['auto', 'light', 'dark'] as const, d.theme),
-    skin: oneOf(r.skin, ['sage', 'terra', 'classic'] as const, d.skin),
-    redUp: bool(r.redUp, d.redUp),
+    theme: g('theme'),
+    skin: g('skin'),
+    redUp: g('redUp'),
     compareSymbols: cleanCompare(r.compareSymbols),
     priceMode: top.priceMode,
-    depth: bool(r.depth, d.depth),
-    orderFlow: bool(r.orderFlow, d.orderFlow),
-    orderFlowHistory: bool(r.orderFlowHistory, d.orderFlowHistory),
+    depth: g('depth'),
+    orderFlow: g('orderFlow'),
+    orderFlowHistory: g('orderFlowHistory'),
     orderFlowOverrides: cleanOrderFlowOverrides(r.orderFlowOverrides),
     candleKind: top.candleKind,
-    barSpacing: num(r.barSpacing, d.barSpacing, BAR_SPACING[0], BAR_SPACING[1]),
-    landscapeBarSpacing: num(r.landscapeBarSpacing, num(r.barSpacing, d.barSpacing, BAR_SPACING[0], BAR_SPACING[1]), BAR_SPACING[0], BAR_SPACING[1]),
-    mainInverted: bool(r.mainInverted, d.mainInverted),
-    subInverted: idList(r.subInverted, SUB_IDS),
+    barSpacing,
+    // 横屏那一份：老档里没有（或读不成数）就拿同一份里的竖屏根宽补上（iOS PrefsCodec 同一条）
+    landscapeBarSpacing: cleanField('landscapeBarSpacing', r.landscapeBarSpacing, barSpacing),
+    mainInverted: g('mainInverted'),
+    subInverted: cleanField<IndicatorId[]>('subInverted', strs(r.subInverted), []),
     indicatorColors: cleanColors(r.indicatorColors),
-    alertSound: oneOf(r.alertSound, ['default', 'crisp', 'electronic', 'glass'] as const, d.alertSound),
-    watchMoveAlert: bool(r.watchMoveAlert, d.watchMoveAlert),
-    favoritesTrend: bool(r.favoritesTrend, d.favoritesTrend),
-    bigTradeSigns: bool(r.bigTradeSigns, d.bigTradeSigns),
+    alertSound: g('alertSound'),
+    watchMoveAlert: g('watchMoveAlert'),
+    favoritesTrend: g('favoritesTrend'),
+    bigTradeSigns: g('bigTradeSigns'),
     autoLayers: autoLayerList(r.autoLayers),
-    notifyListingChanges: bool(r.notifyListingChanges, d.notifyListingChanges),
-    habitLearning: bool(r.habitLearning, d.habitLearning),
+    notifyListingChanges: g('notifyListingChanges'),
+    habitLearning: g('habitLearning'),
     learnedDefaults: cleanLearned(r.learnedDefaults),
     overlays: top.overlays,
     subs: top.subs,
     params: top.params,
     subHeightOverrides: top.subHeightOverrides,
     routePolicy: oneOf(r.routePolicy, ['direct', 'gateway'] as const, d.routePolicy),
-    favoritesGroup: typeof r.favoritesGroup === 'string' ? r.favoritesGroup.slice(0, 128) : d.favoritesGroup,
-    sectorMarket: oneOf(r.sectorMarket, ['crypto', 'us'] as const, d.sectorMarket),
-    sectorWindow: oneOf(r.sectorWindow, ['today', 'd5', 'd20'] as const, d.sectorWindow),
-    // 只认画线工具词表里的名字（iOS PrefsCodec / 服务端 settings.lastDrawTool 同一把尺子）：认不出的退回空，
-    // 不然手改的档、更高版本写下的新工具名会被原样推上去、整条 settings 被拒收。
-    lastDrawTool: typeof r.lastDrawTool === 'string' && isDrawingKind(r.lastDrawTool) ? r.lastDrawTool : d.lastDrawTool,
+    // 分类 id：服务端数 UTF-8 字节（≤ 128），超了退回出厂值（原来 `.slice(0, 128)` 数的是字符，128 个汉字本地收下、推上去整条被拒）
+    favoritesGroup: g('favoritesGroup'),
+    sectorMarket: g('sectorMarket'),
+    sectorWindow: g('sectorWindow'),
+    // 只认画线工具词表里的名字或空串：认不出的退回空，不然更高版本写下的新工具名会被原样推上去、整条 settings 被拒收。
+    lastDrawTool: g('lastDrawTool'),
     drawToolUsage: cleanDrawToolUsage(r.drawToolUsage),
     analysisUsage: cleanAnalysisUsage(r.analysisUsage),
-    drawingOverlaysShown: bool(r.drawingOverlaysShown, d.drawingOverlaysShown),
-    drawingsHidden: bool(r.drawingsHidden, d.drawingsHidden),
-    reviewSearchScope: oneOf(r.reviewSearchScope, ['history', 'private'] as const, d.reviewSearchScope),
-    reviewSegment: oneOf(r.reviewSegment, REVIEW_SEGMENTS, d.reviewSegment),
-    reviewBookFilter: oneOf(r.reviewBookFilter, REVIEW_BOOK_FILTERS, d.reviewBookFilter),
+    drawingOverlaysShown: g('drawingOverlaysShown'),
+    drawingsHidden: g('drawingsHidden'),
+    reviewSearchScope: g('reviewSearchScope'),
+    reviewSegment: g('reviewSegment'),
+    reviewBookFilter: g('reviewBookFilter'),
   }
   return out
 }

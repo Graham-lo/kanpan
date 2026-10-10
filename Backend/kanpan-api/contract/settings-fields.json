@@ -92,8 +92,8 @@
   },
   "fieldClassesNote" : "synced=随账号同步、线上用自己的名字；deviceOnly=这台机器 / 这张网的属性，不跟人走；derivedLocal=自动累积的统计，不跟人也不同步。",
   "generatedBy" : "Kanpan/KanpanTests/Settings/PrefsFieldPlanTests.swift · SettingsFieldContract",
-  "generatedFrom" : "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table；KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Analysis/AutoLayer.swift · AutoLayer；KanpanCore/Drawing/Drawing.swift · Drawing.Kind；KanpanCore/OrderFlow/OrderFlowSettings.swift · OrderFlowOverride；KanpanNetwork/OrderFlow/OrderFlowCatalog.swift · OrderFlowBase",
-  "howToRegenerate" : "这是生成物，不要手改。改 PrefsFieldPlan.table（或 IndicatorID / Drawing.Kind），然后在仓库根跑 `make sync-contract`。改完两边的测试自动对账：KanpanTests 的 theContractFileIsTheOneListBothSidesRead，Backend/kanpan-api 的 the_allowlist_is_what_ios_sends、every_wire_key_has_a_value_rule、the_indicator_vocabulary_is_the_contract_one、every_drawing_tool_is_in_the_contract、order_flow_limits_are_the_contract_ones 与 binance_scaled_prefixes_are_the_contract_ones。",
+  "generatedFrom" : "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table；Kanpan/Kanpan/Settings/Model/PrefsFieldRules.swift · PrefsFieldPlan.rules；KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Analysis/AutoLayer.swift · AutoLayer；KanpanCore/Drawing/Drawing.swift · Drawing.Kind；KanpanCore/OrderFlow/OrderFlowSettings.swift · OrderFlowOverride；KanpanNetwork/OrderFlow/OrderFlowCatalog.swift · OrderFlowBase",
+  "howToRegenerate" : "这是生成物，不要手改。改 PrefsFieldPlan.table / PrefsFieldPlan.rules（或 IndicatorID / Drawing.Kind），然后在仓库根跑 `make sync-contract`。改完两边的测试自动对账：KanpanTests 的 theContractFileIsTheOneListBothSidesRead，Backend/kanpan-api 的 the_allowlist_is_what_ios_sends、every_wire_key_has_a_value_rule、the_indicator_vocabulary_is_the_contract_one、every_drawing_tool_is_in_the_contract、order_flow_limits_are_the_contract_ones、binance_scaled_prefixes_are_the_contract_ones、every_contract_field_has_exactly_one_rule 与 contract_samples_are_what_the_server_does。",
   "indicatorIDs" : [
     "MA",
     "EMA",
@@ -156,6 +156,981 @@
     "ORDERFLOW"
   ],
   "overlayIndicatorIDsNote" : "画在主图上的那几种（`IndicatorID.placement == .main`）。settings.overlays 只认这一档，条数上限也是它的长度。",
+  "rules" : {
+    "alertSound" : {
+      "accept" : [
+        "default",
+        "crisp",
+        "electronic",
+        "glass"
+      ],
+      "reject" : [
+        "__unknown__",
+        1,
+        null,
+        ""
+      ],
+      "type" : "enum",
+      "values" : [
+        "default",
+        "crisp",
+        "electronic",
+        "glass"
+      ]
+    },
+    "analysisUsage" : {
+      "accept" : [
+        {
+
+        },
+        {
+          "draw" : 0
+        },
+        {
+          "draw" : 100000
+        },
+        {
+          "compare" : 1,
+          "draw" : 1,
+          "indicators" : 1,
+          "orderFlow" : 1
+        }
+      ],
+      "keys" : [
+        "draw",
+        "orderFlow",
+        "indicators",
+        "compare"
+      ],
+      "max" : 100000,
+      "maxKeys" : 4,
+      "reject" : [
+        {
+          "draw" : -1
+        },
+        {
+          "draw" : 100001
+        },
+        {
+          "draw" : 1.5
+        },
+        {
+          "draw" : "3"
+        },
+        {
+          "__unknown__" : 1
+        },
+        [
+          "draw"
+        ],
+        "draw",
+        null
+      ],
+      "type" : "countMap"
+    },
+    "autoLayers" : {
+      "accept" : [
+        [
+
+        ],
+        [
+          "FVG"
+        ],
+        [
+          "FVG"
+        ]
+      ],
+      "maxCount" : 1,
+      "reject" : [
+        [
+          "__unknown__"
+        ],
+        "FVG",
+        [
+          1
+        ],
+        null,
+        [
+          "FVG",
+          "FVG"
+        ]
+      ],
+      "type" : "stringArray",
+      "unique" : true,
+      "values" : [
+        "FVG"
+      ]
+    },
+    "barSpacing" : {
+      "accept" : [
+        1.6,
+        40,
+        20.8
+      ],
+      "max" : 40,
+      "min" : 1.6,
+      "reject" : [
+        1.44,
+        40.16,
+        "1.6",
+        true,
+        null
+      ],
+      "type" : "number"
+    },
+    "bigTradeSigns" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    },
+    "candleKind" : {
+      "accept" : [
+        "",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉",
+        "candle",
+        "heikin",
+        "line"
+      ],
+      "known" : [
+        "candle",
+        "heikin",
+        "line"
+      ],
+      "maxBytes" : 64,
+      "reject" : [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉",
+        1,
+        true,
+        null
+      ],
+      "type" : "string"
+    },
+    "compareSymbols" : {
+      "name" : "compare_symbols",
+      "type" : "custom"
+    },
+    "depth" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    },
+    "drawToolUsage" : {
+      "accept" : [
+        {
+
+        },
+        {
+          "hline" : 0
+        },
+        {
+          "hline" : 100000
+        },
+        {
+          "channel" : 1,
+          "extended" : 1,
+          "fibonacci" : 1,
+          "hline" : 1,
+          "hray" : 1,
+          "measure" : 1,
+          "position" : 1,
+          "ray" : 1,
+          "rectangle" : 1,
+          "regression" : 1,
+          "trend" : 1,
+          "vline" : 1
+        }
+      ],
+      "keys" : [
+        "hline",
+        "trend",
+        "ray",
+        "hray",
+        "extended",
+        "vline",
+        "rectangle",
+        "channel",
+        "fibonacci",
+        "measure",
+        "position",
+        "regression",
+        "fibExtension",
+        "priceRange",
+        "dateRange",
+        "note",
+        "crossLine",
+        "arrowLine",
+        "pitchfork",
+        "fibChannel",
+        "ellipse",
+        "triangle",
+        "curve",
+        "datePriceRange",
+        "fibTimeZone",
+        "fibFan",
+        "gannBox",
+        "gannFan",
+        "xabcd",
+        "abcd",
+        "headShoulders",
+        "elliottImpulse",
+        "elliottCorrection",
+        "callout",
+        "priceLabel",
+        "flag",
+        "markerUp",
+        "markerDown",
+        "anchoredVWAP",
+        "fixedVolumeProfile",
+        "anchoredVolumeProfile"
+      ],
+      "max" : 100000,
+      "maxKeys" : 12,
+      "reject" : [
+        {
+          "hline" : -1
+        },
+        {
+          "hline" : 100001
+        },
+        {
+          "hline" : 1.5
+        },
+        {
+          "hline" : "3"
+        },
+        {
+          "__unknown__" : 1
+        },
+        [
+          "hline"
+        ],
+        "hline",
+        null,
+        {
+          "channel" : 1,
+          "extended" : 1,
+          "fibExtension" : 1,
+          "fibonacci" : 1,
+          "hline" : 1,
+          "hray" : 1,
+          "measure" : 1,
+          "position" : 1,
+          "ray" : 1,
+          "rectangle" : 1,
+          "regression" : 1,
+          "trend" : 1,
+          "vline" : 1
+        }
+      ],
+      "type" : "countMap"
+    },
+    "drawingOverlaysShown" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    },
+    "drawingsHidden" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    },
+    "favoritesGroup" : {
+      "accept" : [
+        "",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉"
+      ],
+      "maxBytes" : 128,
+      "reject" : [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉",
+        1,
+        true,
+        null
+      ],
+      "type" : "string"
+    },
+    "favoritesTrend" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    },
+    "habitLearning" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    },
+    "indicatorColors" : {
+      "name" : "indicator_colors",
+      "type" : "custom"
+    },
+    "interval" : {
+      "accept" : [
+        "1m",
+        "3m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "6h",
+        "12h",
+        "1d",
+        "1w",
+        "1M",
+        "1y"
+      ],
+      "reject" : [
+        "7m",
+        "",
+        1,
+        null
+      ],
+      "type" : "interval"
+    },
+    "landscapeBarSpacing" : {
+      "accept" : [
+        1.6,
+        40,
+        20.8
+      ],
+      "max" : 40,
+      "min" : 1.6,
+      "reject" : [
+        1.44,
+        40.16,
+        "1.6",
+        true,
+        null
+      ],
+      "type" : "number"
+    },
+    "lastDrawTool" : {
+      "accept" : [
+        "",
+        "hline",
+        "trend",
+        "ray",
+        "hray",
+        "extended",
+        "vline",
+        "rectangle",
+        "channel",
+        "fibonacci",
+        "measure",
+        "position",
+        "regression",
+        "fibExtension",
+        "priceRange",
+        "dateRange",
+        "note",
+        "crossLine",
+        "arrowLine",
+        "pitchfork",
+        "fibChannel",
+        "ellipse",
+        "triangle",
+        "curve",
+        "datePriceRange",
+        "fibTimeZone",
+        "fibFan",
+        "gannBox",
+        "gannFan",
+        "xabcd",
+        "abcd",
+        "headShoulders",
+        "elliottImpulse",
+        "elliottCorrection",
+        "callout",
+        "priceLabel",
+        "flag",
+        "markerUp",
+        "markerDown",
+        "anchoredVWAP",
+        "fixedVolumeProfile",
+        "anchoredVolumeProfile"
+      ],
+      "reject" : [
+        "__unknown__",
+        1,
+        null
+      ],
+      "type" : "enum",
+      "values" : [
+        "",
+        "hline",
+        "trend",
+        "ray",
+        "hray",
+        "extended",
+        "vline",
+        "rectangle",
+        "channel",
+        "fibonacci",
+        "measure",
+        "position",
+        "regression",
+        "fibExtension",
+        "priceRange",
+        "dateRange",
+        "note",
+        "crossLine",
+        "arrowLine",
+        "pitchfork",
+        "fibChannel",
+        "ellipse",
+        "triangle",
+        "curve",
+        "datePriceRange",
+        "fibTimeZone",
+        "fibFan",
+        "gannBox",
+        "gannFan",
+        "xabcd",
+        "abcd",
+        "headShoulders",
+        "elliottImpulse",
+        "elliottCorrection",
+        "callout",
+        "priceLabel",
+        "flag",
+        "markerUp",
+        "markerDown",
+        "anchoredVWAP",
+        "fixedVolumeProfile",
+        "anchoredVolumeProfile"
+      ]
+    },
+    "learnedDefaults" : {
+      "name" : "learned_defaults",
+      "type" : "custom"
+    },
+    "mainInverted" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    },
+    "notifyListingChanges" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    },
+    "orderFlow" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    },
+    "orderFlowHistory" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    },
+    "orderFlowOverrides" : {
+      "name" : "order_flow_overrides",
+      "type" : "custom"
+    },
+    "overlays" : {
+      "accept" : [
+        [
+
+        ],
+        [
+          "MA"
+        ],
+        [
+          "MA",
+          "EMA",
+          "BOLL",
+          "VWAP",
+          "ST",
+          "SAR",
+          "ORDERFLOW"
+        ],
+        [
+          "MA",
+          "MA"
+        ]
+      ],
+      "maxCount" : 7,
+      "reject" : [
+        [
+          "__unknown__"
+        ],
+        "MA",
+        [
+          1
+        ],
+        null,
+        [
+          "MA",
+          "MA",
+          "MA",
+          "MA",
+          "MA",
+          "MA",
+          "MA",
+          "MA"
+        ]
+      ],
+      "type" : "stringArray",
+      "unique" : false,
+      "values" : [
+        "MA",
+        "EMA",
+        "BOLL",
+        "VWAP",
+        "ST",
+        "SAR",
+        "ORDERFLOW"
+      ]
+    },
+    "params" : {
+      "name" : "indicator_params",
+      "type" : "custom"
+    },
+    "priceMode" : {
+      "accept" : [
+        "",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉",
+        "linear",
+        "log",
+        "percent"
+      ],
+      "known" : [
+        "linear",
+        "log",
+        "percent"
+      ],
+      "maxBytes" : 64,
+      "reject" : [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉",
+        1,
+        true,
+        null
+      ],
+      "type" : "string"
+    },
+    "quickIntervals" : {
+      "accept" : [
+        [
+
+        ],
+        [
+          "1m",
+          "3m",
+          "5m",
+          "15m",
+          "30m",
+          "1h",
+          "2h",
+          "4h",
+          "6h",
+          "12h"
+        ]
+      ],
+      "maxCount" : 10,
+      "reject" : [
+        [
+          "7m"
+        ],
+        "1h",
+        [
+          1
+        ],
+        null,
+        [
+          "1m",
+          "3m",
+          "5m",
+          "15m",
+          "30m",
+          "1h",
+          "2h",
+          "4h",
+          "6h",
+          "12h",
+          "1d"
+        ]
+      ],
+      "type" : "intervals"
+    },
+    "redUp" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    },
+    "reviewBookFilter" : {
+      "accept" : [
+        "all",
+        "decided",
+        "todo"
+      ],
+      "reject" : [
+        "__unknown__",
+        1,
+        null,
+        ""
+      ],
+      "type" : "enum",
+      "values" : [
+        "all",
+        "decided",
+        "todo"
+      ]
+    },
+    "reviewSearchScope" : {
+      "accept" : [
+        "history",
+        "private"
+      ],
+      "reject" : [
+        "__unknown__",
+        1,
+        null,
+        ""
+      ],
+      "type" : "enum",
+      "values" : [
+        "history",
+        "private"
+      ]
+    },
+    "reviewSegment" : {
+      "accept" : [
+        "trades",
+        "views"
+      ],
+      "reject" : [
+        "__unknown__",
+        1,
+        null,
+        ""
+      ],
+      "type" : "enum",
+      "values" : [
+        "trades",
+        "views"
+      ]
+    },
+    "sectorMarket" : {
+      "accept" : [
+        "crypto",
+        "us"
+      ],
+      "reject" : [
+        "__unknown__",
+        1,
+        null,
+        ""
+      ],
+      "type" : "enum",
+      "values" : [
+        "crypto",
+        "us"
+      ]
+    },
+    "sectorWindow" : {
+      "accept" : [
+        "today",
+        "d5",
+        "d20"
+      ],
+      "reject" : [
+        "__unknown__",
+        1,
+        null,
+        ""
+      ],
+      "type" : "enum",
+      "values" : [
+        "today",
+        "d5",
+        "d20"
+      ]
+    },
+    "skin" : {
+      "accept" : [
+        "sage",
+        "terra",
+        "classic"
+      ],
+      "reject" : [
+        "__unknown__",
+        1,
+        null,
+        ""
+      ],
+      "type" : "enum",
+      "values" : [
+        "sage",
+        "terra",
+        "classic"
+      ]
+    },
+    "subHeightOverrides" : {
+      "name" : "sub_height_overrides",
+      "type" : "custom"
+    },
+    "subInverted" : {
+      "accept" : [
+        [
+
+        ],
+        [
+          "VOL"
+        ],
+        [
+          "VOL",
+          "MACD",
+          "RSI",
+          "KDJ",
+          "SRSI",
+          "ATR",
+          "OI",
+          "LSR",
+          "TAKER",
+          "BASIS",
+          "DMI",
+          "CVD"
+        ],
+        [
+          "VOL",
+          "VOL"
+        ]
+      ],
+      "maxCount" : 12,
+      "reject" : [
+        [
+          "__unknown__"
+        ],
+        "VOL",
+        [
+          1
+        ],
+        null,
+        [
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL"
+        ]
+      ],
+      "type" : "stringArray",
+      "unique" : false,
+      "values" : [
+        "VOL",
+        "MACD",
+        "RSI",
+        "KDJ",
+        "SRSI",
+        "ATR",
+        "OI",
+        "LSR",
+        "TAKER",
+        "BASIS",
+        "DMI",
+        "CVD"
+      ]
+    },
+    "subs" : {
+      "accept" : [
+        [
+
+        ],
+        [
+          "VOL"
+        ],
+        [
+          "VOL",
+          "MACD",
+          "RSI",
+          "KDJ",
+          "SRSI",
+          "ATR",
+          "OI",
+          "LSR",
+          "TAKER",
+          "BASIS",
+          "DMI",
+          "CVD"
+        ],
+        [
+          "VOL",
+          "VOL"
+        ]
+      ],
+      "maxCount" : 12,
+      "reject" : [
+        [
+          "__unknown__"
+        ],
+        "VOL",
+        [
+          1
+        ],
+        null,
+        [
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL",
+          "VOL"
+        ]
+      ],
+      "type" : "stringArray",
+      "unique" : false,
+      "values" : [
+        "VOL",
+        "MACD",
+        "RSI",
+        "KDJ",
+        "SRSI",
+        "ATR",
+        "OI",
+        "LSR",
+        "TAKER",
+        "BASIS",
+        "DMI",
+        "CVD"
+      ]
+    },
+    "theme" : {
+      "accept" : [
+        "",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉",
+        "auto",
+        "light",
+        "dark"
+      ],
+      "known" : [
+        "auto",
+        "light",
+        "dark"
+      ],
+      "maxBytes" : 64,
+      "reject" : [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉",
+        1,
+        true,
+        null
+      ],
+      "type" : "string"
+    },
+    "watchMoveAlert" : {
+      "accept" : [
+        true,
+        false
+      ],
+      "reject" : [
+        1,
+        "true",
+        null
+      ],
+      "type" : "bool"
+    }
+  },
+  "rulesNote" : "每个 synced 字段在线上服务端收什么值（PrefsFieldPlan.rules，只写这一处）。type：bool；enum（values 里的串）；string（UTF-8 ≤ maxBytes 字节，known 不为空时客户端只认那几个、服务端只看长度）；number / int（闭区间 min…max）；interval（instruments.json 的 intervals，服务端另收 legacyIntervals）；intervals（周期数组，≤ maxCount 个）；stringArray（每个在 values 里、≤ maxCount 个，unique 时不许重复）；countMap（键在 keys 里、≤ maxKeys 个，值是 0…max 的整数）；custom（服务端 sync_validation::custom_setting 里同名的手写函数）。accept / reject 是按规则造出来的样例：服务端 settings_rules 的测试、手机网页 settingsRules 的测试、iOS PrefsFieldRulesTests 三边都拿它对。客户端读到不合规则的值一律回落：数值夹到边上、数组滤掉认不出的、其余退回出厂值。",
   "subIndicatorIDs" : [
     "VOL",
     "MACD",

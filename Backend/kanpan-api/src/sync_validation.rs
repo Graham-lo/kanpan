@@ -11,11 +11,8 @@ use serde_json::Value;
 // keep in step (same reason `sync::SETTINGS_FIELDS` is a slice).
 const OVERLAY_INDICATORS:&[&str]=&["MA","EMA","BOLL","VWAP","ST","SAR","ORDERFLOW"];
 const SUB_INDICATORS:&[&str]=&["VOL","MACD","RSI","KDJ","SRSI","ATR","OI","LSR","TAKER","BASIS","DMI","CVD"];
-// `AutoLayer` (KanpanCore/Analysis/AutoLayer.swift): the automatic analysis layers the chart can
-// draw on its own (today only the fair value gap). `settings.autoLayers` is a list of these, each
-// at most once. Generated into the contract as `autoLayerIDs`; `auto_layers_are_the_contract_ones`
-// holds this to it. Slice, so adding one is a single string.
-const AUTO_LAYERS:&[&str]=&["FVG"];
+// `settings.autoLayers` 的白名单（原来这里手抄的 AUTO_LAYERS）2026-10-10 起直接读契约 `rules.autoLayers`
+// （`settings_rules`），不再有第二份。
 fn indicator(name:&str)->bool {OVERLAY_INDICATORS.contains(&name)||SUB_INDICATORS.contains(&name)}
 // `Drawing.Kind` in full (KanpanCore/Drawing/Drawing.swift:22). The first ten are the
 // original tools; the rest arrived with the TradingView-aligned panel and must be listed
@@ -36,25 +33,12 @@ const KINDS:&[&str]=&[
 // Quotes: `instruments::QUOTE_ASSETS`, the client's `QuoteAssets.tradable` (both checked against contract/instruments.json). Binance
 // lists USDC-margined contracts too, so a USDT-only rule refused perfectly real favourites.
 use crate::instruments::{DEFAULT_VENUE,DEFAULT_MARKET,is_synced_interval};
-fn intervals(v:&Value,count:usize)->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_str().is_some_and(is_synced_interval)))}
 fn color(v:&Value)->bool {v.as_object().is_some_and(|o|o.len()==1)&&v["value"].as_str().is_some_and(|s|matches!(s.len(),7|9)&&s.starts_with('#')&&s[1..].bytes().all(|c|c.is_ascii_hexdigit()))}
 fn number(v:&Value,lo:f64,hi:f64)->bool {v.as_f64().is_some_and(|v|v.is_finite()&&v>=lo&&v<=hi)}
 fn integers(v:&Value,count:usize,lo:i64,hi:i64)->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_i64().is_some_and(|n|n>=lo&&n<=hi)))}
-fn names(v:&Value,count:usize,names:&[&str])->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_str().is_some_and(|s|names.contains(&s))))}
 fn string(v:&Value,limit:usize)->bool {v.as_str().is_some_and(|s|s.len()<=limit)}
-/// `settings.drawToolUsage`：每把画线工具用了几次（画线条只露几把常用的，按它排）。
-/// 一个对象，最多十二个键（面板上就十二把），键是画线种类，值是 0…100000 的整数。
-/// 客户端总数过 256 就整体减半，所以正常的值远到不了上限；上限只防坏档。
-fn draw_tool_usage(v:&Value)->bool {
- v.as_object().is_some_and(|o|o.len()<=12&&o.iter().all(|(k,n)|KINDS.contains(&k.as_str())&&n.as_i64().is_some_and(|n|(0..=100_000).contains(&n))))
-}
-/// `settings.analysisUsage`：「分析」面板四节（画线 / 主力订单流 / 指标 / 对比）各用了几次，面板按它排节序。
-/// 一个对象，最多四个键，键是节名，值是 0…100000 的整数；和 `drawToolUsage` 同一套计次规则
-/// （总数过 256 整体减半），上限只防坏档。
-const ANALYSIS_SECTIONS:[&str;4]=["draw","orderFlow","indicators","compare"];
-fn analysis_usage(v:&Value)->bool {
- v.as_object().is_some_and(|o|o.len()<=ANALYSIS_SECTIONS.len()&&o.iter().all(|(k,n)|ANALYSIS_SECTIONS.contains(&k.as_str())&&n.as_i64().is_some_and(|n|(0..=100_000).contains(&n))))
-}
+// `settings.drawToolUsage` / `analysisUsage`（每把画线工具 / 「分析」面板每节用了几次）2026-10-10 起是契约里的
+// 通用规则 `countMap`（键的词表、最多几个键、0…100000 的整数都在契约 `rules` 里），不再在这里手写。
 /// 提醒的 Webhook 地址：≤ 1024 字节、`http://` 或 `https://` 开头、不含空白。
 fn webhook(v:&Value)->bool {
  v.as_str().is_some_and(|s|s.len()<=1024&&(s.starts_with("http://")||s.starts_with("https://"))&&!s.chars().any(char::is_whitespace))
@@ -217,6 +201,21 @@ fn compare_key(v:&Value)->bool {
  let (Some(venue),Some(market),Some(symbol))=(p.next(),p.next(),p.next()) else {return false};
  s.len()<=128 && identity(venue,market,symbol)
 }
+/// 契约里 `{"type":"custom","name":…}` 点名的那几个手写规则（`settings_rules` 的测试保证两边一一对上）。
+pub const CUSTOM_SETTINGS:&[&str]=&["compare_symbols","order_flow_overrides","learned_defaults","indicator_params","indicator_colors","sub_height_overrides"];
+/// settings 里通用描述装不下的字段：按契约点的名字找函数。`p` 是按 `/` 切开的路径。
+fn custom_setting(name:&str,p:&[&str],v:&Value)->bool {
+ match name {
+  "compare_symbols"=>p.len()==1&&v.as_array().is_some_and(|a|a.len()<=3 && a.iter().all(compare_key) && a.iter().enumerate().all(|(i,v)| !a[..i].contains(v))),
+  "order_flow_overrides"=>p.len()==1&&order_flow_overrides(v),
+  "learned_defaults"=>p.len()==1&&learned_defaults(v),
+  // 下面三个线上是拍平的：第二段只认指标词表（契约 `indicatorIDs`）。
+  "indicator_params"=>p.len()==2&&indicator(p[1])&&integers(v,20,1,400),
+  "indicator_colors"=>p.len()==3&&indicator(p[1])&&p[2].parse::<u8>().is_ok_and(|n|n<=20)&&color(v),
+  "sub_height_overrides"=>p.len()==2&&indicator(p[1])&&number(v,0.25,5.0),
+  _=>false,
+ }
+}
 pub fn field(collection:&str,path:&str,v:&Value)->bool {
  let p:Vec<_>=path.split('/').collect();
  // A null is a field tombstone; required drawing fields are checked again after merging.
@@ -237,66 +236,22 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   || collection==ALERTS&&p.len()==1&&matches!(path,"drawingID"|"firedAt"|"firedPrice"|"dueAt"|"reviewID"|"note"|"webhook"|"webhookText"|"rule")
   || collection==SETTINGS&&p.len()>=2 || collection==DRAWING_PREFERENCES&&p.len()==2}
  if collection==SETTINGS {
-  if p.len()>1 {
-   // `indicatorLayouts/<minute|hour|day>`（09-27~10-02 的周期分组）2026-10-10 退役，规则随名字一起删了
-   // （`sync::RETIRED_SETTINGS_FIELDS`）：老客户端发上来先被当成未知字段丢掉，走不到这里。
-   if !indicator(p[1]) {return false}
-   return match p[0] {
-    "params"=>p.len()==2&&integers(v,20,1,400),
-    "indicatorColors"=>p.len()==3&&p[2].parse::<u8>().is_ok_and(|n|n<=20)&&color(v),
-    "subHeightOverrides"=>p.len()==2&&number(v,0.25,5.0),_=>false
-   }
+  // 网页独有的三个（`crate::sync::WEB_SETTINGS_FIELDS` 与 WEB_ONLY_SETTINGS_FIELDS）：不在 iOS 生成的契约里，规则留在这里。
+  match path {
+   "chartLayouts"=>return chart_layouts(v),
+   // 网页图表设置：一个对象，序列化 ≤ 8 KB；里面的键由网页自己清洗
+   "webChart"=>return v.is_object()&&serde_json::to_string(v).is_ok_and(|s|s.len()<=8192),
+   "webPrefs"=>return v.is_object()&&serde_json::to_string(v).is_ok_and(|s|s.len()<=WEB_PREFS_MAX_BYTES),
+   _=>{}
   }
-  return match path {
-   "overlays"=>names(v,OVERLAY_INDICATORS.len(),OVERLAY_INDICATORS),"subs"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
-   // `subInverted` is a set of sub-panel ids, same vocabulary as `subs`.
-   "subInverted"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
-   // 自动分析层（2026-10-10）：白名单里的名字、每个最多一次（条数上限 = 白名单长度，重复的放不下）。
-   "autoLayers"=>names(v,AUTO_LAYERS.len(),AUTO_LAYERS)&&v.as_array().is_some_and(|a|a.iter().enumerate().all(|(i,x)|!a[..i].contains(x))),
-   "quickIntervals"=>intervals(v,10),"interval"=>v.as_str().is_some_and(is_synced_interval),
-   // `Prefs.clampSpacing` never stores anything outside AICoinBehavior's 1.6…40pt.
-   "barSpacing"|"landscapeBarSpacing"=>number(v,1.6,40.0),
-   "compareSymbols"=>v.as_array().is_some_and(|a|a.len()<=3 && a.iter().all(compare_key) && a.iter().enumerate().all(|(i,v)| !a[..i].contains(v))),
-   "skin"=>one_of(v,&["sage","terra","classic"]),
-   "sectorMarket"=>one_of(v,&["crypto","us"]),
-   "sectorWindow"=>one_of(v,&["today","d5","d20"]),
-   "reviewSearchScope"=>one_of(v,&["history","private"]),
-   // 复盘本「观点 / 交易」停在哪一面（2026-10-10）。
-   "reviewSegment"=>one_of(v,&["views","trades"]),
-   // 复盘本筛选「全部 / 待判定 / 已判定」（2026-10-10）。
-   "reviewBookFilter"=>one_of(v,&["all","todo","decided"]),
-   "alertSound"=>one_of(v,&["default","crisp","electronic","glass"]),
-   "orderFlowOverrides"=>order_flow_overrides(v),
-   "learnedDefaults"=>learned_defaults(v),
-   "chartLayouts"=>chart_layouts(v),
-   // Empty means "has not picked one yet" for both.
-   "lastDrawTool"=>v.as_str().is_some_and(|s|s.is_empty()||KINDS.contains(&s)),
-   "drawToolUsage"=>draw_tool_usage(v),
-   "analysisUsage"=>analysis_usage(v),
-   // The favorites category the person is parked on: a client-side UUID, and the client falls
-   // back to the first category when the saved one is gone, so length is the only rule the
-   // server can honestly enforce. Empty means "has not picked one".
-   // Being on the allowlist without a rule here would make the field a poison pill — the
-   // `_=>false` fallthrough rejects the whole operation with a 400.
-   "favoritesGroup"=>string(v,128),
-   "redUp"|"depth"|"orderFlow"|"orderFlowHistory"
-    |"mainInverted"|"watchMoveAlert"
-    // 设置 › 通知「品种上新与下架」（条件提醒协议第 6 节），服务端 `listing_watch` 读它。
-    |"notifyListingChanges"
-    // 设置 › 通用「按我的习惯自动调整」。
-    |"habitLearning"
-    // 横屏画线台顶行「指标」胶囊（2026-10-05）。
-    |"drawingOverlaysShown"
-    // 画线面板「隐藏画线」（2026-10-06）。
-    |"drawingsHidden"
-    // 设置 › 通用「自选走势线」（2026-10-08）。
-    |"favoritesTrend"
-    // 主力订单流「图上大单签」（2026-10-08）。
-    |"bigTradeSigns"=>v.is_boolean(),
-   "theme"|"priceMode"|"candleKind"=>string(v,64),
-   // 网页图表设置（crate::sync::WEB_SETTINGS_FIELDS）：一个对象，序列化 ≤ 8 KB；里面的键由网页自己清洗
-   "webChart"=>p.len()==1&&v.is_object()&&serde_json::to_string(v).is_ok_and(|s|s.len()<=8192),
-   "webPrefs"=>p.len()==1&&v.is_object()&&serde_json::to_string(v).is_ok_and(|s|s.len()<=WEB_PREFS_MAX_BYTES),_=>false
+  // 其余全部按契约 `rules` 判（2026-10-10「同步字段解耦」）：通用描述直接判，`custom` 交给同名手写函数。
+  // 契约里没有的名字（退役的、不认识的）一律不收——和原来 `_=>false` 一样。
+  // `indicatorLayouts/<minute|hour|day>`（09-27~10-02 的周期分组）2026-10-10 退役，规则随名字一起删了
+  // （`sync::RETIRED_SETTINGS_FIELDS`）：老客户端发上来先被当成未知字段丢掉，走不到这里。
+  return match crate::settings_rules::rule(p[0]) {
+   Some(crate::settings_rules::Rule::Custom(name))=>custom_setting(name,&p,v),
+   Some(rule)=>p.len()==1&&rule.accepts(v),
+   None=>false,
   }
  }
  // `favorites`（收藏的画线工具）2026-10-10 退役（`sync::RETIRED_DRAWING_PREFERENCE_FIELDS`），规则一起删了。
@@ -910,14 +865,6 @@ mod tests {
   for bad in [json!(["X"]),json!(["fvg"]),json!(["FVG","FVG"]),json!([1]),json!("FVG"),json!(true),json!({"FVG":true}),json!(null)] {
    assert!(!field("settings","autoLayers",&bad),"autoLayers {bad}");
   }
- }
-
- /// `AUTO_LAYERS` is the client's `AutoLayer`, in the client's order (contract `autoLayerIDs`).
- #[test] fn auto_layers_are_the_contract_ones() {
-  let ours:Vec<String>=AUTO_LAYERS.iter().map(|s|s.to_string()).collect();
-  assert_eq!(ours,contract_list("autoLayerIDs"),
-   "AUTO_LAYERS drifted from the contract's `autoLayerIDs` (generated from `AutoLayer`): edit the \
-    list at the top of sync_validation.rs to match, or run `make sync-contract` if the contract is stale.");
  }
 
  /// P2.17 加了第三种画法「收盘价」（`CandleKind.line`，rawValue `line`）。`candleKind` 在这里

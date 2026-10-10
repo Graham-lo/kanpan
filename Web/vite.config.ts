@@ -15,7 +15,7 @@ export default defineConfig({
   server: {
     port: 5178, strictPort: false,
     // 指标名与出厂参数（Indicator/indicators.json）、公允价值缺口参数（Analysis/fvg.json）三端共用 KanpanCore 里的一份（在 Web 根外面），开发服务器要放行这两个目录。
-    fs: { allow: [searchForWorkspaceRoot(process.cwd()), '../KanpanCore/Sources/KanpanCore/Indicator', '../KanpanCore/Sources/KanpanCore/Analysis'] },
+    fs: { allow: [searchForWorkspaceRoot(process.cwd()), '../KanpanCore/Sources/KanpanCore/Indicator', '../KanpanCore/Sources/KanpanCore/Analysis', '../Backend/kanpan-api/contract'] },
     proxy: {
       '/v1': { target: ORIGIN, changeOrigin: true, secure: true },
       '/market': { target: ORIGIN, changeOrigin: true, secure: true, ws: true },

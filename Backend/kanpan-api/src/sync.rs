@@ -206,9 +206,9 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "habitLearning","learnedDefaults",
  // 横屏画线台顶行「指标」胶囊：画线台里主图指标画不画（2026-10-05，布尔）。
  "drawingOverlaysShown",
- // 画线条上露哪几把：每把画线工具用了几次（2026-10-05，对象，规则见 `sync_validation::draw_tool_usage`）。
+ // 画线条上露哪几把：每把画线工具用了几次（2026-10-05，对象，规则见契约 `rules.drawToolUsage`）。
  "drawToolUsage",
- // 「分析」面板四节按用得多少排：每节用了几次（2026-10-08，对象，规则见 `sync_validation::analysis_usage`）。
+ // 「分析」面板四节按用得多少排：每节用了几次（2026-10-08，对象，规则见契约 `rules.analysisUsage`）。
  "analysisUsage",
  // 横屏自己记的根间距（2026-10-05，pt，1.6…40，同 barSpacing）：横屏图宽是竖屏两倍多，两边各记一份。
  "landscapeBarSpacing",
@@ -220,7 +220,7 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "favoritesTrend",
  // 主力订单流「图上大单签」（2026-10-08，布尔）：大单主动成交按根在 K 线高 / 低外标签，出厂开；和挂单墙 `orderFlow` 互不依赖。
  "bigTradeSigns",
- // 「分析」面板的自动分析层（2026-10-10，跟人走）：字符串数组，白名单见 `sync_validation::AUTO_LAYERS`（目前只有公允价值缺口 FVG）。
+ // 「分析」面板的自动分析层（2026-10-10，跟人走）：字符串数组，白名单见契约 `rules.autoLayers`（目前只有公允价值缺口 FVG）。
  "autoLayers",
  // 电脑网页版的多套图表布局（2026-10-07，整份布局集一个对象，规则见 `sync_validation::chart_layouts`）。
  // 只有网页版读写，不在 iOS 的 PrefsFieldPlan 契约里，见 WEB_ONLY_SETTINGS_FIELDS。

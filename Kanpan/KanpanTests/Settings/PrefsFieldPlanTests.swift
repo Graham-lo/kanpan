@@ -537,6 +537,9 @@ enum SettingsFieldContract {
     var orderFlowNote: String
     /// 主力订单流设置的取值范围与币安缩放前缀表。
     var orderFlow: OrderFlowLimits
+    var rulesNote: String
+    /// 每个 `synced` 字段的值规则（`PrefsFieldPlan.rules`），连同按规则造出来的正反样例。见 `PrefsFieldRulesTests.swift`。
+    var rules: [String: RuleDoc]
   }
 
   /// 主力订单流的那几个数：`orderFlowOverrides` 的值规则，以及两边各有一份的币安前缀表。
@@ -595,16 +598,18 @@ enum SettingsFieldContract {
         + "客户端按 fieldClasses 决定一个字段跟不跟人走；服务端 sync::SETTINGS_FIELDS 必须逐字等于 wireKeys，"
         + "sync_validation 的指标与画线词表必须逐项等于这里的两份。",
       generatedFrom: "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table；"
+        + "Kanpan/Kanpan/Settings/Model/PrefsFieldRules.swift · PrefsFieldPlan.rules；"
         + "KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Analysis/AutoLayer.swift · AutoLayer；"
         + "KanpanCore/Drawing/Drawing.swift · Drawing.Kind；"
         + "KanpanCore/OrderFlow/OrderFlowSettings.swift · OrderFlowOverride；KanpanNetwork/OrderFlow/OrderFlowCatalog.swift · OrderFlowBase",
       generatedBy: "Kanpan/KanpanTests/Settings/PrefsFieldPlanTests.swift · SettingsFieldContract",
-      howToRegenerate: "这是生成物，不要手改。改 PrefsFieldPlan.table（或 IndicatorID / Drawing.Kind），"
+      howToRegenerate: "这是生成物，不要手改。改 PrefsFieldPlan.table / PrefsFieldPlan.rules（或 IndicatorID / Drawing.Kind），"
         + "然后在仓库根跑 `make sync-contract`。"
         + "改完两边的测试自动对账：KanpanTests 的 theContractFileIsTheOneListBothSidesRead，"
         + "Backend/kanpan-api 的 the_allowlist_is_what_ios_sends、every_wire_key_has_a_value_rule、"
         + "the_indicator_vocabulary_is_the_contract_one、every_drawing_tool_is_in_the_contract、"
-        + "order_flow_limits_are_the_contract_ones 与 binance_scaled_prefixes_are_the_contract_ones。",
+        + "order_flow_limits_are_the_contract_ones、binance_scaled_prefixes_are_the_contract_ones、"
+        + "every_contract_field_has_exactly_one_rule 与 contract_samples_are_what_the_server_does。",
       fieldClassesNote: "synced=随账号同步、线上用自己的名字；"
         + "deviceOnly=这台机器 / 这张网的属性，不跟人走；"
         + "derivedLocal=自动累积的统计，不跟人也不同步。",
@@ -646,7 +651,15 @@ enum SettingsFieldContract {
         + "OrderFlowBase.maxLength / scaledPrefixes；服务端 sync_validation 的 ORDER_FLOW_* 常量"
         + "与 orderflow_instruments 的 BINANCE_SCALED 必须逐项等于这里。"
         + "差一个数：客户端认为合法的值被服务端整条 400，那只币的设置永远同步不上去。",
-      orderFlow: OrderFlowLimits.current
+      orderFlow: OrderFlowLimits.current,
+      rulesNote: "每个 synced 字段在线上服务端收什么值（PrefsFieldPlan.rules，只写这一处）。"
+        + "type：bool；enum（values 里的串）；string（UTF-8 ≤ maxBytes 字节，known 不为空时客户端只认那几个、服务端只看长度）；"
+        + "number / int（闭区间 min…max）；interval（instruments.json 的 intervals，服务端另收 legacyIntervals）；"
+        + "intervals（周期数组，≤ maxCount 个）；stringArray（每个在 values 里、≤ maxCount 个，unique 时不许重复）；"
+        + "countMap（键在 keys 里、≤ maxKeys 个，值是 0…max 的整数）；custom（服务端 sync_validation::custom_setting 里同名的手写函数）。"
+        + "accept / reject 是按规则造出来的样例：服务端 settings_rules 的测试、手机网页 settingsRules 的测试、iOS PrefsFieldRulesTests 三边都拿它对。"
+        + "客户端读到不合规则的值一律回落：数值夹到边上、数组滤掉认不出的、其余退回出厂值。",
+      rules: PrefsFieldPlan.rules.mapValues(RuleDoc.init)
     )
   }
 
