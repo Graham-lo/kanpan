@@ -213,6 +213,19 @@
     "marketAvg": "大盘 {v}",
     "beatAhead": "跑赢 {v}",
     "beatBehind": "落后 {v}",
-    "allSectors": "全部板块"
+    "allSectors": "全部板块",
+    "sideAlert": "创建提醒",
+    "sideNote": "记一笔",
+    "sideCompare": "加入对比",
+    "sideCompareOff": "移出对比",
+    "sideMoveTo": "移到分类",
+    "sideWatchOff": "移出自选",
+    "sideExpand": "展开",
+    "sideDayLow": "24h 低",
+    "sideDayHigh": "24h 高",
+    "searchVenue": "换交易所",
+    "cellTarget": "作用于 · 格 {n}",
+    "logScale": "对数",
+    "autoScale": "自动"
   }
 }

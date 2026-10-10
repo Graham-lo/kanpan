@@ -31,10 +31,11 @@ import { hooks, go } from '../app/shell'
 import { openNoteDialog, noteRuleText } from '../notes/dialog'
 import { installNoteSync, noteState, onNotesSynced, dropShot } from '../notes/sync'
 import { renderTradesPanel, tradesPanelClick, installTradesPanel } from '../trades/panel'
-import { installWatch, widgetWatch, mountWatch, watchClick, patchWatchRow, takeWatchUndo } from '../watch/widget'
+import { installWatch, widgetWatch, mountWatch, watchClick, patchWatchRow, takeWatchUndo, watchVisible } from '../watch/widget'
+import { RAIL, popW, railNext, sidePanelOf, type PopId } from './rail'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { morphHtml } from '../ui/patch'
-import { toast, menu, menuFrom, closeMenu, menuOpen, dialog, dialogs, head, term, type MenuItem } from '../ui/overlay'
+import { toast, menu, menuFrom, closeMenu, menuOpen, dialog, dialogs, head, term, popover, placePop, type MenuItem } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge, clamp01, countdown, shTime, ratioText, ratioCls, venueTag, chartSub } from '../ui/common'
 import { TVChart, type Drawing, type DrawingType, type ContextMenuInfo, type AlertLine, type AlertSignal } from '../chart/chart'
 import { installDrawing, selectTool, drawTool, drawSticky, toolDone, renderDrawbar, onDrawbarClick, onDrawbarContext, styleFor, canAdd, newDrawing, showQuick, hideQuick, refreshQuick, quickFade, copyDrawing, pasteDrawing, nudge, nudgeEnd, editText } from './drawing'
@@ -45,22 +46,21 @@ import { fmt, fmtCompact, pad, sh, IV_MS } from '../util/format'
 import {
   S, on, REST, coolingFor, isRateLimit, wakeQueued, klines, attachOI, oiPeriod, OI_EPOCH, SIDE_LIMIT, loadUniverse, fetchDetail, detailOf, setStreams, streamName, streamDebug, wantMeta, marketCap,
   IV_LABEL, IV_SHORT, INTERVALS, TABS, sectorsOf, baseOf, headName, kindOfUnderlying, type Kind, type Sym, type KlineResult,
-  isDefaultVenue, knownMissing, loadAllVenues, ensureVenuesFor, symbolOfStream,
+  isDefaultVenue, knownMissing, ensureVenuesFor, symbolOfStream,
 } from '../market'
 import { fundingPeriodOf, venueLabel } from '../venues'
-import { searchGroups, resultName, groupHead, venueStatusHTML } from './searchGroups'
+import { openSymbolSearch } from './symbolSearch'
 import { klineDiskReady, diskBars, keepBars, flushBars } from '../market/klineStore'
 import { settle } from '../market/settle'
-import { normalize } from '../market/searchText'
 import { PushBuffer, pushKey, alignPushes } from '../chart/pushBuffer'
 import { TAIL_MAX, tailNeed, tailFrom, TailResync } from '../market/tail'
 import { KlineCache } from '../market/klineCache'
-import { installCompare, openCompare, refreshCompare, removeCompare } from './compare'
+import { installCompare, openCompare, refreshCompare, removeCompare, toggleCompare, inCompare, MAX_TOAST } from './compare'
 import { bindFootprint, setFootprintSource } from '../chart/footprint'
 import { bindHeikinAshi, setHeikinAshiSource } from '../chart/heikinAshi'
 import { baseBars, bindRangeBars, setRangeBarsSource, syncRangeBars, rangeStepOf } from '../chart/rangeBars'
 import { createFVGLayer } from '../chart/fvgLayer'
-import { AN } from '../terms'
+import { AN, HL } from '../terms'
 import type { AutoLayerId } from '../analysis/fvg'
 import { styleMenuItems } from '../chart/mainStyle'
 import { setsMenu, switchNth, setButtonHTML, paintSetButtons } from './layoutSets'
@@ -68,7 +68,8 @@ import { cellView, writeCellView, type CellFlag } from '../app/layouts'
 import { MIN_SPACING, clampSpacing } from '../chart/wheel'
 import { exportChart, type ExportRange } from '../chart/exportCsv'
 import { secondsKlines } from '../chart/secondsHistory'
-import { installReplay, replayLoad, replaying, toggleReplay, paintReplayQuote } from '../replay/controller'
+import { installReplay, replayLoad, replaying, toggleReplay, paintReplayQuote, paintReplayButton } from '../replay/controller'
+import { RANGES, footHTML, footTarget, footTargetLabel, cellFootHTML, toggleView, isViewAct } from './chartFoot'
 import { openChartSettings } from './chartSettingsDialog'
 
 // ------------------------------------------------------------ 图表格子
@@ -95,8 +96,6 @@ const early = new Map<string, { hold: string; res: Promise<KlineResult> }>()
 const recentKlines = new KlineCache()
 export const allCells = (): readonly Cell[] => cells
 
-type RangeDays = number | 'ytd' | 'all'
-const RANGES: [string, string, RangeDays][] = [['1天', '1m', 1], ['5天', '5m', 5], ['1月', '30m', 30], ['3月', '2h', 91], ['6月', '4h', 182], ['今年', '1d', 'ytd'], ['1年', '1d', 365], ['全部', '1w', 'all']]
 
 function cfg(cell: Cell | undefined): CellCfg { return st.cells[cell ? cell.idx : st.active] || st.cells[0] }
 export const active = (): Cell | undefined => cells[st.active]
@@ -188,7 +187,7 @@ function buildCells(): void {
   for (let i = cells.length; i < n; i++) cells.push(makeCell(i))
   cells.forEach((c, i) => c.el.classList.toggle('active', i === st.active))
   layoutGrid()
-  save(); refreshStreams()
+  save(); refreshStreams(); paintFoot()
 }
 
 /** 多图网格：按布局与本机比例排格子、摆格子间的分隔线 */
@@ -209,7 +208,7 @@ function toggleZoom(cell: Cell | null): void {
   const from = zoomed
   zoomed = to
   if (to) setActive(to.idx)
-  layoutGrid()
+  layoutGrid(); paintFoot()
   // 还原：藏着的格子这段时间没跟时间轴联动，按刚才放大那格眼下的时间段对一遍
   if (!to && from) { const g = from.chart.geometry(); if (g) linkView(from, g.timeOf(g.from), g.timeOf(g.to)) }
 }
@@ -217,7 +216,7 @@ function toggleZoom(cell: Cell | null): void {
 
 /**
  * 格子降级：按格子自己的尺寸算（不按窗口），门槛常量都在 chart/panes.ts：副图按剩下的高逐个留，
- * 图例按宽高收成一行 / 只留品种周期，宽 < 420 去掉成交量。格子底栏也跟着收（app.css .c-narrow / .c-tiny / .c-short）。
+ * 图例按宽高收成一行 / 只留品种周期，主图保不住 280 时不画成交量（panes.ts volFits；app.css .c-tiny 只收回放条）。格子里没有底栏了（全局底栏见 chartFoot.ts）。
  */
 let cellRO: ResizeObserver | null = null
 const cellOf = new WeakMap<Element, Cell>()
@@ -229,6 +228,9 @@ function watchCell(cell: Cell): void {
       if (!w || !h) continue
       for (const [k, on] of Object.entries(cellClasses(w, h))) c.el.classList.toggle(k, on)
       c.chart.setDegrade(degradeFor(w, h))
+      // 格内右下角「对数 / 自动」压在时间轴上：十字线时间标签停在它左边（一图 / 放大时 cfoot 不显示，offsetWidth 为 0 → 不留）
+      const cf = c.el.querySelector<HTMLElement>('.cfoot')
+      c.chart.crossTimeReserve = cf?.offsetWidth ? Math.ceil(c.el.clientWidth - cf.offsetLeft) + 4 : 0
       // 格子变大、持仓量副图露出来了：这时才去取（小格子里被降级挤掉的不取）
       ensureOI(c)
     }
@@ -262,7 +264,7 @@ function noteViews(): void {
 /** 格子配置里记的视图套到图上（建格子、换了一套布局、别的设备改了布局集）：一样的不动 */
 function applyCellView(cell: Cell): void {
   const v = cellView(st.cells[cell.idx]), ch = cell.chart
-  if (ch.log !== v.log) { ch.setLog(v.log); $('[data-act="log"]', cell.el)?.setAttribute('aria-pressed', String(v.log)) }
+  if (ch.log !== v.log) { ch.setLog(v.log); paintViewBtns(cell) }
   if (Math.abs(ch.spacing - v.spacing) >= 0.005) {
     // 刚建的格子还没量出宽：先原样放，第一帧量出宽后由图自己夹（clampRightBar / 缩放都按宽夹）
     const W = ch.plotW()
@@ -271,9 +273,56 @@ function applyCellView(cell: Cell): void {
   }
 }
 function toggleLog(cell: Cell): void {
-  cell.chart.setLog(!cell.chart.log)
-  $('[data-act="log"]', cell.el)?.setAttribute('aria-pressed', String(cell.chart.log))
+  toggleView(cell.chart, 'log')
+  paintViewBtns(cell)
   noteViews()
+}
+/** 「对数 / 自动」的按下态：这一格右下角两颗；是当前格时全局底栏右头那两颗也跟着 */
+function paintViewBtns(cell: Cell): void {
+  const set = (root: Element | null): void => {
+    if (!root) return
+    for (const a of ['log', 'auto'] as const) {
+      const b = root.querySelector(`[data-act="${a}"]`), v = String(a === 'log' ? cell.chart.log : cell.chart.auto)
+      if (b && b.getAttribute('aria-pressed') !== v) b.setAttribute('aria-pressed', v)
+    }
+  }
+  set(cell.el.querySelector('.cfoot'))
+  if (cell === active()) set(document.getElementById('chartFoot'))
+}
+/** 图表区下面那条全局底栏（作用于当前格）：建一次，接事件；按钮上的动作一律落到当前格 */
+function mountFoot(): void {
+  if (document.getElementById('chartFoot')) return
+  const el = document.createElement('div')
+  el.id = 'chartFoot'
+  el.className = 'card cell-foot chart-foot'
+  el.setAttribute('role', 'toolbar'); el.setAttribute('aria-label', '图表底栏')
+  el.innerHTML = footHTML({ label: '', sets: setButtonHTML(), conn: connState(), connTip: CONN_TIP[connState()], log: false, auto: true, replayTip: 'K 线回放：选一个起点，一根一根往后播' })
+  $('#page-chart').appendChild(el)
+  el.addEventListener('click', e => {
+    const t = tgt(e), cell = footTarget(cells, st.active); if (!cell) return
+    const r = t.closest<HTMLElement>('[data-range]'); if (r) return applyRange(cell, +(r.dataset.range || 0))
+    const b = t.closest<HTMLElement>('[data-act]'), a = b?.dataset.act; if (!b) return
+    if (a === 'save') { screenshot(); return }
+    if (a === 'replay') { toggleReplay(cell); return }
+    if (a === 'sets') { setsMenu(b, applyLayoutSet); return }
+    if (a === 'export') { exportMenu(b, cell); return }
+    if (a === 'log') { toggleLog(cell); return }
+    if (isViewAct(a)) { toggleView(cell.chart, a); paintViewBtns(cell) }
+  })
+  // 双击底栏按钮以外的空白：放大 / 还原当前格（原来双击格子底栏空白的手势）
+  el.addEventListener('dblclick', e => { if (!tgt(e).closest('button, [data-tip]')) { const c = footTarget(cells, st.active); if (c && cells.length > 1) toggleZoom(c) } })
+}
+/** 底栏按当前格重画：左头「作用于 · 格 N · 代号」（一图不写）、对数 / 自动、回放按钮。字一样就不写 */
+function paintFoot(): void {
+  const el = document.getElementById('chartFoot'), cell = footTarget(cells, st.active); if (!el || !cell) return
+  const lab = el.querySelector<HTMLElement>('.foot-target')
+  if (lab) {
+    const n = zoomed ? 1 : cells.length, k = cfg(cell).symbol, s = sym(k)
+    const t = n > 1 ? `${footTargetLabel(n, cell.idx)} · ${s?.code ?? k}` : ''
+    if (lab.textContent !== t) lab.textContent = t
+    if (lab.hidden !== !t) lab.hidden = !t
+  }
+  paintViewBtns(cell); paintReplayButton()
 }
 
 // 回归脚本（scripts/regress.mjs「布局与拖动」）读：各格子的品种、周期、可见时间段、同步来的十字线、降级档；行情连接
@@ -287,7 +336,9 @@ function toggleLog(cell: Cell): void {
   let oi = 0, oiFirst = -1
   for (let j = 0; j < b.length; j++) if (b[j].oi != null) { oi++; if (oiFirst < 0) oiFirst = j }
   return { symbol: k.symbol, iv: k.iv, oi, oiFirst, t0: g ? g.timeOf(g.from) : null, t1: g ? g.timeOf(g.to) : null, cross: c.chart.extCross, deg: c.chart.deg, bars: b.length, spacing: c.chart.spacing, plotW: c.chart.plotW(), panes: c.chart._panes?.map(p => [p.id, p.y, p.h]),
-    metaSym: c.chart.meta.symbol, metaIv: c.chart.iv, dec: c.chart.meta.dec, aw: c.chart.aw, last: b[b.length - 1]?.c ?? null, lastT: b[b.length - 1]?.t ?? null, holes, empty: !$('.cell-empty', c.el).hidden }
+    metaSym: c.chart.meta.symbol, metaIv: c.chart.iv, dec: c.chart.meta.dec, aw: c.chart.aw, last: b[b.length - 1]?.c ?? null, lastT: b[b.length - 1]?.t ?? null, lastV: b[b.length - 1]?.v ?? null, medV: b.length ? [...b.slice(-200)].map(x => x.v ?? 0).sort((x, y) => x - y)[Math.min(b.length, 200) >> 1] : null, holes, empty: !$('.cell-empty', c.el).hidden,
+    // 价格轴上实际画出的标签（让位后的 y、优先级）：验最新价 / 关键位 / 「+」建提醒不叠
+    tags: c.chart.axisTagsDrawn.map(t => ({ pane: t.pane, text: t.text, y: Math.round(t.y), pri: t.pri })) }
 })
 ;(globalThis as unknown as { __px?: (s: string) => number | null }).__px = s => sym(s)?.price ?? null
 ;(globalThis as unknown as { __stream?: () => unknown }).__stream = streamDebug
@@ -312,22 +363,7 @@ function makeCell(i: number): Cell {
   el.className = 'card chart-cell'
   el.innerHTML = `<div class="canvas-host"></div>
     <div class="cell-empty" hidden></div>
-    <div class="cell-foot">
-      <button class="foot-ic" data-act="layout" aria-label="图表布局" data-tip="图表布局">${I(LAYOUT_ICON[st.layout], 'icon-16')}</button>
-      <button class="foot-set" data-act="sets" aria-label="切换布局" data-tip="切换布局">${setButtonHTML()}</button>
-      <button class="foot-ic" data-act="save" aria-label="保存图表截图" data-tip="保存图表截图" data-kbd="⌥ S">${I('camera', 'icon-16')}</button>
-      <button class="foot-ic" data-act="replay" aria-label="K 线回放" data-tip="K 线回放：选一个起点，一根一根往后播" data-kbd="⌥ R">${I('replay', 'icon-16')}</button>
-      <button class="foot-ic" data-act="export" aria-label="导出" data-tip="导出 K 线与指标（CSV）">${I('download', 'icon-16')}</button>
-      <span class="tb-sep"></span>
-      ${RANGES.map(([l, iv], k) => `<button data-range="${k}" data-tip="${l}：切到 ${IV_LABEL[iv]}，显示最近${l === '全部' ? '全部历史' : l === '今年' ? '今年以来' : l}">${l}</button>`).join('')}
-      <div class="foot-right">
-        <span class="clock num" data-tip="时间统一按上海时间显示，日线在北京时间 8:00 换日"></span>
-        <span class="conn-dot" data-conn="${connState()}" data-tip="${CONN_TIP[connState()]}"></span>
-        <span class="tb-sep"></span>
-        <button data-act="log" data-tip="对数坐标" aria-pressed="false">对数</button>
-        <button data-act="auto" data-tip="价格轴自动缩放（双击价格轴也可以恢复）" aria-pressed="true">自动</button>
-      </div>
-    </div>`
+    ${cellFootHTML({ log: false, auto: true })}`
   $('#chartArea').appendChild(el)
   const host = $('.canvas-host', el)
   const cell = { el, host, idx: i, loadToken: 0, more: false, noMore: false, hold: null } as unknown as Cell
@@ -346,7 +382,7 @@ function makeCell(i: number): Cell {
     drawStyle: styleFor,
     canAdd: add => canAdd(cfg(cell).symbol, add),
     onDrawDrag: quickFade,
-    onAutoChange: v => { $('[data-act="auto"]', el)?.setAttribute('aria-pressed', String(v)) },
+    onAutoChange: () => paintViewBtns(cell),
     // 副图高：所有格子共用一份比例，松手落本机
     onPaneResize: r => {
       if (r) sizes.panes = r; else delete sizes.panes
@@ -370,21 +406,16 @@ function makeCell(i: number): Cell {
   applyCellView(cell)
   el.addEventListener('click', e => {
     const t = tgt(e)
-    const r = t.closest<HTMLElement>('[data-range]'); if (r) return applyRange(cell, +(r.dataset.range || 0))
     if (t.closest('[data-retry]')) { void retryLoad(cell); return }
-    const a = t.closest<HTMLElement>('[data-act]')?.dataset.act
-    if (a === 'layout') { layoutMenu(t.closest<HTMLElement>('[data-act]') as HTMLElement); return }
-    if (a === 'save') { setActive(cell.idx); screenshot(); return }
-    if (a === 'replay') { setActive(cell.idx); toggleReplay(cell); return }
-    if (a === 'sets') { setsMenu(t.closest<HTMLElement>('[data-act]') as HTMLElement, applyLayoutSet); return }
-    if (a === 'export') { setActive(cell.idx); exportMenu(t.closest<HTMLElement>('[data-act]') as HTMLElement, cell); return }
+    // 右下角「对数 / 自动」：只改这一格（不切当前格）
+    const a = t.closest<HTMLElement>('.cfoot [data-act]')?.dataset.act
     if (a === 'log') toggleLog(cell)
-    if (a === 'auto') cell.chart.setAuto(!cell.chart.auto)
+    else if (isViewAct(a)) { toggleView(cell.chart, a); paintViewBtns(cell) }
   })
-  // 双击格子的「标题区」放大 / 还原这一格：底栏按钮以外的空白，或画布顶部一条（图例以外、价格轴以左，手里没拿工具、没选中画线）
+  // 双击格子的「标题区」放大 / 还原这一格：画布顶部一条（图例以外、价格轴以左，手里没拿工具、没选中画线）；底栏空白双击见 mountFoot
   el.addEventListener('dblclick', e => {
     const t = tgt(e)
-    if (t.closest('.cell-foot')) { if (!t.closest('button, [data-tip]')) toggleZoom(cell); return }
+    if (t.closest('.cfoot')) return
     if (t.tagName !== 'CANVAS' || drawTool() || cell.chart.selected) return
     const r = host.getBoundingClientRect()
     if (inZoomStrip(e.clientX - r.left, e.clientY - r.top, cell.chart.plotW())) toggleZoom(cell)
@@ -632,11 +663,9 @@ function applyRange(cell: Cell, k: number): void {
   if (c.iv !== iv) setIv(iv, cell, fit); else fit()
 }
 
-/** 底栏的钟：只写当前格那一个（多图里别的格子的钟藏着，见 app.css），字没变不写——
- *  原来每秒给每格都写一遍，十六图就是每秒十六处改字 */
+/** 底栏的钟：整页只有全局底栏那一个，字没变不写 */
 function paintClock(): void {
-  const c = active(); if (!c || c.el.classList.contains('c-narrow')) return
-  const e = $('.cell-foot .clock', c.el); if (!e) return
+  const e = document.querySelector<HTMLElement>('#chartFoot .clock'); if (!e) return
   const d = sh(Date.now()), t = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC+8`
   if (e.textContent !== t) e.textContent = t
 }
@@ -646,17 +675,18 @@ function setActive(i: number): void {
   cells.forEach((c, k) => c.el.classList.toggle('active', k === i))
   // 放大着的时候切了当前格（快捷键 / 程序里切）：放大跟着换到这一格
   if (zoomed && cells[i] && zoomed !== cells[i]) { zoomed = cells[i]; layoutGrid() }
-  save(); renderToolbar(); renderPanel(); refreshStreams(); paintClock()
+  save(); renderToolbar(); renderPanel(); refreshStreams(); paintClock(); paintFoot()
 }
 
-export function openSymbol(symbol: string, cell: Cell | undefined = active()): void {
+/** then：这一格新品种的 K 线到了之后再做的事（自选右键「记一笔」要等图换好再弹） */
+export function openSymbol(symbol: string, cell: Cell | undefined = active(), then?: () => void): void {
   if (!cell || !validSymbol(symbol)) return // 服务端记录 / 提醒日志里带来的代号先过一遍形状，坏串不进格子与图例
   const c = cfg(cell)
-  if (c.symbol === symbol) return
+  if (c.symbol === symbol) { then?.(); return }
   settle.noteSwitch()
   c.symbol = symbol; save()
-  if (st.linkSymbol && cells.length > 1) return linkAll(symbol)
-  void loadCell(cell); refreshStreams(); renderToolbar(); renderPanel()
+  if (st.linkSymbol && cells.length > 1) return linkAll(symbol, cell, then)
+  void loadCell(cell, then); refreshStreams(); renderToolbar(); renderPanel()
 }
 
 function setIv(iv: string, cell: Cell | undefined = active(), then?: () => void): void {
@@ -783,9 +813,9 @@ function layoutMenu(b: HTMLElement): void {
   menuFrom(b, items)
 }
 /** 品种跨图同步：一格换了品种，其余格一起换（周期各自保留） */
-function linkAll(symbol: string): void {
+function linkAll(symbol: string, from?: Cell, then?: () => void): void {
   settle.noteSwitch()
-  cells.forEach(c => { const cc = cfg(c); if (cc.symbol !== symbol) { cc.symbol = symbol; void loadCell(c) } })
+  cells.forEach(c => { const cc = cfg(c); if (cc.symbol !== symbol || c === from) { cc.symbol = symbol; void loadCell(c, c === from ? then : undefined) } })
   save(); refreshStreams(); renderToolbar(); renderPanel()
 }
 // ---- 连接状态点：绿 = 实时，黄 = 在连，红 = 断了或行情停住
@@ -805,7 +835,7 @@ function syncTitle(): void {
 export function renderToolbar(): void {
   const cell = active(); if (!cell) return
   const c = cfg(cell), s = sym(c.symbol)
-  syncTitle()
+  syncTitle(); paintFoot()
   const pinnedHas = st.pinned.includes(c.iv)
   // 取完 K 线 / 重连 / 同步都会走这里：就地改，按钮节点留着（整块换了，指针下的按钮悬停与提示要等下一次 mousemove）
   morphHtml($('#toolbar'), `
@@ -884,7 +914,7 @@ function exportMenu(b: HTMLElement, cell: Cell): void {
     { label: '可见范围', sc: vis ? `${vis} 根` : '', disabled: !vis, run: () => go('visible') },
     { label: '全部已加载', sc: n ? `${n} 根` : '', disabled: !n, run: () => go('all') }], { width: 200 })
 }
-export function setLayout(k: Layout): void { st.layout = k; buildCells(); renderToolbar(); $$('.cell-foot [data-act="layout"]').forEach(e => { e.innerHTML = I(LAYOUT_ICON[k], 'icon-16') }) }
+export function setLayout(k: Layout): void { st.layout = k; buildCells(); renderToolbar() }
 
 function intervalMenu(btn: HTMLElement): void {
   const c = cfg(active())
@@ -1008,14 +1038,16 @@ export function layoutSlots(): void {
   cols.push(['rail', 'var(--rail-w)'])
   const row1 = cols.map(([k]) => k === 'draw' || k === 'chart' || k === 'ladder' ? 'tb' : k)
   const row2 = cols.map(([k]) => k)
-  const rows = [row1, row2]
-  const heights = ['var(--toolbar-h)', 'minmax(0,1fr)']
+  // 图表区正下方一条全局底栏（作用于当前格）；左画线栏、盘口、侧栏、竖栏往下顺延盖住这一行
+  const row3 = cols.map(([k]) => k === 'chart' ? 'foot' : k)
+  const rows = [row1, row2, row3]
+  const heights = ['var(--toolbar-h)', 'minmax(0,1fr)', 'var(--gfoot-h)']
   if (drawer) { rows.push(cols.map(([k]) => k === 'chart' || k === 'ladder' ? 'drawer' : k)); heights.push('var(--drawer-h)') }
   page.style.gridTemplateColumns = cols.map(c => c[1]).join(' ')
   page.style.gridTemplateRows = heights.join(' ')
   page.style.gridTemplateAreas = rows.map(r => `"${r.join(' ')}"`).join(' ')
   const put = (sel: string, area: string, show: boolean) => { const e = $(sel); if (!e) return; e.style.gridArea = area; e.hidden = !show }
-  put('#toolbar', 'tb', true); put('#drawbar', 'draw', true); put('#chartArea', 'chart', true); put('#rail', 'rail', true)
+  put('#toolbar', 'tb', true); put('#drawbar', 'draw', true); put('#chartArea', 'chart', true); put('#chartFoot', 'foot', true); put('#rail', 'rail', true)
   put('#sidePanel', 'panel', panel); put('#ladderSlot', 'ladder', ladder); put('#drawerSlot', 'drawer', drawer)
   page.classList.toggle('panel-closed', !panel)
   if (!page.clientWidth) return   // 图表页没在显示：回来时 pageShown 再排
@@ -1035,12 +1067,15 @@ export function refreshWebPrefs(): void {
 }
 
 // ------------------------------------------------------------ 侧栏
-const RAIL: [PanelId, string, string][] = [['watch', 'list', '自选'], ['alerts', 'bell', '提醒'], ['flow', 'flow', '主力订单流'], ['notes', 'note', '笔记'], ['trades', 'trades', '成交']]
+// 侧栏只常驻自选（列表 + 详情卡）；主力订单流 / 提醒 / 笔记 / 成交是竖条上点出的弹层（pages/rail.ts，2026-10-10 审查 A2 / C3）
 export function renderRail(): void {
   // 有生效中的提醒：铃的右上角一颗强调色小点（不写数目，数目在提醒页里；提示里带上）
   const live = activeAlerts().length
-  $('#rail').innerHTML = RAIL.map(([k, ic, l]) => { const n = k === 'alerts' ? live : 0, lab = n ? `${l}（${n} 条生效中）` : l
-    return `<button class="ibtn ${st.panel === k ? 'on' : ''}" data-panel="${k}" aria-label="${lab}" aria-pressed="${st.panel === k}" data-tip="${lab}" data-tip-side="left">${I(ic)}${n ? '<span class="qdot" aria-hidden="true"></span>' : ''}</button>` }).join('') +
+  $('#rail').innerHTML = RAIL.map(([k, ic, l]) => {
+    const n = k === 'alerts' ? live : 0, lab = n ? `${l}（${n} 条生效中）` : l
+    const on = k === 'watch' ? !!st.panel : pop?.id === k
+    return `<button class="ibtn ${on ? 'on' : ''}" data-panel="${k}" aria-label="${lab}" ${k === 'watch' ? `aria-pressed="${on}"` : `aria-haspopup="dialog" aria-expanded="${on}"`} data-tip="${lab}" data-tip-side="left">${I(ic)}${n ? '<span class="qdot" aria-hidden="true"></span>' : ''}</button>`
+  }).join('') +
     `<div class="rail-spacer"></div>
     <button class="ibtn" id="railKeys" aria-label="快捷键" data-tip="快捷键" data-kbd="?" data-tip-side="left">${I('info')}</button>`
 }
@@ -1048,26 +1083,68 @@ function onRailClick(e: MouseEvent): void {
   const b = tgt(e).closest<HTMLElement>('button'); if (!b) return
   if (b.id === 'railKeys') return openShortcuts()
   const p = b.dataset.panel as PanelId
-  st.panel = st.panel === p ? null : p
-  if (st.panel) st.lastPanel = st.panel
-  save(); renderRail(); renderPanel()
+  const next = railNext({ side: !!st.panel, pop: pop?.id ?? null }, p)
+  if (p === 'watch') return togglePanel()
+  if (next.pop) openRailPop(next.pop); else closeMenu()
 }
-/** Alt ⇧ W：开 / 关侧栏（开的时候回到上一次看的那一栏） */
+/** Alt ⇧ W：开 / 关自选栏 */
 function togglePanel(): void {
-  st.panel = st.panel ? null : st.lastPanel || 'watch'
-  if (st.panel) st.lastPanel = st.panel
+  st.panel = st.panel ? null : 'watch'
+  st.lastPanel = 'watch'
   save(); renderRail(); renderPanel(); layoutSlots()
 }
-export function openPanel(p: PanelId): void { st.panel = p; st.lastPanel = p; save(); renderRail(); renderPanel() }
+/** 顶栏的铃等入口：自选开栏，其余四样开弹层 */
+export function openPanel(p: PanelId): void {
+  if (p !== 'watch') { openRailPop(p); return }
+  st.panel = 'watch'; st.lastPanel = 'watch'; save(); renderRail(); renderPanel()
+}
 
-/** 侧栏上次整块画的是哪个面板、哪只品种（loadCell 收尾据此决定整块重画还是只改详情） */
+// ---- 右侧栏弹层：主力订单流 / 提醒 / 笔记 / 成交（同菜单一套：同一时刻只开一个，点外面 / Esc 收起）
+let pop: { id: PopId; el: HTMLElement } | null = null
+const railBtn = (id: PopId): HTMLElement | null => document.querySelector<HTMLElement>(`#rail [data-panel="${id}"]`)
+function openRailPop(id: PopId): void {
+  const anchor = railBtn(id); if (!anchor || !cells.length) return
+  const el = popover(anchor, {
+    width: popW(id, innerWidth), cls: 'rail-pop', label: RAIL.find(r => r[0] === id)?.[2], keep: $('#rail'),
+    onClose: () => { if (pop?.el === el) { pop = null; renderRail() } },
+    place: () => { const a = railBtn(id); if (a) placePop(el, a) },
+  })
+  pop = { id, el }
+  el.addEventListener('click', onPopClick)
+  renderRailPop()
+  renderRail()
+}
+/** 开着的弹层按当前品种重画（换品种、提醒 / 笔记 / 成交变了都走这里） */
+function renderRailPop(): void {
+  if (!pop || !pop.el.isConnected || !cells.length) return
+  const { id, el } = pop, k = cfg(active()).symbol
+  if (id === 'flow') flowPanel(el)
+  else if (id === 'alerts') renderAlertsPanel(el, k)
+  else if (id === 'notes') panelNotes(el)
+  else renderTradesPanel(el, k)
+  const a = railBtn(id); if (a) placePop(el, a)
+}
+function onPopClick(e: MouseEvent): void {
+  if (!pop) return
+  const t = tgt(e), k = cfg(active()).symbol
+  if (pop.id === 'alerts') { if (alertsPanelClick(e, k) && t.closest('[data-log-open]')) closeMenu(); return }
+  if (pop.id === 'trades') { if (tradesPanelClick(e, k) && t.closest('[data-tr-rec],#trLogin')) closeMenu(); return }
+  if (pop.id !== 'notes') return
+  if (t.closest('#nNew')) { closeMenu(); return openNote() }
+  const delNote = t.closest<HTMLElement>('[data-del-note]'); if (delNote) { e.stopPropagation(); const id = delNote.dataset.delNote || ''; st.notes = st.notes.filter(n => n.id !== id); dropShot(id); save(); renderRailPop(); return }
+  const note = t.closest<HTMLElement>('[data-note]'); if (note) return jumpNote(note.dataset.note || '')
+}
+
+/** 侧栏上次整块画的是哪个品种（loadCell 收尾据此决定整块重画还是只改详情） */
 let panelSym = ''
 export function renderPanel(): void {
+  // 老存档 / 别的电脑上的老页面记的 flow、alerts……：一律当「自选栏开着」
+  if (st.panel !== sidePanelOf(st.panel)) st.panel = sidePanelOf(st.panel)
   layoutSlots()
+  renderRailPop()
   if (!st.panel || !cells.length) return
-  const el = $('#sidePanel')
-  panelSym = st.panel + ':' + cfg(active())?.symbol
-  ;({ watch: panelWatch, alerts: panelAlerts, flow: panelFlow, notes: panelNotes, trades: panelTrades } as Record<PanelId, (el: HTMLElement) => void>)[st.panel](el)
+  panelSym = 'watch:' + cfg(active())?.symbol
+  panelWatch($('#sidePanel'))
 }
 
 // ---- 自选（小部件堆叠：自选列表、详情；以后还有盘口 / 成交 / 大单 / 提醒）
@@ -1085,21 +1162,17 @@ function collapseBtn(c: boolean): string {
 }
 function onPanelClick(e: MouseEvent): void {
   const t = tgt(e)
-  if (st.panel === 'watch' && watchClick(e)) return
+  if (watchClick(e)) return
   const star = t.closest<HTMLElement>('[data-star]'); if (star) { toggleWatch(star.dataset.star || ''); return }
   const tr = t.closest<HTMLElement>('tr[data-sym]'); if (tr) return openSymbol(tr.dataset.sym || '')
   const sec = t.closest<HTMLElement>('[data-sector]'); if (sec) { hooks.openSector?.(sec.dataset.sector || ''); return }
-  if (st.panel === 'alerts' && alertsPanelClick(e, cfg(active()).symbol)) return
-  if (t.closest('#nNew')) return openNote()
-  const delNote = t.closest<HTMLElement>('[data-del-note]'); if (delNote) { e.stopPropagation(); const id = delNote.dataset.delNote || ''; st.notes = st.notes.filter(n => n.id !== id); dropShot(id); save(); renderPanel(); return }
-  if (st.panel === 'trades' && tradesPanelClick(e, cfg(active()).symbol)) return
-  const note = t.closest<HTMLElement>('[data-note]'); if (note) return jumpNote(note.dataset.note || '')
 }
+/** 加 / 移自选：在任何一个分类里就从所有分类里拿掉（右键「移到分类」挪过的也认）；不在就加进它自己那一类 */
 export function toggleWatch(k: string): boolean {
   const s = sym(k), tab: Kind = s?.kind || 'crypto'
-  const list = st.watch[tab]
-  const on_ = list.includes(k)
-  if (on_) list.splice(list.indexOf(k), 1); else list.push(k)
+  const on_ = isWatched(k)
+  if (on_) for (const l of Object.values(st.watch)) { const i = l.indexOf(k); if (i >= 0) l.splice(i, 1) }
+  else st.watch[tab].push(k)
   save(); if (st.panel === 'watch') renderPanel(); refreshStreams()
   toast(on_ ? `已从自选移除 ${s?.code || k}` : `已加到自选 · ${TABS.find(x => x[0] === tab)?.[1] || ''}`, '', on_ ? 'starOff' : 'star', 1800)
   return !on_
@@ -1126,14 +1199,14 @@ function renderDetail(): void {
   const cap = marketCap(k)
   const w = isWatched(k)
   const basis = s.mark && s.index ? (s.mark / s.index - 1) * 100 : null
-  // 一屏放得下：板块标签并进名字下面那一行，十二格改成「名 值」四行三列
-  const secHTML = secs.slice(0, 3).map(x => `<button class="sec-link" data-sector="${x.id}">${esc(x.cn)}</button>`).join('')
+  // 十二格「名 值」四行三列；板块标签自成一行放卡底、折行全显（2026-10-10 §3：不再挤在名字行里截掉）
+  const secHTML = secs.map(x => `<button class="sec-link" data-sector="${x.id}">${esc(x.cn)}</button>`).join('')
   const cell = (k: string, v: string, c = '', f = ''): string => `<div><span class="k">${k}</span><span class="v num ${c}"${f ? ` data-f="${f}"` : ''}>${v}</span></div>`
   // 61 秒一次的慢数 / 元数据到了都会重画：就地改，星标 / 板块 / 收起按钮留着，指针停在上面不跳、点得中
-  morphHtml(el, `<div class="dh">${badge(s, 'lg')}<div class="names"><div class="code">${esc(headName(s))}<span class="kind">${esc(chartSub(k, s))}</span></div><div class="cn">${esc(s.cn || '')}${cap ? `${s.cn ? ' · ' : ''}${term('市值')} <span class="num" data-f="cap">${fmtCompact(cap)}</span>` : ''}${secHTML ? `<span class="secs">${secHTML}</span>` : ''}</div></div>
+  morphHtml(el, `<div class="dh">${badge(s, 'lg')}<div class="names"><div class="code">${esc(headName(s))}<span class="kind">${esc(chartSub(k, s))}</span></div><div class="cn">${esc(s.cn || '')}${cap ? `${s.cn ? ' · ' : ''}${term('市值')} <span class="num" data-f="cap">${fmtCompact(cap)}</span>` : ''}</div></div>
       <button class="ibtn sm" data-star="${k}" aria-pressed="${w}" aria-label="${w ? '移出自选' : '加入自选'}" data-tip="${w ? '移出自选' : '加入自选'}">${I(w ? 'star' : 'starOff')}</button>${collapseBtn(isCollapsed('detail'))}</div>
     <div class="px"><span class="big num price-live ${st.stale || s.closed ? '' : cls(s.pct)}${s.closed ? ' closed' : ''}" data-f="big">${priceText(s)}</span><span class="chg num ${cls(s.pct)}" data-f="chg">${chgText(s)}</span></div>
-    ${s.hi && s.lo ? `<div class="range"><span class="num" data-f="lo">${fmt(s.lo, s.dec)}</span><div class="bar"><i data-f="pos" style="left:${clamp01(((s.price ?? s.lo) - s.lo) / (s.hi - s.lo || 1)) * 100}%"></i></div><span class="num" data-f="hi">${fmt(s.hi, s.dec)}</span></div>` : ''}
+    ${s.hi && s.lo ? `<div class="range"><div class="lh"><span>${HL.sideDayLow} <b class="num" data-f="lo">${fmt(s.lo, s.dec)}</b></span><span>${HL.sideDayHigh} <b class="num" data-f="hi">${fmt(s.hi, s.dec)}</b></span></div><div class="bar"><i data-f="pos" style="left:${clamp01(((s.price ?? s.lo) - s.lo) / (s.hi - s.lo || 1)) * 100}%"></i></div></div>` : ''}
     ${s.macro ? `<div class="stats inline">
       ${cell('开盘', s.open ? fmt(s.open, s.dec) : '—')}
       ${cell('最高', s.hi ? fmt(s.hi, s.dec) : '—')}
@@ -1152,7 +1225,8 @@ function renderDetail(): void {
       ${cell(term('标记价'), s.mark ? fmt(s.mark, s.dec) : '—', '', 'mark')}
       ${cell(term('指数价'), s.index ? fmt(s.index, s.dec) : '—', '', 'index')}
       ${cell(term('基差'), pctText(basis), cls(basis), 'basis')}
-    </div>`}`)
+    </div>`}
+    ${secHTML ? `<div class="sec-tags">${secHTML}</div>` : ''}`)
   paintReplayQuote()
 }
 const chgText = (s: Sym): string => s.price == null ? '—' : `${s.chg >= 0 ? '+' : ''}${fmt(s.chg, s.dec)}  ${pctText(s.pct)}`
@@ -1186,18 +1260,13 @@ function patchDetail(): void {
   paintReplayQuote()
 }
 
-// ---- 提醒（模块在 alerts/）
-function panelAlerts(el: HTMLElement): void { renderAlertsPanel(el, cfg(active()).symbol) }
+// ---- 提醒（模块在 alerts/；在竖条「提醒」弹层里）
 export function refreshAlerts(): void {
   cells.forEach(c => { const k = cfg(c).symbol; if (c.chart.meta.symbol !== k) return; c.chart.setAlerts(priceAlerts(k)); c.chart.setAlertSignals(lineSignals(k)) })
-  renderRail(); if (st.panel === 'alerts') renderPanel()
+  renderRail(); if (pop?.id === 'alerts') renderRailPop()
   refreshQuick()
   refreshStreams()
 }
-
-// ---- 主力订单流、成交（成交：手机拉来、服务端拼好的回合里摊出来，见 trades/panel.ts）
-function panelFlow(el: HTMLElement): void { flowPanel(el) }
-function panelTrades(el: HTMLElement): void { renderTradesPanel(el, cfg(active()).symbol) }
 
 // ---- 笔记（记一笔：先落本机，再传服务端成为观点记录，见 notes/）
 function panelNotes(el: HTMLElement): void {
@@ -1217,7 +1286,7 @@ function openNote(t?: number, p?: number): void {
   openNoteDialog({
     symbol: c.symbol, iv: c.iv, bars: cell.chart.bars, from, to, canvas: cell.chart.canvas,
     t: t ?? b?.t ?? Date.now(), p: p ?? b?.c ?? s?.price ?? 0,
-    onSaved: () => { if (st.panel === 'notes') renderPanel() },
+    onSaved: () => { if (pop?.id === 'notes') renderRailPop() },
   })
 }
 function jumpNote(id: string): void {
@@ -1227,51 +1296,9 @@ function jumpNote(id: string): void {
   if (c.symbol !== n.symbol || c.iv !== n.iv) { c.symbol = n.symbol; c.iv = n.iv; save(); void loadCell(cell, center); refreshStreams(); renderToolbar() } else center()
 }
 
-// ------------------------------------------------------------ 搜索
+// ------------------------------------------------------------ 搜索（弹层本体在 pages/symbolSearch.ts：按品种聚合一行，交易所是行尾记号）
 export function openSearch(initial = ''): void {
-  if (dialogs.some(d => d.dlg.classList.contains('search-dlg'))) return
-  let cat: 'all' | Kind = 'all', q = initial, activeIdx = 0, results: Sym[] = []
-  const CATS: ['all' | Kind, string][] = [['all', '全部'], ['crypto', '加密'], ['us', '美股'], ['com', '大宗']]
-  // 别家的品种表懒拉：弹层一打开就拉全部（已经拉到的不再拉），到了一家重画一次
-  const off = on(e => { if (e.type === 'universe') render() })
-  const d = dialog(`<div class="search-top">${I('search', 'icon-24')}<input id="sq" placeholder="搜索品种，比如 BTC、英伟达、黄金" autocomplete="off" spellcheck="false" aria-label="搜索品种" value="${esc(initial)}"><kbd>Esc</kbd></div>
-    <div class="search-cats" role="tablist">${CATS.map(([k, l]) => `<button class="chip" data-cat="${k}" aria-pressed="${k === cat}">${l}</button>`).join('')}</div>
-    <div class="search-list scroll" id="sl" role="listbox"></div>
-    <div class="search-foot"><span><kbd>↑</kbd><kbd>↓</kbd>选择</span><span><kbd>↵</kbd>打开</span><span><kbd>⇧</kbd><kbd>↵</kbd>加自选</span><span><kbd>Tab</kbd>换分类</span></div>`, 'search-dlg', { label: '搜索品种', onClose: off })
-  void loadAllVenues()
-  const inp = $<HTMLInputElement>('#sq', d.dlg), listEl = $('#sl', d.dlg)
-  function render(): void {
-    const qq = normalize(q)
-    const pool = [...S.symbols.values()].filter(s => cat === 'all' || s.kind === cat)
-    const { groups, flat } = searchGroups(pool, q, isWatched)
-    results = flat
-    activeIdx = Math.min(activeIdx, Math.max(0, results.length - 1))
-    let i = 0
-    const row = (s: Sym): string => { const k = i++, w = isWatched(s.symbol); return `<div class="sr ${k === activeIdx ? 'active' : ''}" role="option" aria-selected="${k === activeIdx}" data-i="${k}">
-      ${badge(s, 'lg')}<div><div class="n1">${resultName(s, qq)}</div>${s.cn ? `<div class="n2">${esc(s.cn)}</div>` : ''}</div>
-      <div class="r num">${priceText(s)}</div><div class="r num ${cls(s.pct)}">${pctText(s.pct)}</div><div class="r num muted">${fmtCompact(s.vol)}</div>
-      <button class="ibtn sm" data-w="${esc(s.symbol)}" aria-label="${w ? '移出自选' : '加入自选'}" style="color:${w ? '#F5A623' : ''}">${I(w ? 'star' : 'starOff')}</button></div>` }
-    listEl.innerHTML = !S.symbols.size ? `<div class="empty">${S.live === false ? '连不上币安合约接口，搜不了' : '正在取品种表…'}</div>`
-      : results.length ? groups.map(g => groupHead(g) + g.items.map(row).join('')).join('') + venueStatusHTML()
-      : `<div class="empty">没有找到「${esc(q)}」<div class="faint" style="font-size:12px;margin-top:4px">代号、中文名都能搜，比如「英伟达」「黄金」</div></div>${venueStatusHTML()}`
-  }
-  const setCat = (k: 'all' | Kind) => { cat = k; $$('[data-cat]', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cat === cat))); activeIdx = 0; render() }
-  function move(k: number): void { activeIdx = Math.max(0, Math.min(results.length - 1, activeIdx + k)); render(); $('.sr.active', listEl)?.scrollIntoView({ block: 'nearest' }) }
-  inp.addEventListener('input', () => { q = inp.value; activeIdx = 0; render() })
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); move(1) }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
-    else if (e.key === 'Enter') { e.preventDefault(); const s = results[activeIdx]; if (!s) return; if (e.shiftKey) { toggleWatch(s.symbol); render() } else { d.close(); go('chart'); openSymbol(s.symbol) } }
-    else if (e.key === 'Tab') { e.preventDefault(); const cs = CATS.map(c => c[0]); setCat(cs[(cs.indexOf(cat) + (e.shiftKey ? 3 : 1)) % 4]) }
-  })
-  d.dlg.addEventListener('click', e => {
-    const t = tgt(e)
-    const c = t.closest<HTMLElement>('[data-cat]'); if (c) { setCat(c.dataset.cat as 'all' | Kind); inp.focus(); return }
-    const w = t.closest<HTMLElement>('[data-w]'); if (w) { e.stopPropagation(); toggleWatch(w.dataset.w || ''); render(); inp.focus(); return }
-    const r = t.closest<HTMLElement>('.sr'); if (r) { const s = results[+(r.dataset.i || 0)]; d.close(); if (s) { go('chart'); openSymbol(s.symbol) } }
-  })
-  listEl.addEventListener('mousemove', e => { const r = tgt(e).closest<HTMLElement>('.sr'); if (r && +(r.dataset.i || 0) !== activeIdx) { activeIdx = +(r.dataset.i || 0); $$('.sr', listEl).forEach(x => x.classList.toggle('active', +(x.dataset.i || -1) === activeIdx)) } })
-  render(); inp.focus(); inp.setSelectionRange(q.length, q.length)
+  openSymbolSearch(initial, { isWatched, toggleWatch, current: () => { const c = active(); return c ? cfg(c).symbol : '' }, open: k => { go('chart'); openSymbol(k) } })
 }
 
 // ------------------------------------------------------------ 指标
@@ -1561,7 +1588,8 @@ export function refreshStreams(early = false): void {
   for (const k of al.ticker) { set.add(streamName.ticker(k)); core.add(streamName.ticker(k)) }
   for (const k of al.mark) { set.add(streamName.mark(k)); core.add(streamName.mark(k)) }
   for (const fn of hooks.extraStreams) for (const x of fn()) set.add(x)
-  if (st.panel === 'watch') for (const k of st.watch[st.watchTab]) set.add(streamName.ticker(k))
+  // 自选栏分节连续列出（2026-10-10）：各节都订，收起的节不订
+  if (st.panel === 'watch') for (const k of watchVisible()) set.add(streamName.ticker(k))
   // 品种表没到时没法筛（冷启动先订的那次）；到了之后下一次对账会把表里没有的撤掉
   // 别家的品种：那一家的表确认拉到过、里面没有它才撤（表还没拉到不算，见 knownMissing）
   const known = (name: string) => { const k = symbolOfStream(name); return !S.symbols.size || S.symbols.has(k) || (!isDefaultVenue(k) && !knownMissing(k)) }
@@ -1697,6 +1725,7 @@ function tableBeforeDiskBars(): Promise<unknown> | undefined {
 
 // ------------------------------------------------------------ 启动
 export async function initChart(): Promise<void> {
+  mountFoot()
   installDrawing({
     cells: () => cells, active, symbolOf: c => cfg(cells.find(x => x.el === c.el)).symbol, drawings: drawingsFor,
     changed: c => { const x = cells.find(y => y.el === c.el); if (x) drawingsChanged(x) },
@@ -1707,11 +1736,17 @@ export async function initChart(): Promise<void> {
   addEventListener('keyup', e => { if (e.key.startsWith('Arrow')) nudgeEnd() })
   $('#toolbar').addEventListener('click', onToolbarClick)
   $('#rail').addEventListener('click', onRailClick)
+  // 窗口变了（拖窗口、换屏、缩放）：开着的弹层按新视口重算宽并重新摆位
+  addEventListener('resize', () => { if (!pop) return; pop.el.style.width = `${popW(pop.id, innerWidth)}px`; const a = railBtn(pop.id); if (a) placePop(pop.el, a) })
   $('#sidePanel').addEventListener('click', onPanelClick)
   installWatch({
     openSymbol: k => openSymbol(k), renderPanel, refreshStreams, openSearch: () => openSearch(),
     current: () => cfg(active()).symbol, activeIndex: () => st.active, cellCount: () => cells.length,
     collapsed: () => isCollapsed('watch'), collapseBtn,
+    createAlert: k => openCreateAlert(k),
+    note: k => openSymbol(k, active(), () => openNote()),
+    toggleCompare: k => { if (k === cfg(active()).symbol) return; if (!toggleCompare(k)) toast(MAX_TOAST, '', 'compare', 2400) },
+    inCompare, toggleWatch: k => { toggleWatch(k) },
   })
   addEventListener('keydown', onKey)
   hooks.onSearch = openSearch
@@ -1720,8 +1755,8 @@ export async function initChart(): Promise<void> {
   $('#hdrAlerts').onclick = () => { go('chart'); openPanel('alerts') }
   installAlerts({ openSymbol: k => { go('chart'); openSymbol(k) } })
   installNoteSync()
-  onNotesSynced(() => { if (st.panel === 'notes') renderPanel() })
-  installTradesPanel(() => { if (st.panel === 'trades') renderPanel() })
+  onNotesSynced(() => { if (pop?.id === 'notes') renderRailPop() })
+  installTradesPanel(() => { if (pop?.id === 'trades') renderRailPop() })
   st.customIvs.forEach(registerCustomIv); st.cells.forEach(c => registerCustomIv(c.iv))
   startSeconds()
   onSecondsTick(k => { pendingSec.add(k); if (!secRAF) secRAF = requestAnimationFrame(flushSeconds) })

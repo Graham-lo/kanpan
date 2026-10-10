@@ -7,10 +7,15 @@
 .cmp-chip .ibtn { width: 24px; height: 24px; border-radius: 50%; color: var(--text-2); }
 .cmp-chip .ibtn:hover { color: var(--text-1); }
 .cmp-dlg .sr.cmp-off { cursor: default; }
-.cmp-dlg .sr.cmp-off > :not(.cmp-tag):not(.cmp-tgl) { opacity: .45; }
+/* 置灰按选中的那一家算（主图那只 / 满三只时没加的）；交易所记号不灰——点 / 悬停别家照样能加 */
+.cmp-dlg .sr.cmp-off > :not(.sr-tail):not(.sr-vs) { opacity: .45; }
+.cmp-dlg .sr-tail { display: flex; justify-content: center; }
+/* 已在对比里的那一家：记号实心强调（同行尾 ✓ 钮），悬停 / 选中不改 */
+.cmp-dlg .sr-v.in, .cmp-dlg .sr-v.in:hover { background: var(--accent); box-shadow: none; color: #fff; font-weight: 600; }
+.cmp-dlg .sr-v.in i { box-shadow: 0 0 0 1px #fff; }
 .cmp-dlg .cmp-tgl { border-radius: 50%; color: var(--text-2); }
 .cmp-dlg .cmp-tgl.on { background: var(--accent); color: #fff; }
 .cmp-dlg .cmp-tag { font-size: var(--t12); color: var(--text-3); text-align: center; }
 .legend .cmp-row .cmp-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .legend .cmp-mini { font-size: var(--t12); font-weight: 600; margin-left: var(--s2); }
-.tb-btn .tb-count { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 11px; line-height: 16px; text-align: center; font-weight: 600; }
+.tb-btn .tb-count { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--qon-bg); color: var(--text-1); font-size: var(--t11); line-height: 16px; text-align: center; font-weight: 600; }   /* 计数徽章：中性浮起块，不用强调色 */

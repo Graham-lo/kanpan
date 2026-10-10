@@ -123,7 +123,12 @@ export async function binancePx(symbol) {
 }
 /** 第 i 格回放：点底栏「回放」→ 输入起点 → 回车；speed 档、开始播 */
 export async function startReplay(page, i, at, speed = 4) {
-  await page.evaluate(i => document.querySelectorAll('.chart-cell')[i].querySelector('.cell-foot [data-act="replay"]').click(), i)
+  // 2026-10-10 起整页只有一条全局底栏（作用于当前格）：先把第 i 格设成当前格（格子 mousedown），再点底栏「回放」
+  await page.evaluate(i => {
+    const h = document.querySelectorAll('.chart-cell')[i].querySelector('.canvas-host')
+    h.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    document.querySelector('#chartFoot [data-act="replay"]').click()
+  }, i)
   const inp = page.locator('.chart-cell').nth(i).locator('.rp-bar input[data-rp="start"]')
   await inp.fill(sh(at)); await inp.press('Enter')
   await page.waitForFunction(() => !!window.__replay?.(), null, { timeout: 20000 })

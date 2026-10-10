@@ -188,7 +188,7 @@ async function modeLayouts() {
     ok(`布局 ${label}：${n} 格各自的品种周期对得上、没串数据`, bad.length === 0 && off.length === 0 && cs.length === n,
       bad.length ? bad.slice(0, 4).map(({ i, c, w }) => `#${i} 要 ${w.s}/${w.iv} 得 ${c.symbol}/${c.iv} 图 ${c.metaSym}/${c.metaIv} ${c.bars} 根`).join('；') : off.length ? off.map(x => `#${x.i} ${x.s} 收 ${x.last} 价 ${x.p}`).join('；') : `${cs.map(c => `${c.symbol.replace('USDT', '')}/${c.iv}`).join(' ')}`)
     const deg = cs.map(c => c.deg), rect = await page.evaluate(() => [...document.querySelectorAll('.chart-cell')].map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)] }))
-    const fitSubsFor = h => { const H = h - (h < 360 ? 28 : 32) - 28; if (H <= 0) return 0; const m = Math.min(H, Math.max(160, Math.ceil(H * 0.4))); return Math.min(8, Math.max(0, Math.floor((H - m) / 56))) }  // 同 src/chart/panes.ts degradeFor
+    const fitSubsFor = h => { const H = h - 28; if (H <= 0) return 0; const m = Math.min(H, Math.max(280, Math.ceil(H * 0.4))); return Math.min(8, Math.max(0, Math.floor((H - m) / 56))) }  // 同 src/chart/panes.ts degradeFor（2026-10-10：格子里没底栏、K 线主图留 280 才加副图）
     const wrongDeg = deg.map((d, i) => ({ d, r: rect[i], i })).filter(({ d, r }) => d.subs !== fitSubsFor(r[1]) || (d.legend === 'compact') !== (r[0] < 480 || r[1] < 360))
     const paneBad = cs.filter(c => c.panes.length !== 1 + Math.min(c.deg.subs, c.subs ?? 2))
     ok(`布局 ${label}：副图按格子剩下的高逐个留（放得下几个画几个）`, wrongDeg.length === 0 && paneBad.length === 0, `格子 ${rect[0].join('×')}，降级 ${JSON.stringify(deg[0])}，窗格 ${cs.map(c => c.panes.length).join('')}`)
@@ -381,19 +381,44 @@ async function modeHf(n = 300) {
   const e0 = errors.length, f0 = netFail.length
   await seed(null, 'layout=4&s=BTCUSDT&i=1h&panel=watch')
   await gc(); const h0 = (await cdp.send('Runtime.getHeapUsage')).usedSize
-  const ops = []
+  const ops = [], popBad = []
   const LAYLAB = LAYS.map(x => x[1])
+  const areaW = async () => Math.round((await page.locator('#chartArea').boundingBox())?.width ?? 0)
   for (let k = 0; k < n; k++) {
     const r = Math.random()
     let op
     try {
       if (r < 0.25) {
-        op = 'sym'; const rows = page.locator('#wTbl tr[data-sym]'); const c = await rows.count()
+        // 只点看得见的行：竖条「自选」把侧栏收起后行还留在 DOM 里（看不见、点不到），这时走 ⌘K 搜
+        op = 'sym'; const rows = page.locator('#wTbl tr[data-sym]:visible'); const c = await rows.count()
         if (c) await rows.nth(Math.floor(Math.random() * c)).click({ timeout: 1000 }); else { await page.keyboard.press('Meta+k'); await page.keyboard.type(rnd(SYMS).replace('USDT', '')); await page.keyboard.press('Enter') }
       } else if (r < 0.45) { op = 'iv'; await page.mouse.move(1200, 700); await page.keyboard.press(String(1 + Math.floor(Math.random() * 7))) }
       else if (r < 0.58) { op = 'layout'; await page.click('#tbLayout', { timeout: 1000 }); await page.locator('.menu .mi', { hasText: rnd(LAYLAB) }).first().click({ timeout: 1000 }) }
       else if (r < 0.68) { op = 'theme'; await page.click('#hdrTheme', { timeout: 1000 }) }
-      else if (r < 0.80) { op = 'panel'; const b = page.locator('#rail button[data-panel]'); const c = await b.count(); if (c) await b.nth(Math.floor(Math.random() * c)).click({ timeout: 1000 }) }
+      else if (r < 0.80) {
+        // 竖条：「自选」那颗开合侧栏；其余四颗（主力订单流 / 提醒 / 笔记 / 成交）2026-10-10 起点出弹层 .menu.pop、不占侧栏。
+        // 点开就核：弹层真开着、按钮 aria-expanded、K 线区宽度没变；再随机用「再点一下 / Esc / 点图上」收起并核收干净——
+        // 不留着它，免得盖住自选行让后面的「点自选」全变成点不到
+        op = 'panel'; const b = page.locator('#rail button[data-panel]'); const c = await b.count()
+        if (c) {
+          const bt = b.nth(Math.floor(Math.random() * c)), id = await bt.getAttribute('data-panel')
+          if (id === 'watch') await bt.click({ timeout: 1000 })
+          else {
+            op = 'pop'
+            const w0 = await areaW()
+            await bt.click({ timeout: 1000 }); await wait(60)
+            const n = await page.locator('.menu.pop').count(), exp = await bt.getAttribute('aria-expanded'), w1 = await areaW()
+            if (n !== 1 || exp !== 'true' || Math.abs(w1 - w0) > 1) popBad.push(`${id} 开：弹层 ${n} 个、aria-expanded=${exp}、K 线区 ${w0}→${w1}`)
+            const how = Math.floor(Math.random() * 3)
+            if (how === 0) await bt.click({ timeout: 1000 })
+            else if (how === 1) await page.keyboard.press('Escape')
+            else { const cb = await page.locator('.chart-cell').first().boundingBox(); if (cb) await page.mouse.click(cb.x + cb.width * 0.3, cb.y + cb.height * 0.4) }
+            await wait(60)
+            const left = await page.locator('.menu.pop').count(), exp2 = await bt.getAttribute('aria-expanded').catch(() => null)
+            if (left || exp2 === 'true') popBad.push(`${id} 用${['再点一下', 'Esc', '点图上'][how]}收不起来（弹层 ${left} 个、aria-expanded=${exp2}）`)
+          }
+        }
+      }
       else if (r < 0.88) { op = 'cell'; const c = await page.locator('.chart-cell').count(); const cb = await page.locator('.chart-cell').nth(Math.floor(Math.random() * c)).boundingBox(); if (cb) await page.mouse.click(cb.x + cb.width * 0.3, cb.y + cb.height * 0.4) }
       else if (r < 0.94) { op = 'wheel'; await page.mouse.move(900, 600); await page.mouse.wheel(0, (Math.random() - 0.5) * 600) }
       else { op = 'esc'; await page.keyboard.press('Escape') }
@@ -428,9 +453,12 @@ async function modeHf(n = 300) {
   const market = w.live.filter(l => /market\/stream/.test(l.url))
   ok('高频切换后：每格的 K 线与行情流都订着、行情连接 ≤ ⌈流数/200⌉', missing.length === 0 && market.length <= Math.max(1, Math.ceil(sn.subscribed.length / 200)), `缺 ${missing.join(',') || '无'}；连接 ${market.length} 条 ${sn.conns.join('/')} 路；开过 ${w.opened}`)
   const tb = await page.evaluate(() => document.querySelector('#tbSymbol > span:not(.kind):not(.badge)')?.textContent)
-  ok('高频切换后：顶栏品种 = 当前格', tb === s.cells[s.active]?.symbol, `${tb} / ${s.cells[s.active]?.symbol}`)
+  // 顶栏 10-08 起写展示代号（headName：XRPUSDT → XRP，f244673f），按「当前格品种以它打头」认
+  const curK = s.cells[s.active]?.symbol || ''
+  ok('高频切换后：顶栏品种 = 当前格', !!tb && curK.startsWith(tb), `${tb} / ${curK}`)
   await gc(); const h1 = (await cdp.send('Runtime.getHeapUsage')).usedSize
   log(`堆 ${(h0 / 1e6).toFixed(1)} → ${(h1 / 1e6).toFixed(1)} MB；操作分布 ${Object.entries(ops.reduce((a, o) => (a[o] = (a[o] || 0) + 1, a), {})).map(([k, v]) => `${k}×${v}`).join(' ')}`)
+  ok('高频切换：竖条弹层每次都开得出、收得起，开着时 K 线区宽度不变', popBad.length === 0, popBad.slice(0, 4).join('；') || `弹层开合 ${ops.filter(o => o === 'pop').length} 次`)
   const errs = errors.slice(e0)
   ok('高频切换：没有控制台报错 / 未捕获异常', errs.length === 0, errs.slice(0, 6).join(' | '))
   const nf = netFail.slice(f0).filter(x => !/ERR_ABORTED/.test(x))

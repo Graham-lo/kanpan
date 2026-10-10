@@ -177,6 +177,29 @@ html[data-skin="terra"][data-theme="dark"] {
 :root, [data-theme="light"] { --accent-2: #5B7CFA; --card-edge: transparent; }
 [data-theme="dark"] { --accent-2: #7FA2FF; --card-edge: var(--line); }
 
+/* ---------------------------------------------------------------- chrome 的灰阶、分隔与控件群（2026-10-10，用户：「学的是核心理念」）
+ * 图表之外的框架（顶栏、工具条、自选 / 详情、底栏、菜单）照一个理念收：层级靠对比与字重，不靠颜色、底块、大小差。
+ *   灰阶只三级：--text-1 主角 / 当前 · --text-2 正文、数值 · --text-3 标签、组名、辅助；颜色只给涨跌（和必要的强调当前态）。
+ *   全局的 --text-2 与 --text-3 离得太近（浅色 #4D5462 / #5C6270），在 chrome 里分不出「数值」和「标签」两级——
+ *   chrome 区域里把 --text-2 换成 --ink-2（往 --text-1 靠 35%），--text-3 不动（守着 4.5:1，tests/b-contrast.test.ts）。
+ *   画布、图例、坐标轴不在这些区域里，不受影响。
+ * 这几个令牌都由皮肤 / 深浅的基础色算出来（在 html 上一次算好往下继承），三套皮肤 × 深浅自动成立，不另写色值。 */
+:root {
+  --ink-2: color-mix(in srgb, var(--text-1) 35%, var(--text-2));
+  /* 唯一一种分隔线：主文字色 8%，框架层、内容层上都是同一道淡线 */
+  --sep: color-mix(in srgb, var(--text-1) 8%, transparent);
+  /* 控件群凹槽：主文字色 5%（--well 半透明，叠在哪层都对；--well-solid 是叠在框架上的实色，给「浮起块」内描边用） */
+  --well: color-mix(in srgb, var(--text-1) 5%, transparent);
+  --well-solid: color-mix(in srgb, var(--text-1) 5%, var(--frame));
+  /* 当前段浮起：浅色是内容色（柔白），深色内容色和框架太近，提一级 */
+  --well-on: var(--surface);
+  /* 行悬停 / 当前行：极轻的中性面差 */
+  --row-hover: color-mix(in srgb, var(--text-1) 3%, var(--surface));
+  --row-on: color-mix(in srgb, var(--text-1) 6%, var(--surface));
+}
+[data-theme="dark"] { --well-on: color-mix(in srgb, var(--text-1) 11%, var(--surface)); --row-on: color-mix(in srgb, var(--text-1) 7%, var(--surface)); }
+.app-header, #page-chart > .chart-toolbar, #page-chart > .side-panel, #page-chart > .rail, .chart-foot, .menu:not(.pop) { --text-2: var(--ink-2); }
+
 /* 主图「关键价位」两级：日（昨高低、今开、昨控与价值区）与周（上周高低）。
  * 避开涨跌红绿、提醒橙与成交量分布的控制点橙；轴上小片是白字，浅色过 4.5:1。 */
 :root, [data-theme="light"] { --kl-day: #6D5BD0; --kl-week: #0E7C86; }
@@ -242,44 +265,51 @@ button { background: none; border: 0; padding: 0; cursor: pointer; }
   border-bottom: 1px solid var(--line);
   position: relative; z-index: 5;
 }
-.brand { color: var(--text-1); text-decoration: none; display: flex; align-items: center; gap: var(--s2); font-weight: 650; font-size: var(--t16); letter-spacing: -.01em; }
+.brand { color: var(--text-1); text-decoration: none; display: flex; align-items: center; gap: var(--s2); font-weight: 600; font-size: var(--t16); letter-spacing: -.01em; }
 .brand .mark { width: 24px; height: 24px; }
-.nav { display: flex; gap: var(--s1); height: 100%; }
+/* 导航：13 / 500 淡字，当前页满对比 + 600 + 一道主文字色短线（不用强调色） */
+.nav { display: flex; gap: 0; height: 100%; }
 .nav a {
   display: flex; align-items: center; padding: 0 var(--s3);
-  color: var(--text-2); text-decoration: none; font-size: var(--t14); font-weight: 500;
+  color: var(--text-3); text-decoration: none; font-size: var(--t13); font-weight: 500;
   position: relative; transition: color var(--d-fast) var(--ease);
 }
 .nav a:hover { color: var(--text-1); }
 .nav a[aria-current="page"] { color: var(--text-1); font-weight: 600; }
 .nav a[aria-current="page"]::after {
   content: ""; position: absolute; left: var(--s3); right: var(--s3); bottom: 0; height: var(--stroke-mark);
-  background: var(--accent); border-radius: 2px 2px 0 0;
+  background: var(--text-1); border-radius: 2px 2px 0 0;
 }
 .header-spacer { flex: 1; }
+/* 搜索触发器：一块轻凹槽（主文字色 5%），无描边；宽跟视口（200–320） */
 .search-trigger {
   display: flex; align-items: center; gap: var(--s2);
-  width: 320px; height: var(--h-md); padding: 0 var(--s2) 0 var(--s3);
-  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm);
-  color: var(--text-3); text-align: left;
-  transition: border-color var(--d-fast) var(--ease), background var(--d-fast) var(--ease);
+  width: clamp(calc(var(--s10) * 5), 17vw, calc(var(--s10) * 8)); height: var(--h-md); padding: 0 var(--s1) 0 var(--s3);
+  background: var(--well); border: 0; border-radius: var(--r-md);
+  color: var(--text-3); font-size: var(--t12); text-align: left;
+  transition: background var(--d-fast) var(--ease);
 }
-.search-trigger:hover { border-color: var(--line-strong); }
-.search-trigger span { flex: 1; }
+.search-trigger:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); }
+.search-trigger span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-trigger kbd { margin-left: 2px; }
 kbd {
-  font: 500 var(--t11)/16px var(--font-num); color: var(--text-2);
+  font: 500 var(--t11)/16px var(--font-num); color: var(--text-3);
   padding: 0 5px; min-width: 18px; text-align: center;
-  border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--r-xs);
-  background: var(--surface);
+  border: 1px solid var(--sep); border-radius: var(--r-xs);
+  background: transparent;
 }
 .header-actions { display: flex; align-items: center; gap: var(--s1); }
+/* 头像：中性小圆（主文字色 10% 底 + 主文字色字），不拿品牌渐变；没登录退到凹槽底 + 淡字 */
 .avatar {
-  width: 32px; height: 32px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: #fff;
-  display: grid; place-items: center; font-weight: 600; font-size: var(--t13);
+  width: var(--h-sm); height: var(--h-sm); border-radius: 50%;
+  background: color-mix(in srgb, var(--text-1) 10%, transparent); color: var(--text-1);
+  display: grid; place-items: center; font-weight: 600; font-size: var(--t12);
   margin-left: var(--s2);
+  transition: background var(--d-fast) var(--ease);
 }
-.avatar.out { background: var(--surface-3); color: var(--text-2); }
+.avatar:hover { background: color-mix(in srgb, var(--text-1) 14%, transparent); }
+.avatar.out { background: var(--well); color: var(--text-3); }
+.avatar.out:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-1); }
 
 /* 通用图标按钮 */
 .ibtn {
@@ -391,14 +421,17 @@ kbd {
   animation: pop var(--d-pop) var(--ease);
 }
 @keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.menu:focus { outline: none; }  /* 弹出时焦点落在菜单本身（好接 Esc / 上下键），框不画；落到项上才有焦点环 */
+/* 菜单项：正文 --text-2（chrome 里是 --ink-2），悬停 / 键盘当前 / 已选上到 --text-1；快捷键与组名 11 淡字 */
 .menu .mi {
   display: flex; align-items: center; gap: var(--s2); width: 100%; height: var(--h-md); padding: 0 var(--s3) 0 var(--s2);
-  border-radius: var(--r-sm); text-align: left; color: var(--text-1);
+  border-radius: var(--r-sm); text-align: left; color: var(--text-2);
 }
-.menu .mi:hover, .menu .mi.active { background: var(--surface-3); }
+.menu .mi:hover, .menu .mi.active { background: var(--well); color: var(--text-1); }
+.menu .mi.checked { color: var(--text-1); font-weight: 500; }
 .menu .mi .icon { color: var(--text-2); }
 .menu .mi .label { flex: 1; }
-.menu .mi .sc { color: var(--text-3); font-size: var(--t12); }
+.menu .mi .sc { color: var(--text-3); font-size: var(--t11); }
 .menu .mi.checked .check { opacity: 1; }
 .menu .mi .check { opacity: 0; color: var(--accent-text); }
 /* 行尾小按钮（周期的收藏星、自定义周期的 ×）：没钉的星只在悬停这一行时出现，钉了的常亮 */
@@ -407,8 +440,12 @@ kbd {
 .menu .mi .mi-trail .pin { opacity: 0; }
 .menu .mi:hover .mi-trail .pin, .menu .mi:focus-visible .mi-trail .pin { opacity: 1; }
 .menu .mi .mi-trail .pin.on { opacity: 1; color: var(--accent-text); }
-.menu .sep { height: 1px; background: var(--line); margin: var(--s1) var(--s2); }
-.menu .mh { padding: var(--s2) var(--s3) var(--s1); font-size: var(--t11); color: var(--text-3); font-weight: 600; letter-spacing: .02em; }
+.menu .sep { height: 1px; background: var(--sep); margin: var(--s1) var(--s2); }
+.menu .mh { padding: var(--s2) var(--s3) var(--s1); font-size: var(--t11); color: var(--text-3); font-weight: 500; letter-spacing: .4px; }
+/* 右竖条弹层（主力订单流 / 提醒 / 笔记 / 成交，ui/overlay.ts popover）：贴竖条左边盖在图上，宽由调用方给，高按内容、到底边为止 */
+.menu.pop { padding: 0; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.menu.pop > * { min-width: 0; }
+.menu.pop .scroll { flex: 1; min-height: 0; overflow: auto; }
 
 /* 对话框 */
 .scrim {
@@ -444,6 +481,7 @@ kbd {
   grid-template-rows: var(--toolbar-h) 1fr;
   gap: var(--gutter);
   padding: var(--gutter);
+  --gfoot-h: var(--h-md);   /* 图表区下面那条全局底栏（pages/chartFoot.ts GFOOT_H = --h-md 32），layoutSlots 给它一行 */
 }
 #page-chart.panel-closed { grid-template-columns: var(--drawbar-w) 1fr 0 var(--rail-w); }
 #page-chart.panel-closed .side-panel { display: none; }
@@ -468,27 +506,28 @@ kbd {
 @container toolbar (max-width: 880px) {
   #tbUndo, #tbRedo, .tb-right .tb-sep { display: none; }
 }
-.tb-sep { width: 1px; height: 20px; background: var(--line); margin: 0 var(--s1); flex: none; }
+.tb-sep { width: 1px; height: var(--s4); background: var(--sep); margin: 0 var(--s1); flex: none; }
+/* 工具条按钮：13 / 500 正文灰，悬停上到主文字色 + 极轻底；开着（.on）= 主文字色，不用强调色 */
 .tb-btn {
-  height: var(--h-md); padding: 0 var(--s2); border-radius: var(--r-sm);
-  display: inline-flex; align-items: center; gap: 6px; color: var(--text-1); font-weight: 500; white-space: nowrap;
+  height: var(--h-md); padding: 0 var(--s2); border-radius: var(--r-md);
+  display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: var(--t13); font-weight: 500; white-space: nowrap;
   transition: background var(--d-fast) var(--ease), color var(--d-fast) var(--ease);
 }
 .tb-btn .icon { color: var(--text-2); }
-.tb-btn:hover { background: var(--surface-3); }
+.tb-btn:hover { background: var(--well); color: var(--text-1); }
 .tb-btn:hover .icon { color: var(--text-1); }
-.tb-btn.on { color: var(--accent-text); }
-.tb-btn.on .icon { color: var(--accent-text); }
-.symbol-btn { font-weight: 650; font-size: var(--t14); padding: 0 var(--s2) 0 6px; }
-.symbol-btn .kind { font-weight: 500; color: var(--text-2); font-size: var(--t12); }
+.tb-btn.on { color: var(--text-1); }
+.tb-btn.on .icon { color: var(--text-1); }
+.symbol-btn { font-weight: 600; font-size: var(--t14); color: var(--text-1); padding: 0 var(--s2) 0 6px; }
+.symbol-btn .kind { font-weight: 500; color: var(--text-3); font-size: var(--t11); }
 .intervals { display: flex; align-items: center; gap: 2px; }
 .intervals button {
   height: var(--h-sm); min-width: 36px; padding: 0 var(--s2); border-radius: var(--r-sm);
   color: var(--text-2); font-weight: 500; white-space: nowrap; flex: none;
   transition: background var(--d-fast) var(--ease), color var(--d-fast) var(--ease);
 }
-.intervals button:hover { background: var(--surface-3); color: var(--text-1); }
-.intervals button[aria-pressed="true"] { color: var(--accent-text); background: var(--accent-soft); font-weight: 600; }
+.intervals button:hover { background: var(--well); color: var(--text-1); }
+.intervals button[aria-pressed="true"] { color: var(--text-1); background: var(--well-on); font-weight: 600; }
 .tb-right { margin-left: auto; display: flex; align-items: center; gap: var(--s1); }
 
 .side-panel { grid-column: 3; grid-row: 1 / 3; display: flex; flex-direction: column; overflow: hidden; position: relative; }
@@ -506,18 +545,45 @@ kbd {
 .chart-area.zoomed .chart-cell.active { outline-color: transparent; }
 .chart-cell .canvas-host { position: relative; flex: 1; min-height: 0; }
 .chart-cell canvas { position: absolute; inset: 0; display: block; }
-.chart-cell .cell-foot {
-  height: 32px; display: flex; align-items: center; gap: 2px; padding: 0 var(--s2);
-  border-top: 1px solid var(--chart-scale-line); flex: none;
+/* 全局底栏（2026-10-10，原型 web-layout-2026-10-10 第 4 节）：整页只有图表区正下方这一条，作用于当前格；
+ * 左头「作用于 · 格 N · 代号」（一图不写）· 布局集 · 截图 · 回放 · 导出，右头 1天…全部 · 钟 · 连接点 · 对数 · 自动。
+ * 仍带 .cell-foot 类：按钮、钟、连接点的样式与回归脚本的选择器沿用 */
+.chart-foot {
+  height: var(--gfoot-h); display: flex; align-items: center; gap: 2px; padding: 0 var(--s2);
+  min-width: 0; overflow: hidden; container-type: inline-size;
 }
-.cell-foot button { height: var(--h-xs); padding: 0 var(--s2); border-radius: var(--r-xs); color: var(--text-2); font-size: var(--t12); font-weight: 500; }
-.cell-foot button:hover { background: var(--surface-3); color: var(--text-1); }
-.cell-foot button[aria-pressed="true"] { color: var(--accent-text); }
+.chart-foot .foot-target { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 var(--s2); margin-right: var(--s1); color: var(--text-1); font-size: var(--t12); font-weight: 500; white-space: nowrap; }
+/* 底栏层级：时间范围是一排 12 / 400 淡字（悬停上主文字色），对数 / 自动开着 = 主文字色 500，钟是正文灰等宽数字，分隔一道淡线 */
+.chart-foot [data-range] { color: var(--text-3); font-weight: 400; }
+.chart-foot [data-range]:hover { color: var(--text-1); }
+.chart-foot .tb-sep { height: var(--s3); background: var(--sep); }
+.chart-foot .foot-set { color: var(--text-2); }
+.chart-foot .foot-right { min-width: 0; }
+.chart-foot .foot-right > * { flex: none; }
+/* 图表列窄（小屏、侧栏 / 盘口都开着）时一档一档收，不溢出：先收钟和后四个时间范围，再收全部时间范围与布局集名字 */
+@container (max-width: 1000px) {
+  .chart-foot [data-range]:nth-of-type(n+5), .chart-foot .clock, .chart-foot .clock + .conn-dot + .tb-sep { display: none; }
+}
+@container (max-width: 700px) {
+  .chart-foot [data-range], .chart-foot .foot-right > .tb-sep { display: none; }
+  .chart-foot .foot-set { max-width: calc(var(--s10) + var(--s8)); }
+}
+/* 每格右下角「对数 / 自动」：悬停或当前格才露出来，点了只改这一格；一图与放大一格时由全局底栏管，不出 */
+.chart-cell .cfoot {
+  position: absolute; right: var(--s1); bottom: var(--s1); z-index: 3; display: flex; gap: 2px;
+  visibility: hidden; opacity: 0; transition: opacity var(--d-fast) var(--ease), visibility 0s linear var(--d-fast);
+}
+.chart-cell:hover .cfoot, .chart-cell.active .cfoot { visibility: visible; opacity: 1; transition-delay: 0s; }
+.chart-area[data-layout="1"] .cfoot, .chart-area.zoomed .cfoot { display: none; }
+.cfoot button { height: calc(var(--h-xs) - var(--s1)); padding: 0 calc(var(--s1) + 2px); border-radius: var(--r-xs); font-size: var(--t12); font-weight: 500; color: var(--text-2); background: color-mix(in srgb, var(--surface) 80%, transparent); }
+.cfoot button:hover { color: var(--text-1); background: var(--surface-3); }
+.cfoot button[aria-pressed="true"] { color: var(--accent-text); font-weight: 600; }
+.cell-foot button { height: var(--h-xs); padding: 0 var(--s2); border-radius: var(--r-sm); color: var(--text-3); font-size: var(--t12); font-weight: 500; }
+.cell-foot button:hover { background: var(--well); color: var(--text-1); }
+.cell-foot button[aria-pressed="true"] { color: var(--text-1); }
 .cell-foot .foot-right { margin-left: auto; display: flex; align-items: center; gap: 2px; }
-/* 钟每秒改一次字：定宽定高 + contain: strict，改字只在这一小块里排版，不牵动底栏与格子；
- * 多图里只有当前格的钟在走（pages/chart.ts paintClock），别的格子的钟藏起来但照样占位，切当前格时底栏不跳 */
-.cell-foot .clock { color: var(--text-2); font-size: var(--t12); padding: 0 var(--s2); display: inline-block; box-sizing: border-box; width: 112px; height: 20px; line-height: 20px; white-space: nowrap; contain: strict; }
-.chart-area:not([data-layout="1"]):not(.zoomed) .chart-cell:not(.active) .cell-foot .clock { visibility: hidden; }
+/* 钟每秒改一次字：定宽定高 + contain: strict，改字只在这一小块里排版，不牵动底栏 */
+.cell-foot .clock { color: var(--text-2); font-size: var(--t12); padding: 0 var(--s2); display: inline-block; box-sizing: content-box; width: 7.9em; height: calc(var(--h-xs) - var(--s1)); line-height: calc(var(--h-xs) - var(--s1)); white-space: nowrap; contain: strict; }
 
 /* 图例（画布左上，HTML 叠层） */
 .legend { position: absolute; left: var(--s3); top: var(--s2); pointer-events: none; z-index: 2; font-size: var(--t13); line-height: 24px; }
@@ -544,13 +610,22 @@ kbd {
 @keyframes hkSpin { to { transform: rotate(360deg); } }
 @keyframes hkFadeIn { from { opacity: 0; } }
 @keyframes hkBreathe { 50% { opacity: .45; } }
-/* 名字 + 参数 + 工具按钮一组（lhead），读数盒在它后面。工具按钮固定宽、绝对定位叠在读数开头、只切 visibility：
- * 悬停出 / 收按钮、读数变宽变窄都不让任何东西挪位，按钮的位置只由名字与参数决定（2026-10-07「悬停一直跳、点不到隐藏」） */
-.legend .lhead, .pane-legend .lhead { display: flex; align-items: center; gap: 0 var(--s2); position: relative; }
-.legend .tools, .pane-legend .tools { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: 2px; display: flex; gap: 0; visibility: hidden; z-index: 1; background: var(--chart-bg); border-radius: var(--r-xs); }
+/* 名字 + 参数 + 工具按钮一组（lhead），读数盒在它后面。工具按钮固定宽、绝对定位、只切 visibility：悬停出 / 收按钮不让任何东西挪位
+ * （2026-10-07「悬停一直跳、点不到隐藏」）。2026-10-10 审查 C6：按钮原来锚在 lhead 右缘、叠在读数开头，悬停时值被盖住——
+ * 改锚在整行（lrow / 并排的 dchip）右缘，出在读数后面：读数的位置一点不动。按钮左缘压进行的右内边距，和行之间没有缝，
+ * 指针从读数滑到按钮上不会掉出 :hover */
+.legend .lhead, .pane-legend .lhead { display: flex; align-items: center; gap: 0 var(--s2); }
+.legend .lrow, .pane-legend .lrow, .legend .lrow.dense .dchip { position: relative; }
+.legend .tools, .pane-legend .tools { position: absolute; left: calc(100% - var(--s1)); top: 50%; transform: translateY(-50%); display: flex; gap: 0; visibility: hidden; z-index: 1; background: var(--chart-bg); border-radius: var(--r-xs); }
+/* 并排（dense）的块：按钮出在这一块右缘外（left: 100%），后面那一块悬停期间往右让出按钮的宽度（几颗 × 每颗 --h-sm 宽 + 一点缝），
+ * 按钮不盖下一块。只挪后面的块：被悬停这一块不变宽、不会因此折到下一行，它的读数一点不动（2026-10-10 审查 C6 补） */
+.legend .lrow.dense .dchip .tools { left: 100%; }
+.legend .lrow.dense .dchip:hover + .dchip { margin-left: calc(2 * var(--h-sm) + var(--s1) - var(--s3)); }
+.legend .lrow.dense .dchip:hover:has(.tools > :nth-child(3)) + .dchip { margin-left: calc(3 * var(--h-sm) + var(--s1) - var(--s3)); }
+.legend .lrow.dense .dchip:hover:has(.tools > :nth-child(4)) + .dchip { margin-left: calc(4 * var(--h-sm) + var(--s1) - var(--s3)); }
 .legend .lrow:not(.dense):hover .tools, .legend .dchip:hover .tools, .pane-legend .lrow:hover .tools { visibility: visible; }
 /* 图例悬浮按钮照 TradingView 量的：每颗 28 宽、和行一样 24 高，图标 18（原来 24×24 配 16 的图标，用户 2026-10-08 说太小不好点） */
-.legend .tools .ibtn, .pane-legend .tools .ibtn { width: 28px; height: 24px; border-radius: var(--r-xs); }
+.legend .tools .ibtn, .pane-legend .tools .ibtn { width: var(--h-sm); height: var(--h-xs); border-radius: var(--r-xs); }
 :is(.legend, .pane-legend) .tools .ibtn .icon-16 { width: 18px; height: 18px; }
 .legend [data-v] b { font-weight: inherit; }
 .legend .lrow.hidden-ind .ind-name, .legend .lrow.hidden-ind .vals { opacity: .45; }
@@ -603,7 +678,8 @@ kbd {
   transition: background var(--d-fast) var(--ease), color var(--d-fast) var(--ease);
 }
 .chip:hover { background: var(--surface-3); color: var(--text-1); }
-.chip[aria-pressed="true"] { background: var(--accent); color: #fff; }
+/* 选中：中性浮起（主文字色 10% + 主文字色 600），不用强调色填充（2026-10-10 chrome 理念） */
+.chip[aria-pressed="true"] { background: color-mix(in srgb, var(--text-1) 10%, transparent); color: var(--text-1); font-weight: 600; }
 
 /* 表格 */
 .tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
@@ -635,34 +711,55 @@ kbd {
 @keyframes flashDown { from { background: color-mix(in srgb, var(--down) 18%, transparent); } }
 
 /* 品种详情 */
-.detail { border-top: 1px solid var(--line); padding: var(--s3) var(--s4); flex: none; }
+/* 详情卡层级（2026-10-10）：主角只有大价格（24 / 600）；名字 14 / 500，其余标签 11 / 500 / --text-3、数值 12 / 400 / --text-2 等宽；
+ * 带正负的数（持仓 24h、费率、基差、比值）照旧走涨跌色——卡上只有这一种颜色 */
+.detail { border-top: 1px solid var(--sep); padding: var(--s3) var(--s4); flex: none; }
 .detail .dh { display: flex; align-items: center; gap: var(--s2); height: 36px; margin-right: calc(-1 * var(--s3)); }
 .detail .dh .names { flex: 1; min-width: 0; }
-.detail .dh .code { font-size: var(--t16); font-weight: 650; line-height: 20px; }
-.detail .dh .code .kind { color: var(--text-2); font-weight: 400; font-size: var(--t12); margin-left: var(--s2); }
-.detail .dh .cn { color: var(--text-2); font-size: var(--t12); line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.detail .dh .code { font-size: var(--t14); font-weight: 500; line-height: 20px; color: var(--text-1); }
+.detail .dh .code .kind { color: var(--text-3); font-weight: 500; font-size: var(--t11); margin-left: var(--s2); }
+.detail .dh .cn { color: var(--text-3); font-size: var(--t11); font-weight: 500; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.detail .dh .cn .num { color: var(--text-2); font-weight: 400; }
+/* 星：开着只靠实心字形，不垫强调色块 */
+.detail .dh .ibtn[aria-pressed="true"] { background: none; }
+.detail .dh .ibtn[aria-pressed="true"]:hover { background: var(--well); }
+/* 名词说明的虚线下划线压淡，不和标签抢 */
+.detail .term { border-bottom-color: color-mix(in srgb, var(--text-3) 30%, transparent); }
 .detail .dh .secs { margin-left: var(--s2); }
 .detail .sec-link { color: var(--text-2); font-size: var(--t12); padding: 0 4px; border-radius: var(--r-xs); }
 .detail .sec-link + .sec-link::before { content: "·"; margin-right: 6px; color: var(--text-3); }
 .detail .sec-link:hover { color: var(--accent-text); }
 .detail.collapsed { padding-top: var(--s2); padding-bottom: var(--s2); }
 .detail.collapsed > :not(.dh) { display: none; }
-.detail .px { display: flex; align-items: baseline; gap: var(--s3); margin-top: 6px; }
-.detail .px .big { font-size: var(--t32); line-height: 36px; font-weight: 600; letter-spacing: -.02em; }
-.detail .px .chg { font-size: var(--t14); font-weight: 500; }
+.detail .px { display: flex; align-items: baseline; gap: var(--s2); margin-top: var(--s1); }
+.detail .px .big { font-size: var(--t24); line-height: var(--s8); font-weight: 600; letter-spacing: -.01em; color: var(--text-1); }   /* 主角：中性 text-1，方向只给旁边的涨跌 */
+.detail .px .big:is(.up, .down) { color: var(--text-1); }
+.detail .px .chg { font-size: var(--t13); font-weight: 500; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3) var(--s4); margin-top: var(--s4); }
 .stats.cols3 { grid-template-columns: 1fr 1fr 1fr; gap: var(--s3) var(--s3); }
-.detail .range { display: flex; align-items: center; gap: var(--s2); margin-top: 6px; height: 16px; font-size: var(--t12); color: var(--text-2); }
-.stats.inline { grid-template-columns: 1fr 1fr 1fr; gap: 2px var(--s4); margin-top: 10px; }
+.detail .range { margin-top: var(--s2); font-size: var(--t11); font-weight: 500; color: var(--text-3); }
+.detail .range .lh { display: flex; justify-content: space-between; line-height: var(--s4); }
+.detail .range .lh b { font-size: var(--t12); font-weight: 400; color: var(--text-2); margin-left: var(--s1); }
+.stats.inline { grid-template-columns: 1fr 1fr 1fr; gap: 2px var(--s4); margin-top: var(--s3); }
 .stats.inline > div { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; height: 22px; line-height: 22px; min-width: 0; }
 .stats.inline .k { flex: none; }
 .stats.inline .v { margin: 0; font-size: var(--t13); line-height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail .stats.inline .k { font-size: var(--t11); font-weight: 500; line-height: 22px; color: var(--text-3); }
+.detail .stats.inline .v { font-size: var(--t12); font-weight: 400; color: var(--text-2); }
+.detail .stats.inline .v:is(.up, .down) { font-weight: 500; }
+.detail .stats.inline .v.up { color: var(--up-text); }
+.detail .stats.inline .v.down { color: var(--down-text); }
 /* 侧栏窄于 400（sidebar.ts DETAIL_2COL_BELOW）时两列：三列每格只剩 85–100 px，数字会被截成省略号；高度由 fitStack 同步加 48 */
 .detail.two .stats.inline { grid-template-columns: 1fr 1fr; }
-.detail .range .bar { flex: 1; height: var(--stroke-bar); border-radius: 2px; background: linear-gradient(90deg, var(--down), var(--up)); position: relative; opacity: .9; }
+.detail .range .bar { margin: var(--s2) var(--r-sm) var(--s1); height: var(--stroke-bar); border-radius: 2px; background: linear-gradient(90deg, var(--down), var(--up)); position: relative; opacity: .9; }
 .detail .range .bar i { position: absolute; top: -4px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 2px var(--text-1); }
 .stats .k { font-size: var(--t12); color: var(--text-2); line-height: 16px; }
 .stats .v { font-size: var(--t14); line-height: 20px; font-weight: 500; margin-top: 2px; }
+/* 板块标签：卡底自成一行，折行全显、不截断（2026-10-10 §3） */
+.detail .sec-tags { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
+.detail .sec-tags .sec-link { height: var(--h-xs); padding: 0 var(--s2); border-radius: var(--r-sm); background: var(--well); font-size: var(--t11); font-weight: 500; color: var(--text-2); }
+.detail .sec-tags .sec-link + .sec-link::before { content: none; }
+.detail .sec-tags .sec-link:hover { color: var(--text-1); background: color-mix(in srgb, var(--text-1) 9%, transparent); }
 .detail .sectors { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s4); }
 .detail .sectors .tag { cursor: pointer; }
 .detail .sectors .tag:hover { color: var(--accent-text); background: var(--accent-soft); }
@@ -704,6 +801,33 @@ kbd {
 .vq { color: var(--text-3); font-weight: 400; }
 .search-foot { display: flex; gap: var(--s5); padding: var(--s3) var(--s5); border-top: 1px solid var(--line); color: var(--text-2); font-size: var(--t12); }
 .search-foot span { display: flex; align-items: center; gap: 6px; }
+/* 搜品种弹层按品种聚合（2026-10-10 审查 C2，pages/symbolSearch.ts）：一个品种一行，交易所是行尾一排小记号——
+ * 缩写 + 分类色圆点（规范 §2：币安 88 / Bybit 45 / Hyperliquid 330 / Coinbase 255，OKX 走中性），选中的那一家强调软底。
+ * 记号列左对齐，各家在每行的先后一致；对比弹层（.cmp-dlg）同一套行（pages/compare.ts 共用 rowHTML）。
+ * 尺寸跟视口走（用户硬规矩：不同屏幕 / 分辨率都不写死）：宽按视口夹在 900 以内；高按视口夹、列表区自己滚；
+ * 价 / 涨跌 / 成交额 / 记号几列在窄弹层里往下限收，名字列吃剩下的；记号的尺寸全按字号令牌的 em 走 */
+.sym-dlg { width: min(900px, 92vw); }
+.sym-dlg .search-list { height: min(520px, 52vh); min-height: var(--s12); flex: 1 1 auto; }
+.sym-dlg .sr { grid-template-columns: var(--h-sm) minmax(0, 1fr) minmax(72px, 112px) minmax(56px, 80px) minmax(56px, 88px) minmax(120px, 228px) var(--h-md); }
+.sym-dlg .sr-name { min-width: 0; }
+.sym-dlg .sr-name .n1, .sym-dlg .sr-name .n2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-vs { display: flex; flex-wrap: nowrap; gap: var(--s1); min-width: 0; overflow: hidden; }
+.sr-v {
+  --vc: var(--text-3);
+  display: inline-flex; align-items: center; gap: .36em; flex: none; height: 2em; padding: 0 .55em; border: 0; border-radius: var(--r-xs);
+  background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--text-2); font: inherit; font-size: var(--t11); font-weight: 500; line-height: 2em; cursor: pointer;
+}
+.sr-v i { width: .55em; height: .55em; border-radius: 50%; background: var(--vc); flex: none; }
+.sr-v:hover { background: var(--surface-3); color: var(--text-1); }
+.sr-v[aria-pressed="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent-text); font-weight: 600; }
+.sr-v[data-venue="binance"] { --vc: oklch(0.60 0.12 88); }
+.sr-v[data-venue="bybit"] { --vc: oklch(0.60 0.12 45); }
+.sr-v[data-venue="hyperliquid"] { --vc: oklch(0.60 0.12 330); }
+.sr-v[data-venue="coinbase"] { --vc: oklch(0.60 0.12 255); }
+[data-theme="dark"] .sr-v[data-venue="binance"] { --vc: oklch(0.76 0.10 88); }
+[data-theme="dark"] .sr-v[data-venue="bybit"] { --vc: oklch(0.76 0.10 45); }
+[data-theme="dark"] .sr-v[data-venue="hyperliquid"] { --vc: oklch(0.76 0.10 330); }
+[data-theme="dark"] .sr-v[data-venue="coinbase"] { --vc: oklch(0.76 0.10 255); }
 
 /* 指标对话框 */
 /* 尺寸照 TradingView 指标弹窗量的（2026-10-08）：标题 20、搜索框 40 高、左栏分类每格 40 高 14 号字、列表行 40 高；
@@ -798,7 +922,10 @@ kbd {
 .dir.short { color: var(--down-text); background: color-mix(in srgb, var(--down) 12%, transparent); }
 
 /* ---------------------------------------------------------------- 我的 */
-#page-me { grid-template-columns: 280px 1fr; gap: var(--gutter); padding: var(--gutter); }
+/* 2026-10-10 审查 A7：内容区原来横铺整屏、分组卡片封顶 880 贴左，2560 宽下右侧空 1600 px。
+ * 改成「导航 + 内容」整块居中，分组卡片铺满内容区。尺寸跟视口走：导航按视口宽夹在 200–280、内容封顶 1040；
+ * 视口窄到放不下两列（iPad 竖屏一类）导航折到上方一行横排 */
+#page-me { grid-template-columns: clamp(200px, 16vw, 280px) minmax(0, 1040px); justify-content: center; gap: var(--gutter); padding: var(--gutter); }
 .me-nav { padding: var(--s3); display: flex; flex-direction: column; gap: 2px; }
 .me-nav .who { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s3) var(--s4); border-bottom: 1px solid var(--line); margin-bottom: var(--s2); }
 .me-nav .who .avatar { width: 40px; height: 40px; margin: 0; font-size: var(--t16); }
@@ -807,8 +934,13 @@ kbd {
 .me-nav a:hover { background: var(--surface-3); color: var(--text-1); }
 .me-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent-text); }
 .me-nav a[aria-current="page"] .icon { color: var(--accent-text); }
-.me-body { padding: var(--s8) var(--s10); overflow: auto; }
-.me-body > * { max-width: 880px; }
+.me-body { padding: clamp(var(--s5), 2.2vw, var(--s8)) clamp(var(--s5), 2.8vw, var(--s10)); overflow: auto; }
+@media (max-width: 900px) {
+  #page-me { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .me-nav { flex-direction: row; align-items: center; gap: var(--s1); overflow-x: auto; padding: var(--s2); }
+  .me-nav .who { padding: 0 var(--s3) 0 var(--s1); margin: 0 var(--s2) 0 0; border-bottom: 0; border-right: 1px solid var(--line); flex: none; }
+  .me-nav a { flex: none; height: var(--h-md); }
+}
 .me-body h2 { margin: 0 0 var(--s1); font-size: var(--t24); line-height: 32px; font-weight: 600; }
 .me-body .lede { color: var(--text-2); margin: 0 0 var(--s6); }
 .group { border: 1px solid var(--line); border-radius: var(--r-md); margin-bottom: var(--s6); overflow: hidden; }
@@ -871,29 +1003,51 @@ kbd {
 .widget-watch { flex: 1; }
 /* 自选：标题、分类、按钮并成一行；表头 28、行高 34；列表放不下时滚轮能滚但不出滚动条 */
 .wv-head { height: 36px; gap: var(--s1); padding: 0 var(--s1) 0 var(--s4); }
-.wv-head h3 { flex: none; font-size: var(--t14); margin-right: var(--s2); }
-.wv-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow: hidden; }
-.wv-tabs .chip { height: 22px; padding: 0 8px; flex: none; }
+.wv-head h3 { flex: none; font-size: var(--t13); font-weight: 600; margin-right: var(--s2); }
+/* 分类胶囊：一块轻凹槽，当前那一节浮起内容色 + 主文字色（不再是蓝色实心药丸）；凹槽按内容宽，＋ / … 靠右 */
+.wv-tabs { display: flex; gap: 0; flex: 0 1 auto; min-width: 0; padding: 2px; border-radius: var(--r-md); background: var(--well); overflow-x: auto; scrollbar-width: none; }
+.wv-tabs::-webkit-scrollbar { display: none; }
+.wv-tabs .chip { height: calc(var(--h-xs) - 2px); padding: 0 var(--s2); flex: none; border-radius: var(--r-sm); font-size: var(--t12); font-weight: 500; color: var(--text-3); }
+.wv-tabs .chip:hover { background: none; color: var(--text-1); }
+.wv-tabs .chip[aria-pressed="true"] { background: var(--well-on); color: var(--text-1); font-weight: 600; box-shadow: 0 0 0 1px var(--sep); }
+.wv-tabs + .ibtn { margin-left: auto; }
 /* 滚动区的大小只由侧栏给（flex:1），和里面几百行无关：contain:strict 让表里改字 / 闪色只在这块里排版重画，
    不再带着整块侧栏和整页一起重排（C15 挂机实测：这一项省下约 2 个点主线程） */
 .wv-body { flex: 1; min-height: 0; contain: strict; }
 /* 表照 TradingView 自选（2026-10-08 用户嫌挤、字小）：代号与数字都 14、行高 34；两列数字定最小宽、列间 16，
    各自成一竖条对齐，不再贴在一起挤到右边 */
-.widget-watch .tbl th { height: 28px; font-size: var(--t12); color: var(--text-3); }
-.widget-watch .tbl td { height: 34px; font-size: var(--t14); }
+/* 行层级（2026-10-10）：代号 13 / 500 主文字色、计价 11 淡字；价格 13 / 400 正文灰等宽；涨跌 12 / 500 是这一行唯一的颜色 */
+.widget-watch .tbl th { height: 28px; font-size: var(--t11); font-weight: 500; color: var(--text-3); }
+.widget-watch .tbl td { height: 34px; font-size: var(--t13); }
 .widget-watch .tbl th:not(:first-child), .widget-watch .tbl td:not(:first-child) { padding-left: var(--s4); padding-right: 0; }
 .widget-watch .tbl th:last-child, .widget-watch .tbl td:last-child { padding-right: var(--s4); }
-.widget-watch .tbl .wc-px { min-width: 88px; color: var(--text-1); font-weight: 500; }
+.widget-watch .tbl .wc-px { min-width: 88px; color: var(--text-2); font-weight: 400; }
 .widget-watch .tbl th.wc-px { color: var(--text-3); }
-.widget-watch .tbl .wc-pct { min-width: 72px; font-weight: 500; }
-.widget-watch .tbl .sym { gap: 10px; }
-.widget-watch .tbl .sym b { font-weight: 650; letter-spacing: .01em; }
+.widget-watch .tbl .wc-pct { min-width: 72px; font-size: var(--t12); font-weight: 500; }
+.widget-watch .tbl .sym { gap: 10px; min-width: 0; }
+/* 品种列吃掉剩下的宽、代号放不下就省略号（侧栏跟视口变窄时不和价格列撞在一起） */
+.widget-watch .tbl td:first-child { width: 100%; max-width: 0; }
+.widget-watch .tbl .sym .wv-name { flex: 0 1 auto; }
+/* 侧栏跟视口收窄（1920 及以下出厂 280–288）：数字两列去掉定宽、列间收成 8，宽留给代号 */
+.widget-watch { container: watch / inline-size; }
+@container watch (max-width: 300px) {
+  .widget-watch .tbl td:first-child { padding-right: 0; }
+  .widget-watch .tbl td:not(:first-child) { padding-left: var(--s2); }
+  .widget-watch .tbl td:last-child { padding-right: var(--s3); }
+  .widget-watch .tbl .wc-px, .widget-watch .tbl .wc-pct { min-width: 0; }
+  .widget-watch .tbl .sym { gap: var(--s2); }
+}
+.widget-watch .tbl .sym b { font-weight: 500; letter-spacing: .01em; color: var(--text-1); }
+.widget-watch .wv-name b > span + span { color: var(--text-3); font-size: var(--t11); font-weight: 500; letter-spacing: 0; }
 .wv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 代号 + 计价分两段：放不下时计价（USDT）整段折到看不见的第二行，代号完整；代号本身也放不下才省略号 */
+.widget-watch .wv-name b { display: flex; flex-wrap: wrap; height: 1lh; overflow: hidden; }
+.widget-watch .wv-name b > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .widget-watch.collapsed .wv-body { display: none; }
 .widget-watch.collapsed .wv-target { display: none; }
 /* 多图：列表打开到哪一格（跟着活动格走），24 高一行 */
-.wv-target { flex: none; height: 24px; display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s4); font-size: var(--t12); color: var(--text-2); border-bottom: 1px solid var(--line); }
-.wv-target .icon-16 { color: var(--accent-text); }
+.wv-target { flex: none; height: 24px; display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s4); font-size: var(--t11); font-weight: 500; color: var(--text-3); border-bottom: 1px solid var(--sep); }
+.wv-target .icon-16 { color: var(--text-3); }
 .wv-target .sc { margin-left: auto; color: var(--text-3); font-family: var(--font-num); }
 /* 键盘光标：行内描边，不外扩（表格行外扩会被滚动容器裁掉） */
 .widget-watch .tbl tbody tr:focus { outline: none; }
@@ -904,6 +1058,25 @@ kbd {
 .widget-watch tr.wv-ghost td { opacity: .45; }
 .widget-watch tr.wv-ghost td:first-child { opacity: 1; }
 .widget-watch tr.wv-ghost .sym > :not(.wv-off) { opacity: .45; }
+/* 分节（2026-10-10 §3）：组头吸顶、带数量、点了折叠；分类胶囊只做跳转 */
+/* 组头 = 组名的写法：11 / 500 / 字距 .4 / 淡字，数量同色 400；上下各一道淡线 */
+.widget-watch .tbl tr.wv-grp th { position: sticky; top: 0; z-index: 2; height: var(--h-sm); padding: 0; background: var(--surface); border-bottom: 1px solid var(--sep); text-align: left; }
+.widget-watch .tbl tbody:not(:first-of-type) tr.wv-grp th { border-top: 1px solid var(--sep); }
+.wv-gh { display: flex; align-items: center; gap: var(--s1); width: 100%; height: 100%; padding: 0 var(--s3) 0 var(--s4); font-size: var(--t11); font-weight: 500; letter-spacing: .4px; color: var(--text-3); }
+.wv-gh:hover { color: var(--text-1); background: var(--row-hover); }
+.wv-gh .wv-gn { color: var(--text-3); font-weight: 400; letter-spacing: 0; }
+.wv-gh .wv-chev { margin-left: auto; color: var(--text-3); transition: transform var(--d-fast) var(--ease); }
+.wv-gh[aria-expanded="false"] .wv-chev { transform: rotate(-90deg); }
+/* 悬停 / 当前品种那一行：极轻的中性面差（不用强调色软底、代号不换色），当前行代号上 600 */
+.widget-watch .tbl tbody tr:hover td { background: var(--row-hover); }
+.widget-watch .tbl tbody tr.sel td { background: var(--row-on); }
+.widget-watch .tbl tbody tr.sel .sym b > span:first-child { font-weight: 600; }
+/* 行尾悬停快捷块「铃 · 星」：顶替涨跌幅那一格（只有一份，跟着悬停行挪） */
+.widget-watch .tbl .wc-pct { position: relative; }
+.widget-watch .tbl tr:hover .wc-pct [data-f="pct"] { visibility: hidden; }
+.wv-act { position: absolute; right: var(--s3); top: 50%; transform: translateY(-50%); display: flex; gap: var(--s1); }
+/* 块本身走 styles/icons.css 的磨砂底块（--h-xs 块、18 字形 1:1），按钮不再铺底 */
+.wv-q { display: grid; place-items: center; border-radius: var(--r-sm); background: none; }
 .wv-off { color: var(--text-3); margin-left: auto; }
 /* 品种列吃掉剩下的宽度，两列数字按内容宽 */
 .widget-watch .tbl td:first-child { max-width: 0; width: 100%; }
@@ -923,7 +1096,7 @@ kbd {
 .scroll.no-bar::-webkit-scrollbar { display: none; }
 
 /* 图表格子取不到 K 线时的空态，盖在画布上 */
-.cell-empty { position: absolute; inset: 0 0 32px 0; display: grid; place-items: center; background: var(--surface); z-index: 2; }
+.cell-empty { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface); z-index: 2; }
 .cell-empty .empty { display: grid; justify-items: center; gap: var(--s1); }
 
 /* ---------------------------------------------------------------- 分隔条（ui/splitter.ts）
@@ -941,16 +1114,9 @@ body.resizing-x, body.resizing-x * { cursor: col-resize !important; }
 body.resizing-y, body.resizing-y * { cursor: row-resize !important; }
 
 /* ---------------------------------------------------------------- 多图格子降级（按格子尺寸，见 pages/chart.ts watchCell）
- * 门槛常量在 chart/panes.ts，这里的数值照抄那边（改一处要两处一起改）：
- * c-narrow = 宽 < FOOT_TRIM_W（640）：底栏只留前四个时间范围、藏钟；
- * c-tiny   = 宽 < CELL_NO_VOL_W（420）：时间范围全藏；
- * c-short  = 高 < CELL_SHORT_H（360）：底栏 FOOT_SHORT_H（28）高（常态 FOOT_H 32）。
- * 图例的 dense / compact 两档在画布里做（chart.ts renderLegend，门槛 CELL_DENSE_H 500 / CELL_COMPACT_W 480）。 */
-.chart-cell.c-narrow .cell-foot [data-range]:nth-of-type(n+5),
-.chart-cell.c-narrow .cell-foot .clock { display: none; }
-.chart-cell.c-tiny .cell-foot [data-range],
-.chart-cell.c-tiny .cell-foot > .tb-sep { display: none; }
-.chart-cell.c-short .cell-foot { height: 28px; }
+ * 门槛常量在 chart/panes.ts，这里的数值照抄那边（改一处要两处一起改）。格子里 2026-10-10 起没有底栏了（全局底栏见上面 .chart-foot），
+ * c-tiny = 宽 < CELL_TINY_W（420）：回放条收起倍速（styles/replay.css）。
+ * 副图放不下（K 线主图要留 ≥ 280 px，panes.ts MAIN_KEEP_PX）就只画主图 + 成交量；主图都保不住 280 时连成交量也不画（panes.ts volFits）；图例的 dense / compact 两档在画布里做（chart.ts renderLegend，门槛 CELL_DENSE_H 500 / CELL_COMPACT_W 480）。 */
 .legend .lrow.compact .title { font-size: var(--t13); }
 /* dense：主图指标并成一行，放不下的折成「…」；悬停这一行时原地折行把藏起来的接着往下排（第一行的块不挪位——
  * 早先悬停时每块各占一行，右边的块会跳到第二行左边、从指针下溜走），悬停某个指标出它的工具 */
@@ -1006,9 +1172,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; }
  * 顶栏、图表工具条、左画线栏、右侧栏和缝是同一块 --frame：不是卡片、没有圆角和描边，悬停走 --frame-hover；
  * 图标静止就是 --text-1（原来 --text-2 加淡衬底，左右栏看着「虚」）。
  * 内容卡片（图表格子、抽屉、右侧面板）仍是 .card，比框架亮一级。 */
-.app-header { background: var(--frame); border-bottom: 0; }
-.app-header .search-trigger { background: var(--surface); border-color: var(--frame-line); }
-.app-header .search-trigger:hover { border-color: var(--line-strong); }
+.app-header { background: var(--frame); border-bottom: 0; box-shadow: inset 0 -1px 0 var(--sep); }
 .app-header .ibtn, .header-actions .ibtn { color: var(--text-1); }
 .app-header .ibtn:hover { background: var(--frame-hover); }
 .nav a:hover { color: var(--text-1); }
@@ -1020,37 +1184,35 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; }
 /* 框架上的按钮：静止满对比度，悬停一级框架色 */
 .chart-toolbar .tb-btn:hover,
 .chart-toolbar .ibtn:hover { background: var(--frame-hover); color: var(--text-1); }
-.chart-toolbar .tb-sep { background: var(--frame-line); }
+.chart-toolbar .tb-sep { background: var(--sep); }
 
 /* 右侧栏照 TradingView：48 宽、40 见方的格子；图标是 32 磨砂块（styles/icons.css），选中不再画侧边竖条 */
 .rail { gap: 4px; padding: 4px 0 6px; }
 .rail .ibtn { width: 40px; height: 40px; }
 
-/* 一级：品种 16 / 650；周期是一条分段控件，选中项实底 */
-.chart-toolbar #tbSymbol { font-size: var(--t16); font-weight: 650; letter-spacing: -.01em; }
+/* 主角：品种 14 / 600（工具条上唯一的 600 之外只有当前周期）；类别 11 淡字 */
+.chart-toolbar #tbSymbol { font-size: var(--t14); font-weight: 600; letter-spacing: 0; }
+/* 周期是一块轻凹槽（主文字色 5%、圆角 8），功能与排列不动。每颗点按面积仍是 32 × 32（规范第 4 节）：
+ * 浮起块用同色内描边往里收 3 px 画出来（看着是 26 高的一块内容色 + 一道淡线），不缩按钮本身 */
 .chart-toolbar .intervals {
-  gap: 0; padding: 0; border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--frame-hover) 55%, var(--frame));
+  gap: 0; padding: 0; border-radius: var(--r-md);
+  background: var(--well-solid);
 }
-/* 工具条 38 高、上面每颗按钮 32 高（规范第 4 节），点按面积 ≥ 32 × 32；字号仍是正文 13 */
-.chart-toolbar .intervals button { height: var(--h-md); min-width: 34px; border-radius: var(--r-sm); color: var(--text-2); }
-.chart-toolbar .intervals button:hover { background: var(--frame-hover); color: var(--text-1); }
-/* 选中项：强调软底 + 强调字 600（规范第 3 节一级） */
+.chart-toolbar .intervals button { height: var(--h-md); min-width: 34px; border-radius: var(--r-md); color: var(--text-2); font-size: var(--t13); }
+.chart-toolbar .intervals button:hover { background: color-mix(in srgb, var(--text-1) 5%, var(--well-solid)); color: var(--text-1); box-shadow: inset 0 0 0 3px var(--well-solid); }
+/* 当前周期：浮起一块内容色 + 主文字色 600，不用强调色 */
 .chart-toolbar .intervals button[aria-pressed="true"],
-.chart-toolbar .intervals button[aria-pressed="true"]:hover { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
-.chart-toolbar #tbMoreIv { height: var(--h-md); border-radius: var(--r-sm); color: var(--text-2); }
-.chart-toolbar #tbMoreIv:hover { background: var(--frame-hover); color: var(--text-1); }
+.chart-toolbar .intervals button[aria-pressed="true"]:hover { background: var(--well-on); color: var(--text-1); font-weight: 600; box-shadow: inset 0 0 0 3px var(--well-solid), inset 0 0 0 4px var(--sep); }
+.chart-toolbar #tbMoreIv { height: var(--h-md); border-radius: var(--r-md); color: var(--text-2); }
+.chart-toolbar #tbMoreIv:hover { background: color-mix(in srgb, var(--text-1) 5%, var(--well-solid)); color: var(--text-1); box-shadow: inset 0 0 0 3px var(--well-solid); }
 /* 右侧撤销 / 重做 / 布局 / 截图 / 分享 / 全屏 / 设置：32 见方（字形仍 18，styles/icons.css） */
 .chart-toolbar .tb-right .ibtn { width: var(--h-md); height: var(--h-md); }
 
-/* 二级：指标、提醒——字是 --text-1（图标是 22 磨砂块，颜色走 styles/icons.css） */
-.chart-toolbar #tbInd, .chart-toolbar #tbAlert { color: var(--text-1); }
-/* 三级：对比、记一笔——排到提醒后面（flex 次序），字退到 --text-2，前面一道分隔 */
+/* 指标、提醒、对比、记一笔：同一级，都是正文灰 13 / 500，悬停上主文字色（层级不再靠深浅两档字色分）。
+ * 对比、记一笔排到提醒后面（flex 次序），前面一道淡线分组 */
 .chart-toolbar #tbCompare, .chart-toolbar #tbNote { order: 1; }
 .chart-toolbar .tb-right { order: 2; }
 .chart-toolbar #tbCompare { position: relative; margin-left: 9px; }
-.chart-toolbar #tbCompare::before { content: ""; position: absolute; left: -6px; top: 4px; bottom: 4px; width: 1px; background: var(--frame-line); }
-.chart-toolbar #tbCompare, .chart-toolbar #tbNote { color: var(--text-2); }
-.chart-toolbar #tbCompare:hover, .chart-toolbar #tbNote:hover { color: var(--text-1); }
-/* 四级：右侧纯图标组不垫块（styles/icons.css） */
-.chart-toolbar .tb-btn.on { color: var(--accent-text); }
+.chart-toolbar #tbCompare::before { content: ""; position: absolute; left: -6px; top: var(--s2); bottom: var(--s2); width: 1px; background: var(--sep); }
+/* 右侧纯图标组不垫块（styles/icons.css）；开着的按钮 = 主文字色 */
+.chart-toolbar .tb-btn.on { color: var(--text-1); }

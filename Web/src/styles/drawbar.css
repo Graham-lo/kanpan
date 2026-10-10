@@ -1,34 +1,37 @@
-/* Hkline Web · 左侧画线工具栏（尺寸照 TradingView，图标照 2026-10-08「质感」定版）
+/* Hkline Web · 左侧画线工具栏（2026-10-10 第六轮：照 OpenMarket 的画线栏——用户原话「画线工具那块完全可以照抄」）
  *
- *   · 列宽 52；每颗按钮占满整行 52 × 38、上下紧挨；按钮本身不铺底，图标是一块 32 的磨砂块（20 字形），
- *     悬停 / 选中 / 删除悬停的样子都在块上（styles/icons.css）；块左 5 px，右沿 11 px 留给展开箭头条
- *   · 多于一把的组：右沿一条 11 × 34 的箭头条（4 × 7 小三角），平时淡显、悬停这一组时亮起；点它或停在上面展开整组
- *   · 分组之间留 13 px 空，不画线
+ *   · 列宽 52；每颗按钮占满整行 52 × (36 + 间距)，按钮本身不铺底，图标是一块 36 的块（24 细线字形，描边 1.5），块左 6 px、右沿 10 px 留给展开箭头条
+ *   · 静止不垫块；悬停极轻中性底；当前工具（含十字光标）= 反相实心块（styles/icons.css）
+ *   · 块与块之间 4 px；窗口高不足 900 时收到 1 px（OpenMarket 在 900 高时也是这么收的）
+ *   · 多于一把的组：右沿一条 10 × 36 的箭头条（4 × 7 小三角），平时淡显、悬停这一组时亮起；点它或停在上面展开整组
+ *   · 分组之间 17 px 空，中间一条 24 宽的 1 px 淡线
  *   · 连续画：块右下角一颗 6 px 强调色小点
  *   · 窗口矮到放不下时整列滚动（不溢出、不压扁按钮），十六格布局和窄窗口一样
- *   · 展开的菜单 285 宽、紧贴工具栏右沿；每行 36 高、13 号字、26 磨砂块，选中行字加粗 + 块选中；快捷键靠右淡色；组名 11 号字淡色
+ *   · 展开的菜单 285 宽、紧贴工具栏右沿；每行 36 高、13 号字、24 字形不垫块，选中行字加粗 + 字形主文字色；快捷键靠右淡色；组名 11 号字淡色
  */
 .drawbar {
   grid-column: 1; grid-row: 2; display: flex; flex-direction: column;
-  align-items: stretch; gap: 0; padding: 4px 0 6px; min-height: 0;
+  align-items: stretch; gap: 0; padding: 4px 0 6px; min-height: 0; --db-gap: 4px;
   overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none;
 }
 .drawbar::-webkit-scrollbar { display: none; }
+@media (max-height: 900px) { .drawbar { --db-gap: 1px; } }
 .drawbar .spacer { flex: 1 0 0; min-height: 0; }
-.drawbar .grp-sep { flex: none; height: 13px; }
+.drawbar .grp-sep { flex: none; height: 17px; position: relative; }
+.drawbar .grp-sep::after { content: ""; position: absolute; left: 12px; top: 8px; width: 24px; height: 1px; background: var(--frame-line); }
 
 .drawbar .ibtn {
-  flex: none; position: relative; width: 100%; height: 38px; border-radius: 0;
-  display: flex; align-items: center; justify-content: flex-start; padding: 0 0 0 5px;
+  flex: none; position: relative; width: 100%; height: calc(var(--ic-blk) + var(--db-gap)); border-radius: 0;
+  display: flex; align-items: center; justify-content: flex-start; padding: 0 0 0 6px;
 }
 .drawbar .sticky-dot {
-  position: absolute; left: 34px; bottom: 5px; width: 6px; height: 6px; border-radius: 50%;
+  position: absolute; left: 33px; bottom: calc(var(--db-gap) / 2 + 3px); width: 6px; height: 6px; border-radius: 50%;
   background: var(--accent); box-shadow: 0 0 0 1.5px var(--frame); pointer-events: none;
 }
 
-.drawbar .tool-grp { flex: none; position: relative; display: block; height: 38px; }
+.drawbar .tool-grp { flex: none; position: relative; display: block; height: calc(var(--ic-blk) + var(--db-gap)); }
 .drawbar .fly-chev {
-  position: absolute; right: 0; top: 2px; width: 11px; height: 34px; display: grid; place-items: center;
+  position: absolute; right: 0; top: calc(var(--db-gap) / 2); width: 10px; height: var(--ic-blk); display: grid; place-items: center;
   border-radius: 4px; color: var(--text-3); opacity: .55; background: transparent;
   transition: opacity var(--d-fast) var(--ease), background var(--d-fast) var(--ease), color var(--d-fast) var(--ease);
 }
@@ -42,7 +45,7 @@
   height: auto; display: block; padding: 4px 8px 5px;
   font-size: var(--t11); font-weight: 500; letter-spacing: .4px; color: var(--text-3);
 }
-.menu.tool-fly .mi { height: 36px; gap: 10px; padding: 0 10px 0 5px; border-radius: 7px; font-size: var(--t13); color: var(--text-1); }
+.menu.tool-fly .mi { height: 36px; gap: 12px; padding: 0 10px 0 8px; border-radius: 7px; font-size: var(--t13); color: var(--text-1); }
 .menu.tool-fly .mi:hover, .menu.tool-fly .mi.active { background: color-mix(in srgb, var(--text-1) 5%, transparent); }
 .menu.tool-fly .mi .sc { margin-left: auto; font-size: var(--t11); color: var(--text-3); white-space: nowrap; }
 .menu.tool-fly .mi.checked { background: none; color: var(--text-1); font-weight: 600; }

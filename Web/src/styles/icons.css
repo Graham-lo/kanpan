@@ -1,122 +1,105 @@
-/* Hkline Web · 「质感」图标（2026-10-08 用户定版，docs/prototypes/web-visual-2026-10-08.html 第 2 节）
+/* Hkline Web · 功能图标的状态与尺寸（2026-10-10 第六轮：照 OpenMarket 的做法重定，用户原话「画线工具那块完全可以照抄」「经典有蓝色背景有点刺眼」）
  *
- * 字形（ui/qicons.ts）：18 格，SF Symbols 分层——主体 --q1、次要 .55、面与辅助 .22–.28，每图最多一处强调墨 --qa；
- *   要「看着是镂空」的地方填 --qw（= 底块中间色）。不在底块上时 --q1 / --qa 落回 currentColor、--qw 落回 --surface。
- * 底块：直接把外层 svg.q 当底块用（宽高 = 块、padding = (块 − 字形) / 2）——
- *   静：皮肤色磨砂渐变（强调色 7% → 12% 掺白 / 深色下掺面色）、0.5px 强调色内描边、1px 顶部内高光、一层很轻的投影；
- *       字形 = 皮肤墨（强调色 56% 掺主文字色，OKLCH 混；深色下 70%）——2026-10-10 用户定「图标走皮肤色、不要黑白」（docs/prototypes/web-layout-2026-10-10.html 第 1 节 A）
- *   悬停：块强调色再浓一级，字形 = 强调色 80% 掺主文字色
- *   选中：强调色玻璃块（深色下也用该皮肤浅色那档强调色，不发灰）+ 30% 光晕，字形全白
+ * 字形（ui/qicons.ts）：24 格单一粗细细线，stroke 1.5、圆头、无填充、单色；锚点 = 小实心圆点。
+ * 理念：层级靠对比与字重，不靠颜色和底块——
+ *   静：不垫任何底块、无阴影、无描边；墨 = 次文字色里掺一点皮肤色（看着是中性灰，但和皮肤同调）
+ *   悬停：极轻的中性软底（主文字色 6%）+ 墨变主文字色
+ *   当前工具（画线栏 [data-tool] aria-pressed，含十字光标）：反相实心块（主文字色块 + 框架色字形），OpenMarket 的「当前」就是这么做的
+ *   开关态（画线栏磁吸 / 锁定 / 隐藏、右栏 .on、菜单 checked、工具条 .on）：浮起一块中性底（主文字色 10%）+ 主文字色字形
  *   删除：悬停时字形转跌色
- * 落点（2026-10-10 起字形一律 18 px 1:1 摆、不缩放——18 格字形缩到 20 / 15 px 描边落不到像素格，整块发糊）：
- *   左画线栏 / 右侧栏 32 块 padding 7；画线展开菜单 26 块 padding 4；顶栏提醒 / 深浅色 28 块 padding 5；
- *   工具条带字按钮 24 块 padding 3；工具条右侧撤销 / 布局这一组与顶栏搜索不垫块（18 字形，悬停整颗按钮一级框架色）。
+ * 尺寸：描边始终 1.5 物理像素——svg 的 --qsw 按渲染尺寸换算（1.5 × 24 / 尺寸），所以 24 → 1.5、20 → 1.8、18 → 2、16 → 2.25。
+ *   左画线栏 / 右侧栏：36 块 + 24 字形；画线展开菜单：24 字形不垫块；顶栏提醒 / 深浅色：32 块 + 20 字形；
+ *   工具条带字按钮 / 右组撤销布局 / 底栏 / 自选行尾：18 字形不垫块；顶栏搜索：16。
+ *   各档尺寸走 --ic-* 令牌，密度分层（data-tier）只改令牌不改规则。
  * 未读：强调色 7 px 小点（.qdot），外圈 2 px 框架色。
  */
-:root, [data-theme="light"] {
-  --qr: color-mix(in oklch, var(--accent) 56%, var(--text-1));
-  --qh: color-mix(in oklch, var(--accent) 80%, var(--text-1));
-  --qac: var(--accent);
-  --qsb: var(--accent);
-  --qt0: color-mix(in srgb, var(--accent) 7%, #fff);
-  --qt1: color-mix(in srgb, var(--accent) 12%, color-mix(in srgb, var(--frame) 40%, #fff));
-  --qh0: color-mix(in srgb, var(--accent) 14%, #fff);
-  --qh1: color-mix(in srgb, var(--accent) 20%, color-mix(in srgb, var(--frame) 40%, #fff));
-  --qhi: rgba(255, 255, 255, .6);
-  --qsh: color-mix(in srgb, var(--accent) 10%, transparent);
-  --qline: color-mix(in srgb, var(--accent) 16%, transparent);
-}
-[data-theme="dark"] {
-  --qr: color-mix(in oklch, var(--accent) 70%, var(--text-1));
-  --qh: color-mix(in oklch, var(--accent) 88%, #fff);
-  --qsb: #2B63F0;
-  --qt0: color-mix(in srgb, var(--accent) 16%, var(--surface));
-  --qt1: color-mix(in srgb, var(--accent) 10%, var(--frame));
-  --qh0: color-mix(in srgb, var(--accent) 26%, var(--surface));
-  --qh1: color-mix(in srgb, var(--accent) 18%, var(--frame));
-  --qhi: color-mix(in srgb, var(--accent) 22%, transparent);
-  --qsh: rgba(0, 0, 0, .3);
-  --qline: color-mix(in srgb, var(--accent) 24%, transparent);
-}
-html[data-skin="sage"][data-theme="dark"] { --qsb: #2E7D6B; }
-html[data-skin="terra"][data-theme="dark"] { --qsb: #B25735; }
-html[data-skin="terra"][data-theme="light"] { --qac: #8C4327; }
-/* 派生色：各主题都要在自己那一层重算（自定义属性里的 var() 在声明处就定了） */
-:root, [data-theme="light"], [data-theme="dark"], html[data-skin] {
-  --qtm: color-mix(in srgb, var(--qt0), var(--qt1));
-  --qhm: color-mix(in srgb, var(--qh0), var(--qh1));
-  --qs0: color-mix(in srgb, var(--qsb) 94%, #fff);
-  --qs1: color-mix(in srgb, var(--qsb) 94%, #000);
-  --qsm: var(--qsb);
-  --qsg: color-mix(in srgb, var(--qsb) 30%, transparent);
+:root {
+  --ic-blk: 36px;      /* 画线栏 / 右侧栏块 */
+  --ic-lg: 24px;       /* 画线栏 / 右侧栏 / 画线菜单字形 */
+  --ic-md: 20px;       /* 顶栏字形 */
+  --ic-sm: 18px;       /* 工具条 / 底栏 / 行尾字形 */
+  --ic-xs: 16px;       /* 顶栏搜索 */
+  --qr: color-mix(in oklch, var(--accent) 18%, var(--text-2));
+  --qh: color-mix(in oklch, var(--accent) 22%, var(--text-1));
+  --qon-bg: color-mix(in srgb, var(--text-1) 10%, transparent);
+  --qhov-bg: color-mix(in srgb, var(--text-1) 6%, transparent);
+  --qinv-bg: color-mix(in srgb, var(--text-1) 88%, var(--frame));
+  --qinv-ink: var(--frame);
   --qdn: var(--down-text);
 }
+[data-theme="dark"] {   /* 深色下次文字色本就偏亮，皮肤色再多就发蓝（经典）/ 发绿（青苔），掺量减半 */
+  --qr: color-mix(in oklch, var(--accent) 10%, var(--text-2));
+  --qh: color-mix(in oklch, var(--accent) 12%, var(--text-1));
+}
 
-svg.q { overflow: visible; --qa: var(--qac); }
-.menu svg.q { --qw: var(--overlay); }
-.btn.primary svg.q { --qa: currentColor; --qw: var(--accent); }
+/* ---- 字形本身：按尺寸配描边 ---- */
+svg.q { overflow: visible; display: block; flex: none; --qsw: 1.5; }
+svg.q.icon { --qsw: 1.8; }
+svg.q.icon-16 { --qsw: 2.25; }
+svg.q.icon-24 { --qsw: 1.5; }
+.btn.primary svg.q { --q1: currentColor; }
 button:hover > svg.q.q-del { --q1: var(--qdn); }
 
-/* ---- 底块 ---- */
-:is(.drawbar .ibtn, .rail .ibtn, .menu.tool-fly .mi, [id="hdrAlerts"], [id="hdrTheme"], .chart-toolbar .tb-btn:not([id="tbSymbol"], [id="tbMoreIv"])) > svg.q {
-  --q1: var(--qr); --qw: var(--qtm);
-  flex: none; border-radius: 8px;
-  background: linear-gradient(180deg, var(--qt0), var(--qt1));
-  box-shadow: inset 0 0 0 .5px var(--qline), inset 0 1px 0 var(--qhi), 0 1px 1.5px var(--qsh);
+/* ---- 画线栏 / 右侧栏：36 块 + 24 字形 ---- */
+:is(.drawbar .ibtn, .rail .ibtn) > svg.q {
+  width: var(--ic-blk); height: var(--ic-blk); padding: calc((var(--ic-blk) - var(--ic-lg)) / 2); box-sizing: border-box;
+  --qsw: 1.5; --q1: var(--qr); border-radius: 8px; background: none; box-shadow: none;
+  transition: background var(--d-fast) var(--ease);
 }
-:is(.drawbar .ibtn, .rail .ibtn) > svg.q { width: 32px; height: 32px; padding: 7px; }
-.menu.tool-fly .mi > svg.q { width: 26px; height: 26px; padding: 4px; border-radius: 7px; }
-:is([id="hdrAlerts"], [id="hdrTheme"]) > svg.q { width: 28px; height: 28px; padding: 5px; }
-.chart-toolbar .tb-btn:not([id="tbSymbol"], [id="tbMoreIv"]) > svg.q { width: 24px; height: 24px; padding: 3px; border-radius: 6px; margin-right: 1px; }
+:is(.drawbar .ibtn, .rail .ibtn):is(:hover, :focus-visible, .active) > svg.q { --q1: var(--qh); background: var(--qhov-bg); }
+.drawbar .ibtn[data-tool][aria-pressed="true"] > svg.q,
+.drawbar .ibtn[data-tool][aria-pressed="true"]:is(:hover, :focus-visible) > svg.q { --q1: var(--qinv-ink); background: var(--qinv-bg); }
+/* 画线栏里的开关（磁吸 / 锁定 / 隐藏）不是「当前工具」，用浮起块，免得一栏里两块实心 */
+.drawbar .ibtn:not([data-tool])[aria-pressed="true"] > svg.q, .drawbar .ibtn:not([data-tool])[aria-pressed="true"]:hover > svg.q,
+.rail .ibtn.on > svg.q, .rail .ibtn.on:hover > svg.q { --q1: var(--text-1); background: var(--qon-bg); }
+:is(.drawbar .ibtn, .rail .ibtn):hover > svg.q.q-del { --q1: var(--qdn); }
 
-/* 悬停：块一级、字形主文字色（工具条带字按钮整颗按钮换框架悬停色，块不动、只换字形色） */
-:is(.drawbar .ibtn, .rail .ibtn, .menu.tool-fly .mi, [id="hdrAlerts"], [id="hdrTheme"]):is(:hover, :focus-visible, .active) > svg.q {
-  --q1: var(--qh); --qw: var(--qhm);
-  background: linear-gradient(180deg, var(--qh0), var(--qh1));
+/* ---- 画线展开菜单：24 字形、不垫块，行本身负责悬停底 ---- */
+.menu.tool-fly .mi > svg.q { width: var(--ic-lg); height: var(--ic-lg); padding: 0; --qsw: 1.5; --q1: var(--qr); background: none; box-shadow: none; }
+.menu.tool-fly .mi:is(:hover, .active) > svg.q { --q1: var(--qh); }
+.menu.tool-fly .mi.checked > svg.q { --q1: var(--text-1); }
+.menu.tool-fly .mi:hover > svg.q.q-del { --q1: var(--qdn); }
+
+/* ---- 顶栏提醒 / 深浅色：32 块 + 20 字形 ---- */
+:is([id="hdrAlerts"], [id="hdrTheme"]) > svg.q {
+  width: var(--h-md); height: var(--h-md); padding: calc((var(--h-md) - var(--ic-md)) / 2); box-sizing: border-box;
+  --qsw: 1.8; --q1: var(--qr); border-radius: var(--r-sm); background: none; box-shadow: none;
 }
-.chart-toolbar .tb-btn:hover > svg.q { --q1: var(--qh); }
-:is(.drawbar .ibtn, .rail .ibtn, .menu.tool-fly .mi, [id="hdrAlerts"], [id="hdrTheme"], .chart-toolbar .tb-btn):hover > svg.q.q-del { --q1: var(--qdn); }
+:is([id="hdrAlerts"], [id="hdrTheme"]):is(:hover, :focus-visible) > svg.q { --q1: var(--qh); background: var(--qhov-bg); }
 
-/* 选中：强调色玻璃块、字形全白 */
-:is(.drawbar .ibtn[aria-pressed="true"], .rail .ibtn.on, .menu.tool-fly .mi.checked, .chart-toolbar .tb-btn.on) > svg.q {
-  --q1: #fff; --qa: #fff; --qw: var(--qsm);
-  background: linear-gradient(180deg, var(--qs0), var(--qs1));
-  box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .18), inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 6px var(--qsg);
+/* ---- 工具条带字按钮 / 右组 / 底栏 / 自选行尾：18 字形、不垫块 ---- */
+.chart-toolbar .tb-btn > svg.q,
+.chart-toolbar .tb-right .ibtn > svg.q,
+.chart-foot .foot-ic > svg.q,
+.wv-q > svg.q {
+  width: var(--ic-sm); height: var(--ic-sm); padding: 0; --qsw: 2; --q1: var(--qr); background: none; box-shadow: none;
 }
+.chart-toolbar .tb-btn > svg.q { margin-right: 1px; }
+.chart-toolbar .tb-btn:hover > svg.q, .chart-toolbar .tb-right .ibtn:hover > svg.q, .chart-foot .foot-ic:hover > svg.q, .wv-q:hover > svg.q { --q1: var(--qh); }
+.chart-toolbar .tb-btn.on > svg.q { --q1: var(--text-1); }
+.chart-toolbar .tb-btn:hover > svg.q.q-del { --q1: var(--qdn); }
+.wv-q.on > svg.q { --q1: var(--accent-text); }   /* 在自选里：实心星走强调色（每行都是「在」，只有这一处颜色） */
 
-/* 十字光标：没选画线工具时它一直是「按下」的，是常态不是动作，用不着整屏最重的强调色玻璃块（2026-10-10 审查 B5）。
- * 按下时 = 普通磨砂块 + 一层强调软底 + 强调色字形（规范第 3 节画线栏「选中：强调软底 + 强调色图标」）；
- * 真去画线时，画线工具那颗才是玻璃块，光标块回到普通块 */
-.drawbar .ibtn[data-tool="cursor"][aria-pressed="true"] > svg.q,
-.drawbar .ibtn[data-tool="cursor"][aria-pressed="true"]:is(:hover, :focus-visible) > svg.q {
-  --q1: var(--qac); --qa: var(--qac); --qw: var(--qtm);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, var(--qt0)), color-mix(in srgb, var(--accent) 14%, var(--qt1)));
-  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--accent) 22%, transparent), inset 0 1px 0 var(--qhi), 0 1px 1.5px var(--qsh);
-}
+/* ---- 顶栏搜索：16 ---- */
+.app-header .search-trigger > svg.q { width: var(--ic-xs); height: var(--ic-xs); --qsw: 2.25; --q1: var(--qr); }
 
-/* 按钮本身不再铺底：块就是状态 */
+/* 按钮本身不铺底：块就是状态（画线栏 / 右侧栏 / 顶栏两颗） */
 .drawbar .ibtn, .drawbar .ibtn:hover, .drawbar .ibtn[aria-pressed="true"],
 .rail .ibtn, .rail .ibtn:hover, .rail .ibtn.on,
 .app-header [id="hdrAlerts"], .app-header [id="hdrAlerts"]:hover, .app-header [id="hdrTheme"], .app-header [id="hdrTheme"]:hover { background: none; }
 .rail .ibtn:focus-visible > svg.q, .drawbar .ibtn:focus-visible > svg.q, :is([id="hdrAlerts"], [id="hdrTheme"]):focus-visible > svg.q { outline: 2px solid var(--accent); outline-offset: 1px; }
 .rail .ibtn:focus-visible, .drawbar .ibtn:focus-visible, :is([id="hdrAlerts"], [id="hdrTheme"]):focus-visible { outline: none; }
 
-/* ---- 不垫块：工具条右侧一组、顶栏搜索 ---- */
-.chart-toolbar .tb-right .ibtn > svg.q { width: 18px; height: 18px; --q1: var(--qr); --qw: var(--frame); }
-.chart-toolbar .tb-right .ibtn:hover > svg.q { --q1: var(--qh); --qw: var(--frame-hover); }
-.app-header .search-trigger > svg.q { width: 18px; height: 18px; flex: none; --q1: var(--qr); --qw: var(--surface); }
-
 /* ---- 未读小点 ---- */
 .qdot {
   position: absolute; right: 2px; top: 2px; width: 7px; height: 7px; border-radius: 50%;
   background: var(--accent); box-shadow: 0 0 0 2px var(--frame); z-index: 1; pointer-events: none;
 }
-.rail .ibtn .qdot { right: 5px; top: 5px; }
+.rail .ibtn .qdot { right: 7px; top: 7px; }
 
-/* ---- 主力订单流侧栏四行开关前的小图（orderflow/index.ts TILE）：同一块磨砂底，强调 / 涨 / 跌色度 × .6 ---- */
+/* ---- 主力订单流侧栏四行开关前的小图（orderflow/index.ts TILE）：极轻中性底，强调 / 涨 / 跌色度 × .6 ---- */
 .of-p-row .tgi {
-  background: linear-gradient(180deg, var(--qt0), var(--qt1));
-  box-shadow: inset 0 0 0 .5px var(--qline), inset 0 1px 0 var(--qhi), 0 1px 1.5px var(--qsh);
+  background: var(--qhov-bg);
   --ofq-a: oklch(from var(--accent) l calc(c * .6) h);
   --ofq-u: oklch(from var(--up) l calc(c * .6) h);
   --ofq-d: oklch(from var(--down) l calc(c * .6) h);

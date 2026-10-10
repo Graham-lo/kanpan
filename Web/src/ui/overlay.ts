@@ -54,7 +54,12 @@ export function installTooltips(): void {
   document.addEventListener('focusin', e => { const t = tgt(e).closest?.<HTMLElement>('[data-tip]'); if (t && t.matches(':focus-visible')) { tip.target = t; showTip(t) } })
   document.addEventListener('focusout', hideTip)
   document.addEventListener('mousedown', hideTip)
-  document.addEventListener('mousedown', e => { if (openMenuEl && !openMenuEl.contains(e.target as Node)) closeMenu() }, true)
+  document.addEventListener('mousedown', e => {
+    const n = e.target as Node
+    // 点在弹层的触发按钮上不在这里关：交给按钮自己的点击做「再点一下收起」（不然先关后开，永远收不起来）
+    if (openMenuEl && !openMenuEl.contains(n) && !openMenuKeep?.contains(n)) closeMenu()
+  }, true)
+  bindEsc()
 }
 
 // ------------------------------------------------------------ 轻提示
@@ -76,13 +81,28 @@ export type MenuItem = '-' | {
 export interface MenuOpts { width?: number; focus?: boolean; returnFocus?: HTMLElement }
 
 let openMenuEl: HTMLElement | null = null
+/** 弹层的触发按钮：在它上面按下不算「点在外面」 */
+let openMenuKeep: HTMLElement | null = null
+let onMenuClose: (() => void) | null = null
+/** Esc 关掉菜单 / 弹层之后焦点回哪（触发按钮，没有就是开之前的焦点） */
+let openMenuReturn: HTMLElement | null = null
 export function menuOpen(): boolean { return !!openMenuEl }
-export function closeMenu(): void { openMenuEl?.remove(); openMenuEl = null }
+export function closeMenu(): void {
+  const cb = onMenuClose
+  openMenuEl?.remove(); openMenuEl = null; openMenuKeep = null; onMenuClose = null; openMenuReturn = null
+  cb?.()
+}
+/** Esc 收起最上面那层（菜单 / 弹层），焦点回触发处 */
+function escMenu(): void {
+  const r = openMenuReturn
+  closeMenu(); if (r?.isConnected) r.focus({ preventScroll: true })
+}
 
 export function menu(items: MenuItem[], x: number, y: number, opts: MenuOpts = {}): HTMLElement {
-  closeMenu()
+  closeMenu(); bindEsc()
+  const prev = document.activeElement as HTMLElement | null
   const m = document.createElement('div')
-  m.className = 'menu'; m.setAttribute('role', 'menu')
+  m.className = 'menu'; m.setAttribute('role', 'menu'); m.tabIndex = -1
   if (opts.width) m.style.minWidth = opts.width + 'px'
   m.innerHTML = items.map((it, k) => {
     if (it === '-') return '<div class="sep" role="separator"></div>'
@@ -106,13 +126,62 @@ export function menu(items: MenuItem[], x: number, y: number, opts: MenuOpts = {
     const list = $$<HTMLButtonElement>('.mi:not([disabled])', m), i = list.indexOf(document.activeElement as HTMLButtonElement)
     if (!list.length) return
     if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length].focus() }
-    if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus() }
-    if (e.key === 'Escape') { e.stopPropagation(); closeMenu(); opts.returnFocus?.focus() }
+    if (e.key === 'ArrowUp') { e.preventDefault(); list[(i < 0 ? list.length : i) - 1].focus() }
   })
-  openMenuEl = m
-  if (opts.focus) $('.mi', m)?.focus()
+  m.addEventListener('keydown', escInside)
+  openMenuEl = m; openMenuReturn = opts.returnFocus ?? (prev && prev !== document.body ? prev : null)
+  // 焦点放进菜单：右键 / 点按钮弹出后直接 Esc、上下键都接得住（键盘打开的落在第一项）
+  if (opts.focus) $('.mi', m)?.focus(); else m.focus({ preventScroll: true })
   return m
 }
+// ------------------------------------------------------------ 弹层（右侧栏图标点出的面板：主力订单流 / 提醒 / 笔记 / 成交）
+/** 和菜单同一套：同一时刻只开一个（开菜单、对话框会先关它），点外面、Esc 收起。
+ *  摆在触发按钮左边、上沿对齐按钮，放不下就往上挪、夹进视口（四边留 8）；内容由调用方往返回的元素里画。 */
+export interface PopOpts {
+  width: number; cls?: string; label?: string; onClose?: () => void
+  /** 在它上面按下不算点外面（默认 = 触发按钮；右侧栏整条传进来，栏重画换了按钮节点也认） */
+  keep?: HTMLElement
+  /** 内容后补（门槛、列表异步到）使高度变了时怎么重摆；不给就按触发按钮摆 */
+  place?: () => void
+}
+export function popover(anchor: HTMLElement, opts: PopOpts): HTMLElement {
+  closeMenu(); bindEsc()
+  const m = document.createElement('div')
+  m.className = 'menu pop' + (opts.cls ? ' ' + opts.cls : '')
+  m.setAttribute('role', 'dialog')
+  if (opts.label) m.setAttribute('aria-label', opts.label)
+  m.style.width = opts.width + 'px'
+  document.body.appendChild(m)
+  const place = opts.place ?? (() => { if (anchor.isConnected) placePop(m, anchor) })
+  // 内容后补（门槛、列表异步到）：下一帧按新的自然高重摆（放不下先上移、再限高滚动），一帧最多一次
+  let raf = 0
+  const mo = typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => {
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (m.isConnected) place() })
+  })
+  mo?.observe(m, { childList: true, subtree: true })
+  m.addEventListener('keydown', escInside)
+  openMenuEl = m; openMenuKeep = opts.keep ?? anchor; openMenuReturn = anchor
+  onMenuClose = () => { mo?.disconnect(); if (raf) cancelAnimationFrame(raf); opts.onClose?.() }
+  placePop(m, anchor)
+  return m
+}
+/** 内容变了（高度变了）之后再摆一次 */
+export function placePop(m: HTMLElement, anchor: HTMLElement): void {
+  const r = anchor.getBoundingClientRect()
+  m.style.maxHeight = ''   // 按内容的自然高量（上一次限的高不算），放不下再上移 / 限高
+  const p = popPlace(r, m.offsetWidth, m.offsetHeight, innerWidth, innerHeight)
+  m.style.left = p.x + 'px'; m.style.top = p.y + 'px'; m.style.maxHeight = p.maxH + 'px'
+}
+/** 弹层左上角：贴在按钮左侧 8，上沿对齐按钮；下面放不下就整体上移；比视口还高就顶到上沿、限高（纯函数，tests/rail-side.test.ts） */
+export function popPlace(r: { left: number; top: number; right: number }, w: number, h: number, vw: number, vh: number): { x: number; y: number; maxH: number } {
+  const E = 8
+  const x = Math.max(E, Math.min(r.left - 8 - w, vw - w - E))
+  const y = Math.max(E, Math.min(r.top, vh - E - Math.min(h, vh - 2 * E)))
+  return { x: Math.round(x), y: Math.round(y), maxH: Math.round(vh - E - y) }
+}
+/** 现在开着的弹层（不是菜单）；没有返回 null */
+export function openPop(): HTMLElement | null { return openMenuEl?.classList.contains('pop') ? openMenuEl : null }
+
 export function menuFrom(btn: HTMLElement, items: MenuItem[], opts: MenuOpts = {}): HTMLElement {
   const r = btn.getBoundingClientRect()
   return menu(items, r.left, r.bottom + 4, { ...opts, returnFocus: btn })
@@ -121,18 +190,36 @@ export function menuFrom(btn: HTMLElement, items: MenuItem[], opts: MenuOpts = {
 // ------------------------------------------------------------ 对话框
 export interface Dialog { scrim: HTMLElement; dlg: HTMLElement; close: () => void }
 export const dialogs: Dialog[] = []
-// 对话框里点了会整块重画的东西（指标勾选、分类）之后，焦点掉回 body，对话框自己的 keydown 收不到 Esc；
-// 这里兜一层：焦点不在任何对话框里时，Esc 关最上面那个
+/** Esc 归谁：谁在最上层谁吃掉。菜单 / 弹层压在对话框上面，开着就先关它，对话框这一下收不到；
+ *  焦点就在那一层里时交给那一层自己的 keydown（输入框可先接走，如布局改名的 Esc = 退回菜单）。
+ *  对话框里点了会整块重画的东西（指标勾选、分类）之后焦点掉回 body，对话框自己的 keydown 收不到，这里兜住关最上面那个。
+ *  纯函数，tests/overlay-esc.test.ts */
+export type EscOwner = 'menu' | 'dialog' | null
+export function escOwner(s: { menu: boolean; inMenu: boolean; dialogs: number; inDialog: boolean }): EscOwner {
+  if (s.menu) return s.inMenu ? null : 'menu'
+  if (s.dialogs && !s.inDialog) return 'dialog'
+  return null
+}
+/** 焦点在菜单 / 弹层里：冒泡到它自己身上时关（里面的输入框没 stopPropagation 的话） */
+function escInside(e: KeyboardEvent): void {
+  if (e.key !== 'Escape') return
+  e.stopPropagation(); e.preventDefault(); escMenu()
+}
 let escBound = false
 function bindEsc(): void {
   if (escBound || typeof document === 'undefined') return
   escBound = true
   document.addEventListener('keydown', e => {
-    if (e.key !== 'Escape' || !dialogs.length || menuOpen()) return
+    if (e.key !== 'Escape') return
     const t = e.target as Node | null
-    if (t && dialogs.some(d => d.dlg.contains(t))) return
-    e.stopPropagation(); e.preventDefault()
-    dialogs[dialogs.length - 1].close()
+    const who = escOwner({
+      menu: !!openMenuEl, inMenu: !!t && !!openMenuEl?.contains(t),
+      dialogs: dialogs.length, inDialog: !!t && dialogs.some(d => d.dlg.contains(t)),
+    })
+    if (!who) return
+    // 捕获阶段在 document 上就截住：对话框、图表页全局键盘都收不到这一下
+    e.stopImmediatePropagation(); e.preventDefault()
+    if (who === 'menu') escMenu(); else dialogs[dialogs.length - 1].close()
   }, { capture: true })
 }
 

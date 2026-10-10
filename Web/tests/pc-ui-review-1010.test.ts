@@ -14,17 +14,20 @@ describe('B3 工具条：38 高、按钮 32 高', () => {
     expect(app).toMatch(/\.chart-toolbar #tbMoreIv \{ height: var\(--h-md\)/)
     expect(app).toMatch(/\.chart-toolbar \.tb-right \.ibtn \{ width: var\(--h-md\); height: var\(--h-md\); \}/)
   })
-  it('周期选中项：强调软底 + 强调字 600', () => {
-    expect(app).toMatch(/\.intervals button\[aria-pressed="true"\][^{]*\{ background: var\(--accent-soft\); color: var\(--accent-text\); font-weight: 600; \}/)
+  it('周期选中项（2026-10-10 chrome 理念）：凹槽里浮起一块内容色 + 主文字色 600，不用强调色', () => {
+    expect(app).toMatch(/\.chart-toolbar \.intervals button\[aria-pressed="true"\][^{]*\{ background: var\(--well-on\); color: var\(--text-1\); font-weight: 600;/)
+    expect(app).not.toMatch(/\.intervals button\[aria-pressed="true"\][^{]*\{[^}]*--accent/)
   })
 })
 
-describe('B5 十字光标块不再是强调色玻璃块', () => {
-  it('按下时单独一条：强调软底 + 强调色字形，不用玻璃块的 --qs0 / --qs1', () => {
-    const m = /\.drawbar \.ibtn\[data-tool="cursor"\]\[aria-pressed="true"\] > svg\.q,[^{]*\{([^}]*)\}/.exec(icons)
+describe('B5 十字光标块：和别的当前工具一样是反相块，不是强调色玻璃块（10-10 第六轮照 OpenMarket）', () => {
+  it('画线栏 aria-pressed 一条规则管所有工具：反相底 --qinv-bg + 框架色字形，不再有十字光标特例、不用玻璃块的 --qs0 / --qs1', () => {
+    const m = /\.drawbar \.ibtn\[data-tool\]\[aria-pressed="true"\] > svg\.q,[^{]*\{([^}]*)\}/.exec(icons)
     expect(m).toBeTruthy()
-    expect(m![1]).toContain('--q1: var(--qac)')
-    expect(m![1]).not.toMatch(/--qs0|--qs1/)
+    expect(m![1]).toContain('--q1: var(--qinv-ink)')
+    expect(m![1]).toContain('background: var(--qinv-bg)')
+    expect(icons).not.toMatch(/data-tool="cursor"/)
+    expect(icons).not.toMatch(/--qs0|--qs1/)
   })
 })
 

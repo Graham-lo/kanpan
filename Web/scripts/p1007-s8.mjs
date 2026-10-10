@@ -49,7 +49,10 @@ for (let i = 0; i < 16; i++) {
   const dlP = page.waitForEvent('download', { timeout: 15000 })
   // 先按底栏「导出」开菜单，再点「全部已加载」；快照在同一个任务里取（之后推送进来的一根不算）
   const menu = await page.evaluate(i => {
-    document.querySelectorAll('.chart-cell')[i].querySelector('.cell-foot [data-act="export"]').click()
+    // 全局底栏作用于当前格：先把第 i 格设成当前格（格子 mousedown），再点底栏「导出」
+    const h = document.querySelectorAll('.chart-cell')[i].querySelector('.canvas-host')
+    h.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    document.querySelector('#chartFoot [data-act="export"]').click()
     const items = [...document.querySelectorAll('.menu .mi')]
     const it = items.find(x => x.querySelector('.label')?.textContent.trim() === '全部已加载')
     const sc = it?.textContent.replace('全部已加载', '').trim()

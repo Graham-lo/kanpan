@@ -127,7 +127,7 @@ describe.each(['full', 'dense'] as const)('主图图例（%s）：推送 / 十�
     expect(texts(el).join('|')).not.toBe(before)
     expect(texts(el).join('|')).toContain('119.43')
   })
-  it('工具按钮在名字与参数之后、读数之前（同一个 lhead 里），位置不受读数影响', () => {
+  it('结构：行里只有 lhead 与读数盒两块在流中，工具区在 lhead 末尾（绝对定位、出在整行右缘，见样式用例）', () => {
     const { ch, el } = chart(legend)
     ch.renderLegend()
     for (const row of el.querySelectorAll('[data-lid]')) {
@@ -171,6 +171,28 @@ describe('样式：工具区固定宽、只切 visibility，不改排版', () =>
     expect(css).not.toMatch(/\.tools \{[^}]*display: none/)
     expect(css).not.toMatch(/:hover \.tools \{[^}]*display:/)
     expect(css).not.toMatch(/\.dense:hover \.dchip \{[^}]*display: flex/)
+  })
+  it('2026-10-10 审查 C6：按钮锚在整行右缘（读数后面），不再叠在读数开头；lhead 不是定位祖先', () => {
+    // DOM：行里在流中的只有 lhead 与读数盒，工具区在 lhead 里且绝对定位——它不占位，读数紧跟参数，悬停前后位置一样
+    const head = /\.legend \.lhead, \.pane-legend \.lhead \{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(head).not.toContain('position')
+    // 定位祖先是整行（并排的 dchip 是它自己），工具区从行的右缘起（压进行的右内边距，和行之间没有缝）
+    expect(css).toMatch(/\.legend \.lrow, \.pane-legend \.lrow, \.legend \.lrow\.dense \.dchip \{ position: relative; \}/)
+    const rule = /\.legend \.tools, \.pane-legend \.tools \{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(rule).toContain('left: calc(100% - var(--s1))')
+    expect(rule).not.toContain('margin-left')
+    // 行的右内边距 --s2 比按钮压进去的 --s1 宽：按钮和行之间没有缝
+    expect(css).toMatch(/\.legend \.lrow \{[^}]*padding-right: var\(--s2\)/)
+    expect(css).toMatch(/\.pane-legend \.lrow \{[^}]*padding-right: var\(--s2\)/)
+  })
+  it('并排（dense）：按钮出在块右缘外，悬停期间后面那一块按按钮颗数让位（2–4 颗 × --h-sm），被悬停这一块自己不变宽', () => {
+    expect(css).toMatch(/\.legend \.lrow\.dense \.dchip \.tools \{ left: 100%; \}/)
+    expect(css).toMatch(/\.dchip:hover \+ \.dchip \{ margin-left: calc\(2 \* var\(--h-sm\) \+ var\(--s1\) - var\(--s3\)\); \}/)
+    for (const n of [3, 4]) expect(css).toContain(`.dchip:hover:has(.tools > :nth-child(${n})) + .dchip { margin-left: calc(${n} * var(--h-sm) + var(--s1) - var(--s3)); }`)
+    // 按钮宽就是 --h-sm，让位的算式才对得上
+    expect(css).toMatch(/\.legend \.tools \.ibtn, \.pane-legend \.tools \.ibtn \{ width: var\(--h-sm\);/)
+    // 被悬停的块不加内边距 / 外边距（加了它在行尾会折到下一行，读数跟着跳）
+    expect(css).not.toMatch(/\.dchip:hover \{[^}]*(padding|margin)/)
   })
   it('读数等宽数字', () => {
     expect(css).toMatch(/\.legend \[data-v\], \.pane-legend \[data-v\] \{ font-variant-numeric: tabular-nums; \}/)

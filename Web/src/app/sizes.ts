@@ -6,7 +6,7 @@
  * 窗口变小时按比例收，窗口变回来又回到用户拖的那个值，存着的数不被改写。
  *
  *   深度梯子列  宽  默认 240，160–480
- *   右侧面板    宽  默认 320（自选只剩三列，2026-10-07 收窄），320–640
+ *   右侧面板    宽  默认跟视口走（panelDefault：1440 → 280、2560 → 320、封顶 400），280–640
  *   底部抽屉    高  默认 280，160 到页面高的 60%；四块排不下一行折成几排时，
  *                   至少给到「抽屉头 + 排数 × 240」，此时 60% 上限放开（图表区仍留 240），
  *                   这是临时托底、不写回存值：回到一排放得下时恢复用户拖的高度
@@ -24,9 +24,13 @@ export interface RegionSpec { def: number; min: number; max: number }
 export type RegionId = 'ladder' | 'panel' | 'drawer'
 export const REGIONS: Record<RegionId, RegionSpec> = {
   ladder: { def: 240, min: 160, max: 480 },
-  panel: { def: 320, min: 320, max: 640 },
+  // 出厂宽跟视口走（panelDefault）；用户拖过的宽照旧优先
+  panel: { get def() { return panelDefault(globalThis.innerWidth || 2560) }, min: 280, max: 640 },
   drawer: { def: 280, min: 160, max: Infinity }, // 上限按页面高的 60% 另算
 }
+/** 右侧栏出厂宽：≈ 0.05 × 视口宽 + 192，夹在 280–400（1440 → 280、1920 → 288、2560 → 320、3840 → 384）。
+ *  2026-10-10 用户：不同屏幕 / 分辨率下不写死，跟着视口走 */
+export function panelDefault(vw: number): number { return Math.round(Math.min(400, Math.max(280, 0.05 * vw + 192))) }
 /** 抽屉最高占页面（图表页）高的比例 */
 export const DRAWER_MAX_FRAC = 0.6
 /** 图表区至少留这么宽，梯子与面板再宽也不能把它挤没 */

@@ -14,12 +14,14 @@ import type { TVChart } from '../chart/chart'
 import { isSecondIv, isCustomIv, customBase, customTick, streamIvOf } from '../chart/intervals'
 import { S, on, streamName, headName, isDefaultVenue, loadAllVenues, type Kind, type Sym } from '../market'
 import { venueLabel } from '../venues'
-import { searchGroups, resultName, groupHead, venueStatusHTML } from './searchGroups'
+import { searchRows, venueStatusHTML, type SearchRow } from './searchGroups'
+import { rowHTML, paintRow, pickIndex, stepPick } from './symbolSearch'
 import { normalize } from '../market/searchText'
-import { IV_MS, fmtCompact } from '../util/format'
+import { HL } from '../terms'
+import { IV_MS } from '../util/format'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { toast, dialog, dialogs } from '../ui/overlay'
-import { sym, badge, priceText, pctText, cls } from '../ui/common'
+import { sym } from '../ui/common'
 
 export interface CompareCell { idx: number; chart: TVChart; symbol: string; iv: string }
 export interface CompareDeps {
@@ -134,7 +136,7 @@ function paint(): void {
 }
 
 // ------------------------------------------------------------ 偏好
-function inCompare(symbol: string): boolean { return st.compareSymbols.some(k => compareSymbolOf(k) === symbol) }
+export function inCompare(symbol: string): boolean { return st.compareSymbols.some(k => compareSymbolOf(k) === symbol) }
 function setCompare(next: string[]): void {
   st.compareSymbols = cleanCompare(next)
   save(); refreshCompare(); deps?.renderToolbar()
@@ -156,39 +158,55 @@ export function toggleCompare(symbol: string): boolean {
 export function openCompare(): void {
   if (!deps || dialogs.some(d => d.dlg.classList.contains('search-dlg'))) return
   const D = deps
-  let cat: 'all' | Kind = 'all', q = '', activeIdx = 0, results: Sym[] = []
+  let cat: 'all' | Kind = 'all', q = '', activeIdx = 0, rows: SearchRow[] = []
+  // 一个品种一行、交易所是行尾记号（和搜品种弹层同一套 searchRows / rowHTML，2026-10-10 审查 C2）：
+  // 选中的那一家默认是已在对比里的那只，否则跟搜索一样（主图那一家 → 自选 → 币安）；悬停记号 / ← → 改选，点记号直接加入 / 移出那一家
+  const chosen = new Map<string, string>()
+  const pickOf = (r: SearchRow): number => pickIndex(r, chosen, s => inCompare(s.symbol))
+  const target = (r: SearchRow | undefined): Sym | undefined => r && r.items[pickOf(r)]
   let offUniverse = (): void => {}
   const CATS: ['all' | Kind, string][] = [['all', '全部'], ['crypto', '加密'], ['us', '美股'], ['idx', '指数'], ['com', '大宗']]
   const d = dialog(`<div class="search-top">${I('compare', 'icon-24')}<input id="cq" placeholder="搜索要对比的品种，比如 ETH、美元指数" autocomplete="off" spellcheck="false" aria-label="搜索要对比的品种"><kbd>Esc</kbd></div>
     <div class="cmp-head" id="cmpHead"></div>
     <div class="search-cats" role="tablist">${CATS.map(([k, l]) => `<button class="chip" data-cat="${k}" aria-pressed="${k === cat}">${l}</button>`).join('')}</div>
     <div class="search-list scroll" id="cl" role="listbox" aria-multiselectable="true"></div>
-    <div class="search-foot"><span><kbd>↑</kbd><kbd>↓</kbd>选择</span><span><kbd>↵</kbd>加入 / 移出对比</span><span><kbd>Tab</kbd>换分类</span></div>`, 'search-dlg cmp-dlg', { label: '对比', onClose: () => offUniverse() })
+    <div class="search-foot"><span><kbd>↑</kbd><kbd>↓</kbd>选择</span><span><kbd>←</kbd><kbd>→</kbd>${esc(HL.searchVenue)}</span><span><kbd>↵</kbd>加入 / 移出对比</span><span><kbd>Tab</kbd>换分类</span></div>`, 'search-dlg cmp-dlg sym-dlg', { label: '对比', onClose: () => offUniverse() })
   const inp = $<HTMLInputElement>('#cq', d.dlg), listEl = $('#cl', d.dlg), headEl = $('#cmpHead', d.dlg)
   function renderHead(): void {
     const keys = st.compareSymbols
     headEl.innerHTML = `<span class="cmp-count">正在对比 <b class="num">${keys.length}/${MAX_COMPARE}</b></span>` + keys.map((k, i) =>
       `<span class="cmp-chip"><i style="background:${COMPARE_COLORS[i % COMPARE_COLORS.length]}"></i>${esc(keyName(k))}<button class="ibtn xs" data-rm="${esc(k)}" aria-label="移出对比 ${esc(keyName(k))}" data-tip="移出对比">${I('close', 'icon-16')}</button></span>`).join('')
   }
+  /** 一行此刻的状态（按选中的那一家）：行尾一格、是否置灰 */
+  function rowState(r: SearchRow): { p: number; tail: string; dis: boolean } {
+    const p = pickOf(r), s = r.items[p], main = D.activeSymbol(), full = st.compareSymbols.length >= MAX_COMPARE
+    const isMain = s.symbol === main, on_ = inCompare(s.symbol), dis = isMain || (full && !on_)
+    const tail = isMain ? `<span class="cmp-tag">主图</span>`
+      : `<button class="ibtn sm cmp-tgl ${on_ ? 'on' : ''}" data-t="${esc(s.symbol)}" aria-label="${on_ ? '移出对比' : '加入对比'}" aria-pressed="${on_}">${I(on_ ? 'check' : 'plus')}</button>`
+    return { p, tail, dis }
+  }
+  const marked = (s: Sym): boolean => inCompare(s.symbol)
   function render(): void {
     renderHead()
-    const qq = normalize(q), main = D.activeSymbol(), full = st.compareSymbols.length >= MAX_COMPARE
+    const qq = normalize(q)
     const pool = [...S.symbols.values()].filter(s => cat === 'all' || s.kind === cat)
-    const { groups, flat } = searchGroups(pool, q, D.isWatched)
-    results = flat
-    activeIdx = Math.min(activeIdx, Math.max(0, results.length - 1))
-    let i = -1
+    rows = searchRows(pool, q, D.isWatched, D.activeSymbol())
+    activeIdx = Math.min(activeIdx, Math.max(0, rows.length - 1))
     listEl.innerHTML = !S.symbols.size ? `<div class="empty">${S.live === false ? '连不上币安合约接口，搜不了' : '正在取品种表…'}</div>`
-      : results.length ? groups.map(g => groupHead(g) + g.items.map(s => {
-        i++
-        const isMain = s.symbol === main, on_ = inCompare(s.symbol), dis = isMain || (full && !on_)
-        const btn = isMain ? `<span class="cmp-tag">主图</span>`
-          : `<button class="ibtn sm cmp-tgl ${on_ ? 'on' : ''}" data-t="${esc(s.symbol)}" aria-label="${on_ ? '移出对比' : '加入对比'}" aria-pressed="${on_}">${I(on_ ? 'check' : 'plus')}</button>`
-        return `<div class="sr ${i === activeIdx ? 'active' : ''} ${dis ? 'cmp-off' : ''}" role="option" aria-selected="${on_}" aria-disabled="${dis}" data-i="${i}">
-      ${badge(s, 'lg')}<div><div class="n1">${resultName(s, qq)}</div>${s.cn ? `<div class="n2">${esc(s.cn)}</div>` : ''}</div>
-      <div class="r num">${priceText(s)}</div><div class="r num ${cls(s.pct)}">${pctText(s.pct)}</div><div class="r num muted">${fmtCompact(s.vol)}</div>${btn}</div>`
-      }).join('')).join('') + venueStatusHTML()
+      : rows.length ? rows.map((r, k) => {
+        const { p, tail, dis } = rowState(r)
+        return rowHTML(r, k, { active: k === activeIdx, qq, pick: p, tail, cls: dis ? 'cmp-off' : '', attrs: `aria-disabled="${dis}"`, mark: marked })
+      }).join('') + venueStatusHTML()
       : `<div class="empty">没有找到「${esc(q)}」</div>${venueStatusHTML()}`
+  }
+  function repaint(k: number): void {
+    const r = rows[k], el = listEl.querySelector<HTMLElement>(`.sr[data-i="${k}"]`); if (!r || !el) return
+    const { p, tail, dis } = rowState(r)
+    paintRow(el, r, { pick: p, tail, mark: marked, toggle: { 'cmp-off': dis }, attrs: { 'aria-disabled': String(dis) } })
+  }
+  function choose(k: number, j: number): void {
+    const r = rows[k]; if (!r || !r.items[j] || pickOf(r) === j) return
+    chosen.set(r.id, r.items[j].symbol); repaint(k)
   }
   function pick(s: Sym | undefined): void {
     if (!s) return
@@ -197,21 +215,33 @@ export function openCompare(): void {
     render()
   }
   const setCat = (k: 'all' | Kind) => { cat = k; $$('[data-cat]', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cat === cat))); activeIdx = 0; render() }
-  function move(k: number): void { activeIdx = Math.max(0, Math.min(results.length - 1, activeIdx + k)); render(); $('.sr.active', listEl)?.scrollIntoView({ block: 'nearest' }) }
+  function move(k: number): void { activeIdx = Math.max(0, Math.min(rows.length - 1, activeIdx + k)); render(); $('.sr.active', listEl)?.scrollIntoView({ block: 'nearest' }) }
   inp.addEventListener('input', () => { q = inp.value; activeIdx = 0; render() })
   inp.addEventListener('keydown', e => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); move(1) }
+    const step = stepPick(e, rows[activeIdx], rows[activeIdx] ? pickOf(rows[activeIdx]) : 0)
+    if (step != null) { e.preventDefault(); choose(activeIdx, step) }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); move(1) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
-    else if (e.key === 'Enter') { e.preventDefault(); pick(results[activeIdx]) }
+    else if (e.key === 'Enter') { e.preventDefault(); pick(target(rows[activeIdx])) }
     else if (e.key === 'Tab') { e.preventDefault(); const cs = CATS.map(c => c[0]); setCat(cs[(cs.indexOf(cat) + (e.shiftKey ? cs.length - 1 : 1)) % cs.length]) }
   })
   d.dlg.addEventListener('click', e => {
     const t = tgt(e)
     const c = t.closest<HTMLElement>('[data-cat]'); if (c) { setCat(c.dataset.cat as 'all' | Kind); inp.focus(); return }
     const rm = t.closest<HTMLElement>('[data-rm]'); if (rm) { e.stopPropagation(); removeCompare(rm.dataset.rm || ''); render(); inp.focus(); return }
-    const r = t.closest<HTMLElement>('.sr'); if (r) { activeIdx = +(r.dataset.i || 0); pick(results[activeIdx]); inp.focus() }
+    const r = t.closest<HTMLElement>('.sr'); if (!r) return
+    const k = +(r.dataset.i || 0), row = rows[k]; if (!row) return
+    activeIdx = k
+    // 点记号：加入 / 移出那一家（先把这一行改选成它，重画后行尾跟着是它）
+    const v = t.closest<HTMLElement>('.sr-v'); if (v) { const j = +(v.dataset.v || 0); if (row.items[j]) chosen.set(row.id, row.items[j].symbol); pick(row.items[j]); inp.focus(); return }
+    pick(target(row)); inp.focus()
   })
-  listEl.addEventListener('mousemove', e => { const r = tgt(e).closest<HTMLElement>('.sr'); if (r && +(r.dataset.i || 0) !== activeIdx) { activeIdx = +(r.dataset.i || 0); $$('.sr', listEl).forEach(x => x.classList.toggle('active', +(x.dataset.i || -1) === activeIdx)) } })
+  listEl.addEventListener('mousemove', e => {
+    const r = tgt(e).closest<HTMLElement>('.sr'); if (!r) return
+    const k = +(r.dataset.i || 0)
+    if (k !== activeIdx) { activeIdx = k; $$('.sr', listEl).forEach(x => x.classList.toggle('active', +(x.dataset.i || -1) === activeIdx)) }
+    const v = tgt(e).closest<HTMLElement>('.sr-v'); if (v) choose(k, +(v.dataset.v || 0))
+  })
   // 别家的品种表懒拉：弹层一打开就拉全部，到了一家重画一次（关掉弹层时撤掉）
   offUniverse = on(e => { if (e.type === 'universe') render() })
   void loadAllVenues()

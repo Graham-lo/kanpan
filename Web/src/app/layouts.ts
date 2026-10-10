@@ -21,11 +21,6 @@ export const LAYOUTS: Layout[] = ['1', '2', '2v', '3', '4', '6', '8', '9', '12',
 export const LAYOUT_N: Record<Layout, number> = { '1': 1, '2': 2, '2v': 2, '3': 3, '4': 4, '6': 6, '8': 8, '9': 9, '12': 12, '16': 16 }
 /** 最多几格 */
 export const MAX_CELLS = 16
-/** 几格起价格轴上不挂指标当前值标签（主图均线、副图 MACD / RSI…），只留最新价与十字线读数：
- *  格子小了三四枚标签挤在一条轴上读不清（UI 审查 2026-10-10 A4）。不是用户设置 */
-export const AXIS_IND_LABELS_OFF_FROM = 4
-/** n 格的布局里价格轴挂不挂指标标签 */
-export const axisIndicatorLabels = (n: number): boolean => n < AXIS_IND_LABELS_OFF_FROM
 
 /** 一格的配置。主图画法三选一的开关只在开着时出现：footprint 足迹、ha 平均 K 线、range 等幅 K 线；
  *  log 对数坐标、bs 根宽（见下面「每格的视图」）；

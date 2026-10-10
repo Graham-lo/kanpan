@@ -59,7 +59,8 @@ export function applyHidden(root: ParentNode, hidden: ReadonlySet<string>): void
 }
 
 /** 一行图例的工具按钮（显示 / 参数 / 移除；没有可调参数的不放齿轮）。和显隐无关——显隐由 applyHidden 就地改，
- *  这样点「隐藏」不会让结构键变、整行重建（重建的新行要等下一次 mousemove 才算悬停，按钮会闪一下） */
+ *  这样点「隐藏」不会让结构键变、整行重建（重建的新行要等下一次 mousemove 才算悬停，按钮会闪一下）。
+ *  按钮在 DOM 里放在 lhead 末尾，但绝对定位、锚在整行右缘（styles/app.css「图例」段，2026-10-10 审查 C6）：出在读数后面，不盖读数、不挪读数 */
 export function toolsHtml(id: string, hasParams: boolean, lead = ''): string {
   const I = icon
   return `<span class="tools">${lead}<button class="ibtn xs" data-act="toggle" data-id="${id}" data-tip="隐藏" aria-label="隐藏">${I('eye', 'icon-16')}</button>${hasParams ? `<button class="ibtn xs" data-act="settings" data-id="${id}" data-tip="参数" aria-label="参数">${I('gear', 'icon-16')}</button>` : ''}<button class="ibtn xs" data-act="remove" data-id="${id}" data-tip="移除" aria-label="移除">${I('close', 'icon-16')}</button></span>`

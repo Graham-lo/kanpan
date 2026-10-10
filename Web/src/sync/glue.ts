@@ -72,7 +72,7 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
       if (r.settings.includes('compareSymbols')) refreshCompare()
       // 隐藏画线（手机分析面板那颗开关 / 别的电脑的眼睛）：各格跟着收起或放出画线
       if (r.settings.includes('drawingsHidden')) applyDrawingsHidden()
-      if (r.settings.includes('orderFlowHistory') && st.panel === 'flow') renderPanel()
+      if (r.settings.includes('orderFlowHistory')) renderPanel()   // 开着的订单流弹层跟着换（renderPanel 连弹层一起重画）
       // 布局集（别的电脑另存 / 切换 / 换了品种）：各格平滑换成当前那套的品种与周期
       if (r.settings.includes(LAYOUTS_FIELD)) applyLayoutSet()
       // 图表设置（别的电脑改了）：十六格一起换
@@ -81,10 +81,10 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
       if (r.settings.includes('webPrefs') || r.settings.includes('redUp')) applyTheme()
       if (r.settings.includes('redUp')) applyChartSettings()
       if (r.settings.includes('webPrefs')) refreshWebPrefs()
-      // 订单流横带 / 图上大单标记（手机分析面板那两颗）：各格重画，开着的订单流面板跟着换开关
+      // 订单流横带 / 图上大单标记（手机分析面板那两颗）：各格重画，开着的订单流弹层跟着换开关
       if (r.settings.includes('orderFlow') || r.settings.includes('bigTradeSigns')) {
         allCells().forEach(c => { c.chart.dirty = true })
-        if (st.panel === 'flow') renderPanel()
+        renderPanel()
       }
       renderToolbar()
     }

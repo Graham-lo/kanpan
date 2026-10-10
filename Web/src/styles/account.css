@@ -1,19 +1,59 @@
 /* Hkline Web · 我的 → 账号 / 设备（只用 app.css 里的令牌，三套皮肤自动跟随） */
-.acct-card { display: grid; gap: var(--s4); padding: var(--s6); max-width: 440px; }
+.acct-card { display: grid; gap: var(--s4); padding: var(--s6); max-width: calc(var(--s10) * 11); }
 .acct-card .seg { margin-bottom: var(--s1); }
 .acct-card .btn.lg { justify-self: stretch; }
 .acct-card .err:empty { display: none; }
 .acct-notice {
-  display: flex; align-items: center; gap: var(--s2); max-width: 440px;
+  display: flex; align-items: center; gap: var(--s2); max-width: calc(var(--s10) * 11);
   margin: 0 0 var(--s4); padding: var(--s3) var(--s4); border-radius: var(--r-md);
-  background: var(--accent-soft); color: var(--accent-text); font-weight: 500;
+  background: var(--well); color: var(--text-1); font-weight: 500;
 }
+.acct-notice svg { color: var(--text-2); }
 .acct-name { font-weight: 600; font-variant-numeric: tabular-nums; }
 .me-body .group-title { margin-top: var(--s2); }
-/* 修改密码与上面的账号组同宽：两格输入 + 按钮一行，错误提示另起一行 */
-#pwForm { max-width: 880px; grid-template-columns: 1fr 1fr auto; align-items: end; }
+/* 修改密码与上面的账号组同宽（都铺满「我的」内容区，2026-10-10 A7）：两格输入 + 按钮一行，错误提示另起一行 */
+#pwForm { max-width: none; grid-template-columns: 1fr 1fr auto; align-items: end; }
 #pwForm .err { grid-column: 1 / -1; order: 1; }
 /* 注销账号：和修改密码同一种一行排版，说明一行在上，按钮是危险色 */
-#closeForm { max-width: 880px; grid-template-columns: 1fr auto; align-items: end; }
+#closeForm { max-width: none; grid-template-columns: 1fr auto; align-items: end; }
 #closeForm .acct-warn { grid-column: 1 / -1; color: var(--text-2); font-size: var(--t13); }
 #closeForm .err { grid-column: 1 / -1; order: 1; }
+
+/* ───────── 「我的」整页按图表页同一套「精致层级」收（2026-10-10 晚，app.css chrome 灰阶注释） ─────────
+ * 层级靠对比与字重，颜色只给涨跌：标题一处 16/600；组名 11/500/字距 .4 text-3；行名 13/500 text-1，说明 12 text-3；
+ * 左栏选中项 --row-on + text-1 600（不再强调色淡底 + 强调字），字形 24 格细线 18、墨 text-2 / 当前 text-1；
+ * 分段同周期条（中性凹槽 + 浮起块）；分隔只用 1px --sep。主按钮（.btn.primary）保留强调色。 */
+#page-me .me-nav { gap: 2px; }
+#page-me .me-nav .who { border-bottom-color: var(--sep); }
+#page-me .me-nav .who-t { min-width: 0; }
+#page-me .me-nav .who-n { font-weight: 600; color: var(--text-1); }
+#page-me .me-nav .who-d { font-size: var(--t12); line-height: var(--s4); color: var(--text-3); }
+#page-me .me-nav a { height: calc(var(--h-md) + var(--s1)); gap: var(--s3); color: var(--text-2); font-size: var(--t13); font-weight: 500; transition: background var(--d-fast) var(--ease), color var(--d-fast) var(--ease); }
+#page-me .me-nav a .me-ic { width: var(--ic-sm, 18px); height: var(--ic-sm, 18px); --qsw: 2; --q1: var(--text-2); }
+#page-me .me-nav a:hover { background: var(--row-hover); color: var(--text-1); }
+#page-me .me-nav a:hover .me-ic { --q1: var(--text-1); }
+#page-me .me-nav a[aria-current="page"] { background: var(--row-on); color: var(--text-1); font-weight: 600; }
+#page-me .me-nav a[aria-current="page"] .me-ic { --q1: var(--text-1); }
+@media (max-width: 900px) {
+  #page-me .me-nav .who { border-right-color: var(--sep); }
+  #page-me .me-nav a { height: var(--h-md); }
+}
+
+#page-me .me-body h2 { font-size: var(--t16); line-height: var(--s6); font-weight: 600; color: var(--text-1); }
+#page-me .me-body .lede { font-size: var(--t13); color: var(--text-2); margin-bottom: var(--s5); }
+#page-me .group { border-color: var(--sep); }
+#page-me .group-title { font-size: var(--t11); line-height: var(--s4); font-weight: 500; letter-spacing: .4px; color: var(--text-3); margin-bottom: var(--s2); }
+#page-me .row { border-bottom-color: var(--sep); min-height: calc(var(--s12) + var(--s1)); }
+#page-me .row .rl .t { font-size: var(--t13); font-weight: 500; color: var(--text-1); }
+#page-me .row .rl .d { color: var(--text-3); }
+#page-me .tag.accent { color: var(--text-1); background: var(--well); }
+#page-me .field > label { font-size: var(--t11); color: var(--text-3); }
+#page-me .me-empty { padding: var(--s8) var(--s4); }
+#page-me .me-empty .btn { margin-top: var(--s3); }
+#page-me .empty svg.q.icon-24 { --q1: var(--text-3); }
+
+/* 分段（皮肤 / 深浅 / 涨跌颜色 / 线路 / 登录注册）：中性凹槽 + 当前段浮起，不用面板底 + 实线框 */
+#page-me .seg { gap: 2px; padding: 2px; border: 0; border-radius: var(--r-md); background: var(--well); }
+#page-me .seg button { height: calc(var(--h-sm) - 2px); padding: 0 var(--s3); border-radius: var(--r-sm); font-size: var(--t13); font-weight: 500; color: var(--text-2); }
+#page-me .seg button:hover { color: var(--text-1); }
+#page-me .seg button[aria-pressed="true"] { background: var(--well-on); color: var(--text-1); font-weight: 600; box-shadow: 0 0 0 1px var(--sep); }

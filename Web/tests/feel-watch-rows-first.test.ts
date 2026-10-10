@@ -10,17 +10,20 @@ describe('自选：行先摆出来', () => {
     installWatch({
       openSymbol() {}, renderPanel() {}, refreshStreams() {}, openSearch() {},
       current: () => 'BTCUSDT', activeIndex: () => 0, cellCount: () => 1, collapsed: () => false, collapseBtn: () => '',
+      createAlert() {}, note() {}, toggleCompare() {}, inCompare: () => false, toggleWatch() {},
     })
     S.symbols.clear()
     st.watchTab = 'crypto'
     st.watch.crypto = ['BTCUSDT', 'ETHUSDT', '1000PEPEUSDT']
+    st.watch.us = []; st.watch.idx = []; st.watch.com = []
     const html = widgetWatch()
     expect(html).toContain('id="wTbl"')
     expect(html).not.toContain('正在取行情')
     const rows = html.match(/<tr data-sym="([^"]+)"/g)!.map(x => x.slice(14, -1))
     expect(rows).toEqual(['BTCUSDT', 'ETHUSDT', '1000PEPEUSDT'])
-    expect(html).toContain('<b>BTCUSDT</b>')
-    expect(html).toContain('<b>PEPEUSDT</b>')    // 和品种表到了之后的展示代号一样，不会跳
+    // 代号与计价分两段（窄侧栏放不下时计价整段让位、代号完整），拼起来和品种表到了之后的展示代号一样，不会跳
+    expect(html).toContain('<b><span>BTC</span><span>USDT</span></b>')
+    expect(html).toContain('<b><span>PEPE</span><span>USDT</span></b>')
     expect((html.match(/data-f="price">—</g) || []).length).toBe(3)
     expect(html).toMatch(/class="badge/)
   })

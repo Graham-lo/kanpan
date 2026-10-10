@@ -120,6 +120,14 @@ const canvasHash = (i = 0) => page.evaluate(k => { const c = document.querySelec
 const drawCount = async sym => ((await state()).drawings?.[sym] || []).length
 const menuLabels = () => page.evaluate(() => [...document.querySelectorAll('.menu .mi .label')].map(e => e.textContent.trim()))
 const clickMenu = async label => { await page.locator('.menu .mi', { hasText: label }).first().click(); await wait(300) }
+// 2026-10-10 起主力订单流 / 提醒 / 笔记 / 成交是右侧竖条点出的弹层（.menu.pop，不占侧栏、不动 K 线宽）；地址里的 panel=flow 之类不再开它们。
+// 点外面、开对话框、Esc 都会收起，读之前用它确保开着（已开着就不动，免得再点一下收起）
+const POP = '.menu.pop'
+async function railPop(id) {
+  const b = page.locator(`#rail [data-panel="${id}"]`)
+  if ((await b.getAttribute('aria-expanded')) !== 'true' || !(await page.locator(POP).count())) { await b.click(); await page.waitForSelector(POP, { timeout: 5000 }) }
+  await wait(400)
+}
 const sectionErrors = start => errors.slice(start)
 
 // ═════════════════════════════ 图表页 ═════════════════════════════
@@ -347,10 +355,12 @@ async function partEdge() {
   } else ok('60 只自选', false, '取不到币安成交额排行')
   // 没跟踪的品种开主力订单流：热力层空、不报错
   const e1 = errors.length
-  await open('s=1000BONKUSDT&i=15m&layout=1&panel=flow&ladder=0&drawer=0')
-  // 深度热力只在主力订单流面板里有开关（2026-10-10 工具条不再放「热力」）
-  const heat = page.locator('[data-ofp="heat"]')
+  await open('s=1000BONKUSDT&i=15m&layout=1&panel=watch&ladder=0&drawer=0')
+  // 深度热力只在主力订单流弹层里有开关（2026-10-10 工具条不再放「热力」）
+  await railPop('flow')
+  const heat = page.locator(`${POP} [data-ofp="heat"]`)
   if (await heat.count()) { await heat.first().click(); await wait(4000) }
+  ok('主力订单流弹层：点开关不收起', await page.locator(POP).count() === 1 && await heat.count() > 0)
   await shot('订单流-未跟踪品种')
   ok('未跟踪品种开热力：不报错', sectionErrors(e1).length === 0, sectionErrors(e1).slice(0, 3).join(' | '))
   ok('边界：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
@@ -538,10 +548,10 @@ async function partFinish() {
   await open('s=BTCUSDT&i=1h&layout=1&panel=watch&ladder=0&drawer=0')
   await page.click('#toolbar [data-iv="4h"]').catch(() => {}); await wait(800) // 随便一个动作让状态落盘
   const subs = (await state()).ind?.subs || []
-  ok('副图最多三个：本机旧状态存了 4 个，读进来只留前 3 个', subs.join(',') === 'macd,rsi,kdj', subs.join(','))
+  ok('副图上限八个（8ad40fdd 起，不再是手机的三个）：本机旧状态存了 4 个，读进来 4 个都在', subs.join(',') === 'macd,rsi,kdj,oi', subs.join(','))
   await page.keyboard.press('/'); await wait(500)
   const hint = await page.locator('.ind-dlg').innerText().catch(() => '')
-  ok('指标面板写的是「副图最多三个」', /副图最多三个/.test(hint))
+  ok('指标面板打得开，且不再有「副图最多三个」这种过时提示', hint.length > 0 && !/副图最多三个/.test(hint))
   await page.keyboard.press('Escape'); await wait(300)
 
   // ---- 价格轴千分位：轴刻度、十字线标签、现价标签都是 84,070.0 这种写法；成交量仍是 K / M / B / T
@@ -553,7 +563,8 @@ async function partFinish() {
   const raw = [...new Set(txt.filter(t => /^\d{4,}(\.\d+)?$/.test(t)))]
   ok('价格轴 / 十字线 / 现价标签带千分位，没有不带千分位的四位以上价格', sep.length >= 4 && raw.length === 0, `带千分位 ${sep.slice(0, 6).join(' ')}；不带的 ${raw.slice(0, 6).join(' ') || '无'}`)
   const wRow = await page.locator('#wTbl tr[data-sym="BTCUSDT"]').first().innerText().catch(() => '')
-  ok('侧栏自选：价格同一写法（带千分位），成交额仍是 K / M / B / T', /\d{1,3},\d{3}/.test(wRow) && /\d(\.\d+)?[KMBT]\b/.test(wRow), wRow.replace(/\s+/g, ' ').slice(0, 60))
+  // 10-10 起自选只有三列（品种 · 最新价 · 涨跌幅），成交额不在行里
+  ok('侧栏自选：价格同一写法（带千分位），涨跌幅带 %', /\d{1,3},\d{3}/.test(wRow) && /[+−-]?\d+\.\d+%/.test(wRow), wRow.replace(/\s+/g, ' ').slice(0, 60))
   await shotF('价格轴特写', { clip: { x: Math.round(g.axisX - 420), y: Math.round(g.y), width: Math.round(g.x + g.width - g.axisX + 420), height: Math.round(Math.min(g.height, 760)) } })
 
   // ---- 大单「存活」列：「39.8小时」整段放得下（按侧栏真实宽度量）
@@ -582,7 +593,7 @@ async function partFinish() {
 // ═════════════════════════════ 提醒 ═════════════════════════════
 async function partAlerts() {
   const e0 = errors.length
-  await fresh('s=BTCUSDT&i=1h&layout=1&panel=alerts&ladder=0&drawer=0')
+  await fresh('s=BTCUSDT&i=1h&layout=1&panel=watch&ladder=0&drawer=0')
   const n0 = (await state()).alerts.length
   // Alt A 打开「创建提醒」：价格达到
   await page.mouse.click(1000, 600); await page.keyboard.press('Alt+KeyA'); await wait(500)
@@ -604,11 +615,12 @@ async function partAlerts() {
   const fr = s.alerts.find(a => a.rule?.type === 'funding'), oi = s.alerts.find(a => a.rule?.type === 'openInterestChange')
   ok('Webhook 地址不对不给建；资金费率低于 −0.5% 带 Webhook', stillOpen === 1 && fr?.rule.side === 'below' && fr?.rule.rate === '-0.005' && fr?.webhook === 'https://example.com/hook', JSON.stringify(fr?.rule))
   ok('持仓量 1 小时变化超 8%', oi?.rule.threshold === '0.08', JSON.stringify(oi?.rule))
-  const rows = await page.locator('#panelBody .alert-row, .alert-row').count()
-  ok('侧栏「提醒」列出这只品种在等的三条', rows >= 3, `${rows} 行`)
+  await railPop('alerts')
+  const rows = await page.locator(`${POP} .alert-row`).count()
+  ok('竖条「提醒」弹层列出这只品种在等的三条', rows >= 3, `${rows} 行`)
   await shot('提醒-侧栏')
-  // 全部提醒：按类筛
-  await page.click('#aAllBtn'); await wait(400)
+  // 全部提醒：按类筛（开对话框时弹层收起）
+  await page.click(`${POP} #aAllBtn`); await wait(400)
   const fs = await page.evaluate(() => [...document.querySelectorAll('#aaF button')].map(b => b.textContent.trim()))
   await page.click('#aaF [data-f="condition"]'); await wait(200)
   const condRows = await page.locator('.alerts-all-dlg .alert-row').count()
@@ -619,7 +631,11 @@ async function partAlerts() {
   const condRows2 = await page.locator('.alerts-all-dlg .alert-row').count()
   await page.keyboard.press('Escape'); await wait(300)
   s = await state()
-  ok('总表里删一条：表和侧栏一起少', condRows2 === 1 && s.alerts.length === n0 + 2 && await page.locator('.alert-row').count() === rows - 1, `${condRows} → ${condRows2}`)
+  await railPop('alerts')
+  const rowsAfter = await page.locator(`${POP} .alert-row`).count()
+  ok('总表里删一条：表和提醒弹层一起少', condRows2 === 1 && s.alerts.length === n0 + 2 && rowsAfter === rows - 1, `${condRows} → ${condRows2}；弹层 ${rows} → ${rowsAfter}`)
+  await page.keyboard.press('Escape'); await wait(200)
+  ok('Esc 收起提醒弹层', await page.locator(POP).count() === 0)
   // 响一次就结束：贴着现价上下各放一条（差一个最小价位）。线正好压在上一笔价上不算碰（那一下已经算过，
   // 和手机 AlertWatcher 同一条规矩），所以只要下一笔成交价和现价不同，就一定穿过其中一条
   const raw = await (async () => { await page.keyboard.press('Alt+KeyA'); await wait(400); const v = await page.inputValue('#aPrice'); await page.keyboard.press('Escape'); await wait(200); return v })()
@@ -958,7 +974,7 @@ async function partReview() {
   const gate = await page.locator('.rv-login').innerText().catch(() => '')
   ok('没登录进复盘：给登录引导（复盘需要登录）', /复盘需要登录/.test(gate))
   // ---- 记一笔（没登录）：先存本机、弹窗里提示登录；登录后自动传到服务端成为观点记录
-  await open('s=BTCUSDT&i=1h&layout=1&panel=notes&ladder=0&drawer=0')
+  await open('s=BTCUSDT&i=1h&layout=1&panel=watch&ladder=0&drawer=0')
   await page.click('#tbNote'); await wait(700)
   await page.click('.note-dlg #nDir [data-v="long"]'); await wait(200)
   const noteTxt = '收尾回归：放量站上前高，回踩不破看多'
@@ -971,8 +987,10 @@ async function partReview() {
   const pend = ((await state()).notes || []).at(-1)
   const noteId = pend?.id
   ok('没登录记下：留在本机草稿里（等上传），带服务端要的记录草稿', pend?.sync === 'pending' && pend?.draft?.id === noteId && pend?.text === noteTxt && pend?.draft?.rule?.direction === 'long', `${pend?.sync} · ${pend?.draft?.range?.interval} ${pend?.draft?.range?.bars} 根`)
-  const sideTxt = await page.locator('.side-panel').innerText().catch(() => '')
-  ok('侧栏笔记这一条标「登录后上传」', /登录后上传/.test(sideTxt))
+  await railPop('notes')
+  const sideTxt = await page.locator(POP).innerText().catch(() => '')
+  ok('竖条「笔记」弹层里这一条标「登录后上传」', /登录后上传/.test(sideTxt))
+  await page.keyboard.press('Escape'); await wait(200)
   const logged = await uiLogin()
   ok('登录', logged)
   let upNote = null
@@ -1112,7 +1130,7 @@ async function partReview() {
   ok('「在图表中打开」跳到图表页、品种是 BTC', /#chart/.test(page.url()) && /BTC/.test(await page.title()), page.url().split('#')[1])
 
   // ---- 侧栏「成交」：有数据（种的那一回合的两笔）
-  await open('s=BTCUSDT&i=1h&layout=1&panel=trades&ladder=0&drawer=0')
+  await open('s=BTCUSDT&i=1h&layout=1&panel=watch&ladder=0&drawer=0'); await railPop('trades')
   for (let k = 0; k < 20 && !(await page.locator('.tr-row[data-tr-rec]').count()); k++) await wait(500)
   const trs = await page.$$eval('.tr-row[data-tr-rec]', ns => ns.map(n => ({ rec: n.dataset.trRec, cells: [...n.children].map(c => c.textContent.trim()) })))
   const mine = trs.filter(r => r.rec === seed.id)
@@ -1128,7 +1146,7 @@ async function partReview() {
   // ---- 没绑密钥：服务端一条交易回合都没有（拦下接口返回空，别的账号数据不动）
   const noTrades = u => u.pathname.endsWith('/v1/native-review/records') && u.searchParams.get('kind') === 'trade'
   await page.route(noTrades, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { records: [], next: null } }) }))
-  await open('s=ETHUSDT&i=1h&layout=1&panel=trades&ladder=0&drawer=0')
+  await open('s=ETHUSDT&i=1h&layout=1&panel=watch&ladder=0&drawer=0'); await railPop('trades')
   for (let k = 0; k < 20 && !(await page.locator('[data-tr-empty]').count()); k++) await wait(500)
   const nk = await page.locator('[data-tr-empty="nokey"]').innerText().catch(() => '')
   ok('侧栏成交·没绑密钥：「在手机上绑定交易所只读密钥后，成交会自动同步到这里」', nk.includes(NO_KEY_TEXT), nk.replace(/\s+/g, ' '))
@@ -1192,8 +1210,12 @@ async function sepY(i = 0) {
   const hits = []
   for (let y = b.y + b.height * 0.3; y < b.y + b.height - 30; y += 2) {
     await page.mouse.move(x, y)
-    const c = await page.evaluate(k => document.querySelectorAll('.chart-cell canvas')[k].style.cursor, i)
-    if (c === 'row-resize') hits.push(y)
+    // 图例悬在副图上沿，会遮住画布；此时画布仍留着上一处的 cursor，不能把图例也算成分隔线。
+    const onSep = await page.evaluate(({ k, x, y }) => {
+      const cv = document.querySelectorAll('.chart-cell canvas')[k]
+      return document.elementFromPoint(x, y) === cv && cv.style.cursor === 'row-resize'
+    }, { k: i, x, y })
+    if (onSep) hits.push(y)
     else if (hits.length) break
   }
   return hits.length ? { x, y: hits.reduce((a, v) => a + v, 0) / hits.length } : null
@@ -1222,8 +1244,10 @@ async function partLayout() {
   let cs = await cellsNow()
   const c16 = await rectOf('.chart-cell')
   const deg = cs[0].deg
-  const fitSubsFor = h => { const H = h - (h < 360 ? 28 : 32) - 28; if (H <= 0) return 0; const m = Math.min(H, Math.max(160, Math.ceil(H * 0.4))); return Math.min(8, Math.max(0, Math.floor((H - m) / 56))) }  // 同 src/chart/panes.ts degradeFor
-  ok('16 格按格子尺寸降级：副图按剩下的高放得下几个画几个、窄 / 矮格图例只留品种周期且字号小一档、宽 ≥ 420 带量', deg.subs === fitSubsFor(c16.h) && cs[0].panes.length - 1 <= deg.subs && (deg.legend === 'compact') === (c16.w < 480 || c16.h < 360) && deg.font === (deg.legend === 'compact' ? 11 : 12) && deg.vol === (c16.w >= 420), `格子 ${c16.w}×${c16.h}，${JSON.stringify(deg)}，窗格 ${cs[0].panes.length}`)
+  // 同 src/chart/panes.ts degradeFor（2026-10-10：格内没有底栏了；K 线主图留 max(280, 40%) 才加副图；成交量也按主图保不保得住 280 定，不看宽）
+  const fitSubsFor = h => { const H = h - 28; if (H <= 0) return 0; const m = Math.min(H, Math.max(280, Math.ceil(H * 0.4))); return Math.min(8, Math.max(0, Math.floor((H - m) / 56))) }
+  const volFor = h => h - 28 >= 280
+  ok('16 格按格子尺寸降级：副图按剩下的高放得下几个画几个、窄 / 矮格图例只留品种周期且字号小一档、画布高 ≥ 280 带量', deg.subs === fitSubsFor(c16.h) && cs[0].panes.length - 1 <= deg.subs && (deg.legend === 'compact') === (c16.w < 480 || c16.h < 360) && deg.font === (deg.legend === 'compact' ? 11 : 12) && deg.vol === volFor(c16.h), `格子 ${c16.w}×${c16.h}，${JSON.stringify(deg)}，窗格 ${cs[0].panes.length}`)
   const g0 = cs.map(x => x.bars), spacing = cs.length
   await shotL('十六图')
   let w16 = await ws(), st16 = await streamNow()
@@ -1644,48 +1668,65 @@ async function partFlow() {
 // ------------------------------------------------------------ 自选小部件：列、键盘、多图打开到哪一格、闪色、从 TradingView 导入
 const wRows = () => page.evaluate(() => [...document.querySelectorAll('#wTbl tbody tr[data-sym]')].map(r => ({ k: r.dataset.sym, ghost: r.classList.contains('wv-ghost'), focus: r === document.activeElement })))
 const wFocus = () => page.evaluate(() => document.activeElement?.closest?.('#wTbl tr[data-sym]')?.dataset.sym || null)
-const wHeads = () => page.evaluate(() => [...document.querySelectorAll('#wTbl thead th')].map(t => t.textContent.trim()))
 const curSym = async (i) => { const s = await state(); return s.cells[i ?? s.active].symbol }
 const wKey = async k => { await page.keyboard.press(k); await wait(350) }
 const TV_TEXT = '###加密,BINANCE:BTCUSDT.P,BINANCE:PEPEUSDT,BINANCE:WIFUSDT.P\n###美股\nNASDAQ:AAPL,NASDAQ:NVDA\n###我的观察\nOANDA:XAGUSD,TVC:GOLD,COMEX:GC1!,NASDAQ:ZZZZQ'
 const TV_MATCH = { BTCUSDT: 'crypto', '1000PEPEUSDT': 'crypto', WIFUSDT: 'crypto', AAPLUSDT: 'us', NVDAUSDT: 'us', XAGUSDT: 'com', XAUUSDT: 'com' }
 
-const isPremium = u => u.pathname.endsWith('/fapi/v1/premiumIndex')
 async function partWatch() {
   const e0 = errors.length
-  // 资金费缺数的样子：把 XAUUSDT 的费率拦成空串（币安现在没有空费率的品种，用它看「—」与悬停说明）
-  // 按路径认：网关线路下是 /v1/market/raw/fapi/v1/premiumIndex?source=binance，带查询串，glob「**/premiumIndex」拦不住
-  await page.route(isPremium, async r => {
-    const res = await r.fetch(); const a = await res.json()
-    for (const x of a) if (x.symbol === 'XAUUSDT') x.lastFundingRate = ''
-    await r.fulfill({ response: res, json: a })
-  })
   await fresh('layout=1&panel=watch&ladder=0&drawer=0&s=BTCUSDT')
 
-  // ---- 列：侧栏默认 400 → 六列；拖窄到 340 → 四列
-  const pw = await rectOf('#sidePanel')
-  let h = await wHeads()
-  ok('侧栏宽 ≥ 400：六列 品种 · 最新价 · 涨跌幅 · 成交额 · 资金费 · 持仓额', h.join('·') === '品种·最新价·涨跌幅·成交额·资金费·持仓额', `侧栏 ${pw?.w}：${h.join(' · ')}`)
-  await page.waitForFunction(() => [...document.querySelectorAll('#wTbl [data-f="oi"]')].filter(e => e.textContent !== '—').length >= 3, null, { timeout: 15000, polling: 300 }).catch(() => {})
-  const wide = await page.evaluate(() => [...document.querySelectorAll('#wTbl tbody tr')].slice(0, 3).map(r => `${r.dataset.sym} ${r.querySelector('[data-f="fr"]')?.textContent} ${r.querySelector('[data-f="oi"]')?.textContent}`))
-  const fit = await page.evaluate(() => { const t = document.querySelector('#wTbl'), p = document.querySelector('#sidePanel'); return { t: Math.round(t.getBoundingClientRect().right), p: Math.round(p.getBoundingClientRect().right), cols: [...t.querySelectorAll('thead th')].map(x => Math.round(x.getBoundingClientRect().width)) } })
-  ok('六列在 400 宽里放得下（不被侧栏裁掉）', fit.t <= fit.p, `表右缘 ${fit.t} · 侧栏右缘 ${fit.p} · 各列 ${fit.cols.join('/')}`)
-  ok('资金费与持仓额有数（前三行）', wide.length === 3 && wide.every(x => /-?\d+\.\d{4}%/.test(x) && /\d(\.\d+)?[KMBT]$/.test(x)), wide.join(' | '))
-  await shotN('自选-六列')
-  await page.click('.widget-watch [data-tab="com"]'); await wait(600)
-  const xau = await page.evaluate(() => { const c = document.querySelector('#wTbl tr[data-sym="XAUUSDT"] [data-f="fr"]'); return c ? { t: c.textContent, tip: c.dataset.tip } : null })
-  ok('没有资金费的写「—」，悬停说明「该品种没有永续」', xau?.t === '—' && xau?.tip === '该品种没有永续', JSON.stringify(xau))
-  await page.hover('#wTbl tr[data-sym="XAUUSDT"] [data-f="fr"]'); await wait(700)
-  await shotN('自选-没有资金费悬停')
-  await page.mouse.move(5, 700)
-  await page.click('.widget-watch [data-tab="crypto"]'); await wait(400)
-  await page.evaluate(k => { const s = JSON.parse(localStorage.getItem(k) || '{}'); s.panel = 340; localStorage.setItem(k, JSON.stringify(s)) }, SIZE_KEY)
+  // ---- 列：2026-10-10 起三列（品种 · 最新价 · 涨跌幅）、没有表头；各分类连续列出，组头吸顶、带只数；胶囊只负责跳到那一组
+  const colsOf = () => page.evaluate(() => {
+    const t = document.querySelector('#wTbl'), p = document.querySelector('#sidePanel'), pr = p.getBoundingClientRect()
+    const rows = [...t.querySelectorAll('tbody tr[data-sym]')]
+    // 代号、价格、涨跌幅：有没有被截成省略号、有没有跑出侧栏、代号和价格叠没叠（放不下时计价 USDT 整段让位，代号要完整）
+    // 量块级元素：行内的 <b> clientWidth 恒为 0，拿它量截断永远量不出来
+    const bad = rows.filter(r => r.offsetParent).filter(r => {
+      const n = r.querySelector('.wv-name'), code = n.querySelector('b > span'), px = r.querySelector('[data-f="price"]'), pc = r.querySelector('[data-f="pct"]')
+      return code.scrollWidth > code.clientWidth + 1 || n.scrollWidth > n.clientWidth + 1 || px.scrollWidth > px.clientWidth + 1
+        || n.getBoundingClientRect().right > px.getBoundingClientRect().left + 0.5 || (pc && pc.getBoundingClientRect().right > pr.right + 0.5)
+    }).map(r => `${r.dataset.sym}(${r.querySelector('.wv-name').innerText.replace(/\s+/g, '')})`)
+    return { w: Math.round(pr.width), thead: !!t.querySelector('thead'), tds: rows[0]?.children.length ?? 0, f: rows[0] ? [...rows[0].querySelectorAll('[data-f]')].map(e => e.dataset.f) : [],
+      t: Math.round(t.getBoundingClientRect().right), p: Math.round(pr.right), grp: [...t.querySelectorAll('.wv-grp .wv-gh')].map(b => b.getAttribute('aria-label')), bad }
+  })
+  let c = await colsOf()
+  ok('自选三列（品种 · 最新价 · 涨跌幅）、没有表头，表在侧栏里放得下', !c.thead && c.tds === 3 && c.f.join() === 'price,pct' && c.t <= c.p, `侧栏 ${c.w}：${c.tds} 列 ${c.f.join('/')} · 表右缘 ${c.t} · 侧栏右缘 ${c.p}`)
+  ok('分类连续列出：每组一个组头、带只数', c.grp.length >= 2 && c.grp.every(x => /\S+ \d+/.test(x || '')), c.grp.join(' | '))
+  ok('代号 / 价格 / 涨跌幅不截断、不出侧栏、不相叠', c.bad.length === 0, c.bad.join(',') || `侧栏 ${c.w}`)
+  await shotN('自选-三列分组')
+  // 胶囊点「大宗」：滚到那一组（组头贴顶），胶囊跟着亮
+  await page.click('.widget-watch .wv-tabs [data-tab="com"]'); await wait(700)
+  const jump = await page.evaluate(() => {
+    const h = document.querySelector('#wTbl .wv-grp[data-fold="com"]'), body = h?.closest('.widget-watch')?.querySelector('.wv-body') ?? h?.closest('[class*="scroll"]')
+    const on = document.querySelector('.widget-watch .chip[aria-pressed="true"]')?.dataset.tab
+    const r = h?.getBoundingClientRect(), xau = document.querySelector('#wTbl tr[data-sym="XAUUSDT"]')?.getBoundingClientRect(), side = document.querySelector('#sidePanel').getBoundingClientRect()
+    return { on, head: r ? Math.round(r.top) : null, xauIn: !!xau && xau.top >= side.top && xau.bottom <= side.bottom, scrolled: body ? Math.round(body.scrollTop) : null }
+  })
+  ok('胶囊「大宗」：跳到大宗那一组、胶囊亮在大宗', jump.on === 'com' && jump.xauIn, JSON.stringify(jump))
+  await page.click('.widget-watch .wv-tabs [data-tab="crypto"]'); await wait(400)
+  // 组头能收起、刷新后还收着
+  await page.click('#wTbl .wv-grp[data-fold="us"] .wv-gh'); await wait(300)
+  const usRows = () => page.evaluate(() => [...document.querySelectorAll('#wTbl tr[data-sym][data-tab="us"]')].filter(r => r.offsetParent).length)
+  const folded0 = await usRows()
   await page.reload({ waitUntil: 'domcontentloaded' }); await ready()
-  h = await wHeads()
-  ok('侧栏拖窄到 340：回到四列', h.join('·') === '品种·最新价·涨跌幅·成交额', `侧栏 ${(await rectOf('#sidePanel'))?.w}：${h.join(' · ')}`)
-  const fit4 = await page.evaluate(() => { const t = document.querySelector('#wTbl'), p = document.querySelector('#sidePanel'); const v = document.querySelector('#wTbl tbody tr [data-f="vol"]'); return { t: Math.round(t.getBoundingClientRect().right), p: Math.round(p.getBoundingClientRect().right), v: Math.round(v?.getBoundingClientRect().right ?? 1e9) } })
-  ok('窄侧栏：成交额整列在侧栏里（中文名放不下就省略）', fit4.t <= fit4.p && fit4.v <= fit4.p, `表右缘 ${fit4.t} · 成交额右缘 ${fit4.v} · 侧栏右缘 ${fit4.p}`)
-  await shotN('自选-窄侧栏四列')
+  const folded1 = await usRows(), exp = await page.getAttribute('#wTbl .wv-grp[data-fold="us"] .wv-gh', 'aria-expanded')
+  ok('组头收起「美股」：那一组行收掉，刷新后还收着', folded0 === 0 && folded1 === 0 && exp === 'false', `收起后 ${folded0} 行、刷新后 ${folded1} 行、aria-expanded=${exp}`)
+  await page.click('#wTbl .wv-grp[data-fold="us"] .wv-gh'); await wait(300)
+  // 悬停一行：行尾涨跌幅让位给「铃 · 星」两块
+  const hv = page.locator('#wTbl tr[data-sym="ETHUSDT"]').first()
+  await hv.hover(); await wait(300)
+  const q = await page.evaluate(() => { const a = document.querySelector('.wv-act'); const r = a?.getBoundingClientRect(); return { n: a ? a.querySelectorAll('.wv-q').length : 0, shown: !!r && r.width > 0 && getComputedStyle(a).visibility !== 'hidden' && getComputedStyle(a).display !== 'none' } })
+  ok('悬停一行：行尾出「铃 · 星」两块', q.n === 2 && q.shown, JSON.stringify(q))
+  await shotN('自选-悬停铃星')
+  await page.mouse.move(5, 700)
+  // 拖到最窄 280：三列仍不截断、不相叠
+  await page.evaluate(k => { const s = JSON.parse(localStorage.getItem(k) || '{}'); s.panel = 280; localStorage.setItem(k, JSON.stringify(s)) }, SIZE_KEY)
+  await page.reload({ waitUntil: 'domcontentloaded' }); await ready(); await wait(1500)
+  c = await colsOf()
+  ok('侧栏拖到最窄 280：三列仍在侧栏里，代号 / 价格 / 涨跌幅不截断不相叠', c.w === 280 && c.t <= c.p && c.bad.length === 0, `侧栏 ${c.w} · 表右缘 ${c.t} · 侧栏右缘 ${c.p} · ${c.bad.join(',') || '无问题'}`)
+  await shotN('自选-窄侧栏')
   await page.evaluate(k => localStorage.removeItem(k), SIZE_KEY)
   await page.reload({ waitUntil: 'domcontentloaded' }); await ready()
 
@@ -1697,13 +1738,15 @@ async function partWatch() {
   ok('价格一跳：文字闪一次涨跌色，150 ms', !!flash && flash.dur === '0.15s' && /wvFlash(Up|Down)/.test(flash.name), JSON.stringify(flash))
 
   // ---- 键盘
-  await page.click('#wTbl tr[data-sym="BTCUSDT"] td:nth-child(3)'); await wait(400)
+  await page.click('#wTbl tr[data-sym="BTCUSDT"] td:nth-child(2)'); await wait(400)
   ok('点一行：焦点进列表', (await wFocus()) === 'BTCUSDT', `焦点 ${await wFocus()}`)
   await wKey('ArrowDown')
   ok('↓：光标下移并在图上打开', (await wFocus()) === 'ETHUSDT' && (await curSym()) === 'ETHUSDT', `焦点 ${await wFocus()} · 图上 ${await curSym()}`)
   await wKey('End')
   const list0 = (await state()).watch.crypto
-  ok('End：跳到最后一只', (await wFocus()) === list0.at(-1) && (await curSym()) === list0.at(-1), `焦点 ${await wFocus()} · 最后 ${list0.at(-1)}`)
+  // 10-10 起各分类连续列成一张表：End 到整张表最后一行（最后一组的最后一只），不是只到加密的最后一只
+  const lastRow = (await wRows()).at(-1)?.k
+  ok('End：跳到整张表最后一只', (await wFocus()) === lastRow && (await curSym()) === lastRow, `焦点 ${await wFocus()} · 最后 ${lastRow}`)
   await wKey('Home')
   ok('Home：回到第一只', (await wFocus()) === list0[0] && (await curSym()) === list0[0], `焦点 ${await wFocus()}`)
   await wKey('ArrowDown'); await wKey('ArrowDown')
@@ -1744,18 +1787,21 @@ async function partWatch() {
   ok('点第 2 格：头部跟着变成「在第 2 格打开」', (await state()).active === 1 && tgtText.startsWith('在第 2 格打开'), tgtText)
   const before0 = await curSym(0)
   const inCells = new Set(s0.cells.map(c => c.symbol)); const pick = (await state()).watch.crypto.find(k => !inCells.has(k))
-  await page.click(`#wTbl tr[data-sym="${pick}"] td:nth-child(3)`); await wait(600)
+  await page.click(`#wTbl tr[data-sym="${pick}"] td:nth-child(2)`); await wait(600)
   ok('点自选的行：打开到活动的第 2 格，第 1 格不动', (await curSym(1)) === pick && (await curSym(0)) === before0, `第 1 格 ${await curSym(0)} · 第 2 格 ${await curSym(1)}`)
   const other = (await state()).watch.crypto.find(k => k !== pick && !inCells.has(k))
-  await page.click(`#wTbl tr[data-sym="${other}"] td:nth-child(3)`, { button: 'right' }); await wait(300)
+  await page.click(`#wTbl tr[data-sym="${other}"] td:nth-child(2)`, { button: 'right' }); await wait(300)
   const ml = await menuLabels()
-  ok('右键行：菜单有「在第 2 格打开」「移出自选」', ml.includes('在第 2 格打开') && ml.includes('移出自选'), ml.join(' / '))
+  ok('右键行：菜单有「在第 2 格打开」「创建提醒」「记一笔」「加入对比」「移到分类」「移出自选」', ['在第 2 格打开', '创建提醒', '记一笔', '加入对比', '移出自选'].every(x => ml.includes(x)) && await page.locator('.menu .mh', { hasText: '移到分类' }).count() === 1, ml.join(' / '))
+  ok('右键菜单弹出焦点在菜单里', await page.evaluate(() => !!document.activeElement?.closest('.menu')))
+  await page.keyboard.press('Escape'); await wait(200)
+  ok('右键菜单：Esc 关掉', await page.locator('.menu').count() === 0)
+  await page.click(`#wTbl tr[data-sym="${other}"] td:nth-child(2)`, { button: 'right' }); await wait(300)
   await shotN('自选-多图在第N格打开')
   await clickMenu('在第 2 格打开')
   ok('右键「在第 2 格打开」：第 2 格换成这只', (await curSym(1)) === other && (await curSym(0)) === before0, `第 2 格 ${await curSym(1)}`)
 
   // ---- 从 TradingView 导入（登录时顺带看自选同步：导入的品种推到云端，再用 Delete 移出、云端跟着删）
-  await page.unroute(isPremium)
   const logged = KP_PASS ? await uiLogin() : false
   await open('layout=1&panel=watch&ladder=0&drawer=0', 'me')
   await page.click('[data-me="general"]'); await wait(400)
@@ -1786,7 +1832,7 @@ async function partWatch() {
   await page.goto(`${URL_}#chart`, { waitUntil: 'domcontentloaded' }); await ready()
   for (const k of added) {
     const kind = TV_MATCH[k] || 'crypto'
-    await page.click(`.widget-watch [data-tab="${kind}"]`); await wait(300)
+    await page.click(`.widget-watch .wv-tabs [data-tab="${kind}"]`); await wait(300)
     const r = page.locator(`#wTbl tr[data-sym="${k}"]`)
     if (!(await r.count())) continue
     await r.focus(); await wait(150); await wKey('Delete')
@@ -1798,7 +1844,7 @@ async function partWatch() {
     const at = await Promise.all(added.map(k => waitCloud('favorites', `binance/usd_m/${k}`, 'deleted', t0, 20000)))
     ok('Delete 移出也同步到云端', at.every(x => x != null), added.map((k, i) => `${k} ${at[i] == null ? '没删' : at[i] + 'ms'}`).join(' · '))
   }
-  await page.click('.widget-watch [data-tab="crypto"]'); await wait(200)
+  await page.click('.widget-watch .wv-tabs [data-tab="crypto"]'); await wait(200)
   ok('自选：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
 }
 

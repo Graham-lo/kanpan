@@ -10,8 +10,6 @@
  * 左侧工具列与顶部工具栏不动。尺寸只存本机（app/sizes.ts），窗口变小时按比例收、变回来复原。
  */
 import { GRID, type Layout } from '../app/store'
-import { axisIndicatorLabels } from '../app/layouts'
-import { chartsIn } from '../chart/chart'
 import { sizes, saveSizes, fitWidths, fitDrawer, fitDrawerWrapped, wrapRows, DRAWER_ROW_H, clampSize, trackFracs, fitTracks, dragTracks, REGIONS, CHART_MIN_W, CHART_MIN_H, TRACK_MIN_W, TRACK_MIN_H } from '../app/sizes'
 import { splitter, type Splitter } from '../ui/splitter'
 
@@ -58,7 +56,9 @@ function measureDrawerNeed(page: HTMLElement): number {
 /** 顶栏以下、图表区 + 抽屉那一段的高 */
 function pageBodyH(page: HTMLElement): number {
   const gut = px(page, '--gutter', 4), tb = px(page, '--toolbar-h', 40)
-  return page.clientHeight - 2 * gut - tb - gut
+  // 图表区下面那条全局底栏（#chartFoot）占一行 + 一道缝
+  const foot = page.querySelector('#chartFoot') ? px(page, '--gfoot-h', 32) + gut : 0
+  return page.clientHeight - 2 * gut - tb - gut - foot
 }
 
 let pageSplits: { ladder: Splitter; panel: Splitter; drawer: Splitter } | null = null
@@ -136,7 +136,6 @@ function liveFracs(area: HTMLElement, layout: Layout, axis: 'cols' | 'rows'): nu
  */
 export function applyGrid(area: HTMLElement, layout: Layout, cells: readonly HTMLElement[], zoomed: HTMLElement | null = null): void {
   area.classList.toggle('zoomed', !!zoomed)
-  applyAxisLabels(cells, zoomed)
   cells.forEach(el => el.classList.toggle('zoomed', el === zoomed))
   if (zoomed) {
     area.style.gridTemplateColumns = area.style.gridTemplateRows = 'minmax(0, 1fr)'
@@ -152,17 +151,6 @@ export function applyGrid(area: HTMLElement, layout: Layout, cells: readonly HTM
   area.style.gridTemplateAreas = g.areas ? g.areas.map(r => `"${r.join(' ')}"`).join(' ') : ''
   const letters = g.areas ? [...new Set(g.areas.flat())] : null
   cells.forEach((el, i) => { el.style.gridArea = letters ? letters[i] || '' : '' })
-}
-
-/**
- * 按格数给每格开关价格轴上的指标标签：≥ 4 格只留最新价与十字线读数（axisIndicatorLabels）；
- * 放大的那一格铺满图表区，按一格算
- */
-export function applyAxisLabels(cells: readonly HTMLElement[], zoomed: HTMLElement | null = null): void {
-  for (const el of cells) {
-    const on = axisIndicatorLabels(zoomed === el ? 1 : cells.length)
-    for (const ch of chartsIn(el)) ch.setAxisLabels({ indicators: on })
-  }
 }
 
 let gridSplits: Splitter[] = []

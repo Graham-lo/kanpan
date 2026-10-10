@@ -119,14 +119,19 @@ export function paintReplayQuote(): void {
   document.title = `${sy?.code ?? s.symbol} ${price} ${pctText(q.pct)} · 回放 · Hkline`
 }
 
-/** 底栏「回放」按钮：秒级周期置灰并说明，回放中 / 选起点时亮着 */
+/** 底栏「回放」按钮：秒级周期置灰并说明，回放中 / 选起点时亮着。
+ *  2026-10-10 起整页只有一条全局底栏（#chartFoot，作用于当前格）：只画当前格的状态，切当前格时页面调 paintReplayButton */
 function paintButton(cell: ReplayCell, iv = env?.cfg(cell).iv ?? ''): void {
-  const b = cell.el.querySelector<HTMLElement>('.cell-foot [data-act="replay"]'); if (!b) return
+  if (!env || cell !== env.active()) return
+  const b = document.querySelector<HTMLElement>('#chartFoot [data-act="replay"]'); if (!b) return
   const ok = M.canReplay(iv), on = sess?.cell === cell || pick?.cell === cell
   b.setAttribute('aria-disabled', String(!ok))
   b.setAttribute('aria-pressed', String(on))
   b.dataset.tip = !ok ? 'K 线回放：秒级周期不能回放' : on ? '退出回放' : 'K 线回放：选一个起点，一根一根往后播'
 }
+
+/** 当前格换了（或底栏刚建好）：底栏「回放」按钮按当前格重画 */
+export function paintReplayButton(): void { const c = env?.active(); if (c) paintButton(c) }
 
 // ------------------------------------------------------------ 选起点
 function startPick(cell: ReplayCell): void {

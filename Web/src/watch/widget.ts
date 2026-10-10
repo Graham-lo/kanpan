@@ -3,11 +3,16 @@
  * 图表页只留挂接点（installWatch / widgetWatch / mountWatch / watchClick / patchWatchRow / takeWatchUndo），
  * 列表的渲染、键盘、右键、拖动排序都在这里。
  *
- * 列固定三列：品种（「DOGEUSDT」，2026-10-09 用户要求不带交易所与永续）· 最新价 · 涨跌幅，不给列设置；2026-10-07 用户说中文名、成交额都没必要，
- * 侧栏拉宽时的资金费 · 持仓额两列一并去掉。2026-10-08 用户嫌挤、字小，排版照 TradingView 自选：字 14、行高 34、
- * 数字列定宽各成一竖条（仍是三列，涨跌额不要）。
+ * 2026-10-10 用户定版（docs/prototypes/web-layout-2026-10-10.html §3，审查 A1 / C1）：
+ *   · 按分类分节连续列出（watch/sections.ts）：组头可折叠、带数量、吸顶；分类胶囊只做跳转（点了滚到那一节），
+ *     滚动时胶囊跟着亮到当前那一节。折叠只记本机（localStorage 一个键），不是设置项。
+ *   · 当前品种那一行强调软底；行尾悬停出「铃 · 星」两个快捷块（涨跌幅让位）：铃 = 创建提醒，星 = 加 / 移自选。
+ *     快捷块整张表只有一份，指针移到哪一行就挪进哪一行（三百行的表不多三百对按钮）。
+ *   · 右键：在图上打开 · 创建提醒 · 记一笔 · 加入对比 · 移到分类 · 移出自选。
+ * 列固定三列：品种（「DOGEUSDT」，2026-10-09 用户要求不带交易所与永续）· 最新价 · 涨跌幅，不给列设置；
+ * 排版照 TradingView 自选：字 14、行高 34、数字列定宽各成一竖条。
  * 键盘（焦点在列表里时，带 ⌘ / Ctrl / Alt 的一律放给全局）：
- *   ↑ ↓ Home End  移动并在活动格打开（和全局 ↑ ↓ 一样「看到哪只图就是哪只」）
+ *   ↑ ↓ Home End  移动并在活动格打开（跨节连续走，收起的节跳过）
  *   ↵             在活动格打开光标这只
  *   Delete / ⌫    移出自选，光标落到下一行，⌘Z 撤销
  *   空格          收藏 / 取消（等于点星）；取消后这一行淡着留在原位，再按空格收回原位置，焦点离开列表才真正消失
@@ -17,10 +22,12 @@
 import { st, save } from '../app/store'
 import { S, TABS, baseOf, headName, kindOfUnderlying, type Kind } from '../market'
 import { $, $$, I, tgt, esc } from '../ui/dom'
-import { toast, menu, menuFrom } from '../ui/overlay'
+import { toast, menu, menuFrom, type MenuItem } from '../ui/overlay'
 import { sym, pctText, cls, priceText, badge } from '../ui/common'
 import { marketOf } from '../venues'
-import { reorderWatch, undoClear, flashClass, FLASH_CLASSES, RowGate } from './logic'
+import { HL } from '../terms'
+import { undoClear, flashClass, FLASH_CLASSES, RowGate } from './logic'
+import { watchSections, navRows, sectionAt, dropAcross, moveToTab, loadFold, saveFold, type WatchSection } from './sections'
 import { onSession } from '../account/session'
 
 export interface WatchDeps {
@@ -36,12 +43,23 @@ export interface WatchDeps {
   cellCount(): number
   collapsed(): boolean
   collapseBtn(c: boolean): string
+  /** 创建提醒（提醒模块现成的弹窗） */
+  createAlert(k: string): void
+  /** 记一笔（不是当前品种先在图上打开它，K 线到了再弹） */
+  note(k: string): void
+  /** 加入 / 移出对比（满了由宿主提示） */
+  toggleCompare(k: string): void
+  inCompare(k: string): boolean
+  /** 加 / 移自选（星） */
+  toggleWatch(k: string): void
 }
 let D: WatchDeps
 
 const kb = { on: false, cursor: '' }
 let ghost: { k: string; i: number; tab: Kind } | null = null
 let undo: (() => void) | null = null
+let fold: Set<Kind> | null = null
+const folds = (): Set<Kind> => (fold ??= loadFold())
 
 /** 全局 ⌘Z 先问这里要不要撤销自选的改动 */
 export function takeWatchUndo(): (() => void) | null { const u = undo; undo = null; return u }
@@ -50,13 +68,18 @@ const panelEl = (): HTMLElement | null => document.getElementById('sidePanel')
 const tabName = (k: Kind): string => TABS.find(x => x[0] === k)?.[1] || ''
 const codeOf = (k: string): string => sym(k)?.code || headName({ symbol: k })
 const targetLabel = (): string => D.cellCount() > 1 ? `在第 ${D.activeIndex() + 1} 格打开` : '在图上打开'
+const isWatched = (k: string): boolean => Object.values(st.watch).some(l => l.includes(k))
 
-/** 列表里要画的行：自选 + 空格取消后淡着留下的那一行 */
-function rows(): string[] {
-  const list = [...st.watch[st.watchTab]]
-  if (ghost && ghost.tab === st.watchTab && !list.includes(ghost.k)) list.splice(Math.min(ghost.i, list.length), 0, ghost.k)
-  return list
+/** 各节（含空格取消后淡着留下的那一行） */
+function sections(): WatchSection[] { return watchSections(st.watch, TABS, ghost, folds()) }
+/** 这一只在哪一节（淡行算它原来那一节） */
+function tabOf(k: string): Kind | null {
+  if (ghost?.k === k) return ghost.tab
+  return TABS.find(([t]) => st.watch[t].includes(k))?.[0] ?? null
 }
+
+/** 自选栏里看得见的那些（收起的节不算）：只给它们订行情 */
+export function watchVisible(): string[] { return navRows(sections()) }
 
 export function installWatch(d: WatchDeps): void {
   D = d
@@ -67,34 +90,49 @@ export function installWatch(d: WatchDeps): void {
 // ------------------------------------------------------------ 渲染
 export function widgetWatch(): string {
   const cur = D.current()
-  const list = rows()
+  const secs = sections()
+  const nav = navRows(secs)
   const empty = !S.symbols.size
     ? `<div class="empty">${I('wifiOff', 'icon-24')}<div>${S.live === false ? (S.limited ? '币安限流了，冷却后自动重试' : '连不上币安合约接口') : '正在取行情…'}</div></div>`
-    : `<div class="empty">${I('star', 'icon-24')}<div>这一类还没有自选</div><button class="btn secondary sm" style="margin-top:12px" id="wAdd2">搜索品种</button></div>`
+    : `<div class="empty">${I('star', 'icon-24')}<div>还没有自选</div><button class="btn secondary sm" style="margin-top:12px" id="wAdd2">搜索品种</button></div>`
   const c = D.collapsed()
-  if (!list.includes(kb.cursor)) kb.cursor = list.includes(cur) ? cur : list[0] || ''
+  if (!nav.includes(kb.cursor)) kb.cursor = nav.includes(cur) ? cur : nav[0] || ''
+  if (secs.length && !secs.some(s => s.tab === st.watchTab)) st.watchTab = secs[0].tab
   const multi = D.cellCount() > 1
-  // 标题、分类、添加、更多、收起并在一行（36 px），省下的高度给列表
+  // 标题、分类胶囊（跳转；数量写在各节组头上，胶囊只写分类名，窄侧栏也放得下）、添加、更多、收起并在一行，省下的高度给列表
   return `<div class="widget widget-watch ${c ? 'collapsed' : ''}"><div class="sp-head wv-head"><h3>自选</h3>
-      <div class="wv-tabs" role="tablist">${TABS.filter(([k]) => k !== 'idx' || st.watch.idx.length || st.watchTab === 'idx').map(([k, l]) => `<button class="chip" role="tab" data-tab="${k}" aria-pressed="${st.watchTab === k}">${l} ${st.watch[k].length}</button>`).join('')}</div>
+      <div class="wv-tabs" role="tablist">${secs.map(s => `<button class="chip" role="tab" data-tab="${s.tab}" aria-pressed="${st.watchTab === s.tab}" aria-label="${s.label} ${s.count}">${s.label}</button>`).join('')}</div>
       <button class="ibtn xs" id="wAdd" aria-label="添加品种" data-tip="添加品种" data-kbd="⌘ K">${I('plus', 'icon-16')}</button>
       <button class="ibtn xs" id="wMore" aria-label="更多" data-tip="更多">${I('more', 'icon-16')}</button>
       ${D.collapseBtn(c)}</div>
     ${multi ? `<div class="wv-target" id="wTarget">${I('layout4', 'icon-16')}<span>${targetLabel()}</span><span class="sc">↵</span></div>` : ''}
     <div class="scroll no-bar wv-body">
-      ${list.length ? `<table class="tbl" id="wTbl" role="grid" aria-label="自选"><thead><tr><th>品种</th><th class="wc-px">最新价</th><th class="wc-pct">涨跌幅</th></tr></thead>
-      <tbody>${list.map(k => watchRow(k, cur)).join('')}</tbody></table>` : empty}
+      ${secs.length ? `<table class="tbl" id="wTbl" role="grid" aria-label="自选">${secs.map(s => sectionHTML(s, cur)).join('')}</table>` : empty}
     </div></div>`
 }
 
+function sectionHTML(s: WatchSection, cur: string): string {
+  const lab = s.folded ? HL.sideExpand : HL.collapse
+  return `<tbody data-grp="${s.tab}"><tr class="wv-grp" data-fold="${s.tab}"><th colspan="3"><button class="wv-gh" aria-expanded="${!s.folded}" aria-label="${s.label} ${s.count} · ${lab}">
+      <span class="wv-gl">${s.label}</span><span class="wv-gn num">${s.count}</span>${I('chevronDown', 'icon-16 wv-chev')}</button></th></tr>
+    ${s.folded ? '' : s.rows.map(k => watchRow(k, cur, s.tab)).join('')}</tbody>`
+}
+
 /** 品种表还没到（冷启动、本机也没留）：行先按本机自选的代号摆出来，徽标按代号猜、价格写「—」，表到了整张重画 */
-function watchRow(k: string, cur: string): string {
+function watchRow(k: string, cur: string, tab: Kind): string {
   const s = sym(k), g = ghost?.k === k, base = baseOf(k)
-  const name = (s?.code || base) + (s?.quote ?? marketOf(k)?.quote ?? '')
-  return `<tr data-sym="${k}" draggable="${!g}" tabindex="${k === kb.cursor ? 0 : -1}" class="${k === cur ? 'sel' : ''} ${g ? 'wv-ghost' : ''}" aria-selected="${k === cur}">
-    <td><div class="sym">${badge(s ?? { base, kind: kindOfUnderlying(undefined, base) })}<span class="wv-name"><b>${esc(name)}</b></span>${g ? `<span class="wv-off" data-tip="已移出自选，按空格收回">${I('starOff', 'icon-16')}</span>` : ''}</div></td>
+  const code = s?.code || base, quote = s?.quote ?? marketOf(k)?.quote ?? ''
+  return `<tr data-sym="${k}" data-tab="${tab}" draggable="${!g}" tabindex="${k === kb.cursor ? 0 : -1}" class="${k === cur ? 'sel' : ''} ${g ? 'wv-ghost' : ''}" aria-selected="${k === cur}">
+    <td><div class="sym">${badge(s ?? { base, kind: kindOfUnderlying(undefined, base) })}<span class="wv-name"><b><span>${esc(code)}</span>${quote ? `<span>${esc(quote)}</span>` : ''}</b></span>${g ? `<span class="wv-off" data-tip="已移出自选，按空格收回">${I('starOff', 'icon-16')}</span>` : ''}</div></td>
     <td class="num price-live wc-px" data-f="price">${priceText(s)}</td>
-    <td class="num ${cls(s?.pct)} price-live wc-pct" data-f="pct">${pctText(s?.pct)}</td></tr>`
+    <td class="wc-pct"><span class="num ${cls(s?.pct)} price-live" data-f="pct">${pctText(s?.pct)}</span></td></tr>`
+}
+
+/** 行尾悬停的两个快捷块：铃 = 创建提醒，星 = 加 / 移自选（星实心 = 在自选里） */
+export function quickHTML(k: string, watched: boolean): string {
+  const star = watched ? HL.sideWatchOff : HL.addFavorite
+  return `<button class="wv-q" data-wq="alert" data-k="${esc(k)}" aria-label="${HL.sideAlert}" data-tip="${HL.sideAlert}" data-tip-side="top">${I('bellPlus')}</button>` +
+    `<button class="wv-q${watched ? ' on' : ''}" data-wq="star" data-k="${esc(k)}" aria-pressed="${watched}" aria-label="${star}" data-tip="${star}" data-tip-side="top">${I(watched ? 'star' : 'starLine')}</button>`
 }
 
 // 只改看得见的行（RowGate）：观察器挂在列表的滚动区上，上下各多留 160 px，滚动时新露出的行已经是新价
@@ -119,13 +157,41 @@ function observeRows(tbl: HTMLElement, root: HTMLElement | null): void {
   for (const tr of rowEl.values()) rowIO.observe(tr)
 }
 
+/** 整张表一份的快捷块：指针进哪一行就挪进哪一行的涨跌幅格 */
+let quick: HTMLElement | null = null
+function hoverRow(tr: HTMLElement | null): void {
+  if (!tr) { quick?.remove(); return }
+  const k = tr.dataset.sym || ''
+  const cell = $('.wc-pct', tr)
+  if (!cell || (quick?.parentElement === cell && quick.dataset.k === k)) return
+  if (!quick) { quick = document.createElement('span'); quick.className = 'wv-act' }
+  quick.dataset.k = k
+  quick.innerHTML = quickHTML(k, isWatched(k))
+  cell.appendChild(quick)
+}
+
+/** 滚到哪一节，胶囊就亮哪一颗（只换 aria-pressed，不重画） */
+function spy(body: HTMLElement): void {
+  const top = body.getBoundingClientRect().top
+  const heads = $$<HTMLElement>('tbody[data-grp]', body).map(b => ({ tab: b.dataset.grp as Kind, top: b.getBoundingClientRect().top - top + body.scrollTop }))
+  const t = sectionAt(heads, body.scrollTop, { viewH: body.clientHeight, scrollH: body.scrollHeight, keep: st.watchTab })
+  if (!t || t === st.watchTab) return
+  st.watchTab = t
+  $$<HTMLElement>('.wv-tabs [data-tab]', body.closest('.widget-watch') ?? document).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tab === t)))
+}
+
 /** 渲染后挂事件、把键盘焦点放回光标那一行 */
 export function mountWatch(el: HTMLElement): void {
   const tbl = $('#wTbl', el)
+  quick = null
   if (!tbl) { rowIO?.disconnect(); rowIO = null; gate.reset(); rowEl.clear(); return }
-  observeRows(tbl, tbl.closest<HTMLElement>('.wv-body'))
+  const body = tbl.closest<HTMLElement>('.wv-body')
+  observeRows(tbl, body)
   bindDrag(tbl)
   tbl.addEventListener('keydown', onKey)
+  tbl.addEventListener('mouseover', e => hoverRow(tgt(e).closest<HTMLElement>('tr[data-sym]')))
+  tbl.addEventListener('mouseleave', () => hoverRow(null))
+  if (body) body.addEventListener('scroll', () => spy(body), { passive: true })
   tbl.addEventListener('focusin', e => {
     const tr = tgt(e).closest<HTMLElement>('tr[data-sym]'); if (!tr) return
     kb.on = true; setCursor(tr.dataset.sym || '', false)
@@ -175,7 +241,8 @@ function onKey(e: KeyboardEvent): void {
 /** 移出自选（⌘Z 撤销）；光标落到下一行，不自动打开它 */
 function removeRow(k: string, list: string[]): void {
   if (ghost?.k === k) { const i = list.indexOf(k); ghost = null; kb.cursor = list[i + 1] || list[i - 1] || ''; D.renderPanel(); return }
-  const tab = st.watchTab, wl = st.watch[tab], idx = wl.indexOf(k); if (idx < 0) return
+  const tab = tabOf(k); if (!tab) return
+  const wl = st.watch[tab], idx = wl.indexOf(k); if (idx < 0) return
   const i = list.indexOf(k)
   kb.cursor = list[i + 1] || list[i - 1] || ''
   wl.splice(idx, 1); save(); D.renderPanel(); D.refreshStreams()
@@ -194,41 +261,101 @@ function toggleRow(k: string): void {
     toast(`已加回自选 ${codeOf(k)}`, '', 'star', 1800)
     return
   }
-  const tab = st.watchTab, l = st.watch[tab], idx = l.indexOf(k); if (idx < 0) return
+  const tab = tabOf(k); if (!tab) return
+  const l = st.watch[tab], idx = l.indexOf(k); if (idx < 0) return
   l.splice(idx, 1); ghost = { k, i: idx, tab }
   save(); D.renderPanel(); D.refreshStreams()
   toast(`已从自选移除 ${codeOf(k)}`, '再按空格收回', 'starOff', 1800)
 }
 
+/** 移到别的分类：接到那一节末尾，并把那一节展开、滚过去 */
+function moveRow(k: string, to: Kind): void {
+  const from = tabOf(k); if (!from || ghost?.k === k) return
+  const next = moveToTab(st.watch, k, from, to); if (!next) return
+  Object.assign(st.watch, next)
+  if (folds().delete(to)) saveFold(folds())
+  st.watchTab = to
+  save(); D.renderPanel(); D.refreshStreams()
+  $(`#wTbl tr[data-sym="${k}"]`)?.scrollIntoView({ block: 'nearest' })
+  toast(`${codeOf(k)} 已移到「${tabName(to)}」`, '', 'list', 1800)
+}
+
 // ------------------------------------------------------------ 右键
+/** 一行的右键菜单（纯拼装，tests/watch-sections.test.ts） */
+export function rowMenu(k: string, o: { ghost: boolean; tab: Kind | null; multi: boolean; target: string; current: string; compared: boolean; tabs: readonly (readonly [Kind, string])[] }, run: {
+  open(): void; alert(): void; note(): void; compare(): void; toggle(): void; remove(): void; move(t: Kind): void
+}): MenuItem[] {
+  const items: MenuItem[] = [
+    { header: codeOf(k) },
+    { icon: o.multi ? 'layout4' : 'candles', label: o.target, sc: '↵', run: run.open },
+    { icon: 'bellPlus', label: HL.sideAlert, run: run.alert },
+    { icon: 'note', label: HL.sideNote, run: run.note },
+    { icon: 'compare', label: o.compared ? HL.sideCompareOff : HL.sideCompare, disabled: k === o.current, run: run.compare },
+  ]
+  const others = o.ghost || !o.tab ? [] : o.tabs.filter(([t]) => t !== o.tab)
+  if (others.length) items.push('-', { header: HL.sideMoveTo }, ...others.map(([t, l]): MenuItem => ({ icon: 'list', label: l, run: () => run.move(t) })))
+  items.push('-', o.ghost ? { icon: 'star', label: '加回自选', sc: '空格', run: run.toggle } : { icon: 'starOff', label: HL.sideWatchOff, sc: 'Delete', run: run.remove })
+  return items
+}
+
 function onContext(e: MouseEvent): void {
   const tr = tgt(e).closest<HTMLElement>('tr[data-sym]'); if (!tr) return
   e.preventDefault()
   const k = tr.dataset.sym || '', g = ghost?.k === k
-  const list = rows()
+  const list = $$<HTMLElement>('#wTbl tbody tr[data-sym]').map(r => r.dataset.sym || '')
   setCursor(k, false)
-  menu([
-    { header: codeOf(k) },
-    { icon: D.cellCount() > 1 ? 'layout4' : 'candles', label: targetLabel(), sc: '↵', run: () => D.openSymbol(k) },
-    g ? { icon: 'star', label: '加回自选', sc: '空格', run: () => toggleRow(k) }
-      : { icon: 'starOff', label: '移出自选', sc: 'Delete', run: () => removeRow(k, list) },
-  ], e.clientX, e.clientY, { width: 200 })
+  // 指数一类只有美元指数这种算出来的品种：没自选进去时不给「移到指数」
+  const tabs = TABS.filter(([t]) => t !== 'idx' || st.watch.idx.length)
+  menu(rowMenu(k, { ghost: g, tab: tabOf(k), multi: D.cellCount() > 1, target: targetLabel(), current: D.current(), compared: D.inCompare(k), tabs }, {
+    open: () => D.openSymbol(k),
+    alert: () => D.createAlert(k),
+    note: () => D.note(k),
+    compare: () => D.toggleCompare(k),
+    toggle: () => toggleRow(k),
+    remove: () => removeRow(k, list),
+    move: t => moveRow(k, t),
+  }), e.clientX, e.clientY, { width: 220 })
 }
 
 // ------------------------------------------------------------ 点击（图表页的面板点击先问这里）
+/** 点胶囊：滚到那一节（收起着就先展开） */
+function jumpTo(t: Kind): void {
+  st.watchTab = t
+  if (folds().delete(t)) { saveFold(folds()); D.renderPanel() }
+  const body = $<HTMLElement>('.widget-watch .wv-body'), sec = $<HTMLElement>(`#wTbl tbody[data-grp="${t}"]`)
+  $$<HTMLElement>('.widget-watch .wv-tabs [data-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tab === t)))
+  if (body && sec) body.scrollTop += sec.getBoundingClientRect().top - body.getBoundingClientRect().top
+}
+function toggleFold(t: Kind): void {
+  const f = folds()
+  if (f.has(t)) f.delete(t); else f.add(t)
+  saveFold(f); D.renderPanel()
+}
+
 export function watchClick(e: MouseEvent): boolean {
   const t = tgt(e)
-  const tab = t.closest<HTMLElement>('.widget-watch [data-tab]')
-  if (tab) { st.watchTab = tab.dataset.tab as Kind; ghost = null; save(); D.renderPanel(); D.refreshStreams(); return true }
+  const q = t.closest<HTMLElement>('.wv-act [data-wq]')
+  if (q) {
+    const k = q.dataset.k || ''
+    if (q.dataset.wq === 'alert') D.createAlert(k)
+    else { if (ghost?.k === k) toggleRow(k); else D.toggleWatch(k) }
+    return true
+  }
+  // 只认胶囊条：行上也带 data-tab（所在分组），放宽了会把点行当成「跳到那一组」、品种打不开
+  const tab = t.closest<HTMLElement>('.widget-watch .wv-tabs [data-tab]')
+  if (tab) { jumpTo(tab.dataset.tab as Kind); return true }
+  const g = t.closest<HTMLElement>('#wTbl [data-fold]')
+  if (g) { toggleFold(g.dataset.fold as Kind); return true }
   if (t.closest('#wAdd,#wAdd2')) { D.openSearch(); return true }
   const more = t.closest<HTMLElement>('#wMore')
   if (more) {
+    const cur = st.watchTab
     menuFrom(more, [
-      { icon: 'drag', label: '拖动行可以排序', disabled: true },
+      { icon: 'drag', label: '拖动行可以排序，拖到别的分类即移过去', disabled: true },
       { icon: 'list', label: '键盘：↑ ↓ 切换 · 空格 收藏 · Delete 移出', disabled: true },
       {
-        icon: 'trash', label: `清空「${tabName(st.watchTab)}」自选`, disabled: !st.watch[st.watchTab].length, run: () => {
-          const k = st.watchTab, bak = st.watch[k]; st.watch[k] = []; ghost = null; save(); D.renderPanel(); D.refreshStreams()
+        icon: 'trash', label: `清空「${tabName(cur)}」自选`, disabled: !st.watch[cur].length, run: () => {
+          const k = cur, bak = st.watch[k]; st.watch[k] = []; ghost = null; save(); D.renderPanel(); D.refreshStreams()
           undo = () => { st.watch[k] = undoClear(bak, st.watch[k]); save(); D.renderPanel(); D.refreshStreams() }
           toast('已清空', '⌘Z 撤销', 'trash')
         },
@@ -249,6 +376,7 @@ function bindDrag(tbl: HTMLElement): void {
   const ours = (e: DragEvent): boolean => !!e.dataTransfer?.types.includes(DRAG_TYPE)
   tbl.addEventListener('dragstart', e => {
     const tr = tgt(e).closest<HTMLElement>('tr[data-sym]'); if (!tr || !e.dataTransfer) return
+    hoverRow(null)
     tr.classList.add('dragging'); e.dataTransfer.setData(DRAG_TYPE, tr.dataset.sym || ''); e.dataTransfer.effectAllowed = 'move'
   })
   tbl.addEventListener('dragend', e => { tgt(e).closest('tr')?.classList.remove('dragging'); clear() })
@@ -261,11 +389,14 @@ function bindDrag(tbl: HTMLElement): void {
     const tr = tgt(e).closest<HTMLElement>('tbody tr[data-sym]'); if (!tr || !ours(e)) return
     e.preventDefault()
     const below = tr.classList.contains('drop-below'); clear()
-    const rendered = $$<HTMLElement>('tbody tr[data-sym]', tbl).map(r => r.dataset.sym || '')
-    const list = st.watch[st.watchTab]
-    const next = reorderWatch(list, rendered, e.dataTransfer?.getData(DRAG_TYPE) || '', tr.dataset.sym || '', below)
+    const moved = e.dataTransfer?.getData(DRAG_TYPE) || ''
+    const to = tr.dataset.tab as Kind, from = TABS.find(([t]) => st.watch[t].includes(moved))?.[0]
+    if (!from || !to) return
+    const rendered = $$<HTMLElement>('tr[data-sym]', tr.parentElement ?? tbl).map(r => r.dataset.sym || '')
+    const next = dropAcross(st.watch, from, to, rendered, moved, tr.dataset.sym || '', below)
     if (!next) return
-    list.splice(0, list.length, ...next); save(); D.renderPanel()
+    for (const [t, l] of Object.entries(next) as [Kind, string[]][]) st.watch[t].splice(0, st.watch[t].length, ...l)
+    save(); D.renderPanel()
   })
 }
 
@@ -290,7 +421,7 @@ function writeRow(tr: HTMLElement, k: string, dir: number): void {
     if (dir) { const c = flashClass(p.className, dir); p.classList.remove(...FLASH_CLASSES); p.classList.add(c) }
   }
   if (pc) {
-    const ct = pctText(s.pct), cn = `num ${cls(s.pct)} price-live wc-pct`
+    const ct = pctText(s.pct), cn = `num ${cls(s.pct)} price-live`
     if (pc.textContent !== ct) pc.textContent = ct
     if (pc.className !== cn) pc.className = cn
   }

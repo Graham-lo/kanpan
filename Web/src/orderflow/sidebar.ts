@@ -7,6 +7,8 @@
  * 实在放不下就按优先级从低到高往 floor 压（提醒 → 大单 → 盘口档数 → 两块统计的图 → 成交 → 自选），详情不压。
  * 八块全开（2560×1440 侧栏 1384）时放得下：自选 7 行、盘口 4 档、成交 8 行、大单 3 行、提醒 1 行，统计图 72 高；
  * 侧栏窄（< DETAIL_2COL_BELOW）时详情十二格改两列、高 +48，自选再让到 5 行，仍然一屏放下。
+ * 2026-10-10 详情卡按内容自然高（加了 24h 区间条、板块标签自成一行折行全显，BTC 400 宽约 300、320 宽约 348）：
+ * 八块全开时两块统计的图再让一截（floor 88 → 56），盘口仍留 4 档、成交 8 行、大单 3 行，400 宽自选仍 ≥ 6 行，320 宽仍一屏放下。
  * 以前成交排在盘口前面先压、floor 只有 5 行，八块全开时成交流被挤成 5 行而盘口还留着整 8 档（2026-09-29 压测）。
  * 再小的屏连 floor 都放不下时侧栏整条可以滚（orderflow.css），不再把下面几块直接裁掉看不见。
  */
@@ -54,9 +56,9 @@ export const PARTS: Record<WidgetId, PartSpec> = {
   tape: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 10 * TAPE_ROW + 4, floor: SEP + WIDGET_HEAD + 8 * TAPE_ROW + 4, shrink: 4 },
   walls: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 6 * WALL_ROW + 4, floor: SEP + WIDGET_HEAD + 3 * WALL_ROW + 4, shrink: 1 },
   // 24 小时流动性 / 成交：定高 120（标题 32 + 图 88），不参与分多出来的高度
-  // 挤不下时图可以从 88 压到 72（画布跟着宿主高重画）
-  liq: { head: WIDGET_HEAD + SEP, min: SEP + STAT_H, floor: SEP + STAT_H - 16, fixed: true, shrink: 3 },
-  vol: { head: WIDGET_HEAD + SEP, min: SEP + STAT_H, floor: SEP + STAT_H - 16, fixed: true, shrink: 3 },
+  // 挤不下时图可以从 88 压到 56（画布跟着宿主高重画；只在八块全开这种挤法下才到底）
+  liq: { head: WIDGET_HEAD + SEP, min: SEP + STAT_H, floor: SEP + STAT_H - 32, fixed: true, shrink: 3 },
+  vol: { head: WIDGET_HEAD + SEP, min: SEP + STAT_H, floor: SEP + STAT_H - 32, fixed: true, shrink: 3 },
   alerts: { head: WIDGET_HEAD + SEP, min: SEP + WIDGET_HEAD + 2 * ALERT_ROW + 4, floor: SEP + WIDGET_HEAD + ALERT_ROW + 4, shrink: 0 },
 }
 
@@ -64,6 +66,13 @@ export const PARTS: Record<WidgetId, PartSpec> = {
 export function partsFor(width: number): Record<WidgetId, PartSpec> {
   if (!(width > 0) || width >= DETAIL_2COL_BELOW) return PARTS
   return { ...PARTS, detail: { ...PARTS.detail, min: DETAIL_H_2COL + SEP, floor: DETAIL_H_2COL + SEP } }
+}
+
+/** 详情卡按量到的自然高（nat，不含 SEP）放大定高：板块标签折行全显，比出厂定高高就照自然高；量不到（0）或更矮照旧 */
+export function withDetailHeight(parts: Record<WidgetId, PartSpec>, nat: number): Record<WidgetId, PartSpec> {
+  const h = Math.ceil(nat) + SEP
+  if (!(nat > 0) || h <= parts.detail.min) return parts
+  return { ...parts, detail: { ...parts.detail, min: h, floor: h } }
 }
 
 /**

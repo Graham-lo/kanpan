@@ -13,6 +13,7 @@
  * 另有画线交互的几样小工具：45° 吸附、每只品种的数量 / 体积上限、工具分组与同族样式。
  */
 import { fmt, hexA } from '../util/format'
+import { canvasPx } from './canvasType'
 import type { Bar } from './calc'
 import { developingProfile, vpvr, type Developing, type Vpvr } from './overlays'
 import { drawProfile, isDarkBg, profileRows, splitAlpha } from './volumeProfile'
@@ -400,7 +401,7 @@ function drawAvwap(ch: TVChart, c: Ctx, d: Drawing, p: Pane, r: PriceRange, col:
   if (end - from >= 0) {
     // 线尾标读数
     const v = b.mid[end - i0], x = X(end), y = Y(v)
-    c.font = `11px ${ch.font.split('px ')[1] || 'sans-serif'}`; c.textBaseline = 'middle'; c.textAlign = 'left'
+    c.font = `${canvasPx(11)}px ${ch.font.split('px ')[1] || 'sans-serif'}`; c.textBaseline = 'middle'; c.textAlign = 'left'
     const t = `VWAP ${fmt(v, ch.meta.dec)}`, w = c.measureText(t).width + 8
     if (x + 6 + w < ch.plotW()) { c.fillStyle = hexA(col, 0.14); roundRect(c, x + 6, y - 9, w, 18, 4); c.fill(); c.fillStyle = col; c.fillText(t, x + 10, y); ch.textRects.push({ x: x + 6, y: y - 9, w, h: 18 }) }
   }

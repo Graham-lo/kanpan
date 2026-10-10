@@ -1,7 +1,7 @@
 /* Hkline Web · 首页（电脑版，照 docs/prototypes/web-layout-2026-10-10.html 第 2 节，用户 2026-10-10 定板）
  *
  * 四栏并排（2560 宽：1.5 : 1 : 1 : .95；窄于 1800 板块栏并到持仓栏下方，窄于 1300 两栏两行，见 home/layout.ts）：
- * - 异动：栏头分类胶囊（全部 / 盘口 / 持仓 / 费率 / 波动，带计数与色点）+ 范围与更新时刻；列表打开时定序，之后每 60 秒拉一次，
+ * - 异动：栏头分类胶囊（全部 / 盘口 / 持仓 / 费率 / 波动，只有字与计数，10-10 去掉色点）+ 范围与更新时刻；列表打开时定序，之后每 60 秒拉一次，
  *   已有的行就地换数不换位，新的只浮「有 N 条新异动」药丸，点药丸滚到顶重排。合并 / 计数 / 筛选和手机共用 highlights/home.ts。
  *   点一行开图表页那只（电脑版图表还没有「盘口要点」半页，focus 暂不往下传）；悬停行出星，点了加自选。
  * - 涨跌：涨幅榜 / 跌幅榜；持仓：增仓榜 / 减仓榜（数值列写持仓额）。两栏各自一个窗口（1 时 / 4 时 / 24 时，出厂 4 时），
@@ -32,7 +32,8 @@ const LS_KEY = 'hkline-home-v1'
 const POLL_MS = 60_000
 
 const CAT_TAG: Record<Exclude<BoardCat, 'move'>, string> = { book: HL.catBook, oi: HL.catOi, funding: HL.catFunding }
-const CAT_COLOR: Record<Exclude<BoardCat, 'move'>, string> = { book: 'var(--accent)', oi: 'var(--hm-oi)', funding: 'var(--text-2)' }
+// 类别字不上色（2026-10-10 精致层级：颜色只给涨跌）；只有急涨 / 急跌的类别字与强度格走涨跌色
+const CAT_COLOR: Record<Exclude<BoardCat, 'move'>, string> = { book: 'var(--text-2)', oi: 'var(--text-2)', funding: 'var(--text-2)' }
 const RANK_TITLE: Record<MarketKind, string> = { gainers: HL.rankGainers, losers: HL.rankLosers, oi: HL.rankOiUp, oidown: HL.rankOiDown }
 const WIN_LABEL: Record<MarketWindow, string> = { '1h': HL.win1h, '4h': HL.win4h, '24h': HL.win24h }
 const ALL_KINDS: readonly MarketKind[] = ['gainers', 'losers', 'oi', 'oidown']
@@ -83,8 +84,8 @@ function moveRowHTML(r: BoardRow, now: number): string {
   </div>${pillHTML(pill)}</div>`
 }
 
-const SKELETON = Array.from({ length: 10 }, () => `<div class="hm-row skel" aria-hidden="true"><span class="sk sk-b"></span><div class="mid"><div class="l1"><span class="sk" style="width:64px;height:14px"></span><span class="sk" style="width:72px;height:14px;margin-left:auto"></span></div><div class="sk" style="width:62%;height:11px;margin-top:8px"></div></div><span class="sk" style="width:74px;height:26px;border-radius:7px"></span></div>`).join('')
-const RANK_SKELETON = Array.from({ length: 8 }, () => `<div class="rk-row skel" aria-hidden="true"><span class="sk" style="width:12px;height:12px"></span><span class="sk sk-b"></span><span class="sk" style="width:56px;height:13px"></span><span class="sk" style="width:56px;height:13px"></span><span class="sk" style="width:74px;height:26px;border-radius:7px"></span></div>`).join('')
+const SKELETON = Array.from({ length: 10 }, () => `<div class="hm-row skel" aria-hidden="true"><span class="sk sk-b"></span><div class="mid"><div class="l1"><span class="sk" style="width:64px;height:14px"></span><span class="sk" style="width:72px;height:14px;margin-left:auto"></span></div><div class="sk" style="width:62%;height:11px;margin-top:8px"></div></div><span class="sk" style="width:68px;height:22px;border-radius:6px"></span></div>`).join('')
+const RANK_SKELETON = Array.from({ length: 8 }, () => `<div class="rk-row skel" aria-hidden="true"><span class="sk" style="width:12px;height:12px"></span><span class="sk sk-b"></span><span class="sk" style="width:56px;height:13px"></span><span class="sk" style="width:56px;height:13px"></span><span class="sk" style="width:68px;height:22px;border-radius:6px"></span></div>`).join('')
 
 // ───────── 榜单行 ─────────
 
@@ -171,11 +172,10 @@ export function initHome(): void {
 
   function renderChips(): void {
     const c = chipCounts(shown ?? [])
-    const chip = (id: Chip, label: string, dot: string | null): string =>
-      `<button type="button" role="tab" data-chip="${id}" class="${L.chip === id ? 'on' : ''}" aria-selected="${L.chip === id}"${dot ? ` style="--c:${dot}"` : ''}>${dot ? '<i></i>' : ''}${esc(label)}${shown ? `<b class="num">${c[id]}</b>` : ''}</button>`
-    // 波动：圆点一半涨色一半跌色（急涨 / 急跌都在这一类里）
-    morphHtml(chipsEl, chip('all', HL.all, null) + chip('book', HL.catBook, CAT_COLOR.book) + chip('oi', HL.catOi, CAT_COLOR.oi)
-      + chip('funding', HL.catFunding, CAT_COLOR.funding) + chip('move', HL.catMove, 'linear-gradient(135deg, var(--up) 50%, var(--down) 50%)'))
+    // 只留字与计数，不带色点（与 iOS dc24bcfb、手机网页 4de6298a 一致）；选中段是中性凹槽里浮起的一块
+    const chip = (id: Chip, label: string): string =>
+      `<button type="button" role="tab" data-chip="${id}" class="${L.chip === id ? 'on' : ''}" aria-selected="${L.chip === id}">${esc(label)}${shown ? `<b class="num">${c[id]}</b>` : ''}</button>`
+    morphHtml(chipsEl, chip('all', HL.all) + chip('book', HL.catBook) + chip('oi', HL.catOi) + chip('funding', HL.catFunding) + chip('move', HL.catMove))
   }
 
   function renderSub(): void {
@@ -308,7 +308,7 @@ export function initHome(): void {
       const down = feed.ok === false || S.live === false
       const msg = feed.quotes.size ? HL.noRows : down ? HL.failed : ''
       if (msg) secList.innerHTML = `<div class="hm-gempty"><span>${esc(msg)}</span></div>`
-      else secList.innerHTML = Array.from({ length: 10 }, () => `<div class="sc-row skel" aria-hidden="true"><span class="sk" style="width:120px;height:13px"></span><span class="sk" style="width:64px;height:13px"></span><span class="sk" style="width:74px;height:26px;border-radius:7px"></span></div>`).join('')
+      else secList.innerHTML = Array.from({ length: 10 }, () => `<div class="sc-row skel" aria-hidden="true"><span class="sk" style="width:120px;height:13px"></span><span class="sk" style="width:64px;height:13px"></span><span class="sk" style="width:68px;height:22px;border-radius:6px"></span></div>`).join('')
       return
     }
     patchKeyedRows(secList, lines.map(l => [l.id, sectorRowHTML(l)] as const), 'data-sec')

@@ -1,63 +1,73 @@
 /* Hkline Web · 板块页（只用 app.css 已有的令牌与三套皮肤变量）
- * 2026-10-10 照定稿原型 docs/prototypes/web-layout-2026-10-10.html 第 5 节：栏头 48、表头吸顶、行高 36、
- * 数字右对齐等宽、悬停 --surface-3、选中行 --accent-soft 底 + 强调字。 */
+ * 2026-10-10 照定稿原型 docs/prototypes/web-layout-2026-10-10.html 第 5 节：栏头 48、表头吸顶、行高 36、数字右对齐等宽。
+ * 同日晚按图表页同一套「精致层级」收（app.css chrome 灰阶注释）：层级靠对比与字重，颜色只给涨跌。
+ *   栏头标题 16/600 是每栏的主角；表头 11/500 text-3；数值 13/400 text-2 等宽；名字 / 代号 text-1。
+ *   选中板块行 --row-on + text-1 600（不再强调色淡底 + 强调字）；悬停 --row-hover；分隔只用 1px --sep。
+ *   市场 / 窗口分段与排序胶囊同周期条：中性凹槽 --well，当前段 --well-on + text-1 600。 */
 
 /* 两栏：板块列表 38% · 成分表 62%；旧版的预览图一栏不要了 */
 #page-sectors.page { grid-template-columns: minmax(0, 38fr) minmax(0, 62fr); }
 #page-sectors .sec-preview { display: none; }
 
-/* 栏头：标题 16/650 + 次要字 12 + 右侧分段 */
-.sec-head { display: flex; align-items: center; gap: var(--s3); height: 48px; padding: 0 var(--s4); flex: none; min-width: 0; }
-.sec-head h2 { margin: 0; flex: none; font-size: var(--t16); line-height: 24px; font-weight: 650; color: var(--text-1); }
+/* 栏头：标题 16/600 + 次要字 12 + 右侧分段 */
+.sec-head { display: flex; align-items: center; gap: var(--s3); height: var(--s12); padding: 0 var(--s4); flex: none; min-width: 0; box-shadow: inset 0 -1px 0 var(--sep); }
+.sec-head h2 { margin: 0; flex: none; font-size: var(--t16); line-height: var(--s6); font-weight: 600; color: var(--text-1); }
 .sec-head .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t12); color: var(--text-3); }
-.sec-head .sub .num { font-weight: 500; color: var(--text-2); }
-.sec-head .sub .num.up { color: var(--up-text); }
-.sec-head .sub .num.down { color: var(--down-text); }
+.sec-head .sub .num { font-weight: 400; color: var(--text-2); }
+.sec-head .sub .num.up { color: var(--up-text); font-weight: 500; }
+.sec-head .sub .num.down { color: var(--down-text); font-weight: 500; }
 .sec-tools { margin-left: auto; display: flex; align-items: center; gap: var(--s2); flex: none; }
-.sec-tools .seg button { height: 24px; padding: 0 10px; font-size: var(--t12); }
-.sec-sort { display: flex; gap: var(--s1); }
-.sec-sort .chip { height: 28px; padding: 0 12px; border-radius: 999px; font-size: var(--t13); }
-.sec-sort .chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+
+/* 分段（市场 / 窗口）与排序胶囊：中性凹槽 + 当前段浮起（--well-on + 1px --sep 描边），不用强调色 */
+#page-sectors .seg, .sec-sort { display: inline-flex; gap: 2px; padding: 2px; border: 0; border-radius: var(--r-md); background: var(--well); }
+#page-sectors .seg button, .sec-sort .chip {
+  height: var(--h-xs); padding: 0 var(--s2); border-radius: var(--r-sm); font-size: var(--t12); font-weight: 500; color: var(--text-2); background: none;
+}
+#page-sectors .seg button:hover, .sec-sort .chip:hover { background: none; color: var(--text-1); }
+#page-sectors .seg button[aria-pressed="true"], .sec-sort .chip[aria-pressed="true"] { background: var(--well-on); color: var(--text-1); font-weight: 600; box-shadow: 0 0 0 1px var(--sep); }
 .sec-scroll { flex: 1; min-height: 0; }
 
-/* 两张表同一套密度：行高 36、字 14/500、表头 12/600 吸顶 */
+/* 两张表同一套密度：行高 36；表头 11/500 text-3 吸顶；数值 13/400 text-2 */
 .sec-boards, .sec-syms { table-layout: fixed; }
-.sec-boards th, .sec-syms th { height: 36px; padding: 0 var(--s4); font-size: var(--t12); font-weight: 600; color: var(--text-3); }
-.sec-boards td, .sec-syms td { height: 36px; padding: 0 var(--s4); font-size: var(--t14); font-weight: 500; color: var(--text-1); }
-.sec-boards tbody tr:hover td, .sec-syms tbody tr:hover td { background: var(--surface-3); }
-.sec-boards tbody tr.sel td, .sec-boards tbody tr.sel:hover td { background: var(--accent-soft); }
+.sec-boards th, .sec-syms th { height: calc(var(--h-md) + var(--s1)); padding: 0 var(--s4); font-size: var(--t11); font-weight: 500; color: var(--text-3); border-bottom: 1px solid var(--sep); }
+.sec-boards td, .sec-syms td { height: calc(var(--h-md) + var(--s1)); padding: 0 var(--s4); font-size: var(--t13); font-weight: 400; color: var(--text-2); }
+.sec-boards tbody tr:hover td, .sec-syms tbody tr:hover td { background: var(--row-hover); }
+.sec-boards tbody tr.sel td, .sec-boards tbody tr.sel:hover td { background: var(--row-on); }
 
 /* 板块表：名字一列、数字一块。数字两列定宽（合计 260），名字列拿余下但最多 420，表靠左、右边留空 */
-.sec-boards { max-width: 680px; }
-.sec-boards col.c-pct { width: 168px; }
-.sec-boards col.c-beat { width: 92px; }
-.sec-name { overflow: hidden; text-overflow: ellipsis; display: block; }
-.sec-boards tr.sel .sec-name { color: var(--accent-text); font-weight: 600; }
-.sec-boards .sec-pct { display: inline-block; min-width: 64px; text-align: right; }
+.sec-boards { max-width: calc(var(--s10) * 17); }
+.sec-boards col.c-pct { width: calc(var(--s10) * 4 + var(--s2)); }
+.sec-boards col.c-beat { width: calc(var(--s10) * 2 + var(--s3)); }
+.sec-name { overflow: hidden; text-overflow: ellipsis; display: block; color: var(--text-1); font-weight: 500; }
+.sec-boards tr.sel .sec-name { color: var(--text-1); font-weight: 600; }
+.sec-boards .sec-pct { display: inline-block; min-width: calc(var(--s12) + var(--s4)); text-align: right; }
 .sec-boards .sec-pct.up { color: var(--up-text); }
 .sec-boards .sec-pct.down { color: var(--down-text); }
-.sec-boards .faint { font-weight: 400; }
-/* 强弱条 72×4：中线为 0，涨向右涨色、跌向左跌色，长度按本表最大绝对涨跌幅 */
-.sec-sb { display: inline-block; position: relative; width: 72px; height: 4px; margin-left: 10px; border-radius: 2px; background: var(--line); vertical-align: middle; }
+.sec-boards .faint { font-weight: 400; color: var(--text-3); }
+/* 强弱条 72×3：中线为 0，涨向右涨色、跌向左跌色，长度按本表最大绝对涨跌幅；轨道是 --sep 淡线 */
+.sec-sb { display: inline-block; position: relative; width: calc(var(--s12) + var(--s6)); height: 3px; margin-left: var(--s3); border-radius: 2px; background: var(--sep); vertical-align: middle; }
 .sec-sb i { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
 .sec-sb i.up { background: var(--up); }
 .sec-sb i.down { background: var(--down); }
 
 /* 成分表：品种 28% · 最新价 / 涨跌 / 成交额 / 持仓变化 / 费率 平分 · 星 48 */
 .sec-syms col.c-name { width: 28%; }
-.sec-syms col.c-star { width: 48px; }
+.sec-syms col.c-star { width: var(--s12); }
 .sec-syms th:last-child, .sec-syms td:last-child { padding: 0 var(--s2) 0 0; }
 .sec-syms .sym { gap: var(--s2); min-width: 0; }
-.sec-syms .sym b { font-weight: 600; }
-.sec-syms .badge { width: 22px; height: 22px; flex: none; }
+.sec-syms .sym b { font-weight: 600; color: var(--text-1); }
+.sec-syms .badge { width: calc(var(--s5) + 2px); height: calc(var(--s5) + 2px); flex: none; }
 .sec-kind { flex: none; font-size: var(--t11); font-weight: 400; color: var(--text-3); }
 .sec-syms td.up { color: var(--up-text); }
 .sec-syms td.down { color: var(--down-text); }
+/* 「领涨」：中性小签（凹槽底 + text-2），涨跌已经由涨跌列的颜色说了 */
 .sec-lead {
-  flex: none; height: 18px; padding: 0 6px; border-radius: var(--r-xs);
-  font-size: var(--t11); line-height: 18px; font-weight: 500;
-  color: var(--up-text); background: color-mix(in srgb, var(--up) 12%, transparent);
+  flex: none; height: calc(var(--s4) + 2px); padding: 0 var(--s1); border-radius: var(--r-xs);
+  font-size: var(--t11); line-height: calc(var(--s4) + 2px); font-weight: 500;
+  color: var(--text-2); background: var(--well);
 }
+/* 星：细线字形（qicons），已加自选是实心同墨，不另上金色 */
 .sec-star { color: var(--text-3); }
-.sec-star[aria-pressed="true"] { color: #F5A623; background: transparent; }
-.sec-star[aria-pressed="true"]:hover { background: var(--surface-3); }
+.sec-star:hover { color: var(--text-1); background: var(--well); }
+.sec-star[aria-pressed="true"] { color: var(--text-1); background: transparent; }
+.sec-star[aria-pressed="true"]:hover { background: var(--well); }

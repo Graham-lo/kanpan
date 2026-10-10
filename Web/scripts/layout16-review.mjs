@@ -187,7 +187,7 @@ async function a2() {
   await waitCells(page, 4); await sleep(800)
   await clickCell(page, 2); await sleep(300)
   const tb = await page.evaluate(() => ({ sym: document.querySelector('#tbSymbol')?.textContent || '', iv: document.querySelector('#toolbar .intervals [aria-pressed="true"]')?.dataset.iv }))
-  ok('A2', '点第 3 格：高亮到第 3 格，工具栏品种 / 周期跟着变', (await activeIdx(page)) === 2 && tb.sym.includes('SOLUSDT') && tb.iv === '15m', `高亮 ${await activeIdx(page)}，工具栏 ${tb.sym.trim().slice(0, 20)} / ${tb.iv}`)
+  ok('A2', '点第 3 格：高亮到第 3 格，工具栏品种 / 周期跟着变', (await activeIdx(page)) === 2 && /^\s*SOL/.test(tb.sym) && tb.iv === '15m', `高亮 ${await activeIdx(page)}，工具栏 ${tb.sym.trim().slice(0, 20)} / ${tb.iv}`)
   await page.keyboard.press('1'); await sleep(700)
   let cs = await cellsOf(page)
   ok('A2', '按 1：只有当前格换到 1 分', cs[2].iv === '1m' && cs[0].iv === '1h' && cs[1].iv === '4h' && cs[3].iv === '1d', cs.map(c => c.iv).join(' '))
@@ -195,12 +195,30 @@ async function a2() {
   const dlg = await page.evaluate(() => !!document.querySelector('.dialog[role=dialog]'))
   ok('A2', '按 /：指标面板打开', dlg)
   await page.keyboard.press('Escape'); await sleep(300)
-  // 非当前格底栏的区间按钮：会不会把那一格设成当前格
-  await page.locator('.chart-cell').nth(3).locator('[data-range="0"]').click().catch(() => {}); await sleep(900)
+  // 2026-10-10 起整页一条全局底栏（作用于当前格）：先点第 4 格设成当前格，底栏左头跟着写「作用于 · 格 4」，再点底栏的时间区间
+  const cellN = await page.evaluate(() => document.querySelectorAll('.chart-cell .cell-foot').length)
+  ok('A2', '格子里不再各带一条底栏，整页只有图表区下面一条', cellN === 0 && (await page.locator('#chartFoot').count()) === 1, `格内底栏 ${cellN} 条`)
+  await clickCell(page, 3); await sleep(300)
+  const lab = await page.evaluate(() => document.querySelector('#chartFoot .foot-target')?.textContent?.trim() || '')
+  ok('A2', '点第 4 格：底栏左头写「作用于 · 格 4」', lab.startsWith('作用于 · 格 4'), lab)
+  await page.locator('#chartFoot [data-range="0"]').click().catch(() => {}); await sleep(900)
   cs = await cellsOf(page)
   const actAfter = await activeIdx(page), tb2 = await page.evaluate(() => document.querySelector('#toolbar .intervals [aria-pressed="true"]')?.dataset.iv)
-  ok('A2', '点第 4 格（非当前格）底栏的时间区间：那一格变成当前格', actAfter === 3, `高亮仍在 ${actAfter}，第 4 格周期 ${cs[3].iv}，工具栏显示 ${tb2}`)
+  ok('A2', '底栏的时间区间作用于当前格（第 4 格），当前格不变', actAfter === 3, `高亮 ${actAfter}，第 4 格周期 ${cs[3].iv}，工具栏显示 ${tb2}`)
   ok('A2', '底栏时间区间换周期走工具栏同一入口：第 4 格 1 分、工具栏跟着显示 1 分、别的格不动', cs[3].iv === '1m' && tb2 === '1m' && cs[0].iv === '1h' && cs[1].iv === '4h', cs.map(c => c.iv).join(' ') + ` 工具栏 ${tb2}`)
+  // 每格右下角「对数 / 自动」：悬停才露出来，点了只改这一格（不切当前格）
+  {
+    const hr0 = await hostRects(page), p1 = center(hr0[1])
+    await page.mouse.move(p1.x, p1.y); await sleep(250)
+    const vis1 = await page.evaluate(() => [...document.querySelectorAll('.chart-cell')].map(e => getComputedStyle(e.querySelector('.cfoot')).visibility))
+    await page.locator('.chart-cell').nth(1).locator('.cfoot [data-act="log"]').click(); await sleep(300)
+    const logs = await page.evaluate(() => [...document.querySelectorAll('.chart-cell .cfoot [data-act="log"]')].map(b => b.getAttribute('aria-pressed')))
+    const footLog = await page.evaluate(() => document.querySelector('#chartFoot [data-act="log"]')?.getAttribute('aria-pressed'))
+    ok('A2', '悬停第 2 格：它和当前格（第 4 格）的「对数 / 自动」露出来，别的格藏着', vis1[1] === 'visible' && vis1[3] === 'visible' && vis1[0] === 'hidden' && vis1[2] === 'hidden', vis1.join(' '))
+    ok('A2', '点第 2 格右下角「对数」：只有第 2 格开对数；当前格仍是第 4 格、底栏的「对数」跟着第 4 格（关）', logs.join(',') === 'false,true,false,false' && (await activeIdx(page)) === 3 && footLog === 'false', `各格 ${logs.join(',')}，当前 ${await activeIdx(page)}，底栏 ${footLog}`)
+    await shot(page, 'A2-四图-悬停格子右下角')
+    await page.locator('.chart-cell').nth(1).locator('.cfoot [data-act="log"]').click(); await sleep(200)
+  }
   // 右键非当前格：激活
   // A3：每格图例与价格轴各显示自己的品种
   const leg = await page.evaluate(() => [...document.querySelectorAll('.chart-cell')].map(e => e.querySelector('.legend .title')?.textContent?.trim().slice(0, 30) || ''))
@@ -212,9 +230,10 @@ async function a2() {
   {
     const o2 = await open(await baseState({ layout: '4', linkIv: true, cells: cells.concat((await heavyPc(30)).cells.slice(4)) }))
     await waitCells(o2.page, 4); await sleep(600)
-    await o2.page.locator('.chart-cell').nth(1).locator('[data-range="1"]').click().catch(() => {}); await sleep(900)
+    await clickCell(o2.page, 1); await sleep(300)
+    await o2.page.locator('#chartFoot [data-range="1"]').click().catch(() => {}); await sleep(900)
     const c2 = await cellsOf(o2.page)
-    ok('A2', '周期跨图同步开着：点第 2 格底栏「5天」→ 第 2 格当前、四格都换 5 分', (await activeIdx(o2.page)) === 1 && c2.every(c => c.iv === '5m'), `高亮 ${await activeIdx(o2.page)}，周期 ${c2.map(c => c.iv).join(' ')}`)
+    ok('A2', '周期跨图同步开着：点第 2 格再点底栏「5天」→ 第 2 格当前、四格都换 5 分', (await activeIdx(o2.page)) === 1 && c2.every(c => c.iv === '5m'), `高亮 ${await activeIdx(o2.page)}，周期 ${c2.map(c => c.iv).join(' ')}`)
     await o2.ctx.close()
   }
   // A2：十六格里逐格点选的代价（setActive → renderToolbar + renderPanel + layoutSlots）
@@ -370,13 +389,15 @@ async function a6() {
   await page.keyboard.press('Alt+Enter'); await sleep(500)
   const z2 = await zoomOf()
   ok('A6', '⌥↩ 放大当前格，再按一次还原', z1 === 5 && z2 === -1 && (await vis()) === 16, `第一次 ${z1}、第二次 ${z2}`)
-  // 4) 双击底栏空白放大、再双击还原
-  const foot = await page.evaluate(() => { const f = document.querySelectorAll('.chart-cell .cell-foot')[2]; const r = f.getBoundingClientRect(), fr = f.querySelector('.foot-right').getBoundingClientRect(); const bs = [...f.querySelectorAll(':scope > button')].filter(b => b.offsetWidth).map(b => b.getBoundingClientRect().right); return { x: (Math.max(...bs) + fr.left) / 2, y: r.y + r.height / 2 } })
+  // 4) 全局底栏空白双击：放大当前格、再双击还原（先点第 3 格设成当前格）
+  { const p2 = center((await hostRects(page))[2]); await page.mouse.click(p2.x, p2.y); await sleep(300) }
+  const footBlank = () => page.evaluate(() => { const f = document.querySelector('#chartFoot'); const r = f.getBoundingClientRect(), fr = f.querySelector('.foot-right').getBoundingClientRect(); const bs = [...f.querySelectorAll(':scope > button')].filter(b => b.offsetWidth).map(b => b.getBoundingClientRect().right); return { x: (Math.max(...bs) + fr.left) / 2, y: r.y + r.height / 2 } })
+  const foot = await footBlank()
   await page.mouse.dblclick(foot.x, foot.y); await sleep(500)
   const z3 = await zoomOf()
-  const foot2 = await page.evaluate(() => { const f = document.querySelectorAll('.chart-cell .cell-foot')[2]; const r = f.getBoundingClientRect(), fr = f.querySelector('.foot-right').getBoundingClientRect(); const bs = [...f.querySelectorAll(':scope > button')].filter(b => b.offsetWidth).map(b => b.getBoundingClientRect().right); return { x: (Math.max(...bs) + fr.left) / 2, y: r.y + r.height / 2 } })
+  const foot2 = await footBlank()
   await page.mouse.dblclick(foot2.x, foot2.y); await sleep(500)
-  ok('A6', '双击第 3 格底栏空白：放大第 3 格；再双击还原', z3 === 2 && (await zoomOf()) === -1, `第一次 ${z3}、第二次 ${await zoomOf()}`)
+  ok('A6', '点第 3 格、双击底栏空白：放大第 3 格；再双击还原', z3 === 2 && (await zoomOf()) === -1, `第一次 ${z3}、第二次 ${await zoomOf()}`)
   // 5) 画布中间双击不放大（留给画线 / 别的手势）
   const hr3 = await hostRects(page), mid = center(hr3[7])
   await page.mouse.dblclick(mid.x, mid.y); await sleep(400)
@@ -408,14 +429,14 @@ async function a6() {
 
 // ═════════════════ A7 十六格可读性；A8 窗口尺寸与 125% 缩放
 const READ = () => [...document.querySelectorAll('.chart-cell')].map(e => {
-  const h = e.querySelector('.canvas-host'), lg = e.querySelector('.legend'), ft = e.querySelector('.cell-foot')
+  const h = e.querySelector('.canvas-host'), lg = e.querySelector('.legend'), ft = document.querySelector('#chartFoot')
   const hr = h.getBoundingClientRect(), lr = lg?.getBoundingClientRect()
   const fs = lg ? [...lg.querySelectorAll('*')].filter(x => x.childElementCount === 0 && x.textContent.trim() && !x.closest('.badge')).map(x => parseFloat(getComputedStyle(x).fontSize)) : []
   const footVis = ft ? [...ft.querySelectorAll('button, .clock, .conn-dot')].filter(b => b.offsetParent && getComputedStyle(b).display !== 'none') : []
   const fr = ft?.getBoundingClientRect()
   const footClip = footVis.filter(b => { const r = b.getBoundingClientRect(); return r.right > fr.right + 1 || r.left < fr.left - 1 }).length
   return {
-    w: Math.round(hr.width), h: Math.round(hr.height), cls: ['c-narrow', 'c-tiny', 'c-short'].filter(c => e.classList.contains(c)).join(' '),
+    w: Math.round(hr.width), h: Math.round(hr.height), cls: ['c-tiny'].filter(c => e.classList.contains(c)).join(' '),
     legendH: lr ? Math.round(lr.height) : 0, legendRatio: lr ? +(lr.height / hr.height).toFixed(2) : 0, legendOver: lg ? lg.scrollWidth > lg.clientWidth + 1 : false,
     legendRows: lg ? lg.querySelectorAll('.lrow').length : 0, minFont: fs.length ? Math.min(...fs) : null,
     footH: fr ? Math.round(fr.height) : 0, footBtns: footVis.length, footClip, footOver: ft ? ft.scrollWidth > ft.clientWidth + 1 : false,
@@ -439,6 +460,12 @@ async function a7a8() {
       const c0 = rd[0], d0 = cs[0].deg
       const row = { 视口: name, 布局: k, 格: `${c0.w}×${c0.h}`, 降级: d0 ? `副图≤${d0.subs}·图例${d0.legend ?? (d0.compact ? 'compact' : 'full')}${d0.vol ? '' : '·无量'}·字${d0.font}` : '?', 副图: (cs[0].panes || []).length - 1, 类: c0.cls, 图例高: `${c0.legendH}（${Math.round(c0.legendRatio * 100)}%）`, 图例最小字: c0.minFont, 图例横溢: rd.filter(r => r.legendOver).length, 底栏按钮: c0.footBtns, 底栏裁切: rd.reduce((a, r) => a + r.footClip, 0), 滚动条: sc.ok ? '无' : sc.info }
       rows.push(row)
+      // 副图按格子实际像素定（panes.ts：K 线主图留 ≥ 280 才加副图），不按格数：同一布局大屏小屏结果不同
+      const fit = h => { const H = h - 28; if (H <= 0) return 0; const m = Math.min(H, Math.max(280, Math.ceil(H * 0.4))); return Math.min(8, Math.max(0, Math.floor((H - m) / 56))) }
+      ok('A7', `${name} ${LAB[k]}：副图按格子像素留（K 线 ≥ 280 才加），K 线不被压扁`, cs.every((c, i) => (c.panes || []).length - 1 === Math.min(3, fit(rd[i].h)) && (c.panes?.[0]?.[2] ?? 0) >= Math.min(rd[i].h - 28, 280) - 2), cs.map((c, i) => `${(c.panes || []).length - 1}副/主${c.panes?.[0]?.[2]}`).slice(0, 4).join(' ') + ` …（格 ${rd[0].w}×${rd[0].h}）`)
+      // 成交量和副图同一套像素规则（panes.ts volFits）：画布高 ≥ 280 才画，不看宽；同尺寸格子全画或全不画、条高同一公式（主图 × 0.25）
+      const volWant = rd.map(r => r.h - 28 >= 280)
+      ok('A7', `${name} ${LAB[k]}：成交量按格子高统一定（画布 ≥ 280 才画），同尺寸格子一致`, cs.every((c, i) => !!c.deg?.vol === volWant[i]) && new Set(cs.map(c => `${c.deg?.vol}/${Math.round(c.panes?.[0]?.[2] ?? 0)}`)).size === 1, `${cs[0].deg?.vol ? '画' : '不画'}，主图 ${[...new Set(cs.map(c => Math.round(c.panes?.[0]?.[2] ?? 0)))].join('/')}（格 ${rd[0].w}×${rd[0].h}）`)
       ok('A8', `${name} ${LAB[k]}：无滚动条、底栏不裁切、图例不横溢`, sc.ok && !row.底栏裁切 && !row.图例横溢, JSON.stringify(row))
       if (k === '16') {
         await shot(page, `A8-${name.replace(/[ ×%]/g, '_')}-十六图`)
@@ -450,10 +477,17 @@ async function a7a8() {
           // A7：字号台阶（HIG：主 16 / 副 12 / 最小 11）
           ok('A7', '十六图图例最小字号 ≥ 11 px', rd.every(r => r.minFont == null || r.minFont >= 11), rd.map(r => r.minFont).join(','))
           ok('A7', '十六图图例最多占画布高 25%（不压 K 线）', rd.every(r => r.legendRatio <= 0.25), rd.map(r => r.legendRatio).join(','))
-          const deg = cs[0].deg
-          ok('A7', '十六图（三副图）里副图实际画出来了', (cs[0].panes || []).length > 1, `降级档 ${JSON.stringify(deg)}，画了 ${(cs[0].panes || []).map(p => p[0]).join(',')}（格子 ${c0.w}×${c0.h}）`)
+          const deg = cs[0].deg, mainH = cs[0].panes?.[0]?.[2] ?? 0
+          // 2026-10-10（UI 审查 A3）：2560×1440 的十六图格子放不下副图，只画主图 + 成交量，K 线从 ≈120 回到 ≈300 高
+          ok('A7', '2560×1440 十六图（用户开着三副图）只画主图 + 成交量，K 线不再被压扁', cs.every(c => (c.panes || []).length === 1) && mainH >= 250, `画了 ${(cs[0].panes || []).map(p => p[0]).join(',')}，主图 ${mainH} 高（格子 ${c0.w}×${c0.h}，降级档 ${JSON.stringify(deg)}）`)
         }
       }
+    }
+    // 切回四图：用户的三副图原样回来
+    if (name === '2560×1440') {
+      await pickLayout(page, '4'); await waitCells(page, 4); await sleep(1000)
+      const c4 = await cellsOf(page)
+      ok('A7', '从九图切回四图（格子变高）：用户的副图（MACD / RSI / KDJ）原样画回来', c4.every(c => (c.panes || []).length - 1 === Math.min(3, c.deg?.subs ?? 3)) && (c4[0].panes || []).length > 1, c4.map(c => (c.panes || []).map(p => p[0]).join(',')).join(' | '))
     }
     if (errs.length) ok('A8', `${name}：控制台无报错`, false, errs.slice(0, 3).join(' | '))
     await ctx.close()

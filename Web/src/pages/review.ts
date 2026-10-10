@@ -12,6 +12,7 @@ import '../styles/review.css'
 import { morphHtml } from '../ui/patch'
 import { hooks, go, goLogin } from '../app/shell'
 import { $, I, esc } from '../ui/dom'
+import { UI_Q, qsvg } from '../ui/qicons'
 import { GLOSSARY, term, toast } from '../ui/overlay'
 import { badge, shTime, sym } from '../ui/common'
 import { IV_LABEL, baseOf } from '../market/symbols'
@@ -195,7 +196,7 @@ function renderLogin(expired: boolean): void {
   const el = page()
   el.classList.add('rv-signed-out')
   el.innerHTML = `<div class="card rv-login">
-    <div class="empty">${I('trades', 'icon-24')}
+    <div class="empty">${emptyIcon('trades')}
       <div class="rv-login-t">${expired ? '登录已过期' : '复盘需要登录'}</div>
       <div class="rv-login-d">交易回合、观点记录和战绩都存在你的账号里，登录后在这里看、在图上重放。</div>
       <button class="btn primary" id="rvLogin">${expired ? '重新登录' : '去登录'}</button>
@@ -332,8 +333,11 @@ function renderLeft(): void {
   if (scrollSel) { scrollSel = false; left.querySelector<HTMLElement>('tr.sel')?.scrollIntoView({ block: 'nearest' }) }
 }
 
+/** 空态字形：qicons 有的走 24 格细线（与图表页同一套），没有的（如 layers）照旧 */
+const emptyIcon = (k: string): string => UI_Q[k] ? qsvg(UI_Q[k], 'icon-24') : I(k, 'icon-24')
+
 function emptyBlock(title: string, sub: string, icon = 'trades'): string {
-  return `<div class="empty rv-empty">${I(icon, 'icon-24')}<div class="t">${title}</div><div>${sub}</div></div>`
+  return `<div class="empty rv-empty">${emptyIcon(icon)}<div class="t">${title}</div><div>${sub}</div></div>`
 }
 
 function tradeLeft(): string {

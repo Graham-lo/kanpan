@@ -23,6 +23,7 @@ import { klines } from '../market/rest'
 import { settle } from '../market/settle'
 import { fmtAxis, hexA } from '../util/format'
 import { ago } from '../util/clock'
+import { canvasPx } from './canvasType'
 
 const DAY = 864e5
 const WEEK = 7 * DAY
@@ -216,37 +217,28 @@ export function drawKeyLevels(ch: TVChart, p: Pane, r: PriceRange, _from: number
   c.setLineDash([])
   // 右端小字：没被碰到的线在最右边写名字；互相挤着时往上下让开
   const fam = ch.font.split('px ')[1] || 'sans-serif'
-  c.font = `500 11px ${fam}`; c.textAlign = 'right'; c.textBaseline = 'bottom'
+  const fs = canvasPx(11), gap = Math.ceil(fs * 1.3)
+  c.font = `500 ${fs}px ${fam}`; c.textAlign = 'right'; c.textBaseline = 'bottom'
   const tags = placed.filter(q => !q.touched).sort((a, b) => a.y - b.y)
-  let prev = -Infinity
-  for (const q of tags) {
-    let ty = Math.max(q.y - 2, prev + 13)
-    ty = Math.min(ty, p.y + p.h - 2)
-    prev = ty
-    c.fillStyle = q.col
-    c.fillText(q.l.label, PW - 6, ty)
+  // 行距跟字号走（字号随屏幕档位变）；先自上而下让开，再自下而上收回窗格里——原来只往下推、到底就夹住，
+  // 小格子里几条线挨着时最后几行叠成一团（UI 审查 2026-10-10，十六图截图）。实在放不下的名字不写（线和轴上价签还在）
+  const ty: number[] = []
+  for (let i = 0; i < tags.length; i++) ty.push(Math.max(tags[i].y - 2, i ? ty[i - 1] + gap : -Infinity))
+  for (let i = tags.length - 1; i >= 0; i--) ty[i] = Math.min(ty[i], i === tags.length - 1 ? p.y + p.h - 2 : ty[i + 1] - gap)
+  for (let i = 0; i < tags.length; i++) {
+    if (ty[i] - fs < p.y) continue
+    c.fillStyle = tags[i].col
+    c.fillText(tags[i].l.label, PW - 6, ty[i])
   }
   c.restore()
 }
 
-/** 价格轴上同色的小片（不含被碰过的裸线）；在最新价标签之前画，最新价压在最上面 */
-export function drawKeyAxis(ch: TVChart, p: Pane, _r: PriceRange): void {
-  const chips = (lastPlaced.get(ch) || []).filter(q => !q.touched).sort((a, b) => a.y - b.y)
-  if (!chips.length) return
-  const c = ch.ctx, PW = ch.plotW(), H = 18
-  let prev = -Infinity
-  c.save()
-  c.textAlign = 'left'; c.textBaseline = 'middle'; c.font = ch.font
-  for (const q of chips) {
-    let top = Math.max(q.y - H / 2, prev + H + 1)
-    top = Math.min(top, p.y + p.h - H)
-    prev = top
-    c.fillStyle = q.col
-    c.beginPath(); c.roundRect(PW + 1, top, ch.aw - 2, H, 3); c.fill()
-    c.fillStyle = '#fff'
-    c.fillText(fmtAxis(q.l.price, ch.meta.dec), PW + 8, top + H / 2 + 0.5)
-  }
-  c.restore()
+/** 价格轴上同色的标签（不含被碰过的裸线）：只交出来，由图表和最新价、提醒、指标标签一起排（chart.ts drawPriceLabels →
+ *  layoutAxisLabels，撞了按优先级让位，最新价永远完整）。原来自己另排一列先画，和最新价 / 指标标签叠在一起读不清（UI 审查 2026-10-10 A3） */
+export function keyAxisTags(ch: TVChart, p: Pane): { y: number; text: string; bg: string }[] {
+  return (lastPlaced.get(ch) || [])
+    .filter(q => !q.touched && q.y >= p.y && q.y <= p.y + p.h)
+    .map(q => ({ y: q.y, text: fmtAxis(q.l.price, ch.meta.dec), bg: q.col }))
 }
 
 /** 回归脚本读：这一帧画了哪些关键价位（名字、价、是否被碰过） */

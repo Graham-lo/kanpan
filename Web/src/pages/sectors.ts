@@ -13,6 +13,7 @@ import { st, save, subscribe } from '../app/store'
 import { hooks, go } from '../app/shell'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { morphHtml, patchKeyedRows } from '../ui/patch'
+import { UI_Q, qsvg } from '../ui/qicons'
 import { GLOSSARY, term } from '../ui/overlay'
 import { badge, cls, pctText, priceText, sym } from '../ui/common'
 import { parseKey } from '../market'
@@ -165,6 +166,9 @@ function emptyHTML(): string {
   return '<div class="empty">这个市场暂时没有板块行情</div>'
 }
 
+/** 星：24 格细线字形（已加自选是实心同墨） */
+const starIcon = (on: boolean): string => qsvg(UI_Q[on ? 'star' : 'starOff'], 'icon-16')
+
 const keyOfRow = (r: SymbolRow): string => feed.quotes.get(r.base)?.symbol ?? r.base + 'USDT'
 /** 持仓变化按两位小数取整后再定号与色：−0.004% 写「0.00%」不标红 */
 const oiRound = (v: number | null | undefined): number | null => v == null || !Number.isFinite(v) ? null : Math.round(v * 100) / 100 || 0
@@ -186,7 +190,7 @@ function symbolRowHTML(r: SymbolRow): string {
     <td class="num" data-f="vol">${fmtCompact(r.quoteVolume)}</td>
     <td class="num ${cls(oi)}" data-f="oi">${pctText(oi)}</td>
     <td class="num" data-f="fr">${fundingText(s?.fr)}</td>
-    <td><button class="ibtn sm sec-star" data-star="${esc(k)}" aria-label="${star ? '移出自选' : '加入自选'}" aria-pressed="${star}">${I(star ? 'star' : 'starOff', 'icon-16')}</button></td></tr>`
+    <td><button class="ibtn sm sec-star" data-star="${esc(k)}" aria-label="${star ? '移出自选' : '加入自选'}" aria-pressed="${star}">${starIcon(star)}</button></td></tr>`
 }
 
 function renderMembers(title: string, fetchOi = true): void {
@@ -312,7 +316,7 @@ export function initSectors(): void {
     if (star) {
       const k = star.dataset.star || ''; toggleWatch(k)
       const on = isWatched(k)
-      star.innerHTML = I(on ? 'star' : 'starOff', 'icon-16'); star.setAttribute('aria-pressed', String(on)); star.setAttribute('aria-label', on ? '移出自选' : '加入自选')
+      star.innerHTML = starIcon(on); star.setAttribute('aria-pressed', String(on)); star.setAttribute('aria-label', on ? '移出自选' : '加入自选')
       return
     }
     const r = t.closest<HTMLElement>('[data-sec]'); if (r) { select(r.dataset.sec || ''); return }

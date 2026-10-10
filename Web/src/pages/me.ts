@@ -1,7 +1,8 @@
 /* Hkline Web · 我的：账号（登录 / 注册 / 改密码 / 退出）、设备、外观、通用（行情线路、从 TradingView 导入自选）、通知、关于 */
 import { st, save } from '../app/store'
 import { hooks, applyTheme, renderHeader } from '../app/shell'
-import { $, I, esc, tgt } from '../ui/dom'
+import { $, esc, tgt } from '../ui/dom'
+import { G, UI_Q, qsvg } from '../ui/qicons'
 import { toast } from '../ui/overlay'
 import { setRoute } from '../market'
 import { session, onSession } from '../account/session'
@@ -15,6 +16,23 @@ import { tvImportHTML, tvImportClick, tvImportChange, onTvImported } from '../wa
 import { reviewApi, errorText as reviewErrorText } from '../review/api'
 import { NO_KEY_TEXT, venueRows, type VenueRow } from '../trades/panel'
 import '../styles/account.css'
+
+/* 「我的」左栏字形：24 格细线（照 ui/qicons.ts 的规格：字形占 3–21、描边走 --qsw、圆头圆角、只有锚点是实心点）。
+ * 铃 / 齿轮 / 信息直接用 qicons 现成的；账号、交易所密钥、调色板、设备 qicons 里没有，在这里按同一规格补，挂进 G 走 qsvg。 */
+type QOps = (typeof G)[string]
+const ME_Q: Record<string, QOps> = {
+  me_user: [{ t: 'c', cx: 12, cy: 8.5, r: 4 }, { t: 'p', d: 'M4.5 20.5C4.5 16.6 7.9 14 12 14S19.5 16.6 19.5 20.5' }],
+  me_key: [{ t: 'c', cx: 8, cy: 12, r: 4.5 }, { t: 'p', d: 'M12.5 12H20.5M17.5 12V16M20.5 12V15' }],
+  me_palette: [
+    { t: 'p', d: 'M12 3.5A8.5 8.5 0 0 0 12 20.5C13.4 20.5 14 19.7 14 18.8C14 17.6 13 17.2 13 16C13 15 13.8 14.5 14.7 14.5H16.5A4 4 0 0 0 20.5 10.5C20.5 6.6 16.7 3.5 12 3.5Z' },
+    { t: 'd', x: 7.75, y: 11.5, r: 1.2 }, { t: 'd', x: 10, y: 7.5, r: 1.2 }, { t: 'd', x: 14.5, y: 7.5, r: 1.2 },
+  ],
+  me_device: [{ t: 'r', x: 3, y: 4.5, w: 11, h: 9, rx: 2 }, { t: 'p', d: 'M6.5 19.5H10.5M8.5 13.5V19.5' }, { t: 'r', x: 16, y: 9, w: 5, h: 10.5, rx: 1.5 }],
+}
+Object.assign(G, ME_Q)
+const ME_GLYPH: Record<string, string> = { user: 'me_user', key: 'me_key', palette: 'me_palette', device: 'me_device', bell: UI_Q.bell, gear: UI_Q.gear, info: UI_Q.info }
+/** 「我的」里的字形（左栏 18、空态 24） */
+const meIcon = (k: string, cls: string): string => qsvg(ME_GLYPH[k] ?? k, cls)
 
 const ME: [string, string, string][] = [['account', 'user', '账号'], ['exchange', 'key', '交易所账号'], ['notify', 'bell', '通知'], ['look', 'palette', '外观'], ['general', 'gear', '通用'], ['devices', 'device', '设备'], ['about', 'info', '关于']]
 const VERSION = '0.1.0'
@@ -44,7 +62,7 @@ function accountHTML(): string {
   if (!u) {
     const reg = authMode === 'register'
     return `<h2>账号</h2><p class="lede">登录后自选、画线、提醒、指标参数和手机同步。</p>
-      ${session.notice ? `<div class="acct-notice">${I('info', 'icon-16')}<span>${esc(session.notice)}</span></div>` : ''}
+      ${session.notice ? `<div class="acct-notice">${meIcon('info', 'icon-16')}<span>${esc(session.notice)}</span></div>` : ''}
       <form class="group acct-card" id="acctForm" novalidate>
         <div class="seg fill" role="group">${(['login', 'register'] as const).map(m => `<button type="button" data-auth="${m}" aria-pressed="${authMode === m}">${m === 'login' ? '登录' : '注册'}</button>`).join('')}</div>
         <div class="field"><label for="acctUser">用户名</label><input class="input lg" id="acctUser" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="32" ${reg ? 'placeholder="小写字母、数字、下划线"' : ''}></div>
@@ -75,10 +93,10 @@ function accountHTML(): string {
 
 function devicesHTML(): string {
   const head = '<h2>设备</h2><p class="lede">手机、平板、电脑各一台同时在线，同类设备登录会把前一台顶下去。</p>'
-  if (!session.user) return head + `<div class="group"><div class="empty" style="padding:32px 16px">${I('device', 'icon-24')}<div>登录后能看到这个账号在哪些设备上登录</div><button class="btn primary sm" style="margin-top:12px" data-me="account">去登录</button></div></div>`
+  if (!session.user) return head + `<div class="group"><div class="empty me-empty">${meIcon('device', 'icon-24')}<div>登录后能看到这个账号在哪些设备上登录</div><button class="btn primary sm" data-me="account">去登录</button></div></div>`
   if (!devs.rows) {
     if (!devs.err) void loadDevices()
-    return head + `<div class="group">${devs.err ? `<div class="empty" style="padding:32px 16px"><div>${esc(devs.err)}</div><button class="btn secondary sm" style="margin-top:12px" id="devRetry">重试</button></div>` : '<div class="empty" style="padding:32px 16px">正在读取…</div>'}</div>`
+    return head + `<div class="group">${devs.err ? `<div class="empty me-empty"><div>${esc(devs.err)}</div><button class="btn secondary sm" id="devRetry">重试</button></div>` : '<div class="empty me-empty">正在读取…</div>'}</div>`
   }
   const rows = [...devs.rows].sort((a, b) => Number(b.current) - Number(a.current) || b.lastSeen - a.lastSeen)
   return head + `<div class="group">${rows.map(d => row(
@@ -116,12 +134,12 @@ function exchangeHTML(): string {
   const head = `<h2>交易所账号</h2><p class="lede">只读密钥，只用来拉成交做复盘，不能下单、不能提币。</p>
     <div class="group">${row('在手机上绑定', '手机「我的 → 交易所」填只读密钥；密钥只存在手机上，网页不存、也不经手', '')}${row('成交怎么到网页', '手机拉取成交后上传到服务端，拼成交易回合；网页的复盘与图表侧栏「成交」读的都是这一份', '')}</div>
     <div class="group-title">服务端收到的成交</div>`
-  if (!session.user) return head + `<div class="group"><div class="empty" style="padding:32px 16px">${I('key', 'icon-24')}<div>登录后能看到手机传上来的是哪家交易所、最近什么时候传的</div><button class="btn primary sm" style="margin-top:12px" data-me="account">去登录</button></div></div>`
+  if (!session.user) return head + `<div class="group"><div class="empty me-empty">${meIcon('key', 'icon-24')}<div>登录后能看到手机传上来的是哪家交易所、最近什么时候传的</div><button class="btn primary sm" data-me="account">去登录</button></div></div>`
   if (!venues.rows) {
     if (!venues.err) void loadVenues()
-    return head + `<div class="group">${venues.err ? `<div class="empty" style="padding:32px 16px"><div>${esc(venues.err)}</div><button class="btn secondary sm" style="margin-top:12px" id="venRetry">重试</button></div>` : '<div class="empty" style="padding:32px 16px">正在读取…</div>'}</div>`
+    return head + `<div class="group">${venues.err ? `<div class="empty me-empty"><div>${esc(venues.err)}</div><button class="btn secondary sm" id="venRetry">重试</button></div>` : '<div class="empty me-empty">正在读取…</div>'}</div>`
   }
-  if (!venues.rows.length) return head + `<div class="group"><div class="empty" style="padding:32px 16px" data-ex-empty>${I('key', 'icon-24')}<div>${esc(NO_KEY_TEXT)}</div></div></div>`
+  if (!venues.rows.length) return head + `<div class="group"><div class="empty me-empty" data-ex-empty>${meIcon('key', 'icon-24')}<div>${esc(NO_KEY_TEXT)}</div></div></div>`
   return head + `<div class="group" data-ex-venues>${venues.rows.map(v => row(
     `${esc(v.title)}${v.accountTag ? ` <span class="tag">${esc(v.accountTag)}</span>` : ''}`,
     `${v.rounds} 个回合 · 最近一次上传 ${when(v.lastUpload)}${v.lastFill ? ` · 最新成交 ${when(v.lastFill)}` : ''}`,
@@ -234,8 +252,8 @@ function notifText(): string {
 function render(): void {
   if (!ME.some(m => m[0] === st.meSection)) st.meSection = 'look'
   const u = session.user
-  $('#meNav').innerHTML = `<div class="who"><span class="avatar ${u ? '' : 'out'}">${u ? esc(u[0].toUpperCase()) : I('user', 'icon-16')}</span><div><div style="font-weight:600">${u ? esc(u) : '未登录'}</div><div class="muted" style="font-size:12px;line-height:16px">${u ? '已登录' : '自选、画线、提醒存在这台电脑上'}</div></div></div>
-    ${ME.map(([k, ic, l]) => `<a href="#me" data-me="${k}" ${st.meSection === k ? 'aria-current="page"' : ''}>${I(ic)}${l}</a>`).join('')}`
+  $('#meNav').innerHTML = `<div class="who"><span class="avatar ${u ? '' : 'out'}">${u ? esc(u[0].toUpperCase()) : meIcon('user', 'icon-16')}</span><div class="who-t"><div class="who-n">${u ? esc(u) : '未登录'}</div><div class="who-d">${u ? '已登录' : '自选、画线、提醒存在这台电脑上'}</div></div></div>
+    ${ME.map(([k, ic, l]) => `<a href="#me" data-me="${k}" ${st.meSection === k ? 'aria-current="page"' : ''}>${meIcon(ic, 'me-ic')}${l}</a>`).join('')}`
   const body: Record<string, () => string> = {
     account: accountHTML,
     exchange: exchangeHTML,

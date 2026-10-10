@@ -5,7 +5,7 @@
  *     没有任何展示需要它（图上订单流、梯子、热力、小部件、面板都关着）或离开图表页一分钟后就停；
  *   · 每帧（半秒）把快照分发给图上层、梯子、小部件、抽屉、面板；
  *   · 深度热力：实时每秒一列，实时开始之前的时段向服务端要回填（按返回的 bucketMs 画列宽）；
- *   · 「主力订单流」侧栏面板、工具栏的「热力」按钮、指标里的那一行与齿轮。
+ *   · 「主力订单流」弹层（右侧栏图标点出，2026-10-10 起不再占一整栏）、指标里的那一行与齿轮。
  * 数据规则（门槛、分桶、出现 / 消失 / 结局）都在 model / feed 里照手机端的 Swift 模型，这里只管展示。
  */
 import './orderflow.css'
@@ -81,7 +81,7 @@ function needed(): boolean {
   // 副图「累计量差」的各家实时段、「大单与散户累计量差」都靠这里的逐笔成交
   if (st.ind.subs.includes('cvd') || st.ind.subs.includes('whale')) return true
   if (footprintWanted()) return true
-  if (st.panel === 'flow') return true
+  if (panelOpen()) return true
   return st.panel === 'watch' && st.slots.widgets.some(w => isOfWidget(w))
 }
 
@@ -401,7 +401,7 @@ export function indicatorRowClick(t: HTMLElement): boolean {
   return false
 }
 
-// ------------------------------------------------------------------ 侧栏「主力订单流」面板
+// ------------------------------------------------------------------ 「主力订单流」弹层（右侧栏图标点出）
 
 /** 四行开关前面的小图标：「质感」一套（docs/prototypes/web-visual-2026-10-08.html §ofTiles）——
  *  和左右栏同一块中性磨砂底（styles/icons.css 的 .of-p-row .tgi），18 格小图；强调 / 涨 / 跌三色在 oklch 里色度 × .6、明度不动，
@@ -427,11 +427,11 @@ const TILE: Record<string, () => string> = {
     rr(1 + c * 4.2, 1 + r * 4.2, 3.4, 3.4, .8, (c + r) % 3 ? QA : QH, +(.25 + ((c * 3 + r * 5) % 7) / 9).toFixed(2))).join('')).join(''))}</span>`,
 }
 
-/** 面板贴在屏幕右缘：提示出在行的左侧（data-tip-side="left"），不盖本行开关、不压下一行；左边放不下时自动翻面（ui/tipPlace.ts） */
+/** 弹层贴在右侧栏左边：提示出在行的左侧（data-tip-side="left"），不盖本行开关、不压下一行；左边放不下时自动翻面（ui/tipPlace.ts） */
 const sw = (id: string, label: string, on: boolean, tip: string): string =>
   `<div class="of-p-row" data-tip="${tip}" data-tip-side="left">${TILE[id]?.() ?? ''}<span class="l">${label}</span><button class="switch" role="switch" data-ofp="${id}" aria-checked="${on}" aria-label="${label}"></button></div>`
 
-/** 图表页 panelFlow 调：整块重画。 */
+/** 图表页的右侧栏弹层调：往弹层里整块重画（2026-10-10 审查 A2 / C3：开关设完点外面即收起，自选栏不被顶掉、K 线宽度不变）。 */
 export function flowPanel(el: HTMLElement): void {
   panelEl = el
   const a = api?.activeChart()
@@ -455,11 +455,10 @@ export function flowPanel(el: HTMLElement): void {
   updateFlowPanel(true)
 }
 
-function panelOpen(): boolean { return !!panelEl && panelEl.isConnected && st.panel === 'flow' && !!panelEl.querySelector('.of-p') }
+function panelOpen(): boolean { return !!panelEl && panelEl.isConnected && !!panelEl.querySelector('.of-p') }
 function renderFlowPanel(): void { if (panelOpen()) flowPanel(panelEl!) }
 
 function onPanelClick(e: MouseEvent): void {
-  if (st.panel !== 'flow') return
   const t = e.target as HTMLElement
   const b = t.closest<HTMLElement>('[data-ofp]')
   if (!b) return

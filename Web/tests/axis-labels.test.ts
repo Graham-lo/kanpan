@@ -1,8 +1,8 @@
 /* UI 审查 2026-10-10 A4：价格轴标签让位（照 TV）——撞在一起的按离自己价位最近的空位推开、最新价不动、
- * 挤不下的低优先级不画、不出窗格；多图 ≥ 4 格不挂指标标签 */
+ * 挤不下的低优先级不画、不出窗格；格子矮 / 窄（按实际像素，panes.ts degradeFor axisInd）时不挂指标标签 */
 import { describe, expect, it, vi } from 'vitest'
 import { layoutAxisLabels, AXIS_LABEL_GAP } from '../src/chart/axisLabels'
-import { axisIndicatorLabels, LAYOUTS, LAYOUT_N } from '../src/app/layouts'
+import { degradeFor, FULL } from '../src/chart/panes'
 
 vi.mock('../src/market/rest', () => ({ klines: vi.fn(async () => ({ ok: false, bars: [] })) }))
 const { TVChart } = await import('../src/chart/chart')
@@ -85,10 +85,12 @@ describe('layoutAxisLabels', () => {
   })
 })
 
-describe('多图格数与指标轴标签', () => {
-  it('< 4 格挂指标标签，≥ 4 格不挂', () => {
-    const on = Object.fromEntries(LAYOUTS.map(l => [l, axisIndicatorLabels(LAYOUT_N[l])]))
-    expect(on).toEqual({ '1': true, '2': true, '2v': true, '3': true, '4': false, '6': false, '8': false, '9': false, '12': false, '16': false })
+describe('格子尺寸与指标轴标签（按实际像素，不按格数）', () => {
+  it('同一个四图：2560×1440 的格子（≈1050×640）挂，1440×900 的格子（≈600×380）不挂；十六图都不挂', () => {
+    expect(degradeFor(1050, 640).axisInd).toBe(true)
+    expect(degradeFor(600, 380).axisInd).toBe(false)
+    expect(degradeFor(528, 304).axisInd).toBe(false)
+    expect(degradeFor(1900, 1200).axisInd).toBe(true)
   })
 })
 
@@ -103,6 +105,7 @@ describe('图上画的轴标签', () => {
       bars: Array.from({ length: 5 }, (_, k) => ({ t: k * 36e5, o: 100, h: 101, l: 99, c: 100, v: 1 })),
       ind: { ma: true, subs: [] }, hidden: new Set<string>(), alerts: [], drag: null, compare: null, axisHoverY: null,
       _series: { ma: [ma] }, calcStale: false, axisInd: true, axisTagsDrawn: [], dirty: false,
+      deg: FULL, paneLegendKeys: [], renderLegend: () => {},
       colors: { text2: '#888', text3: '#aaa', alert: '#f80', up: '#0a0', down: '#a00' },
       settings: undefined,
       priceToY: (v: number) => v, plotW: () => 530, lastColor: () => '#0a0', mainAxisText: (v: number) => v.toFixed(1),
@@ -121,15 +124,16 @@ describe('图上画的轴标签', () => {
     const ma = d.find(t => t.text === '108.0')
     expect(ma?.y).toBe(121)
   })
-  it('setAxisLabels({ indicators: false })：只剩最新价，图标脏了要重画；同值再设不弄脏', () => {
+  it('格子降级档 axisInd 关：只剩最新价，图标脏了要重画；同一档再设不弄脏', () => {
     const ch = fakeChart()
-    ch.setAxisLabels({ indicators: false })
+    const small = { ...FULL, axisInd: false }
+    ch.setDegrade(small)
     expect(ch.dirty).toBe(true)
     expect(ch.axisIndicatorLabels).toBe(false)
     ch.drawPriceLabels(pane as never, { lo: 0, hi: 400 } as never)
     expect((ch.axisTagsDrawn as { text: string }[]).map(t => t.text)).toEqual(['100.0'])
     ch.dirty = false
-    ch.setAxisLabels({ indicators: false })
+    ch.setDegrade({ ...small })
     expect(ch.dirty).toBe(false)
   })
 })

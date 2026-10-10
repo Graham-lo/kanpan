@@ -29,7 +29,6 @@
 .cell-foot .foot-set { display: inline-flex; align-items: center; gap: 2px; max-width: 132px; padding: 0 var(--s1) 0 var(--s2); }
 .cell-foot .foot-set .set-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .cell-foot .foot-set .icon { width: 14px; height: 14px; flex: none; opacity: .7; }
-.chart-cell.c-tiny .cell-foot .foot-set { max-width: 72px; }
 .menu .set-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
 .menu .set-row-n { margin-left: var(--s2); font-size: var(--t12); }
 .menu .danger-text { color: var(--tv-red-text, var(--tv-red, #F23645)); }

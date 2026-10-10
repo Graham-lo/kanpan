@@ -16,7 +16,7 @@ import { orderId, type BigOrder, type Product } from './types'
 import { tapeBase, bpsText, tapeRowH, tapeRowAlpha, TAPE_ROW_SMALL, type TapeRow } from './tape'
 import { parseAmount } from './settings'
 import { OF, feedIdleText, savePrefs, amt, hms, durShort, decFor, px, canvasFont, bandColor, productColor } from './state'
-import { planSidebar, dragSidebar, sideCanDrag, toggleCollapsed, partsFor, BOOK_ROW, WALL_ROW, PARTS } from './sidebar'
+import { planSidebar, dragSidebar, sideCanDrag, toggleCollapsed, partsFor, withDetailHeight, BOOK_ROW, WALL_ROW, PARTS } from './sidebar'
 import { sizes, saveSizes } from '../app/sizes'
 import { StatChart, statHead, tpsLine, TPS_SHELL, type StatKind } from './statsView'
 import { splitter, type Splitter } from '../ui/splitter'
@@ -78,9 +78,27 @@ function mountTps(el: HTMLElement): void {
   detailMo?.disconnect(); detailMo = null
   const d = el.querySelector<HTMLElement>('#detail')
   if (!d) return
-  detailMo = new MutationObserver(() => ensureTps(d))
-  detailMo.observe(d, { childList: true })
+  detailMo = new MutationObserver(ms => {
+    ensureTps(d)
+    // 板块标签 / 24h 区间换了（换品种、表到了）、「每秒成交」一行出现或没了：详情的自然高可能变了（标签折几行就几行），重新分侧栏高度。
+    // 跳价只改 [data-f] 里的字，不在这几块里，直接跳过、不量版面；每秒成交那行每秒改字，签名没变也不量
+    if (ms.some(m => m.target === d || (m.target as Element).closest?.('.sec-tags,.range,.of-tps-row'))) {
+      const sig = detailSig(d)
+      if (sig !== lastDetailSig && root?.isConnected && st.panel === 'watch') fitStack(root)
+    }
+  })
+  detailMo.observe(d, { childList: true, subtree: true })
   ensureTps(d)
+}
+let lastDetailSig = ''
+const detailSig = (d: HTMLElement): string => `${d.classList.contains('collapsed')}|${!!d.querySelector('.range')}|${!!d.querySelector(':scope > .of-tps-row')?.firstElementChild}|${d.querySelector('.sec-tags')?.textContent ?? ''}`
+/** 详情卡按内容的自然高（含边框分隔，不含 SEP）：板块标签折行全显（2026-10-10 §3），折几行就要几行的高；量不到返回 0 */
+function detailNatural(d: HTMLElement | null): number {
+  if (!d || d.classList.contains('collapsed')) return 0
+  const last = [...d.children].reverse().find(x => (x as HTMLElement).offsetHeight > 0) as HTMLElement | undefined
+  if (!last) return 0
+  const cs = getComputedStyle(d)
+  return Math.ceil(last.getBoundingClientRect().bottom - d.getBoundingClientRect().top + (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.borderBottomWidth) || 0))
 }
 function ensureTps(d: HTMLElement): void {
   if (!d.isConnected || !d.firstElementChild) return
@@ -119,8 +137,11 @@ export function fitStack(el: HTMLElement): void {
   const ids = blocks.map(p => p.dataset.w as WidgetId)
   const collapsed = new Set(OF.prefs.collapsed)
   // 窄侧栏：详情十二格改两列（app.css .detail.two），高度跟着换
-  const parts = partsFor(el.clientWidth)
-  el.querySelector('#detail')?.classList.toggle('two', parts !== PARTS)
+  const d = el.querySelector<HTMLElement>('#detail')
+  const parts0 = partsFor(el.clientWidth)
+  d?.classList.toggle('two', parts0 !== PARTS)
+  if (d) lastDetailSig = detailSig(d)
+  const parts = withDetailHeight(parts0, detailNatural(d))
   const hs = planSidebar(avail, ids, collapsed, parts, sizes.side)
   blocks.forEach((p, i) => { const v = `${hs[i]}px`; if (p.style.height !== v) p.style.height = v })
   placeSideSplits(el, blocks, ids, hs, collapsed)

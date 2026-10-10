@@ -25,11 +25,12 @@ import { subBandFills, subFixed, subLevelLines, subStyles, type LevelLine, type 
 import { mainOn } from './mainIndicators'
 import { drawMoreMain, pivotPColor } from './overlaysMore'
 import { VPVR_MODES, drawExtraMain, drawSubLevels, type Vpvr, type VpvrMode } from './overlays'
-import { AXIS_H, FULL, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
+import { AXIS_H, FULL, VOL_FRAC, dragPane, paneHeights, paneRatiosOf, type Degrade } from './panes'
 import { COMPUTED, SNAP_LINE, bbox, dashPattern, drawComputed, fitRegression, handlePixels, hitComputed, levelsOf, moveHandle, placeCount, setDraftEnd, snap45, usesText, widenPosition } from './drawTools'
 import { GEOM, drawGeom, geomHandles, geomOf, hitGeom } from './drawGeom'
 import type { DrawStyle } from './drawStyle'
-import { drawKeyLevels, drawKeyAxis } from './keyLevels'
+import { drawKeyLevels, keyAxisTags } from './keyLevels'
+import { canvasPx, axisTagH } from './canvasType'
 import { detachFlows } from './tradeFlow'
 import { layoutAxisLabels } from './axisLabels'
 import { linePriceAt } from '../alerts/shape'
@@ -57,7 +58,7 @@ export const LINE = {
   compare: 2,   // 对比线：比均线粗半档，一眼分得开
 } as const
 // 成交量：照 TradingView 默认——垫在主图底部 25%，涨 #26A69A / 跌 #EF5350 各 50% 透明，一根柱宽 = 间距 − 1 物理像素
-const VOL_ALPHA = 0.5, VOL_H = 0.25, TV_VOL_UP = '#26A69A', TV_VOL_DOWN = '#EF5350'
+const VOL_ALPHA = 0.5, VOL_H = VOL_FRAC, TV_VOL_UP = '#26A69A', TV_VOL_DOWN = '#EF5350'
 /** K 线实体宽（物理像素）：TV / lightweight-charts optimalCandlestickWidth——间距 2.5–4 固定 3 px，
  *  其余按 1 − 0.2·atan(max(4, 间距) − 4)/(π/2) 取占比（间距越大越接近 80%），不足 1 物理像素按 1；
  *  再按影线（floor(pr)，至少 1）的奇偶收一格，影线正好居中。dpr 1 下：间距 6 → 5、10 → 7、20 → 15、50 → 39 */
@@ -312,9 +313,10 @@ type DragState = DragPan | DragDrawing | DragMeasure | DragAlert | DragPlace
 /** 价格轴左侧「+」建提醒的热区宽度 */
 const ALERT_CHIP_W = 22
 /** 价格轴标签的高 */
-const AXIS_TAG_H = 20
 /** 价格轴标签让位的优先级：大的先摆、最后被丢（最新价最高，永远完整） */
 const TAG_PRI = { line: 0, ind: 1, compare: 2, alert: 3, last: 4 } as const
+/** 不参与让位、压在所有轴标签之上的那一枚：拖着的提醒价、价格轴上悬停的「+」建提醒（axisTagsDrawn 里按这个记） */
+const TAG_TOP = 5
 /** 一枚等着排的价格轴标签：y = 价位所在的 y（标签中心想放的地方） */
 interface AxisTag { y: number; text: string; bg: string; fg: string; pri: number }
 
@@ -450,10 +452,13 @@ export class TVChart {
   /** 提醒线（见 AlertSignal）：页面把这只品种上还在生效的画线提醒整份给，画哪几条由 signalsShown 定 */
   alertSignals: AlertSignal[] = []
   dead = false
-  /** 价格轴上画不画指标标签（多图 ≥ 4 格时布局那边关，见 setAxisLabels） */
+  /** 价格轴上画不画指标标签：按格子实际像素定（panes.ts degradeFor 的 axisInd，画布矮 / 窄时关），setDegrade 跟着改 */
   private axisInd = true
   /** 这一帧价格轴上实际画了哪些标签（中心 y、想放的 y）；回归脚本与截图验收读 */
   axisTagsDrawn: { pane: string; text: string; y: number; want: number; pri: number }[] = []
+  /** 时间轴右端留给宿主浮层的宽度（px，自画布右沿量）：多图格内右下角的「对数 / 自动」（.cfoot）压在时间轴上，
+   *  十字线的时间标签到这里就停住、不钻到它底下（宿主 watchCell 按 cfoot 实际宽度设；一图 / 放大时 cfoot 不显示 → 0） */
+  crossTimeReserve = 0
   ro: ResizeObserver
   w = 10
   h = 10
@@ -498,15 +503,16 @@ export class TVChart {
       up: v('--up'), down: v('--down'), accent: v('--accent'), alert: v('--alert-line'), line: v('--line'),
     }
     this.baseColors = { ...this.colors }; this.mergeColors(); this.applyLegendOpts()
-    this.font = `${this.deg.font}px ${getComputedStyle(document.body).getPropertyValue('--font-num').trim() || 'sans-serif'}`
+    this.font = `${canvasPx(this.deg.font)}px ${getComputedStyle(document.body).getPropertyValue('--font-num').trim() || 'sans-serif'}`
     this.dirty = true
   }
   /** 多图降级：格子尺寸变了由页面算好传进来；没变就什么都不做 */
   setDegrade(d: Degrade): void {
     const o = this.deg
-    if (o.subs === d.subs && o.legend === d.legend && o.font === d.font && o.vol === d.vol) return
+    if (o.subs === d.subs && o.legend === d.legend && o.font === d.font && o.vol === d.vol && o.axisInd === d.axisInd) return
     this.deg = d
-    this.font = `${d.font}px ${this.fontFamily()}`
+    this.axisInd = d.axisInd
+    this.font = `${canvasPx(d.font)}px ${this.fontFamily()}`
     // 多放出来的副图要现算（收掉的不用重算，下次 render 不画它就是了）
     const shown = (n: number): number => Math.min(n, this.ind.subs.length)
     if (shown(d.subs) > shown(o.subs)) this.recalc()
@@ -681,7 +687,7 @@ export class TVChart {
     c.save()
     c.font = `600 ${size}px ${this.fontFamily()}`
     const w = c.measureText(text).width
-    if (w > PW * 0.8) { size = Math.max(12, Math.floor(size * PW * 0.8 / w)); c.font = `600 ${size}px ${this.fontFamily()}` }
+    if (w > PW * 0.8) { size = Math.max(canvasPx(12), Math.floor(size * PW * 0.8 / w)); c.font = `600 ${size}px ${this.fontFamily()}` }
     c.globalAlpha = S.watermarkOpacity / 100; c.fillStyle = this.colors.text; c.textAlign = 'center'; c.textBaseline = 'middle'
     c.fillText(text, PW / 2, p.y + p.h / 2)
     c.restore()
@@ -715,10 +721,24 @@ export class TVChart {
   /** 价格轴上的一枚标签（和最新价标签一个样子）；top = 标签上沿（已由 layoutAxisLabels 排好） */
   private axisTagAt(top: number, text: string, bg: string, fg = '#fff'): void {
     const c = this.ctx, PW = this.plotW()
-    c.fillStyle = bg; roundRect(c, PW + 1, top, this.aw - 2, AXIS_TAG_H, 3); c.fill()
+    c.fillStyle = bg; roundRect(c, PW + 1, top, this.aw - 2, axisTagH(), 3); c.fill()
     c.fillStyle = fg; c.textAlign = 'left'; c.font = this.font // TV 轴上标签不加粗
-    c.fillText(text, PW + 8, top + AXIS_TAG_H / 2)
+    c.fillText(text, PW + 8, top + axisTagH() / 2)
     c.font = this.font
+  }
+  /** 压在所有轴标签之上的一枚（拖着的提醒价 / 悬停的「+」）：提醒色实底，贴着窗格上下沿；plus = 左边画「+」、字往右让 */
+  private topAxisTag(p: Pane, y: number, text: string, plus: boolean): void {
+    const c = this.ctx, PW = this.plotW(), top = clamp(y - axisTagH() / 2, p.y, p.y + p.h - axisTagH())
+    c.fillStyle = this.colors.alert; roundRect(c, PW + 1, top, this.aw - 2, axisTagH(), 3); c.fill()
+    const cy = top + axisTagH() / 2
+    if (plus) {
+      const cx = PW + ALERT_CHIP_W / 2
+      c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.beginPath()
+      c.moveTo(cx - 3.5, cy); c.lineTo(cx + 3.5, cy); c.moveTo(cx, cy - 3.5); c.lineTo(cx, cy + 3.5); c.stroke()
+    }
+    c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = this.font
+    c.fillText(text, plus ? PW + ALERT_CHIP_W - 2 : PW + 8, cy)
+    this.axisTagsDrawn.push({ pane: p.id, text: plus ? '+' + text : text, y: top + axisTagH() / 2, want: y, pri: TAG_TOP })
   }
   /**
    * 一个窗格里的轴标签排成不重叠的一列再画（照 TV：撞在一起的按离自己价位最近的空位上下推开，
@@ -727,12 +747,12 @@ export class TVChart {
    */
   private drawAxisTags(p: Pane, tags: AxisTag[]): void {
     if (!tags.length) return
-    const ys = layoutAxisLabels(tags.map(t => ({ y: t.y, h: AXIS_TAG_H, priority: t.pri })), p.y, p.y + p.h)
+    const ys = layoutAxisLabels(tags.map(t => ({ y: t.y, h: axisTagH(), priority: t.pri })), p.y, p.y + p.h)
     const order = tags.map((_, k) => k).sort((a, b) => tags[a].pri - tags[b].pri || a - b)
     for (const k of order) {
       const y = ys[k]; if (y == null) continue
       const t = tags[k]
-      this.axisTagAt(y - AXIS_TAG_H / 2, t.text, t.bg, t.fg)
+      this.axisTagAt(y - axisTagH() / 2, t.text, t.bg, t.fg)
       this.axisTagsDrawn.push({ pane: p.id, text: t.text, y, want: t.y, pri: t.pri })
     }
   }
@@ -744,7 +764,7 @@ export class TVChart {
       out.push({ y, text: this.mainAxisText(v), bg, fg: '#fff', pri })
     }
     // TV showStudyLastValue：每个主图指标的每条线都在价格轴上挂当前值（成交量分布、关键位、枢轴、分形、之字转向是图形，不挂）
-    // 多图 ≥ 4 格时布局那边关掉（setAxisLabels），只留最新价与十字线读数
+    // 格子矮 / 窄时关掉（degradeFor 的 axisInd），只留最新价与十字线读数
     if (S.indLabels && this.axisInd) for (const id of MAIN_IDS) {
       if (NO_AXIS_TAG.has(id) || !mainOn(this.ind, id) || this.hidden.has(id)) continue
       const ser = this.series[id]; if (!ser) continue
@@ -773,14 +793,8 @@ export class TVChart {
       this.drawAxisTags(p, tags)
     }
   }
-  /**
-   * 价格轴上的指标标签开不开（主图均线等、副图 MACD / RSI 当前值）。由多图布局按格数定（≥ 4 格关），不是用户设置；
-   * 最新价、提醒价、对比线与十字线读数不受它管
-   */
-  setAxisLabels(o: { indicators: boolean }): void {
-    if (this.axisInd === o.indicators) return
-    this.axisInd = o.indicators; this.dirty = true
-  }
+  /** 价格轴上的指标标签开着没有（主图均线等、副图 MACD / RSI 当前值）：按格子像素定，不是用户设置；
+   *  最新价、提醒价、对比线与十字线读数不受它管 */
   get axisIndicatorLabels(): boolean { return this.axisInd }
   /** 能不能新画、拖、改画线（复盘回放里不能） */
   editable(): boolean { return !this.readOnly && !this.pendingMeta }
@@ -1282,15 +1296,7 @@ export class TVChart {
     const hp = hot ? panes.find(p => p.id === hot) : null
     if (hp) { c.strokeStyle = C.accent; c.beginPath(); c.moveTo(0, hp.y + .5); c.lineTo(W, hp.y + .5); c.stroke() }
 
-    c.fillStyle = C.text; c.textAlign = 'left'
-    for (const p of panes) {
-      const r = this._ranges[p.id]
-      for (const t of p.ticks ?? []) {
-        const y = this.priceToY(t, p, r)
-        if (y < p.y + 8 || y > p.y + p.h - 6) continue
-        c.fillText(p.id === 'main' ? this.mainAxisText(t, true) : this.subFmt(p.id, t), PW + 8, y)
-      }
-    }
+    c.fillStyle = C.text
     c.textAlign = 'center'
     for (const t of tticks) {
       const x = this.indexToX(t.i)
@@ -1303,6 +1309,7 @@ export class TVChart {
     this.axisTagsDrawn = []
     this.drawPriceLabels(mainPane, mr)
     this.drawSubLabels(panes)
+    this.drawPriceTicks(panes)
     // 十字线以下到此画完：十字线在的话存一张底图（之后十字线再动只贴底图重画十字线），不在就记下主画布本身就是底图
     const crossOn = this.cross != null || this.extCross != null
     this.statOk = crossOn && crossOnly && this.snapStatic()
@@ -1679,11 +1686,32 @@ export class TVChart {
     for (const a of this.alerts) { const dy = Math.abs(this.priceToY(a.price, p, r) - y); if (dy <= bd) { bd = dy; best = a } }
     return best
   }
+  /** 价格轴刻度字：在所有价签（最新价、指标、关键位、提醒 / 「+」、对比…）排位画完之后再写，和其中任何一枚的整块
+   *  （标签高 + 半个字高）相交的刻度不写（TV 同样做法）。原来先写刻度、价签后盖，小格子里半截刻度从价签上下沿露出来（UI 审查 2026-10-10） */
+  drawPriceTicks(panes: Pane[]): void {
+    const c = this.ctx, PW = this.plotW()
+    const half = axisTagH() / 2 + canvasPx(11) / 2
+    c.font = this.font; c.fillStyle = this.colors.text; c.textAlign = 'left'; c.textBaseline = 'middle'
+    for (const p of panes) {
+      const r = this._ranges[p.id]
+      const tagYs = this.axisTagsDrawn.filter(t => t.pane === p.id).map(t => t.y)
+      for (const t of p.ticks ?? []) {
+        const y = this.priceToY(t, p, r)
+        if (y < p.y + 8 || y > p.y + p.h - 6) continue
+        if (tagYs.some(ty => Math.abs(y - ty) < half)) continue
+        c.fillText(p.id === 'main' ? this.mainAxisText(t, true) : this.subFmt(p.id, t), PW + 8, y)
+      }
+    }
+  }
   drawPriceLabels(p: Pane, r: PriceRange): void {
-    const c = this.ctx, C = this.colors, PW = this.plotW()
-    if (this.ind.keys && !this.hidden.has('keys')) drawKeyAxis(this, p, r)
+    const C = this.colors
     const tags: AxisTag[] = []
-    for (const a of this.alertsShown()) {
+    // 关键价位（前高前低、整数关口…）：和别的标签一起排、优先级最低；格子矮 / 窄时和指标标签一起收（只留最新价与十字线读数）
+    if (this.ind.keys && !this.hidden.has('keys') && this.axisInd) for (const k of keyAxisTags(this, p)) tags.push({ ...k, fg: '#fff', pri: TAG_PRI.line })
+    // 提醒价；拖着的那条（或正在新建的草稿）不排，最后单独画在手上的价位、压在最新价上面
+    const d = this.drag, held = d && d.kind === 'alert' ? d : null
+    for (const a of this.alerts) {
+      if (held && a === held.line) continue
       const y = this.priceToY(a.price, p, r); if (y < p.y || y > p.y + p.h) continue
       tags.push({ y, text: fmtAxis(a.price, this.meta.dec), bg: C.alert, fg: '#fff', pri: TAG_PRI.alert })
     }
@@ -1699,15 +1727,16 @@ export class TVChart {
     const b = this.lastBar()
     if (b && this.cs().lastLabel) tags.push({ y: this.priceToY(b.c, p, r), text: this.mainAxisText(b.c), bg: this.lastColor(b), fg: '#fff', pri: TAG_PRI.last })
     this.drawAxisTags(p, tags)
-    // 价格轴上的「+」：点下去拖到位松手就建一条提醒（跟着鼠标，不参与让位）
+    // 拖着的提醒价：不让位、不被推开，就在手上的价位，压在最新价上面
+    if (held) {
+      const y = this.priceToY(held.price, p, r)
+      if (y >= p.y && y <= p.y + p.h) this.topAxisTag(p, y, fmtAxis(held.price, this.meta.dec), false)
+    }
+    // 价格轴上的「+」：点下去拖到位松手就建一条提醒。整枚实底标签（左边 22 px 是「+」热区），跟着鼠标、不参与让位，
+    // 压在最新价标签上面——原来只有「+」小块 + 无底的价，压在最新价上两行字叠在一起
     if (this.axisHoverY != null && !this.drag && this.axisHoverY >= p.y && this.axisHoverY < p.y + p.h) {
-      const y = this.axisHoverY, top = clamp(y - 9, p.y, p.y + p.h - 18)
-      c.fillStyle = C.alert; roundRect(c, PW + 2, top, ALERT_CHIP_W - 4, 18, 4); c.fill()
-      c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.beginPath()
-      const cx = PW + 2 + (ALERT_CHIP_W - 4) / 2, cy = top + 9
-      c.moveTo(cx - 4, cy); c.lineTo(cx + 4, cy); c.moveTo(cx, cy - 4); c.lineTo(cx, cy + 4); c.stroke()
-      c.fillStyle = C.text; c.textAlign = 'left'; c.font = this.font
-      c.fillText(fmtAxis(this.yToPrice(y, p, r), this.meta.dec), PW + ALERT_CHIP_W + 2, top + 9)
+      const y = this.axisHoverY
+      this.topAxisTag(p, y, fmtAxis(this.yToPrice(y, p, r), this.meta.dec), true)
     }
     // 十字线标签画在最上层（drawCrosshair）
   }
@@ -1733,8 +1762,9 @@ export class TVChart {
     c.font = this.font; c.textBaseline = 'middle'
     const tl = crossText(this.timeAt(idx), this.iv, S)
     const tw = c.measureText(tl).width + 16
-    c.fillStyle = C.crossLabel; roundRect(c, clamp(x - tw / 2, 0, PW - tw), H - AXIS_H + 2, tw, AXIS_H - 4, 3); c.fill()
-    c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText(tl, clamp(x, tw / 2, PW - tw / 2), H - AXIS_H / 2)
+    const xr = Math.max(tw, Math.min(PW, this.w - this.crossTimeReserve))
+    c.fillStyle = C.crossLabel; roundRect(c, clamp(x - tw / 2, 0, xr - tw), H - AXIS_H + 2, tw, AXIS_H - 4, 3); c.fill()
+    c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText(tl, clamp(x, tw / 2, xr - tw / 2), H - AXIS_H / 2)
     if (pane) {
       const r = this._ranges[pane.id], v = this.yToPrice(y, pane, r)
       const s = pane.id === 'main' ? this.mainAxisText(v) : this.subFmt(pane.id, v)
@@ -1747,7 +1777,7 @@ export class TVChart {
   drawWalls(p: Pane, r: PriceRange, _from: number, _to: number): void {
     const c = this.ctx, PW = this.plotW()
     if (!this.walls) return
-    c.font = `500 11px ${this.fontFamily()}`
+    c.font = `500 ${canvasPx(11)}px ${this.fontFamily()}`
     for (const w of this.walls) {
       const y0 = this.priceToY(w.price, p, r)
       if (y0 < p.y || y0 > p.y + p.h) continue
@@ -1802,7 +1832,7 @@ export class TVChart {
       c.strokeStyle = hexA(C.text2, .8); c.setLineDash([4, 3]); c.lineWidth = LINE.band
       c.beginPath(); c.moveTo(x0, y0); c.lineTo(shown ? x1 : this.indexToX(this.lastIndex()), shown || !lb ? y1 : this.priceToY(lb.c, p, r)); c.stroke(); c.setLineDash([])
       const tag = (x: number, y: number, text: string, col: string, below: boolean) => {
-        c.font = `600 11px ${this.fontFamily()}`
+        c.font = `600 ${canvasPx(11)}px ${this.fontFamily()}`
         const tw = c.measureText(text).width + 12, ty = below ? y + 14 : y - 30
         this.textRects.push({ x: x - tw / 2, y: below ? ty - 5 : ty, w: tw, h: 23 })
         c.fillStyle = col; roundRect(c, x - tw / 2, ty, tw, 18, 4); c.fill()
@@ -1849,7 +1879,7 @@ export class TVChart {
       lv.forEach((L, k) => {
         const pr = q1.p + (q0.p - q1.p) * L, y = Math.round(this.priceToY(pr, p, r)) + .5
         c.strokeStyle = cols[k]; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke()
-        c.fillStyle = cols[k]; c.textAlign = 'right'; c.textBaseline = 'bottom'; c.font = `11px ${this.fontFamily()}`
+        c.fillStyle = cols[k]; c.textAlign = 'right'; c.textBaseline = 'bottom'; c.font = `${canvasPx(11)}px ${this.fontFamily()}`
         const ft = `${L} (${fmt(pr, this.meta.dec)})`, fw = c.measureText(ft).width
         c.fillText(ft, x0 - 4, y + 5)
         this.textRects.push({ x: x0 - 4 - fw, y: y + 5 - 13, w: fw, h: 13 })
@@ -1867,7 +1897,7 @@ export class TVChart {
       const dp = q1.p - q0.p, pct = dp / q0.p * 100
       const nb = Math.round(this.indexAt(q1.t) - this.indexAt(q0.t))
       const t1 = `${dp >= 0 ? '+' : ''}${fmt(dp, this.meta.dec)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`, t2 = `${nb} 根 · ${durText(Math.abs(nb) * this.iv)}`
-      c.font = `600 12px ${this.fontFamily()}`
+      c.font = `600 ${canvasPx(12)}px ${this.fontFamily()}`
       const tw = Math.max(c.measureText(t1).width, c.measureText(t2).width) + 20
       const ly = up ? Math.min(a.y, b.y) - 50 : Math.max(a.y, b.y) + 8
       c.fillStyle = mc; roundRect(c, mx - tw / 2, ly, tw, 42, 6); c.fill()

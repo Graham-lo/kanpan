@@ -12,7 +12,7 @@ const sum = (xs: readonly number[]): number => xs.reduce((a, b) => a + b, 0)
 describe('分隔条尺寸：夹取、按比例收、双击回默认', () => {
   it('三处默认值与范围', () => {
     expect(REGIONS.ladder).toMatchObject({ def: 240, min: 160, max: 480 })
-    expect(REGIONS.panel).toMatchObject({ def: 320, min: 320, max: 640 })
+    expect(REGIONS.panel).toMatchObject({ def: 320, min: 280, max: 640 })   // 出厂宽跟视口走（panelDefault），node 下按 2560 算
     expect(REGIONS.drawer).toMatchObject({ def: 280, min: 160 })
     expect(DRAWER_MAX_FRAC).toBe(0.6)
   })
@@ -29,7 +29,7 @@ describe('分隔条尺寸：夹取、按比例收、双击回默认', () => {
     expect(w.ladder! + w.panel!).toBeLessThanOrEqual(1300 - CHART_MIN_W)
     expect(w.ladder! / w.panel!).toBeCloseTo(480 / 640, 1)
     const tiny = fitWidths(480, 640, 600)
-    expect(tiny).toEqual({ ladder: 160, panel: 320 })
+    expect(tiny).toEqual({ ladder: 160, panel: REGIONS.panel.min })
     expect(fitWidths(null, 640, 900)).toEqual({ ladder: null, panel: 420 })
   })
   it('抽屉不超过页面高 60%，并给图表区留 240', () => {
@@ -122,16 +122,19 @@ describe('多图布局清单与降级', () => {
     const many = hydrate({ layout: '16', cells: Array.from({ length: 20 }, () => ({ symbol: 'BTCUSDT', iv: '1h' })) })
     expect(many.cells.length).toBeLessThanOrEqual(16)
   })
-  it('降级门槛：副图按剩下的高逐个留（详表见 panes-degrade.test.ts）；宽 < 480 图例只留品种周期；宽 < 420 不画成交量', () => {
+  it('降级门槛：副图按剩下的高逐个留（详表见 panes-degrade.test.ts）；宽 < 480 图例只留品种周期；成交量按高（主图保不住 280 不画），不看宽', () => {
     expect(degradeFor(1900, 1200)).toEqual(FULL)
-    // 开着抽屉的四图：每格约 1240 × 370，主图 + 两个副图，指标图例并成一行
-    expect(degradeFor(1240, 370)).toMatchObject({ subs: 2, legend: 'dense', vol: true })
+    // 开着抽屉的四图：每格约 1240 × 370（格子里没有底栏了，画布 342 高）：K 线留 280 后放得下一个副图，指标图例并成一行
+    expect(degradeFor(1240, 370)).toMatchObject({ subs: 1, legend: 'dense', vol: true, axisInd: false })
     expect(degradeFor(479, 800)).toMatchObject({ legend: 'compact', vol: true })
     expect(degradeFor(1000, 359)).toMatchObject({ legend: 'compact', vol: true })
-    expect(degradeFor(419, 300)).toMatchObject({ subs: 1, vol: false })
+    expect(degradeFor(419, 300)).toMatchObject({ subs: 0, vol: false })
     expect(degradeFor(470, 300).font).toBeLessThan(FULL.font)
-    // 2560×1440 十六格：528 × 304，留一个副图、成交量还在
-    expect(degradeFor(528, 304)).toMatchObject({ subs: 1, legend: 'compact', vol: true })
+    // 2560×1440 十六格：527 × 324（画布 296 高）：只画主图 + 成交量（K 线 296 高，不再被副图压到 120）
+    expect(degradeFor(527, 324)).toMatchObject({ subs: 0, legend: 'compact', vol: true, axisInd: false })
+    // 1920×1080 十六格：375 × 234（画布 206 高）：主图都保不住 280，成交量也不画；窄不再单独决定成交量
+    expect(degradeFor(375, 234)).toMatchObject({ subs: 0, vol: false })
+    expect(degradeFor(300, 600)).toMatchObject({ vol: true })
   })
 })
 
