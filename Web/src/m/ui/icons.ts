@@ -77,6 +77,12 @@ const GLYPHS = {
     { glaze: 'accent', items: [{ r: [17.5, 6.4, 2.8, 4.4, 1.4] }, { r: [16.8, 10.2, 4.2, 10.6, 2.1] }] },
   ],
   /** 自选：圆角五角星，整颗金 */
+  /** 首页（雷达）：主色釉环（外 9.5 / 内 6.8）+ 金色扫描扇（右上 0–70°）+ 浅主色中心点 r 1.9 */
+  home: [
+    { glaze: 'accent', items: [{ c: [12, 12.4, 9.5] }], holes: [{ c: [12, 12.4, 6.8] }] },
+    { glaze: 'gold', items: [{ d: 'M12 12.4V6.2a6.2 6.2 0 0 1 5.9 4.3z' }] },
+    { glaze: 'accentLight', items: [{ c: [12, 12.4, 1.9] }] },
+  ],
   favorites: [{ glaze: 'gold', items: [{ d: STAR }] }],
   /** 板块分类：四颗气泡 */
   sectors: [

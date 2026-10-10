@@ -23,8 +23,8 @@ export const KEY = 'hkline-m-v1'
 /** 提醒表并进 st 之前单独存的键（m/model/alerts.ts 早先用的）：第一次读档时搬进来，之后不再写 */
 export const LEGACY_ALERTS_KEY = 'hkline-m-alerts-v1'
 
-export type PageId = 'chart' | 'favorites' | 'sectors' | 'me'
-export const PAGES: readonly PageId[] = ['chart', 'favorites', 'sectors', 'me']
+export type PageId = 'home' | 'chart' | 'favorites' | 'sectors' | 'me'
+export const PAGES: readonly PageId[] = ['home', 'chart', 'favorites', 'sectors', 'me']
 
 export interface FavoriteGroup { id: string; name: string }
 /** iOS SymbolPrefs */
@@ -65,7 +65,7 @@ const TRANSIENT: (keyof State)[] = ['stale']
 export function defaults(): State {
   return {
     ...defaultPrefs(),
-    page: 'chart', symbol: 'BTCUSDT', scroll: {},
+    page: 'home', symbol: 'BTCUSDT', scroll: {},
     symbols: { favorites: [], recents: [], groups: [], groupForSymbol: {}, seeded: false },
     routePicked: false,
     greenUpMigrated: true,

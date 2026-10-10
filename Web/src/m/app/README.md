@@ -5,7 +5,7 @@
 
 ## 1. 页面合同
 
-四个整页，与底栏四格一一对应：`chart` `favorites` `sectors` `me`（hash 路由 `#chart` …）。
+五个整页，与底栏五格一一对应：`home` `chart` `favorites` `sectors` `me`（hash 路由 `#home` `#chart` …；地址不带页时落在首页）。
 
 每页一个模块 `Web/src/m/pages/<id>.ts`，导出：
 

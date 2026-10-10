@@ -1,6 +1,6 @@
 /* Hkline 手机网页版 · 壳（照 iOS Main/MainScreen.swift 的 tab 切换与 Main/TabBar.swift）
  *
- * - 四个整页 <section class="page" id="page-xxx">，hash 路由 #chart #favorites #sectors #me，与底栏四格一一对应。
+ * - 五个整页 <section class="page" id="page-xxx">，hash 路由 #home #chart #favorites #sectors #me，与底栏五格一一对应。
  * - 页面合同见 ./README.md：每页 initXxx(root) → { show(); hide(); reselect?() }，由 main.ts 懒加载后 registerPage。
  * - 主题：data-theme（auto 跟系统，系统切深浅时跟着换）/ data-skin / data-updown，外加 meta theme-color。
  * - 现场：当前页、品种、滚动位置随时落盘，冷启动回到原地。
@@ -30,8 +30,8 @@ export interface PageHandle {
   reselect?(): void
 }
 
-const TAB_TITLE: Record<PageId, string> = { chart: '图表', favorites: '自选', sectors: '板块分类', me: '我的' }
-const TAB_GLYPH: Record<PageId, GlyphName> = { chart: 'chart', favorites: 'favorites', sectors: 'sectors', me: 'me' }
+const TAB_TITLE: Record<PageId, string> = { home: '首页', chart: '图表', favorites: '自选', sectors: '板块分类', me: '我的' }
+const TAB_GLYPH: Record<PageId, GlyphName> = { home: 'home', chart: 'chart', favorites: 'favorites', sectors: 'sectors', me: 'me' }
 
 /** 各处挂进来的回调（数组，谁都可以 push；返回值不用） */
 export const hooks = {
@@ -281,9 +281,9 @@ export function installShell(mount: HTMLElement = document.body): HTMLElement {
   appRoot.appendChild(tabbar)
   mount.appendChild(appRoot)
 
-  // 路由：地址里带了页就用它，否则回到上次停的那一页
+  // 路由：地址里带了页就用它（刷新、深链）；不带（从主屏图标冷启动）落在首页（照 iOS：启动默认首页，不回上次那格）
   const fromHash = location.hash.slice(1)
-  if ((PAGES as readonly string[]).includes(fromHash)) st.page = fromHash as PageId
+  st.page = (PAGES as readonly string[]).includes(fromHash) ? fromHash as PageId : 'home'
   PAGES.forEach(x => pageRoot(x).classList.toggle('show', x === st.page))
   paintTabbar()
   if (location.hash !== '#' + st.page) history.replaceState(null, '', '#' + st.page)

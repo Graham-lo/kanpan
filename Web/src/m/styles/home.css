@@ -1,0 +1,141 @@
+/* 手机网页版 · 首页（照 docs/原型-手机首页异动与盘口要点-2026-10-10.html 首页 / 榜单尺寸表）
+ * 琉璃底；卡与行用 --lg-glass，分段与骨架用 --lg-well。颜色只用皮肤令牌。 */
+
+#page-home { --page-bg: var(--lg-ground); display: flex; flex-direction: column }
+#page-home > :not(.lg-bg) { position: relative; z-index: 1 }
+#page-home [hidden] { display: none !important }
+
+/* ───────── 头部：分段 + 放大镜 ───────── */
+.hm-head { justify-content: space-between }
+.hm-seg { display: inline-flex; height: 30px; padding: 3px; border-radius: 999px; background: var(--lg-well) }
+.hm-seg button {
+  padding: 0 12px; border-radius: 999px; font: 600 12px/1 var(--font-ui); color: var(--ink2); white-space: nowrap;
+  position: relative; transition: background 200ms ease, color 200ms ease;
+}
+.hm-seg button::after { content: ''; position: absolute; left: 0; right: 0; top: -7px; bottom: -7px } /* 命中 44 */
+.hm-seg button.on { background: var(--raised); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .1), 0 0 0 .5px var(--lg-card-edge) }
+.hm-seg.sm { height: 24px; padding: 2px }
+.hm-seg.sm button { padding: 0 8px; font-size: 10.5px; min-width: 32px }
+
+/* ───────── 异动 ───────── */
+.hm-moves, .hm-board { flex: 1; min-height: 0; display: flex; flex-direction: column }
+.hm-chips {
+  display: flex; align-items: center; gap: 6px; height: 36px; flex: none; overflow-x: auto; scrollbar-width: none;
+  padding: 0 calc(var(--inset-page) + var(--safe-right)) 0 calc(var(--inset-page) + var(--safe-left));
+}
+.hm-chips::-webkit-scrollbar { display: none }
+.hm-chips button {
+  position: relative; height: 24px; display: inline-flex; align-items: center; gap: 4px; padding: 0 9px; border-radius: 999px; flex: none;
+  font: 500 11.5px/1 var(--font-ui); color: var(--ink2); background: var(--lg-glass); box-shadow: inset 0 0 0 .5px var(--lg-edge-soft);
+}
+.hm-chips button::after { content: ''; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px } /* 命中 36 */
+.hm-chips button.on { background: var(--accent); color: var(--badge-ink); font-weight: 600; box-shadow: none }
+.hm-chips b { font-size: 10px; font-weight: 600; opacity: .8; font-variant-numeric: tabular-nums }
+.hm-chips i { width: 5px; height: 5px; border-radius: 50%; background: var(--c) }
+.hm-chips button.on i { background: var(--badge-ink) }
+.hm-sub {
+  display: flex; justify-content: space-between; gap: 8px; flex: none; padding: 2px calc(var(--inset-page) + var(--safe-right)) 6px calc(var(--inset-page) + var(--safe-left));
+  font: 400 11px/1.2 var(--font-ui); color: var(--ink3); font-variant-numeric: tabular-nums;
+}
+.hm-body { flex: 1; min-height: 0; position: relative; overflow: hidden }
+.hm-scroll {
+  height: 100%; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  padding: 0 calc(12px + var(--safe-right)) var(--tabbar-clearance) calc(12px + var(--safe-left));
+  transition: transform 260ms cubic-bezier(.22, 1, .36, 1);
+}
+.hm-scroll::-webkit-scrollbar { display: none }
+.hm-body.pulling .hm-scroll, .hm-body.pulling .hm-ptr { transition: none }
+
+/* 下拉刷新的转圈 */
+.hm-ptr {
+  position: absolute; top: 0; left: 50%; z-index: 2; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  color: var(--accent); background: var(--lg-glass); box-shadow: inset 0 0 0 .5px var(--lg-edge-soft); opacity: 0;
+  transform: translate(-50%, -28px); transition: transform 260ms cubic-bezier(.22, 1, .36, 1), opacity 200ms; pointer-events: none;
+}
+.hm-body.refreshing .hm-ptr svg { animation: hm-spin .8s linear infinite }
+@keyframes hm-spin { to { transform: rotate(360deg) } }
+
+/* 行（≥ 58） */
+.hm-row {
+  display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 9px 12px 9px 10px; margin-bottom: 6px; border-radius: 14px;
+  background: var(--lg-glass); box-shadow: inset 0 0 0 .5px var(--lg-card-edge); position: relative; cursor: pointer;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.hm-row:active { background: color-mix(in srgb, var(--lg-pane) 80%, transparent) }
+.hm-row > .m-badge { flex: none }
+.hm-row .mid { flex: 1; min-width: 0 }
+.hm-row .l1 { display: flex; align-items: center; gap: 8px }
+.hm-row .nm { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; font: 600 13px/1.15 var(--font-ui); letter-spacing: -.01em; color: var(--ink) }
+.hm-row .nm .tk { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+/* 空心星：视觉 12，命中 44 */
+.hm-row .st { position: relative; width: 20px; height: 20px; flex: none; display: grid; place-items: center }
+.hm-row .st::after { content: ''; position: absolute; inset: -12px }
+.hm-row .st svg { width: 12px; height: 12px; fill: none; stroke: var(--ink3); stroke-width: 2; stroke-linejoin: round; opacity: .6 }
+.hm-row .p { flex: none; font: 500 14px/1.1 var(--font-ui); font-variant-numeric: tabular-nums; letter-spacing: -.01em; color: var(--ink) }
+.hm-pill {
+  flex: none; min-width: 56px; padding: 2px 6px; border-radius: 8px; text-align: center;
+  font: 600 12px/1.35 var(--font-ui); font-variant-numeric: tabular-nums; color: var(--pc); --pc: var(--ink3);
+  background: color-mix(in srgb, var(--pc) 14%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--pc) 30%, transparent);
+}
+html[data-theme="dark"] .hm-pill { background: color-mix(in srgb, var(--pc) 20%, transparent) }
+.hm-pill.up { --pc: var(--up) } .hm-pill.down { --pc: var(--down) }
+.hm-row .pt1 {
+  margin-top: 5px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden;
+  font: 400 11px/1.25 var(--font-ui); color: var(--ink2); font-variant-numeric: tabular-nums;
+}
+.hm-row .kind { flex: none; font-size: 10px; font-weight: 600; color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent); padding: 1.5px 5px; border-radius: 4px }
+.hm-row .mt { flex: none; display: inline-flex; gap: 2px; align-items: flex-end; height: 10px }
+.hm-row .mt i { width: 3px; border-radius: 1px; background: var(--ink3); opacity: .3 }
+.hm-row .mt i.on { background: var(--c); opacity: 1 }
+.hm-row .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis }
+.hm-row .tx b { color: var(--ink); font-weight: 600 }
+.hm-row .plus { flex: none; font-size: 9.5px; font-weight: 600; color: var(--ink3); background: var(--lg-well); padding: 2px 5px; border-radius: 5px }
+.hm-row .ago { flex: none; color: var(--ink3) }
+
+/* 数据停了：数退灰，药丸与强度条去饱和 */
+.stale .hm-row .p, .stale .hm-row .tx b, .hm-card.stale .n, .hm-card.stale .c { color: var(--ink3) }
+.stale .hm-pill, .stale .hm-row .mt i.on, .stale .hm-row .kind { filter: saturate(.15) opacity(.6) }
+
+/* 骨架 */
+.sk { display: block; border-radius: 6px; background: linear-gradient(90deg, var(--lg-well), color-mix(in srgb, var(--lg-well) 40%, transparent), var(--lg-well)); background-size: 200% 100%; animation: hm-sk 1.4s linear infinite }
+.sk-b { width: 28px; height: 28px; border-radius: 8px; flex: none }
+@keyframes hm-sk { to { background-position: -200% 0 } }
+.hm-row.skel { cursor: default }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none } }
+
+/* 盘面平静 / 取不到 / 这一类没有 */
+.hm-calm { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 120px; color: var(--ink3); font: 400 13px/1.4 var(--font-ui); text-align: center }
+.hm-calm b { font: 600 16px/1.2 var(--font-ui); color: var(--ink) }
+.hm-calm svg { width: 44px; height: 44px; fill: none; stroke: var(--ink3); stroke-width: 1.3; stroke-linecap: round; opacity: .6 }
+.hm-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 96px; color: var(--ink3); font: 400 13px/1.4 var(--font-ui) }
+.hm-retry { height: 32px; padding: 0 16px; border-radius: 16px; font: 600 12px/1 var(--font-ui); color: var(--accent); background: var(--lg-glass); box-shadow: inset 0 0 0 .5px var(--lg-edge-soft) }
+
+/* 有新异动 */
+.hm-newpill {
+  position: absolute; top: 8px; left: 50%; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px;
+  font: 600 12px/1 var(--font-ui); color: var(--badge-ink); background: var(--accent);
+  box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--accent) 70%, transparent);
+  transform: translateX(-50%); animation: hm-drop 350ms cubic-bezier(.34, 1.4, .64, 1);
+}
+.hm-newpill svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+@keyframes hm-drop { from { transform: translate(-50%, -40px); opacity: 0 } to { transform: translate(-50%, 0); opacity: 1 } }
+
+/* ───────── 榜单 ───────── */
+.hm-cards { display: flex; flex-direction: column; gap: 8px; padding-top: 6px }
+.hm-card { flex: none; background: var(--lg-glass); border-radius: 16px; padding: 11px 14px 4px; box-shadow: inset 0 0 0 .5px var(--lg-card-edge) }
+.hm-card .bh { display: flex; align-items: center; gap: 8px; margin-bottom: 6px }
+.hm-card h5 { margin: 0; flex: 1; font: 600 14px/1.2 var(--font-ui); color: var(--ink); letter-spacing: normal }
+.hm-card .br {
+  width: 100%; display: grid; grid-template-columns: 18px 22px 1fr auto auto; gap: 0 8px; align-items: center; height: 34px; text-align: left;
+  font: 400 12.5px/1 var(--font-ui); font-variant-numeric: tabular-nums; color: var(--ink); box-shadow: inset 0 -.5px 0 var(--lg-rule);
+  -webkit-tap-highlight-color: transparent;
+}
+.hm-card .br:active { opacity: .6 }
+.hm-card .br .i { font-size: 10px; font-weight: 600; color: var(--ink3); text-align: center }
+.hm-card .br .n { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.hm-card .br .v { font-size: 11.5px; color: var(--ink2) }
+.hm-card .br .c { font-weight: 600; min-width: 62px; text-align: right }
+.hm-card .br .c.up { color: var(--up) } .hm-card .br .c.down { color: var(--down) }
+.hm-card .br.skel { display: flex }
+.hm-card .more { width: 100%; height: 34px; display: flex; justify-content: center; align-items: center; font: 600 11.5px/1 var(--font-ui); color: var(--accent) }
+.hm-card .bempty { display: flex; align-items: center; justify-content: center; gap: 10px; height: 64px; color: var(--ink3); font: 400 12px/1 var(--font-ui) }

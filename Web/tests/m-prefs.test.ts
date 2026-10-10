@@ -77,7 +77,7 @@ describe('手机网页版 · 偏好出厂值与容错', () => {
   it('坏值回落出厂值，不丢整份', () => {
     const s = hydrate({ skin: 'neon', theme: 'dark', interval: '7m', quickIntervals: 'x', page: 'nope', symbol: 'ethusdt', symbols: { favorites: ['BTCUSDT', 'BTCUSDT', 3] } })
     expect(s.skin).toBe('sage'); expect(s.theme).toBe('dark'); expect(s.interval).toBe('1h')
-    expect(s.quickIntervals.length).toBe(6); expect(s.page).toBe('chart'); expect(s.symbol).toBe('BTCUSDT')
+    expect(s.quickIntervals.length).toBe(6); expect(s.page).toBe('home'); expect(s.symbol).toBe('BTCUSDT')
     expect(s.symbols.favorites).toEqual(['BTCUSDT'])
   })
 

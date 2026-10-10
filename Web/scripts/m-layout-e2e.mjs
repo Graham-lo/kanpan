@@ -14,7 +14,7 @@ const p = await ctx.newPage()
 const errs = []; p.on('pageerror', e => errs.push(e.message))
 const prefs = () => p.evaluate(() => { const s = JSON.parse(localStorage.getItem('hkline-m-v1') || '{}'); const x = s.prefs || s; return { interval: x.interval, subs: x.subs, overlays: x.overlays, h: x.subHeightOverrides, bs: x.barSpacing, layouts: x.indicatorLayouts, params: x.params?.MACD } })
 const pick = async iv => { await p.click(`.cp-chip[data-iv="${iv}"]`).catch(async () => { await p.evaluate(iv => document.querySelector(`[data-iv="${iv}"]`)?.click(), iv) }); await sleep(900) }
-await p.goto(URL_ + '#/chart'); await p.waitForFunction(() => !document.body.innerText.includes("暂时取不到"), null, { timeout: 15000 }).catch(() => {}); await sleep(4000)
+await p.goto(URL_ + '#chart'); await p.waitForFunction(() => !document.body.innerText.includes("暂时取不到"), null, { timeout: 15000 }).catch(() => {}); await sleep(4000)
 console.log('出厂', JSON.stringify(await prefs()))
 await p.screenshot({ path: `${out}/0-出厂.png` })
 const ivs = await p.$$eval('.cp-chip[data-iv]', a => a.map(x => x.dataset.iv)); console.log('周期条', ivs)

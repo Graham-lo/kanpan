@@ -10,7 +10,7 @@ const b = await chromium.launch({ executablePath: CHROME, headless: true, args: 
 const ctx = await b.newContext({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
 const p = await ctx.newPage()
 const errs = []; p.on('pageerror', e => errs.push(e.message))
-await p.goto(URL_ + '#/chart'); await p.waitForFunction(() => !document.body.innerText.includes('暂时取不到'), null, { timeout: 15000 }).catch(() => {}); await sleep(4000)
+await p.goto(URL_ + '#chart'); await p.waitForFunction(() => !document.body.innerText.includes('暂时取不到'), null, { timeout: 15000 }).catch(() => {}); await sleep(4000)
 const box = await (await p.$('.cp-chart .m-chart')).boundingBox()
 const cdp = await ctx.newCDPSession(p)
 const touch = async (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map((q, i) => ({ x: q[0], y: q[1], id: i })) })
