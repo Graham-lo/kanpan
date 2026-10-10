@@ -46,6 +46,7 @@
 //! * 这六条历史接口不要登录，同一来源地址同时最多 `PER_CLIENT`（24）条在处理，超了 429 `history_client_limit` + `Retry-After: 1`。
 //! * 只在带库的 serve 进程里有；备用节点跑的是 metrics（没有库），不挂这条路由。
 mod book;
+mod favorites;
 mod feeds;
 mod flow;
 mod footprint;
@@ -972,13 +973,13 @@ async fn close(pool:&PgPool,mut rx:mpsc::UnboundedReceiver<Final>,expected:usize
 
 /// 一只币为什么在跟，按强到弱。数值也是快照队列里的先后（小的先）。
 #[derive(Clone,Copy,Debug,PartialEq,Eq,PartialOrd,Ord,Hash)]
-enum Layer {Major=0,OnDemand=1,Fixed=2,Alt=3,Hot=4}
+enum Layer {Major=0,OnDemand=1,Favorite=2,Fixed=3,Alt=4,Hot=5}
 
 impl Layer {
- fn label(self)->&'static str {match self {Layer::Major=>"majors",Layer::OnDemand=>"on-demand",Layer::Fixed=>"fixed",Layer::Alt=>"alts",Layer::Hot=>"hot"}}
+ fn label(self)->&'static str {match self {Layer::Major=>"majors",Layer::OnDemand=>"on-demand",Layer::Favorite=>"favorites",Layer::Fixed=>"fixed",Layer::Alt=>"alts",Layer::Hot=>"hot"}}
 }
 
-/// 资源闸门卸到第几层：0 不卸，1 卸 Bybit 现货（[`BYBIT_SPOT_SHED`]），2 再卸热点，3 再卸山寨，4 再卸固定。主币与按需不卸。
+/// 资源闸门卸到第几层：0 不卸，1 卸 Bybit 现货（[`BYBIT_SPOT_SHED`]），2 再卸热点，3 再卸山寨，4 再卸固定与自选。主币与按需不卸。
 fn shed_label(level:u8)->&'static str {
  match level {0=>"nothing",1=>"bybit-spot",2=>"bybit-spot+hot",3=>"bybit-spot+hot+alts",_=>"bybit-spot+hot+alts+fixed"}
 }
@@ -1032,6 +1033,8 @@ const LISTED:i64=i64::MAX;
 struct Entry {
  major:bool,
  fixed:bool,
+ /// 近 7 天登录过的人自选了它（[`favorites`]）。
+ favorite:bool,
  /// 山寨 / 热点：在榜上为 `LISTED`，掉榜之后为掉榜时刻 + 24 小时，不在这一层为 0。
  alt_until:i64,
  hot_until:i64,
@@ -1051,21 +1054,22 @@ impl Entry {
  fn layer(&self,now:i64,shed:u8)->Option<Layer> {
   if self.major {Some(Layer::Major)}
   else if self.on_demand(now) {Some(Layer::OnDemand)}
+  else if self.favorite&&shed<4 {Some(Layer::Favorite)}
   else if self.fixed&&shed<4 {Some(Layer::Fixed)}
   else if self.alt_until>now&&shed<3 {Some(Layer::Alt)}
   else if self.hot_until>now&&shed<2 {Some(Layer::Hot)}
   else {None}
  }
  /// 满了可以踢的：只因为按需或热点在跟的。
- fn evictable(&self,now:i64)->bool {!self.major&&!self.fixed&&self.alt_until<=now}
+ fn evictable(&self,now:i64)->bool {!self.major&&!self.fixed&&!self.favorite&&self.alt_until<=now}
  fn wanted_at(&self)->i64 {self.requested.max(self.hot_seen)}
- fn only_on_demand(&self,now:i64)->bool {self.on_demand(now)&&!self.major&&!self.fixed&&self.alt_until<=now&&self.hot_until<=now}
- fn only_hot(&self,now:i64)->bool {self.hot_until>now&&!self.major&&!self.fixed&&self.alt_until<=now&&!self.on_demand(now)}
+ fn only_on_demand(&self,now:i64)->bool {self.on_demand(now)&&!self.major&&!self.fixed&&!self.favorite&&self.alt_until<=now&&self.hot_until<=now}
+ fn only_hot(&self,now:i64)->bool {self.hot_until>now&&!self.major&&!self.fixed&&!self.favorite&&self.alt_until<=now&&!self.on_demand(now)}
 }
 
 /// 各层最近一次算出来的名单（卸层恢复时重新套用）。
 #[derive(Default)]
-struct Lists {fixed:Vec<String>,alts:Vec<String>,hot:Vec<String>}
+struct Lists {fixed:Vec<String>,alts:Vec<String>,hot:Vec<String>,favorites:Vec<String>}
 
 struct Registry {
  pool:PgPool,
@@ -1108,7 +1112,7 @@ impl Registry {
   let priority=Arc::new(AtomicU8::new(Layer::Hot as u8));
   let after=self.retiring.lock().unwrap_or_else(|e|e.into_inner()).remove(base);
   let task=tokio::spawn(track(self.pool.clone(),base.to_string(),shared,rx,priority.clone(),self.delay(immediate),after));
-  let mut e=Entry{major:false,fixed:false,alt_until:0,hot_until:0,hot_seen:0,requested:0,priority,stop,thresholds,task};
+  let mut e=Entry{major:false,fixed:false,favorite:false,alt_until:0,hot_until:0,hot_seen:0,requested:0,priority,stop,thresholds,task};
   tag(&mut e);
   if let Some(layer)=e.layer(now,self.shed()) {e.priority.store(layer as u8,Ordering::Relaxed);}
   entries.insert(base.to_string(),e);
@@ -1178,7 +1182,7 @@ impl Registry {
  fn apply(&self,layer:Layer,list:&[String],now:i64) {
   {
    let mut lists=self.lists.lock().unwrap_or_else(|e|e.into_inner());
-   match layer {Layer::Fixed=>lists.fixed=list.to_vec(),Layer::Alt=>lists.alts=list.to_vec(),Layer::Hot=>lists.hot=list.to_vec(),_=>{}}
+   match layer {Layer::Fixed=>lists.fixed=list.to_vec(),Layer::Alt=>lists.alts=list.to_vec(),Layer::Hot=>lists.hot=list.to_vec(),Layer::Favorite=>lists.favorites=list.to_vec(),_=>{}}
   }
   let set:HashSet<&str>=list.iter().map(String::as_str).collect();
   let mut entries=self.lock();
@@ -1186,19 +1190,21 @@ impl Registry {
    let on=set.contains(base.as_str());
    match layer {
     Layer::Fixed=>e.fixed=on,
+    Layer::Favorite=>e.favorite=on,
     Layer::Alt=>{if on {e.alt_until=LISTED} else if e.alt_until==LISTED {e.alt_until=now+LINGER_MS}},
     Layer::Hot=>{if on {e.hot_until=LISTED;e.hot_seen=now} else if e.hot_until==LISTED {e.hot_until=now+LINGER_MS}},
     _=>{},
    }
   }
   let shed=self.shed();
-  let shed_here=match layer {Layer::Fixed=>shed>=3,Layer::Alt=>shed>=2,Layer::Hot=>shed>=1,_=>false};
+  let shed_here=match layer {Layer::Fixed|Layer::Favorite=>shed>=3,Layer::Alt=>shed>=2,Layer::Hot=>shed>=1,_=>false};
   let (mut started,mut refused)=(0,0);
   for base in list {
    if entries.contains_key(base) {continue}
    if shed_here||self.over()||!self.make_room(&mut entries,now) {refused+=1;continue}
    self.start(&mut entries,base,now,false,|e|match layer {
     Layer::Fixed=>e.fixed=true,
+    Layer::Favorite=>e.favorite=true,
     Layer::Alt=>e.alt_until=LISTED,
     Layer::Hot=>{e.hot_until=LISTED;e.hot_seen=now},
     _=>{},
@@ -1212,10 +1218,11 @@ impl Registry {
 
  /// 热点要排除的：已经因为别的理由在跟的，加上固定与山寨名单。
  fn not_hot(&self,now:i64)->HashSet<String> {
-  let mut out:HashSet<String>=self.lock().iter().filter(|(_,e)|e.major||e.fixed||e.alt_until>now||e.on_demand(now)).map(|(b,_)|b.clone()).collect();
+  let mut out:HashSet<String>=self.lock().iter().filter(|(_,e)|e.major||e.fixed||e.favorite||e.alt_until>now||e.on_demand(now)).map(|(b,_)|b.clone()).collect();
   let lists=self.lists.lock().unwrap_or_else(|e|e.into_inner());
   out.extend(lists.fixed.iter().cloned());
   out.extend(lists.alts.iter().cloned());
+  out.extend(lists.favorites.iter().cloned());
   out.extend(layers::MAJORS.iter().map(|m|m.to_string()));
   out
  }
@@ -1228,7 +1235,7 @@ impl Registry {
   for base in dead {
    let Some(old)=entries.remove(&base) else {continue};
    tracing::warn!("Orderflow history: {base} tracker ended unexpectedly, restarting");
-   self.start(&mut entries,&base,now,false,|e|{e.major=old.major;e.fixed=old.fixed;e.alt_until=old.alt_until;e.hot_until=old.hot_until;e.hot_seen=old.hot_seen;e.requested=old.requested;});
+   self.start(&mut entries,&base,now,false,|e|{e.major=old.major;e.fixed=old.fixed;e.favorite=old.favorite;e.alt_until=old.alt_until;e.hot_until=old.hot_until;e.hot_seen=old.hot_seen;e.requested=old.requested;});
   }
  }
 
@@ -1256,6 +1263,7 @@ impl Registry {
     tracing::info!("Orderflow history: resource gate clear for {waited} minutes ({}), now shedding {}",load.describe(),shed_label(shed-1));
     let lists=std::mem::take(&mut *self.lists.lock().unwrap_or_else(|e|e.into_inner()));
     self.apply(Layer::Fixed,&lists.fixed,now);
+    self.apply(Layer::Favorite,&lists.favorites,now);
     self.apply(Layer::Alt,&lists.alts,now);
     self.apply(Layer::Hot,&lists.hot,now);
    },
@@ -1269,8 +1277,17 @@ impl Registry {
   let entries=self.lock();
   let mut counts:HashMap<Layer,usize>=HashMap::new();
   for e in entries.values() {if let Some(l)=e.layer(now,shed) {*counts.entry(l).or_default()+=1;}}
-  let parts:Vec<String>=[Layer::Major,Layer::OnDemand,Layer::Fixed,Layer::Alt,Layer::Hot].iter().map(|l|format!("{} {}",l.label(),counts.get(l).copied().unwrap_or(0))).collect();
+  let parts:Vec<String>=[Layer::Major,Layer::OnDemand,Layer::Favorite,Layer::Fixed,Layer::Alt,Layer::Hot].iter().map(|l|format!("{} {}",l.label(),counts.get(l).copied().unwrap_or(0))).collect();
   format!("tracking {} ({}), {} connections, {}, shedding {}",entries.len(),parts.join(", "),hub::connections(),resources::last().describe(),shed_label(shed))
+ }
+}
+
+/// 自选层：读近 7 天登录过的人的自选（每人 30、合起来 60），单独起任务，不挡着闸门。读不到就保持上一份名单。
+async fn recompute_favorites(registry:Arc<Registry>,running:crate::supervise::Running) {
+ let _running=running;
+ match favorites::bases(&registry.pool).await {
+  Ok(list)=>registry.apply(Layer::Favorite,&list,now_ms()),
+  Err(e)=>tracing::warn!("Orderflow history: favorites layer unreadable, keeping the last list: {e:#}"),
  }
 }
 
@@ -1308,6 +1325,8 @@ async fn run_layers(registry:Arc<Registry>,enabled:Enabled) {
  let mut gate=Gate::default();
  let mut missing_named:Option<Vec<String>>=None;
  let hot_running=Arc::new(AtomicBool::new(false));
+ let favorites_running=Arc::new(AtomicBool::new(false));
+ let mut favorites_at=0i64;
  let started=now_ms();
  let mut status_at=0i64;
  loop {
@@ -1350,6 +1369,11 @@ async fn run_layers(registry:Arc<Registry>,enabled:Enabled) {
       hot_at=now;
       crate::supervise::spawn_logged("orderflow-hot",crate::supervise::Life::Once,recompute_hot(registry.clone(),claim));
      }
+    }
+    // 自选层不看合约表、不看 `KANPAN_ORDERFLOW_LAYERS`：登录用户的自选一直补跟。
+    if now-favorites_at>=favorites::EVERY_MS && let Some(claim)=crate::supervise::Running::claim(&favorites_running) {
+     favorites_at=now;
+     crate::supervise::spawn_logged("orderflow-favorites",crate::supervise::Life::Once,recompute_favorites(registry.clone(),claim));
     }
     // 起来的头十分钟每分钟一行现状，之后十分钟一行。
     let every=if now-started<10*60_000 {60_000} else {10*60_000};
