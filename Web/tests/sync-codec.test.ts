@@ -20,13 +20,14 @@ const settings = (): SettingsState => ({
 
 describe('settings', () => {
   it('编码只覆盖网页的字段，手机独有的周期与字段原样留着', () => {
-    const prev = obj('settings', SETTINGS_ID, { quickIntervals: ['3d', '1h'], overlays: ['MA', 'SAR'], theme: 'dark', subs: ['VOL'] })
+    const prev = obj('settings', SETTINGS_ID, { quickIntervals: ['3d', '1h'], overlays: ['MA', 'ORDERFLOW'], theme: 'dark', subs: ['VOL'] })
     const seen = {}
     const o = encodeSettings(settings(), prev, seen)!
     expect(o.body.theme).toBe('dark')
+    // 共用字段只装手机也能表达的（≤ 6 个周期）；手机独有的 3d 原位留着
     expect(o.body.quickIntervals).toEqual(['3d', '1h', '15m', '4h', '1d'])
-    // 手机独有的 SAR 原地不动，网页的 MA 保持
-    expect(o.body.overlays).toEqual(['MA', 'SAR'])
+    // 手机独有的订单流叠加层原地不动，网页的 MA 保持
+    expect(o.body.overlays).toEqual(['MA', 'ORDERFLOW'])
     expect(o.body.subs).toEqual(['VOL', 'MACD'])
     expect(o.body['params/MA']).toEqual([7, 25, 99])
     expect(o.body['params/MACD']).toEqual([12, 26, 9])
@@ -59,19 +60,25 @@ describe('settings · 网页独有的指标只留本机', () => {
     ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'stoch', 'cvd', 'rsi', 'dmi'], mains: ['kc', 'sar', 'pivots'] },
     params: { macd: { fast: 12, slow: 26, signal: 9 }, kc: { n: 30, k: 2 }, stoch: { n: 21, m1: 1, m2: 3 } },
   })
-  it('第二批主图叠加、第三批副图、它们的参数一律不上云（服务端白名单不认会整份 400）', () => {
+  it('手机不认识的主图叠加、副图、参数不进共用字段（服务端白名单不认会整份 400），只进网页独有 webPrefs；SAR / CVD / DMI 三端都有，照共用字段走', () => {
     const o = encodeSettings(rich(), undefined, {})!
-    expect(o.body.overlays).toEqual(['MA'])
-    expect(o.body.subs).toEqual(['VOL', 'MACD', 'RSI'])
+    expect(o.body.overlays).toEqual(['MA', 'SAR'])
+    // 共用副图只装手机也能表达的头三个
+    expect(o.body.subs).toEqual(['VOL', 'MACD', 'CVD', 'RSI'])
     const keys = Object.keys(o.body)
     expect(keys.filter(k => k.startsWith('params/'))).toEqual(['params/MACD'])
-    const text = JSON.stringify(o.body)
-    for (const id of ['kc', 'sar', 'pivots', 'stoch', 'cvd', 'dmi', 'KC', 'SAR', 'STOCH', 'DMI', 'CVD']) expect(text).not.toContain(`"${id}"`)
+    const { webPrefs, ...shared } = o.body
+    const text = JSON.stringify(shared)
+    for (const id of ['kc', 'pivots', 'stoch', 'KC', 'STOCH', 'PIVOTS']) expect(text).not.toContain(`"${id}"`)
+    // 整份清单在 webPrefs 里
+    expect((webPrefs as { subs: string[] }).subs).toEqual(['macd', 'stoch', 'cvd', 'rsi', 'dmi'])
+    expect((webPrefs as { mains: string[] }).mains).toEqual(['kc', 'sar', 'pivots'])
   })
   it('云端副图改了：手机也认识的按云端顺序填回原位，网页独有的副图与主图叠加原地留着', () => {
     const s = rich()
     applySettings(s, obj('settings', SETTINGS_ID, { subs: ['VOL', 'KDJ', 'MACD'] }), {})
-    expect(s.ind.subs).toEqual(['kdj', 'stoch', 'cvd', 'macd', 'dmi'])
+    // 共用的头三个（macd / cvd / rsi）换成云端的 kdj / macd，电脑多开的（stoch、第四个共用的 dmi）原地留着
+    expect(s.ind.subs).toEqual(['kdj', 'stoch', 'macd', 'dmi'])
     expect(s.ind.mains).toEqual(['kc', 'sar', 'pivots'])
     expect(s.params?.kc).toEqual({ n: 30, k: 2 })
   })

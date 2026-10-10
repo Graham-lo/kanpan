@@ -6,7 +6,7 @@
  * 口径全部在 src/sectors/aggregate.ts，和手机端逐条一致；本页只管取数、排版与交互。
  */
 import '../styles/sectors.css'
-import { st } from '../app/store'
+import { st, save, subscribe } from '../app/store'
 import { hooks, go } from '../app/shell'
 import { $, $$, I, esc, tgt } from '../ui/dom'
 import { morphHtml, patchKeyedRows } from '../ui/patch'
@@ -28,20 +28,32 @@ GLOSSARY['跑赢大盘'] = '这段时间里，板块成员跑赢全市场等权�
 GLOSSARY['领涨'] = '跑赢大盘，而且涨幅排进全市场前 10% 的成员。'
 GLOSSARY['板块涨跌'] = '板块成员涨跌幅的中位数，不会被一两只暴涨暴跌的带偏。'
 
-// 市场与窗口是这台电脑上的个人选择，只记本机
-const PREF_KEY = 'hkline-web-sectors-v1'
-function loadPref(): { market: SectorMarket; want: SectorWindow } {
+// 市场与窗口随账号走：st.sectorMarket / sectorWindow（和手机 Prefs 同一对共用字段；网页只有今日 / 5 日，手机的 20 日装不进来）。
+// 2026-10-10 以前只记本机这个键：第一次打开读一次并进 st（只在 st 还是出厂值时），然后删掉
+const OLD_PREF_KEY = 'hkline-web-sectors-v1'
+function migratePref(): void {
   try {
-    const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}') as { market?: string; want?: string }
-    return { market: p.market === 'us' ? 'us' : 'crypto', want: p.want === 'd5' ? 'd5' : 'today' }
-  } catch { return { market: 'crypto', want: 'today' } }
+    const raw = localStorage.getItem(OLD_PREF_KEY)
+    if (raw == null) return
+    const p = JSON.parse(raw) as { market?: string; want?: string } | null
+    if (p?.market === 'us' && st.sectorMarket === 'crypto') st.sectorMarket = 'us'
+    if (p?.want === 'd5' && st.sectorWindow === 'today') st.sectorWindow = 'd5'
+    localStorage.removeItem(OLD_PREF_KEY)
+    save()
+  } catch { /* 读不到就当没有 */ }
 }
-function savePref(): void { try { localStorage.setItem(PREF_KEY, JSON.stringify({ market: sp.market, want: sp.want })) } catch { /* 存不下就不存 */ } }
+function savePref(): void { st.sectorMarket = sp.market; st.sectorWindow = sp.want === 'd5' ? 'd5' : 'today'; save() }
+/** 别的设备改了市场 / 窗口（同步装进 st）：本页跟着换，正开着就重画 */
+function followPref(): void {
+  if (sp.market === st.sectorMarket && sp.want === st.sectorWindow) return
+  if (sp.market !== st.sectorMarket) { sp.market = st.sectorMarket; sp.sel = null }
+  sp.want = st.sectorWindow; sp.once = null
+  if (st.page === 'sectors') render()
+}
 
-const pref = loadPref()
 const sp = {
-  market: pref.market,
-  want: pref.want,
+  market: st.sectorMarket as SectorMarket,
+  want: st.sectorWindow as SectorWindow,
   /** 这一次临时改看的窗口（见 sectors/window.ts），不进偏好 */
   once: null as SectorWindow | null,
   /** 选中的板块：去掉市场前缀的 id（目录 id 或兜底桶 id） */
@@ -260,6 +272,9 @@ function openInChart(k: string | undefined): void {
 }
 
 export function initSectors(): void {
+  migratePref()
+  sp.market = st.sectorMarket; sp.want = st.sectorWindow
+  subscribe(followPref)
   const page = $('#page-sectors')
   page.addEventListener('click', e => {
     const t = tgt(e)

@@ -14,14 +14,16 @@ import type { State } from '../app/store'
 import type { Alert } from '../alerts/shape'
 import { DEFAULT_WATCH, type Kind } from '../market/symbols'
 import {
-  type Ctx, SETTINGS_FIELDS, SETTINGS_ID, alertId, applySettings, webSetting, decodeSetting, putSetting, decodeAlert, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
+  type Ctx, SETTINGS_FIELDS, SETTINGS_ID, ADOPT_LOCAL_WHEN_SET, alertId, adoptSetting, applySettings, webSetting, decodeSetting, putSetting, decodeAlert, decodeAlerts, decodeDrawings, decodeFavorites, drawingId,
   encodeAlerts, encodeDrawings, encodeFavorites, encodeSettings, keepLocalStyle, lastTouched, resetSettings, syncableAlert, syncableDrawing, validSymbol, pausedLineAlerts, seenWhenUndecodable,
 } from './codec'
 import { LAYOUTS_FIELD, cleanBook, liveBook, mergeBooks } from '../app/layouts'
 import type { Owned, SyncStore } from './store'
 import { type Json, type SyncObject, keyOf, same } from './types'
 
-export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'orderFlowHistory' | 'compareSymbols' | 'autoLayers' | 'drawHidden' | 'layouts' | 'layout' | 'cells' | 'active' | 'chartSettings'>>
+export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'orderFlowHistory' | 'compareSymbols' | 'autoLayers' | 'drawHidden' | 'layouts' | 'layout' | 'cells' | 'active' | 'chartSettings'
+  | 'orderFlow' | 'bigTradeSigns' | 'updown' | 'sectorMarket' | 'sectorWindow'
+  | 'theme' | 'skin' | 'vpvrMode' | 'linkCross' | 'linkSymbol' | 'linkIv' | 'linkTime' | 'slots' | 'panel' | 'lastPanel' | 'watchTab' | 'alertScope' | 'meSection' | 'drawLocked' | 'drawStyles' | 'toolLast'>>
 export type Part = 'settings' | 'favorites' | 'drawings' | 'alerts'
 export type Prints = Partial<Record<Part, string>>
 
@@ -34,15 +36,18 @@ export const OWNED: Owned = {
   alerts: new Set(['kind', 'symbol', 'market', 'drawingID', 'lines', 'condition', 'armedAt', 'once', 'status', 'firedAt', 'firedPrice', 'dueAt', 'reviewID', 'title', 'created', 'note', 'webhook', 'webhookText', 'rule']),
 }
 
-/** 设置里除布局集以外的那几项（指标、周期条、对比……） */
-const CORE_FIELDS = SETTINGS_FIELDS.filter(f => f !== LAYOUTS_FIELD)
-export const corePrint = (s: WebState): string => JSON.stringify([s.pinned, s.ind, s.params, s.orderFlowOverrides ?? {}, s.orderFlowHistory === true, s.compareSymbols ?? [], s.drawHidden === true, s.autoLayers ?? []])
+/** 设置里除布局集与 webPrefs 以外的那几项（指标、周期条、对比……） */
+const CORE_FIELDS = SETTINGS_FIELDS.filter(f => f !== LAYOUTS_FIELD && f !== 'webPrefs')
+export const corePrint = (s: WebState): string => JSON.stringify([s.pinned, s.ind, s.params, s.orderFlowOverrides ?? {}, s.orderFlowHistory === true, s.compareSymbols ?? [], s.drawHidden === true, s.autoLayers ?? [],
+  s.orderFlow === true, s.bigTradeSigns !== false, s.updown ?? null, s.sectorMarket ?? null, s.sectorWindow ?? null])
+/** 网页独有设置（webPrefs：皮肤、联动、侧栏、订单流偏好、比例……）的指纹，单独记「最后一次改」 */
+export const prefsPrint = (s: WebState): string => JSON.stringify(webSetting(s, 'webPrefs'))
 /** 布局集（活数据抄回之后）的指纹 */
 export const layoutsPrint = (s: WebState): string => (s.layouts && s.layout && s.cells ? JSON.stringify(liveBook({ layouts: s.layouts, layout: s.layout, cells: s.cells, active: s.active ?? 0 })) : '')
 
 export function fingerprint(s: WebState): Record<Part, string> {
   return {
-    settings: corePrint(s) + layoutsPrint(s) + JSON.stringify(s.chartSettings ?? null),
+    settings: corePrint(s) + layoutsPrint(s) + JSON.stringify(s.chartSettings ?? null) + prefsPrint(s),
     favorites: JSON.stringify(s.watch),
     drawings: JSON.stringify(s.drawings),
     alerts: JSON.stringify(s.alerts),
@@ -122,15 +127,33 @@ export function adoptNewSettings(s: WebState, store: SyncStore): string[] {
   const cloud = store.get('settings', SETTINGS_ID)
   const body = cloud && !cloud.deleted ? cloud.body : {}
   const changed: string[] = []
+  // 2026-10-10 这一版第一次续上（webPrefs 还没记过）：主图 / 副图共用字段的词表也扩了（VWAP / 超级趋势 / SAR、累计量差 / 动向指标），
+  // 两边各自开着的取并集——本机以前只存本机的这几项不被云端「没开」关掉，手机开着的也不被网页「没开」推掉
+  if (missing.includes('webPrefs')) for (const f of ['overlays', 'subs']) changed.push(...unionVocab(s, f, body[f], seen))
   for (const f of missing) {
     if (f === LAYOUTS_FIELD) { changed.push(...adoptBook(s, body[f], seen, 'cloud')); continue }
     const d = decodeSetting(f, body[f], s)
     if (d === undefined) { seen[f] = seenWhenUndecodable(s, f, body[f]); continue }
-    seen[f] = d
-    if (same(d, webSetting(s, f))) continue
-    putSetting(s, f, d); changed.push(f)
+    // 新接上的共用字段，本机改过的留本机（seen 记云端那份，下一次记账推上去）
+    if (ADOPT_LOCAL_WHEN_SET[f]?.(s)) { seen[f] = d; continue }
+    if (same(d, webSetting(s, f))) { seen[f] = d; continue }
+    adoptSetting(s, f, d, seen); changed.push(f)
   }
   return changed
+}
+
+/** 词表扩了的共用列表字段：云端开着的 ∪ 本机开着的新词，装进本机；seen 记云端那份，差的下一次记账推上去 */
+const NEW_VOCAB: Record<string, string[]> = { overlays: ['VWAP', 'ST', 'SAR'], subs: ['CVD', 'DMI'] }
+function unionVocab(s: WebState, f: string, cloud: Json | undefined, seen: Record<string, Json>): string[] {
+  if (!(f in seen)) return []
+  const d = decodeSetting(f, cloud, s)
+  if (!Array.isArray(d)) return []
+  const mine = (webSetting(s, f) as string[]).filter(c => NEW_VOCAB[f].includes(c) && !d.includes(c))
+  const want = [...d, ...mine] as Json
+  seen[f] = d
+  if (same(want, webSetting(s, f))) return []
+  putSetting(s, f, want)
+  return [f]
 }
 
 /**
@@ -151,7 +174,7 @@ export function adoptBook(s: WebState, cloud: Json | undefined, seen: Record<str
 }
 
 /** 本机「最后一次改」的时刻：设置（指标、周期条……）、自选、布局集各一个 */
-export interface Edited { settings: number; favorites: number; layouts?: number }
+export interface Edited { settings: number; favorites: number; layouts?: number; webPrefs?: number }
 
 /** 第一次对上（账本是空的、刚全量拉完）：按规则合并进页面状态，之后正常记账会把本机多出来的推上去 */
 export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: boolean }, edited: Edited, override: boolean): Applied {
@@ -159,13 +182,21 @@ export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: bo
   const a = store.a
   // 本机「最后一次改」是本机钟，云端字段时间是服务器钟（op.timestamp = 本机钟 + offset）：先换到服务器钟上再比
   const onServer = (t: number): number => (t > 0 && Number.isFinite(a.offset) ? t + a.offset : t)
-  edited = { settings: onServer(edited.settings), favorites: onServer(edited.favorites), layouts: onServer(edited.layouts ?? 0) }
+  edited = { settings: onServer(edited.settings), favorites: onServer(edited.favorites), layouts: onServer(edited.layouts ?? 0), webPrefs: onServer(edited.webPrefs ?? 0) }
   // 设置：云端新（或覆盖）就装云端的；本机新就什么都不装、seen 留空，记账时每个字段都会和云端比一遍
   const cloudSettings = store.get('settings', SETTINGS_ID)
   a.seen = {}
   // 换了人：先回出厂再装云端的——云端没有（新账号）或缺了的字段不能留着上一个账号的
   const reset = override ? resetSettings(s) : []
-  if (override || !(edited.settings > lastTouched(cloudSettings, CORE_FIELDS))) r.settings = applySettings(s, cloudSettings, a.seen, CORE_FIELDS)
+  const cloudCore = override || !(edited.settings > lastTouched(cloudSettings, CORE_FIELDS))
+  // webPrefs 单独比时间、先装（它带着整份周期条 / 副图 / 参数，共用字段随后只换头部）；
+  // 本机的指标那几项比云端新时，webPrefs 里那三样不拿云端的盖本机
+  if (override || !((edited.webPrefs ?? 0) > lastTouched(cloudSettings, ['webPrefs']))) {
+    const keep = cloudCore ? null : structuredClone({ pinned: s.pinned, ind: s.ind, params: s.params })
+    r.settings = applySettings(s, cloudSettings, a.seen, ['webPrefs'])
+    if (keep) { s.pinned = keep.pinned; s.ind = keep.ind; s.params = keep.params }
+  }
+  if (cloudCore) r.settings.push(...applySettings(s, cloudSettings, a.seen, CORE_FIELDS))
   // 布局集：换了人整份用云端的（上面已回到出厂）；同一个人时谁新以谁为准，另一边多出来的几套接在后面
   {
     const body = cloudSettings && !cloudSettings.deleted ? cloudSettings.body : {}

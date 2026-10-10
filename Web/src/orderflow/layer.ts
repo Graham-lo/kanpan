@@ -301,7 +301,8 @@ export function createLayer(chart: TVChart, cellOf: () => { symbol: string; iv: 
 
   function drawBubbles(c: CanvasRenderingContext2D, g: ChartGeometry): void {
     bubbles = []
-    if (!st.orderFlow) return
+    // 气泡跟「图上大单标记」走（共用字段 bigTradeSigns，同手机），不再跟订单流横带同一颗开关
+    if (!st.bigTradeSigns) return
     const sym = cellOf().symbol.toUpperCase()
     if (!sym || sym === 'DXY') return
     const f = flowOf(sym)

@@ -1,7 +1,8 @@
 /* Hkline Web · 主力订单流 · 共享状态、网页本机偏好、配色与浮层卡片
  *
  * 各展示模块（图上层、梯子、小部件、抽屉）只读这里的状态，控制器（index.ts）负责写。
- * 网页本机偏好（六个显示开关、热力开关、成交带下限、小部件折叠……）存 localStorage，不随账号同步；
+ * 网页偏好（热力开关、成交带下限、小部件折叠、盘口单位、横带粗细、梯子模式与窗口）存 localStorage，
+ * 2026-10-10 起同时登记进 webPrefs 的 of 块随账号走；六个显示开关（display）在不做清单里，只留本机。
  * 门槛与步长走 st.orderFlowOverrides（同步）。
  */
 import type { TVChart, ChartGeometry } from '../chart/chart'
@@ -18,6 +19,7 @@ import { LiqSource, VolSource, TpsMeter } from './stats'
 import { DISPLAY_ALL, type Display } from './settings'
 import { mergeFactor, intervalMultiplier } from './bucket'
 import { clamp, sh, pad, fmt } from '../util/format'
+import { registerWebPref, webPrefsTouched } from '../sync/webPrefs'
 
 /** 图表页交给订单流模块的几个口子（避免反过来 import 图表页）。 */
 export interface Api {
@@ -82,7 +84,32 @@ function loadPrefs(): Prefs {
     return p
   } catch { return d }
 }
-export function savePrefs(): void { try { localStorage.setItem(PREFS_KEY, JSON.stringify(OF.prefs)) } catch { /* 隐私模式存不了就只在本页生效 */ } }
+function storePrefs(): void { try { localStorage.setItem(PREFS_KEY, JSON.stringify(OF.prefs)) } catch { /* 隐私模式存不了就只在本页生效 */ } }
+export function savePrefs(): void { storePrefs(); webPrefsTouched() }
+
+/** 随账号走的那几项（webPrefs.of）：display 不在内（不做清单） */
+type SyncedPrefs = Pick<Prefs, 'heat' | 'tapeMin' | 'collapsed' | 'bookUnit' | 'band' | 'ladderMode' | 'deltaWin'>
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+/** 云端 of 块 → 规范形；缺的、坏的取出厂（换了人时整块传 undefined，同样回出厂） */
+export function cleanSyncedPrefs(v: unknown): SyncedPrefs {
+  const d = defaults(), x = isObj(v) ? v : {}
+  const tapeMin: Record<string, number> = {}
+  if (isObj(x.tapeMin)) for (const [k, n] of Object.entries(x.tapeMin).slice(0, 64)) if (/^[A-Z0-9]{1,20}$/.test(k) && typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= 1e12) tapeMin[k] = n
+  return {
+    heat: x.heat === true,
+    tapeMin,
+    collapsed: Array.isArray(x.collapsed) ? [...new Set(x.collapsed.filter((w): w is string => typeof w === 'string' && /^[a-z]{1,16}$/.test(w)))].slice(0, 16) : [],
+    bookUnit: x.bookUnit === 'coin' ? 'coin' : d.bookUnit,
+    band: x.band === 2 || x.band === 5 ? x.band : 1,
+    ladderMode: x.ladderMode === 'delta' ? 'delta' : 'depth',
+    deltaWin: x.deltaWin === '1d' ? '1d' : '1h',
+  }
+}
+registerWebPref('of', {
+  read: () => { const p = OF.prefs; return { heat: p.heat, tapeMin: { ...p.tapeMin }, collapsed: [...p.collapsed], bookUnit: p.bookUnit, band: p.band, ladderMode: p.ladderMode, deltaWin: p.deltaWin } },
+  // 界面由同步层随后整块刷新（图表页 refreshWebPrefs、工具栏；热力开关由每半秒的 sync 接上 / 停掉）
+  write: v => { Object.assign(OF.prefs, cleanSyncedPrefs(v)); storePrefs() },
+})
 
 export const OF = {
   api: null as Api | null,

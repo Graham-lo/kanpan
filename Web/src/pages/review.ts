@@ -30,6 +30,7 @@ import { createLoadGate } from '../review/loadGate'
 import { onSession } from '../account/session'
 import type { Match, SavedMatch, SearchResults, SearchStatus, Statistics, TradeRecord, ViewRecord } from '../review/types'
 import { ago } from '../util/clock'
+import { registerWebPref, webPrefsTouched } from '../sync/webPrefs'
 
 GLOSSARY['净盈亏'] = '已平仓回合的已实现盈亏，减去手续费，加上收到的资金费（付出的资金费是负数）。'
 GLOSSARY['盈亏比'] = '赚钱回合的平均盈利 ÷ 亏钱回合的平均亏损。'
@@ -75,7 +76,19 @@ function loadPref(): void {
     if (v.tab === 'trade' || v.tab === 'view' || v.tab === 'similar') R.tab = v.tab
   } catch { /* 读不到就用默认 */ }
 }
-function savePref(): void { try { localStorage.setItem(PREF_KEY, JSON.stringify({ tab: R.tab })) } catch { /* 存不下无所谓 */ } }
+function storePref(): void { try { localStorage.setItem(PREF_KEY, JSON.stringify({ tab: R.tab })) } catch { /* 存不下无所谓 */ } }
+function savePref(): void { storePref(); webPrefsTouched() }
+// 停在哪个页签随账号走（webPrefs.review）：别的电脑切了，这边开着就跟着换
+registerWebPref('review', {
+  read: () => ({ tab: R.tab }),
+  write: v => {
+    const t = v && typeof v === 'object' ? (v as { tab?: unknown }).tab : undefined
+    const tab: Tab = t === 'view' || t === 'similar' ? t : 'trade'
+    if (tab === R.tab) return
+    R.tab = tab; storePref()
+    if (R.shown) { player?.stop(); render() }
+  },
+})
 
 // ------------------------------------------------------------ 小件
 const page = (): HTMLElement => $('#page-review')

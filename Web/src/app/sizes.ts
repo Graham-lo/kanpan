@@ -1,6 +1,7 @@
-/* Hkline Web · 行情页各区域的尺寸（本机 localStorage「hkline-web-sizes-v1」，不进账号同步）
+/* Hkline Web · 行情页各区域的尺寸（本机 localStorage「hkline-web-sizes-v1」）
  *
- * 用户拖出来的宽高只跟这台电脑的屏幕有关，换台电脑没有意义，所以不放进 st（st 有一部分随账号同步）。
+ * 像素尺寸（梯子宽、面板宽、抽屉高、侧栏各块高）只跟这台电脑的屏幕有关，留本机、不进账号同步；
+ * 比例（主图 / 副图高、多图网格的列宽行高）换台屏幕照样成立，2026-10-10 起登记进 webPrefs 的 panes / grid 两块随账号走。
  * 这里只存「用户想要多大」；真正生效的尺寸由下面的纯函数按当前窗口夹一遍：
  * 窗口变小时按比例收，窗口变回来又回到用户拖的那个值，存着的数不被改写。
  *
@@ -14,6 +15,8 @@
  *   多图网格    宽 / 高  每种布局各记一组列宽、行高比例
  */
 import type { Layout } from './store'
+import { registerWebPref, webPrefsTouched } from '../sync/webPrefs'
+import type { Json } from '../sync/types'
 
 export const SIZE_KEY = 'hkline-web-sizes-v1'
 
@@ -181,7 +184,26 @@ function read(): Sizes {
   try { return normalizeSizes(JSON.parse(localStorage.getItem(SIZE_KEY) || '{}')) } catch { return {} }
 }
 export const sizes: Sizes = read()
-/** 松手立刻落盘（本机） */
-export function saveSizes(): void {
-  try { localStorage.setItem(SIZE_KEY, JSON.stringify(sizes)) } catch { /* 存满了就算了 */ }
+function store(): void { try { localStorage.setItem(SIZE_KEY, JSON.stringify(sizes)) } catch { /* 存满了就算了 */ } }
+/** 松手立刻落盘（本机），比例那两块顺带排一次同步 */
+export function saveSizes(): void { store(); webPrefsTouched() }
+
+/** 比例只留四位小数（同步体积小一半，屏幕上差不到半个像素） */
+const r4 = (x: number): number => Math.round(x * 1e4) / 1e4
+/** 同步进来的比例：同读盘一样洗一遍；网格每种布局一组、每组最多 8 条轨道 */
+export function cleanPanes(v: unknown): Record<string, number> | undefined { return posMap(v, 1) }
+export function cleanGrid(v: unknown): Partial<Record<Layout, GridSizes>> | undefined {
+  const g = normalizeSizes({ grid: v }).grid
+  if (!g) return undefined
+  for (const one of Object.values(g)) for (const ax of ['cols', 'rows'] as const) if (one?.[ax] && one[ax]!.length > 8) delete one[ax]
+  return g
 }
+// 界面由同步层随后整块刷新（图表页 refreshWebPrefs：各格副图比例、网格重排）
+registerWebPref('panes', {
+  read: () => Object.fromEntries(Object.entries(sizes.panes ?? {}).map(([k, x]) => [k, r4(x)])),
+  write: v => { const p = cleanPanes(v); if (p) sizes.panes = p; else delete sizes.panes; store() },
+})
+registerWebPref('grid', {
+  read: () => Object.fromEntries(Object.entries(sizes.grid ?? {}).map(([k, g]) => [k, Object.fromEntries(Object.entries(g ?? {}).map(([ax, a]) => [ax, (a as number[]).map(r4)]))])) as Json,
+  write: v => { const g = cleanGrid(v); if (g) sizes.grid = g; else delete sizes.grid; store() },
+})

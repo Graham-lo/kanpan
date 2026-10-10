@@ -108,8 +108,10 @@ export interface State {
   linkTime: boolean
   /** 自定义分钟周期（如 45m），「更多」里输入后记下来 */
   customIvs: string[]
-  /** 指标「主力订单流」开没开（图上大单带、抽屉） */
+  /** 指标「主力订单流」挂单带开没开（和手机 Prefs.orderFlow 同一个字段，随账号同步） */
   orderFlow: boolean
+  /** 图上大单与爆仓气泡（和手机 Prefs.bigTradeSigns 同一个字段，出厂开、随账号同步；和挂单带互不牵连） */
+  bigTradeSigns: boolean
   orderFlowHistory: boolean
   /** 主力订单流门槛 / 步长里用户改过的项，按 base（BTC、PEPE…）存；随账号同步 */
   orderFlowOverrides: Record<string, Override>
@@ -121,6 +123,9 @@ export interface State {
   autoLayers: AutoLayerId[]
   /** 图表设置（右键「设置…」，照 TradingView 四页）：一人一份、所有图格共用，随账号同步（settings 对象的 webChart 字段） */
   chartSettings: ChartSettings
+  /** 板块页看哪个市场、哪个窗口（和手机 Prefs.sectorMarket / sectorWindow 同一对字段，随账号同步；网页只有今日 / 5 日） */
+  sectorMarket: 'crypto' | 'us'
+  sectorWindow: 'today' | 'd5'
   /** 以下不落盘 */
   page: PageId
   stale: boolean
@@ -141,12 +146,13 @@ function defaults(): State {
     panel: 'watch', watchTab: 'crypto', watch: structuredClone(DEFAULT_WATCH),
     ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] }, params: null,
     drawings: {}, alerts: [], notes: [],
-    magnet: false, drawHidden: false, drawLocked: false, drawColor: '#2962FF',
+    magnet: true, drawHidden: false, drawLocked: false, drawColor: '#2962FF',
     drawStyles: {}, recentColors: [], toolLast: {}, lastPanel: 'watch',
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
     vpvrMode: 'split', linkCross: true, linkSymbol: false, linkIv: false, linkTime: false, customIvs: [],
-    orderFlow: false, orderFlowHistory: false, orderFlowOverrides: {}, compareSymbols: [], autoLayers: [], chartSettings: { ...CHART_DEFAULTS },
+    orderFlow: false, bigTradeSigns: true, orderFlowHistory: false, orderFlowOverrides: {}, compareSymbols: [], autoLayers: [], chartSettings: { ...CHART_DEFAULTS },
+    sectorMarket: 'crypto', sectorWindow: 'today',
     page: 'chart', stale: false, account: null,
   }
 }
@@ -297,6 +303,10 @@ export function hydrate(saved: Partial<State>): State {
   s.recentColors = Array.isArray(s.recentColors) ? s.recentColors.filter(c => typeof c === 'string' && /^#[0-9A-Fa-f]{6}$/.test(c)).slice(0, 3) : []
   s.toolLast = strMap(s.toolLast)
   s.orderFlow = s.orderFlow === true
+  // 老存档没有这一项：以前气泡跟着订单流那一颗开关走，接着按那颗的样子来（升级后图上不平白多出 / 少掉气泡）
+  s.bigTradeSigns = typeof saved.bigTradeSigns === 'boolean' ? saved.bigTradeSigns : 'orderFlow' in saved ? saved.orderFlow === true : d.bigTradeSigns
+  if (s.sectorMarket !== 'us') s.sectorMarket = 'crypto'
+  if (s.sectorWindow !== 'd5') s.sectorWindow = 'today'
   s.orderFlowHistory = s.orderFlowHistory === true
   const ofo: Record<string, Override> = {}
   if (s.orderFlowOverrides && typeof s.orderFlowOverrides === 'object') {

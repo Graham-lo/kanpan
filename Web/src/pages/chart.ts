@@ -996,6 +996,12 @@ export function layoutSlots(): void {
 function renderSlots(): void {
   mountLadder($('#ladderSlot')); mountDrawer($('#drawerSlot'))
 }
+/** 网页独有偏好（webPrefs：联动、侧栏与槽位、成交量分布口径、画线锁……）从别的电脑同步过来：各处跟着换。
+ *  画线锁只换工具条上那颗的样子——每条线自己的锁随画线同步，不在这里再锁一遍 */
+export function refreshWebPrefs(): void {
+  cells.forEach(c => { c.chart.setVpvrMode(st.vpvrMode); c.chart.setPaneRatios(sizes.panes ?? null); if (!st.linkCross) c.chart.syncCrosshair(null) })
+  renderDrawbar(); renderRail(); renderSlots(); renderPanel()
+}
 
 // ------------------------------------------------------------ 侧栏
 const RAIL: [PanelId, string, string][] = [['watch', 'list', '自选'], ['alerts', 'bell', '提醒'], ['flow', 'flow', '主力订单流'], ['notes', 'note', '笔记'], ['trades', 'trades', '成交']]

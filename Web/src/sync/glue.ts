@@ -8,13 +8,14 @@
  * - 每次 save()（手势结束、改设置、加自选……）立刻记账落盘，400 ms 后推。
  */
 import { st, save, subscribe, drawingsSuspect, clearDrawingsSuspect } from '../app/store'
-import { hooks } from '../app/shell'
+import { applyTheme, hooks } from '../app/shell'
 import { S } from '../market'
 import { fmt } from '../util/format'
 import type { IndicatorId } from '../chart/calc'
-import { allCells, applyChartSettings, applyDrawingsHidden, applyLayoutSet, cfg, drawingsFor, rebaseDrawings, renderPanel, renderToolbar } from '../pages/chart'
+import { allCells, applyChartSettings, applyDrawingsHidden, applyLayoutSet, cfg, drawingsFor, rebaseDrawings, refreshWebPrefs, renderPanel, renderToolbar } from '../pages/chart'
 import { announceRemoteFire, notifyAlerts, onAlertFired } from '../alerts/model'
-import { type Applied, type Edited, type Prints, OWNED, adoptNewSettings, applyInto, captureInto, corePrint, fingerprint, layoutsPrint, mergeFirst, restoreDrawings } from './bridge'
+import { type Applied, type Edited, type Prints, OWNED, adoptNewSettings, applyInto, captureInto, corePrint, fingerprint, layoutsPrint, mergeFirst, prefsPrint, restoreDrawings } from './bridge'
+import { onWebPrefsTouched } from './webPrefs'
 import { LAYOUTS_FIELD } from '../app/layouts'
 import { refreshCompare } from '../pages/compare'
 import { type Ctx, alertId } from './codec'
@@ -41,8 +42,8 @@ function lsSet(k: string, v: string): void { try { localStorage.setItem(k, v) } 
 // ───────── 本机「最后一次改」的时刻（没登录时也记，首次对上时比谁新） ─────────
 
 function readEdited(): Edited {
-  try { const v = JSON.parse(lsGet(syncKeys().edited) || 'null') as Edited | null; if (v) return { settings: v.settings || 0, favorites: v.favorites || 0, layouts: v.layouts || 0 } } catch { /* 坏了当没改过 */ }
-  return { settings: 0, favorites: 0, layouts: 0 }
+  try { const v = JSON.parse(lsGet(syncKeys().edited) || 'null') as Edited | null; if (v) return { settings: v.settings || 0, favorites: v.favorites || 0, layouts: v.layouts || 0, webPrefs: v.webPrefs || 0 } } catch { /* 坏了当没改过 */ }
+  return { settings: 0, favorites: 0, layouts: 0, webPrefs: 0 }
 }
 
 // ───────── 状态适配器 ─────────
@@ -74,6 +75,15 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
       if (r.settings.includes(LAYOUTS_FIELD)) applyLayoutSet()
       // 图表设置（别的电脑改了）：十六格一起换
       if (r.settings.includes('webChart')) applyChartSettings()
+      // 网页独有偏好（别的电脑改了皮肤、联动、侧栏、比例……）与红涨绿跌（手机也能改）：主题、各格、侧栏、工具条跟着换
+      if (r.settings.includes('webPrefs') || r.settings.includes('redUp')) applyTheme()
+      if (r.settings.includes('redUp')) applyChartSettings()
+      if (r.settings.includes('webPrefs')) refreshWebPrefs()
+      // 订单流横带 / 图上大单标记（手机分析面板那两颗）：各格重画，开着的订单流面板跟着换开关
+      if (r.settings.includes('orderFlow') || r.settings.includes('bigTradeSigns')) {
+        allCells().forEach(c => { c.chart.dirty = true })
+        if (st.panel === 'flow') renderPanel()
+      }
       renderToolbar()
     }
     if (r.drawings.size) { r.drawings.forEach(rebaseDrawings); allCells().forEach(c => { const s = cfg(c).symbol; if (r.drawings.has(s)) c.chart.setDrawings(drawingsFor(s)) }) }
@@ -128,7 +138,14 @@ export function initSync(): void {
   const r = rt = createSyncRuntime(pc)
   // 本机改动时刻：以启动时的样子为底
   // 设置分两块记：指标 / 周期条那些（和手机共用）与布局集（换品种、换周期也算），首次对上时各比各的
-  let base = fingerprint(st), baseCore = corePrint(st), baseLayouts = layoutsPrint(st)
+  // 网页独有的 webPrefs 再单记一块（主题、联动、比例……），首次对上时和云端 webPrefs 字段比
+  let base = fingerprint(st), baseCore = corePrint(st), baseLayouts = layoutsPrint(st), basePrefs = prefsPrint(st)
+  const stampPrefs = (): void => {
+    const p = prefsPrint(st)
+    if (p === basePrefs) return
+    if (!applying) { const ed = readEdited(); ed.webPrefs = Date.now(); lsSet(syncKeys().edited, JSON.stringify(ed)) }
+    basePrefs = p
+  }
   subscribe(() => {
     const now = fingerprint(st), core = corePrint(st), lays = layoutsPrint(st)
     if (!applying && (core !== baseCore || lays !== baseLayouts || now.favorites !== base.favorites)) {
@@ -139,8 +156,11 @@ export function initSync(): void {
       lsSet(syncKeys().edited, JSON.stringify(ed))
     }
     base = now; baseCore = core; baseLayouts = lays
+    stampPrefs()
     r.changed()
   })
+  // 不在 st 里的那几块（订单流偏好、比例、复盘页签）改了：同样记时刻、排一次记账
+  onWebPrefsTouched(() => { stampPrefs(); r.changed() })
   // 本机判响的：fire() 先记「已触发」、报完再删，删之前记下来
   onAlertFired(({ alert }) => spent.add(alertId(alert.symbol, alert.id)))
   hooks.booted.push(() => r.boot())

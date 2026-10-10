@@ -13,6 +13,7 @@ import { st, save } from '../app/store'
 import { I, esc } from '../ui/dom'
 import { patchShell } from '../ui/patch'
 import { term } from '../ui/overlay'
+import { BT } from '../terms'
 import { OrderFlowFeed, getJSON, type TradeEvent } from './feed'
 import { buildFine, exName } from './aggregate'
 import { HeatStore, parseHeat, heatHint, heatRing, heatUrl, type HeatRing } from './heat'
@@ -340,6 +341,15 @@ export function setOrderFlow(on: boolean): void {
   api?.renderToolbar()
 }
 
+/** 图上大单标记（透明气泡）：和手机「图上大单标记」同一颗、同一个共用字段 bigTradeSigns，和订单流横带的开关各管各的 */
+export function setBigTradeSigns(on: boolean): void {
+  st.bigTradeSigns = on
+  save()
+  api?.charts().forEach(c => { c.chart.dirty = true })
+  api?.renderToolbar()
+  renderFlowPanel()
+}
+
 /** 图上挂单历史的同一颗开关：指标弹窗与右侧面板共用。 */
 export function setOrderFlowHistory(on: boolean): void {
   st.orderFlowHistory = on
@@ -375,7 +385,8 @@ export function indicatorRowHTML(): string {
     <span class="check-box ${on ? 'on' : ''}">${on ? I('check', 'icon-16') : ''}</span><span class="nm">主力订单流<small>各家大额挂单画在图上</small></span>
     <span class="tag">主图</span>
     <button class="ibtn xs" data-of-set aria-label="门槛与步长" data-tip="门槛与步长">${I('gear', 'icon-16')}</button></div>
-    <div class="ind-row" data-of-history tabindex="0" role="checkbox" aria-checked="${st.orderFlowHistory}"><span class="check-box ${st.orderFlowHistory ? 'on' : ''}">${st.orderFlowHistory ? I('check', 'icon-16') : ''}</span><span class="nm">历史大单</span></div>`
+    <div class="ind-row" data-of-history tabindex="0" role="checkbox" aria-checked="${st.orderFlowHistory}"><span class="check-box ${st.orderFlowHistory ? 'on' : ''}">${st.orderFlowHistory ? I('check', 'icon-16') : ''}</span><span class="nm">历史大单</span></div>
+    <div class="ind-row" data-of-marks tabindex="0" role="checkbox" aria-checked="${st.bigTradeSigns}"><span class="check-box ${st.bigTradeSigns ? 'on' : ''}">${st.bigTradeSigns ? I('check', 'icon-16') : ''}</span><span class="nm">${BT.chartMarks}</span></div>`
 }
 
 /** 指标面板的点击 / 回车：是订单流那一行就处理并返回 true（调用方随后重画列表）。 */
@@ -384,6 +395,7 @@ export function indicatorRowClick(t: HTMLElement): boolean {
     setOrderFlowHistory(!st.orderFlowHistory)
     return true
   }
+  if (t.closest('[data-of-marks]')) { setBigTradeSigns(!st.bigTradeSigns); return true }
   const gear = t.closest<HTMLElement>('[data-of-set]')
   if (gear) {
     const a = api?.activeChart()
@@ -407,6 +419,8 @@ const QA = 'var(--ofq-a)', QU = 'var(--ofq-u)', QD = 'var(--ofq-d)', QH = 'var(-
 let ofMask = 0
 const TILE: Record<string, () => string> = {
   history: () => `<span class="tgi">${I('replay')}</span>`,
+  // 图上大单标记：大小两颗透明气泡（涨 / 跌色）
+  marks: () => `<span class="tgi">${svg18(`<circle cx="6.5" cy="11" r="4.5" fill="${QU}" opacity=".55"/><circle cx="12.5" cy="6" r="3.5" fill="${QD}" opacity=".7"/>`)}</span>`,
   flow: () => {
     const id = 'ofq' + (++ofMask)
     return `<span class="tgi">${svg18(
@@ -430,8 +444,9 @@ export function flowPanel(el: HTMLElement): void {
       <button class="ibtn sm" data-ofp="settings" aria-label="门槛与步长" data-tip="门槛与步长">${I('gear')}</button></div>
     <div class="scroll of-p">
       <div class="sec-title">显示</div>
-      ${sw('flow', '图上订单流', st.orderFlow, '大额挂单画成横带垫在 K 线下面，成交的大单打点')}
+      ${sw('flow', '图上订单流', st.orderFlow, '大额挂单画成横带垫在 K 线下面')}
       ${sw('history', '历史大单', st.orderFlowHistory, '显示已结束的挂单；关闭时只看仍有效的挂单')}
+      ${sw('marks', BT.chartMarks, st.bigTradeSigns, '成交的大单与爆仓在 K 线上画成气泡')}
       ${sw('ladder', '深度梯子', st.slots.ladder, '价格轴右边的一列各家合并盘口，和图同一根价格轴')}
       ${sw('drawer', '大单列表', st.slots.drawer, '图下面的抽屉，列出这只品种所有大单')}
       ${sw('heat', '深度热力', OF.prefs.heat, '每秒记一列挂单浓淡，之前的时段从服务端补')}
@@ -457,6 +472,7 @@ function onPanelClick(e: MouseEvent): void {
     case 'settings': { const a = api?.activeChart(); if (a) openOrderFlowSettings(a.symbol); return }
     case 'flow': setOrderFlow(!st.orderFlow); return
     case 'history': setOrderFlowHistory(!st.orderFlowHistory); return
+    case 'marks': setBigTradeSigns(!st.bigTradeSigns); return
     case 'ladder': st.slots.ladder = !st.slots.ladder; save(); sync(); api?.layoutSlots(); b.setAttribute('aria-checked', String(st.slots.ladder)); return
     case 'drawer': st.slots.drawer = !st.slots.drawer; save(); sync(); api?.layoutSlots(); updateDrawer(true); b.setAttribute('aria-checked', String(st.slots.drawer)); return
     case 'heat': toggleHeat(); return

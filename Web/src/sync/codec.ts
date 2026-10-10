@@ -27,7 +27,8 @@ import { MAX_OVERRIDES, isValidBase, normalizeOverride, type Override } from '..
 import { LAYOUTS_FIELD, bookFrom, cleanBook, liveBook, loadLive, type CellCfg, type Layout, type LayoutBook } from '../app/layouts'
 import { AUTO_LAYERS, type AutoLayerId } from '../analysis/fvg'
 import { cleanStyle } from '../chart/drawStyle'
-import { DEFAULTS as CHART_DEFAULTS, MAX_BYTES as CHART_MAX_BYTES, clean as cleanChart, diff as chartDiff, type ChartSettings } from '../chart/chartSettings'
+import { DEFAULTS as CHART_DEFAULTS, MAX_BYTES as CHART_MAX_BYTES, clean as cleanChart, diff as chartDiff, withUpDownReset, type ChartSettings } from '../chart/chartSettings'
+import { WEB_PREFS_MAX_BYTES, applyWebPrefs, buildWebPrefs, cleanWebPrefs, resetWebPrefParts, type WebPrefsState } from './webPrefs'
 
 export interface Ctx {
   now(): number
@@ -127,12 +128,17 @@ const obj = (v: Json | undefined): Record<string, Json> | null => v && typeof v 
 
 // ═════════════════════════════ settings（id "chart"） ═════════════════════════════
 //
-// 网页只同步和手机同一回事的那几项：钉在周期条上的周期、主图 / 副图开了哪些指标、指标参数、主力订单流的门槛与步长、
-// 对比品种、隐藏画线（drawingsHidden ↔ st.drawHidden）；外加网页独有的布局集（chartLayouts，手机不认这个键、原样留着）
-// 与网页独有的图表设置（webChart ↔ st.chartSettings，手机不认这个字段，服务端把它列在 WEB_SETTINGS_FIELDS 里单独校验：对象、序列化 ≤ 8 KB；
-// 老服务端不认就丢掉这个字段、不报错，本机照常生效）。
-// 皮肤 / 深浅 / 涨跌色是网页自己的一套视觉（和手机不是一回事），线路是每台设备自己的，
-// 当前周期是「每个图格一个」而手机是「整个 app 一个」，这几项不同步。
+// 和手机同一回事的那几项走共用字段：钉在周期条上的周期、主图 / 副图开了哪些指标（含 VWAP / 超级趋势 / 抛物线 SAR、
+// 累计量差 / 动向指标）、指标参数、主力订单流开关（orderFlow）与图上大单气泡（bigTradeSigns，两颗互不牵连）、门槛与步长、
+// 对比品种、隐藏画线（drawingsHidden ↔ st.drawHidden）、涨跌配色（redUp ↔ st.updown）、板块页的市场与窗口。
+// 网页独有的：布局集（chartLayouts）、图表设置（webChart ↔ st.chartSettings）、其余用手改出来的习惯（webPrefs，见 sync/webPrefs.ts）——
+// 手机不认这三个键、原样带回；服务端把后两个列在 WEB_SETTINGS_FIELDS 里单独校验（对象、序列化 ≤ 8 KB）。
+// 皮肤 / 深浅是网页自己的一套视觉（和手机的 skin / theme 不是一回事），装在 webPrefs 里；线路是每台设备自己的，不同步；
+// 当前周期是「每个图格一个」而手机是「整个 app 一个」，跟着布局集走。
+//
+// 和手机上限不同的那几项（2026-10-10）：电脑能钉任意多个周期（手机 6 个）、开 8 个副图（手机 3 个）、参数到 2000（手机 1…400 的整数）。
+// 不砍电脑的能力：共用字段只装各端都能表达的那部分（周期按顺序前 6 个、副图前 3 个手机认识的、参数全是 1…400 整数才写），
+// 整份留在 webPrefs；手机改了共用字段，电脑只替换「头部」那几个位置，自己多出来的原样留着（mergeHead）。
 //
 // 设置对象手机端有几十个字段，网页只认其中几个，所以按字段记一份 `seen`：
 // 「这个字段上一次和云端对上时网页这边是什么样」。网页值 ≠ seen → 网页改了，推；
@@ -155,15 +161,45 @@ export interface SettingsState {
   layouts?: LayoutBook; layout?: Layout; cells?: CellCfg[]; active?: number
   /** 图表设置（网页独有），线上只存和默认不同的那几项 */
   chartSettings?: ChartSettings
+  /** 主图「主力订单流」挂单带（和手机 Prefs.orderFlow 同一个字段） */
+  orderFlow?: boolean
+  /** 图上大单与爆仓气泡（和手机 Prefs.bigTradeSigns 同一个字段，出厂开；和挂单带互不牵连） */
+  bigTradeSigns?: boolean
+  /** 涨跌配色：red-up ↔ 手机 redUp = true */
+  updown?: 'red-up' | 'green-up'
+  /** 板块页的市场与窗口（和手机 Prefs.sectorMarket / sectorWindow 同一对字段；网页只有今日 / 5 日两档） */
+  sectorMarket?: 'crypto' | 'us'
+  sectorWindow?: 'today' | 'd5'
 }
 
+/** codec 读写的整份状态：同步设置 + webPrefs 里 st 那几项 */
+export type CodecState = SettingsState & WebPrefsState
+
 export const SETTINGS_ID = 'chart'
-const PARAM_IDS: [string, string][] = [['ma', 'MA'], ['ema', 'EMA'], ['boll', 'BOLL'], ['macd', 'MACD'], ['rsi', 'RSI'], ['kdj', 'KDJ']]
-export const SETTINGS_FIELDS = ['quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlowOverrides', 'orderFlowHistory', 'compareSymbols', 'autoLayers', 'drawingsHidden', LAYOUTS_FIELD, 'webChart']
+const PARAM_IDS: [string, string][] = [['ma', 'MA'], ['ema', 'EMA'], ['boll', 'BOLL'], ['macd', 'MACD'], ['rsi', 'RSI'], ['kdj', 'KDJ'], ['st', 'ST'], ['dmi', 'DMI']]
+/** 顺序有讲究：webPrefs（整份周期条 / 副图 / 参数）排在 quickIntervals / overlays / subs / params 之前装，
+ *  同一轮里共用字段后装、只换头部，手机刚改的那几个不被 webPrefs 里的旧整份盖回去 */
+export const SETTINGS_FIELDS = ['webPrefs', 'quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlow', 'bigTradeSigns', 'orderFlowOverrides', 'orderFlowHistory', 'compareSymbols', 'autoLayers', 'drawingsHidden', 'redUp', 'sectorMarket', 'sectorWindow', LAYOUTS_FIELD, 'webChart']
+/** 网页独有的设置字段（手机不认、原样带回） */
+export const WEB_ONLY_SETTINGS = ['webPrefs', LAYOUTS_FIELD, 'webChart'] as const
 /** 云端没有这个字段时本机的值要推上去（网页独有，没有别的端会写它）：seen 记成 null，下一次记账一定推 */
-const PUSH_WHEN_CLOUD_EMPTY = new Set([LAYOUTS_FIELD])
+const PUSH_WHEN_CLOUD_EMPTY = new Set([LAYOUTS_FIELD, 'webPrefs'])
+/** 2026-10-10 新接上的共用字段：老账本续上时本机改过（不是出厂值）的留本机、推上去，没改过的装云端的
+ *  （不然手机从没碰过的出厂值会把电脑上开着的订单流、红涨绿跌一声不响地关掉）。
+ *  图上大单标记不在这里：网页老存档那一项是从订单流开关迁过来的，不是人手设的，云端有就听云端 */
+export const ADOPT_LOCAL_WHEN_SET: Record<string, (s: CodecState) => boolean> = {
+  orderFlow: s => s.orderFlow === true,
+  redUp: s => s.updown === 'red-up',
+  sectorMarket: s => s.sectorMarket === 'us',
+  sectorWindow: s => s.sectorWindow === 'd5',
+  'params/ST': s => !!s.params?.st,
+  'params/DMI': s => !!s.params?.dmi,
+}
+/** 周期条 / 副图共用字段装得下几个（手机 Prefs.maxQuick / maxSubs；成交量不占副图名额） */
+export const SHARED_PINS = 6
+export const SHARED_SUBS = 3
 /** 状态里有没有布局集那几项（单元测试里的精简状态可以没有） */
-const hasLayouts = (s: SettingsState): s is SettingsState & { layouts: LayoutBook; layout: Layout; cells: CellCfg[]; active: number } =>
+const hasLayouts = (s: CodecState): s is CodecState & { layouts: LayoutBook; layout: Layout; cells: CellCfg[]; active: number } =>
   !!s.layouts && !!s.layout && Array.isArray(s.cells)
 
 /** 订单流覆盖项的规范形：base 合规、每项过 normalizeOverride、最多 MAX_OVERRIDES 只、键排序（比较不受顺序影响） */
@@ -176,19 +212,34 @@ function cleanOverrides(v: unknown): Record<string, Override> | null {
   }
   return out
 }
-const OVERLAY_MAP: [keyof IndState & ('ma' | 'ema' | 'boll'), string][] = [['ma', 'MA'], ['ema', 'EMA'], ['boll', 'BOLL']]
-const SUB_MAP: [string, string][] = [['vol', 'VOL'], ['macd', 'MACD'], ['rsi', 'RSI'], ['kdj', 'KDJ'], ['oi', 'OI']]
+/** 主图叠加：st.ind 的布尔项 ↔ 手机 overlays 的名字；抛物线 SAR 在 st.ind.mains 里（第三批主图叠加），单独换算 */
+const OVERLAY_MAP: [keyof IndState & ('ma' | 'ema' | 'boll' | 'vwap' | 'st'), string][] = [['ma', 'MA'], ['ema', 'EMA'], ['boll', 'BOLL'], ['vwap', 'VWAP'], ['st', 'ST']]
+const OVERLAY_CODES = new Set([...OVERLAY_MAP.map(([, c]) => c), 'SAR'])
+/** 副图：手机也认识的那几个（随机 RSI、真实波幅手机虽然认，但按约定是电脑网页独有的，只在 webPrefs 里跟人走） */
+const SUB_MAP: [string, string][] = [['vol', 'VOL'], ['macd', 'MACD'], ['rsi', 'RSI'], ['kdj', 'KDJ'], ['oi', 'OI'], ['cvd', 'CVD'], ['dmi', 'DMI']]
+const SHARED_SUB = new Set(SUB_MAP.map(([w]) => w).filter(w => w !== 'vol'))
+
+/** 网页钉住的周期（按周期顺序）里共用字段装得下的那几个：前 SHARED_PINS 个（手机收到后也是排序取前 6） */
+const pinHead = (pinned: readonly string[]): string[] => INTERVALS.filter(iv => pinned.includes(iv)).slice(0, SHARED_PINS)
+/** 网页副图里共用字段装得下的那几个：按网页的先后，手机也认识的前 SHARED_SUBS 个 */
+const subHead = (subs: readonly string[]): string[] => subs.filter(x => SHARED_SUB.has(x)).slice(0, SHARED_SUBS)
 
 /** 网页那一侧某个字段的规范值（seen 里存的就是这个） */
-export function webSetting(s: SettingsState, field: string): Json {
-  if (field === 'quickIntervals') return INTERVALS.filter(iv => s.pinned.includes(iv))
-  if (field === 'overlays') return OVERLAY_MAP.filter(([w]) => s.ind[w]).map(([, c]) => c)
-  if (field === 'subs') return [...(s.ind.vol ? ['VOL'] : []), ...s.ind.subs.map(x => SUB_MAP.find(([w]) => w === x)?.[1]).filter((x): x is string => !!x)]
+export function webSetting(s: CodecState, field: string): Json {
+  if (field === 'webPrefs') return buildWebPrefs(s)
+  if (field === 'quickIntervals') return pinHead(s.pinned)
+  if (field === 'overlays') return [...OVERLAY_MAP.filter(([w]) => s.ind[w]).map(([, c]) => c), ...(s.ind.mains?.includes('sar') ? ['SAR'] : [])]
+  if (field === 'subs') return [...(s.ind.vol ? ['VOL'] : []), ...subHead(s.ind.subs).map(x => SUB_MAP.find(([w]) => w === x)![1])]
   if (field === 'orderFlowOverrides') return (cleanOverrides(s.orderFlowOverrides) ?? {}) as unknown as Json
   if (field === 'compareSymbols') return cleanCompare(s.compareSymbols)
+  if (field === 'orderFlow') return s.orderFlow === true
+  if (field === 'bigTradeSigns') return s.bigTradeSigns !== false
   if (field === 'orderFlowHistory') return s.orderFlowHistory === true
   if (field === 'autoLayers') return cleanAutoLayers(s.autoLayers)
   if (field === 'drawingsHidden') return s.drawHidden === true
+  if (field === 'redUp') return s.updown === 'red-up'
+  if (field === 'sectorMarket') return s.sectorMarket === 'us' ? 'us' : 'crypto'
+  if (field === 'sectorWindow') return s.sectorWindow === 'd5' ? 'd5' : 'today'
   if (field === LAYOUTS_FIELD) return hasLayouts(s) ? liveBook({ ...s, active: s.active ?? 0 }) as unknown as Json : null
   if (field === 'webChart') return chartDiff(cleanChart(s.chartSettings)) as unknown as Json
   if (field.startsWith('params/')) {
@@ -214,29 +265,62 @@ export function mergeList(prev: string[], known: Set<string>, web: string[]): st
   return out
 }
 
+/** 共用字段（只装得下头部 n 个）改了，装回网页的整份列表：本机列表里头部那 n 个位置（共用的前 n 个）
+ *  按云端的新顺序换掉；云端多出来的接在头部最后一个位置后面，少了的位置去掉；
+ *  头部以外的（电脑多钉的、手机不认识的）原样留着，重复的留前面那个 */
+export function mergeHead(local: readonly string[], shared: (x: string) => boolean, n: number, cloud: readonly string[]): string[] {
+  const head: number[] = []
+  local.forEach((x, i) => { if (head.length < n && shared(x)) head.push(i) })
+  const queue = [...cloud], out: string[] = []
+  const last = head.length ? head[head.length - 1] : -1
+  if (last < 0) out.push(...queue.splice(0))
+  local.forEach((x, i) => {
+    if (!head.includes(i)) out.push(x)
+    else { const next = queue.shift(); if (next !== undefined) out.push(next) }
+    if (i === last) out.push(...queue.splice(0))
+  })
+  return [...new Set(out)]
+}
+
+/** 参数能不能写进共用字段（手机只收 1…400 的整数）；不能的只在 webPrefs 里跟人走，而且网页这份优先 */
+export function paramExpressible(field: string, p: IndParams | null | undefined): boolean {
+  return !!p && encodeSetting(field, p as unknown as Json, undefined) !== undefined
+}
+
 /** 网页值 → 云端值；表达不了（参数不是整数、超出范围）返回 undefined，意思是「不推」 */
 export function encodeSetting(field: string, web: Json, prev: Json | undefined): Json | undefined {
   const prevList = Array.isArray(prev) ? prev.filter((x): x is string => typeof x === 'string') : []
+  if (field === 'webPrefs') return obj(web) && new TextEncoder().encode(JSON.stringify(web)).length <= WEB_PREFS_MAX_BYTES ? web : undefined
   if (field === 'quickIntervals') {
-    // 手机独有的周期（网页没有的）原地留着，网页钉的按网页来；超过 10 个先挤掉手机独有的
+    // 手机独有的周期（网页没有的）原地留着，网页钉的按网页来；超过 6 个（手机 Prefs.maxQuick）先挤掉手机独有的
     const pinned = web as string[]
     const kept = prevList.filter(iv => !INTERVALS.includes(iv) || pinned.includes(iv))
     const out = [...kept, ...pinned.filter(iv => !kept.includes(iv))]
-    while (out.length > 10) {
+    while (out.length > SHARED_PINS) {
       const i = out.map(x => !INTERVALS.includes(x)).lastIndexOf(true)
       if (i < 0) break
       out.splice(i, 1)
     }
-    return out.slice(0, 10)
+    return out.slice(0, SHARED_PINS)
   }
-  if (field === 'overlays') return mergeList(prevList, new Set(OVERLAY_MAP.map(([, c]) => c)), web as string[])
-  if (field === 'subs') return mergeList(prevList, new Set(SUB_MAP.map(([, c]) => c)), web as string[])
+  if (field === 'overlays') return mergeList(prevList, OVERLAY_CODES, web as string[])
+  if (field === 'subs') {
+    // 手机独有的副图（多空比、主动买卖…）原地留着；手机只看前 3 个非成交量的，多出来的先挤掉手机独有的
+    const out = mergeList(prevList, new Set(SUB_MAP.map(([, c]) => c)), web as string[])
+    while (out.filter(x => x !== 'VOL').length > SHARED_SUBS) {
+      const i = out.map(x => x !== 'VOL' && !SUB_MAP.some(([, c]) => c === x)).lastIndexOf(true)
+      if (i < 0) break
+      out.splice(i, 1)
+    }
+    return out
+  }
   if (field === 'orderFlowOverrides') return (cleanOverrides(web) ?? undefined) as unknown as Json | undefined
   if (field === 'compareSymbols') return cleanCompare(web)
-  if (field === 'orderFlowHistory') return web === true
+  if (field === 'orderFlow' || field === 'bigTradeSigns' || field === 'orderFlowHistory' || field === 'drawingsHidden' || field === 'redUp') return web === true
+  if (field === 'sectorMarket') return web === 'us' ? 'us' : 'crypto'
+  if (field === 'sectorWindow') return web === 'd5' ? 'd5' : 'today'
   // 网页认不出的层（更新版本的客户端写的）原地留着，认得的按网页的开关与先后来
   if (field === 'autoLayers') return mergeList(prevList, new Set<string>(AUTO_LAYERS), cleanAutoLayers(web))
-  if (field === 'drawingsHidden') return web === true
   if (field === LAYOUTS_FIELD) return (cleanBook(web) ?? undefined) as unknown as Json | undefined
   if (field === 'webChart') return obj(web) && JSON.stringify(web).length <= CHART_MAX_BYTES ? web : undefined
   if (field.startsWith('params/')) {
@@ -250,6 +334,10 @@ export function encodeSetting(field: string, web: Json, prev: Json | undefined):
       case 'params/MACD': out = p.fast != null && p.slow != null && p.signal != null ? [p.fast, p.slow, p.signal] : null; break
       case 'params/RSI': out = p.n != null ? [p.n, ...pv.slice(1)] : null; break
       case 'params/KDJ': out = p.n != null && p.m1 != null && p.m2 != null ? [p.n, p.m1, p.m2] : null; break
+      // 超级趋势 [周期, 倍数]：倍数 2.5 这种小数手机解不开（它整张 params 表都会丢），只留在 webPrefs
+      case 'params/ST': out = p.n != null && p.k != null ? [p.n, p.k] : null; break
+      // 动向指标手机只有周期一个参数；ADX 平滑（m1）是电脑网页独有的，留在 webPrefs
+      case 'params/DMI': out = p.n != null ? [p.n] : null; break
     }
     if (!out || !out.length || out.length > 20 || !out.every(okInt)) return undefined
     return out
@@ -258,15 +346,16 @@ export function encodeSetting(field: string, web: Json, prev: Json | undefined):
 }
 
 /** 云端值 → 网页值；网页表达不了返回 undefined */
-export function decodeSetting(field: string, cloud: Json | undefined, cur: SettingsState): Json | undefined {
+export function decodeSetting(field: string, cloud: Json | undefined, cur: CodecState): Json | undefined {
   if (cloud === undefined || cloud === null) return undefined
   const list = Array.isArray(cloud) ? cloud.filter((x): x is string => typeof x === 'string') : null
+  if (field === 'webPrefs') return (cleanWebPrefs(cloud) ?? undefined) as Json | undefined
   if (field === 'quickIntervals') {
     if (!list) return undefined
     const out = INTERVALS.filter(iv => list.includes(iv))
     return out.length ? out : undefined
   }
-  if (field === 'overlays') return list ? OVERLAY_MAP.filter(([, c]) => list.includes(c)).map(([, c]) => c) : undefined
+  if (field === 'overlays') return list ? [...OVERLAY_MAP.filter(([, c]) => list.includes(c)).map(([, c]) => c), ...(list.includes('SAR') ? ['SAR'] : [])] : undefined
   if (field === 'subs') {
     if (!list) return undefined
     const vol = list.includes('VOL')
@@ -276,57 +365,88 @@ export function decodeSetting(field: string, cloud: Json | undefined, cur: Setti
   if (field === 'orderFlowOverrides') return (cleanOverrides(cloud) ?? undefined) as unknown as Json | undefined
   // 别家的键（Coinbase 现货）照样留着：网页画不了就不画，但不能一装一推把手机那只冲掉
   if (field === 'compareSymbols') return Array.isArray(cloud) ? cleanCompare(cloud) : undefined
-  if (field === 'orderFlowHistory') return typeof cloud === 'boolean' ? cloud : undefined
+  if (field === 'orderFlow' || field === 'bigTradeSigns' || field === 'orderFlowHistory' || field === 'drawingsHidden' || field === 'redUp') return typeof cloud === 'boolean' ? cloud : undefined
+  if (field === 'sectorMarket') return cloud === 'crypto' || cloud === 'us' ? cloud : undefined
+  // 网页板块页只有今日 / 5 日：手机的 20 日装不了（seen 记网页现值，不推不装）
+  if (field === 'sectorWindow') return cloud === 'today' || cloud === 'd5' ? cloud : undefined
   // 认不出的层（更新版本的客户端写的新层）网页画不了，装进来时丢掉；推的时候 encodeSetting 把它原地留着
   if (field === 'autoLayers') return Array.isArray(cloud) ? cleanAutoLayers(cloud) : undefined
-  if (field === 'drawingsHidden') return typeof cloud === 'boolean' ? cloud : undefined
   if (field === LAYOUTS_FIELD) return (cleanBook(cloud) ?? undefined) as unknown as Json | undefined
   if (field === 'webChart') return obj(cloud) ? chartDiff(cleanChart(cloud)) as unknown as Json : undefined
   if (field.startsWith('params/')) {
     const v = Array.isArray(cloud) ? cloud.filter((x): x is number => typeof x === 'number') : null
     if (!v || !v.length || !v.every(okInt)) return undefined
     const old = webSetting(cur, field) as IndParams | null
+    // 网页这份手机表达不了（周期 2000、倍数 2.5）：以网页这份（webPrefs）为准，云端的不装
+    if (old && !paramExpressible(field, old)) return undefined
     switch (field) {
       case 'params/MA': case 'params/EMA': return { ...(old ?? {}), periods: v } as Json
       case 'params/BOLL': return v.length >= 2 ? { ...(old ?? {}), n: v[0], k: v[1] } as Json : undefined
       case 'params/MACD': return v.length >= 3 ? { ...(old ?? {}), fast: v[0], slow: v[1], signal: v[2] } as Json : undefined
       case 'params/RSI': return { ...(old ?? {}), n: v[0] } as Json
       case 'params/KDJ': return v.length >= 3 ? { ...(old ?? {}), n: v[0], m1: v[1], m2: v[2] } as Json : undefined
+      case 'params/ST': return v.length >= 2 ? { ...(old ?? {}), n: v[0], k: v[1] } as Json : undefined
+      case 'params/DMI': return { ...(old ?? {}), n: v[0] } as Json
     }
   }
   return undefined
 }
 
 /** 网页值写回状态（原地改） */
-export function putSetting(s: SettingsState, field: string, v: Json): void {
+export function putSetting(s: CodecState, field: string, v: Json): void {
   const list = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
-  if (field === 'quickIntervals') s.pinned = list
+  if (field === 'webPrefs') applyWebPrefs(s, v)
+  // 头部换成云端的，电脑多钉的（第 7 个起）原样留着
+  else if (field === 'quickIntervals') s.pinned = INTERVALS.filter(iv => mergeHead(INTERVALS.filter(x => s.pinned.includes(x)), x => INTERVALS.includes(x), SHARED_PINS, list).includes(iv))
   else if (field === 'orderFlowOverrides') s.orderFlowOverrides = cleanOverrides(v) ?? {}
   else if (field === 'compareSymbols') s.compareSymbols = cleanCompare(v)
+  else if (field === 'orderFlow') s.orderFlow = v === true
+  else if (field === 'bigTradeSigns') s.bigTradeSigns = v !== false
   else if (field === 'orderFlowHistory') s.orderFlowHistory = v === true
   else if (field === 'autoLayers') s.autoLayers = cleanAutoLayers(v)
   else if (field === 'drawingsHidden') s.drawHidden = v === true
+  else if (field === 'redUp') {
+    const want = v === true ? 'red-up' : 'green-up'
+    // 换了涨跌配色：K 线涨跌色的覆盖清掉、回到跟涨跌色走（和「我的」里切换同一个规矩，pages/me.ts）
+    if (s.updown !== want) { s.updown = want; if (s.chartSettings) s.chartSettings = withUpDownReset(s.chartSettings) }
+  }
+  else if (field === 'sectorMarket') s.sectorMarket = v === 'us' ? 'us' : 'crypto'
+  else if (field === 'sectorWindow') s.sectorWindow = v === 'd5' ? 'd5' : 'today'
   else if (field === LAYOUTS_FIELD) {
     const b = cleanBook(v)
     if (b && hasLayouts(s)) { s.layouts = b; const live = { ...s, active: s.active ?? 0 }; loadLive(live); s.layout = live.layout; s.cells = live.cells; s.active = live.active }
   }
   else if (field === 'webChart') s.chartSettings = cleanChart(v)
-  else if (field === 'overlays') for (const [w, c] of OVERLAY_MAP) s.ind[w] = list.includes(c)
-  else if (field === 'subs') {
+  else if (field === 'overlays') {
+    for (const [w, c] of OVERLAY_MAP) { if (list.includes(c)) s.ind[w] = true; else if (w === 'vwap' || w === 'st') delete s.ind[w]; else s.ind[w] = false }
+    // 抛物线 SAR 在第三批主图叠加的列表里：开着的位置不动，新开的接在最后
+    const mains = (s.ind.mains ?? []).filter(x => x !== 'sar' || list.includes('SAR'))
+    if (list.includes('SAR') && !mains.includes('sar')) mains.push('sar')
+    if (mains.length) s.ind.mains = mains; else delete s.ind.mains
+  } else if (field === 'subs') {
     s.ind.vol = list.includes('VOL')
-    // 云端那几个（手机也认识的）按云端的顺序填回它们在本机列表里的位置；网页独有的副图（累计量差、随机指标…）原地留着
+    // 云端那几个（手机也认识的）换掉本机头部那几个位置；电脑多开的、手机不认识的（真实波幅、随机 RSI…）原地留着
     const cloud = list.map(c => SUB_MAP.find(([, x]) => x === c)?.[0]).filter((x): x is SubId => !!x && x !== 'vol')
-    const known = new Set(SUB_MAP.map(([w]) => w))
-    s.ind.subs = [...new Set(mergeList(s.ind.subs, known, cloud))].slice(0, MAX_SUBS) as SubId[]
+    s.ind.subs = mergeHead(s.ind.subs, x => SHARED_SUB.has(x), SHARED_SUBS, cloud).slice(0, MAX_SUBS) as SubId[]
   } else if (field.startsWith('params/')) {
     const id = PARAM_IDS.find(([, c]) => 'params/' + c === field)?.[0]
     if (id && v && typeof v === 'object') s.params = { ...(s.params ?? {}), [id]: v as IndParams }
   }
 }
 
+/** 这几个字段装完以后网页的值可以和云端不一样（整份比云端多：电脑多钉的周期、多开的副图），
+ *  seen 记网页装完的样子——不然下一次记账会把「多出来的那几个挤进头部」推回去，冲掉手机刚改的 */
+const SEEN_AFTER_PUT = new Set(['quickIntervals', 'subs'])
+/** 装一个字段：写回状态，再按规矩记 seen */
+export function adoptSetting(s: CodecState, f: string, d: Json, seen: Record<string, Json>): void {
+  seen[f] = d
+  putSetting(s, f, d)
+  if (SEEN_AFTER_PUT.has(f)) seen[f] = webSetting(s, f)
+}
+
 /** 捕获：网页改过的字段编码进 body（其余字段原样沿用云端那份），同时更新 seen。
  *  返回 null 表示这次没有要推的 */
-export function encodeSettings(s: SettingsState, prev: SyncObject | undefined, seen: Record<string, Json>): SyncObject | null {
+export function encodeSettings(s: CodecState, prev: SyncObject | undefined, seen: Record<string, Json>): SyncObject | null {
   const body: Body = { ...(prev && !prev.deleted ? prev.body : {}) }
   let touched = false
   for (const f of SETTINGS_FIELDS) {
@@ -356,25 +476,39 @@ export function factorySettings(): Required<SettingsState> {
     layouts: bookFrom('1', [{ symbol: 'BTCUSDT', iv: '1h' }]),
     layout: '1', cells: [{ symbol: 'BTCUSDT', iv: '1h' }], active: 0,
     chartSettings: { ...CHART_DEFAULTS },
+    orderFlow: false, bigTradeSigns: true, updown: 'green-up', sectorMarket: 'crypto', sectorWindow: 'today',
+  }
+}
+/** webPrefs 里 st 那几项的出厂值（与 app/store 的 defaults() 同一组值） */
+export function factoryWebPrefs(): Required<Omit<WebPrefsState, 'pinned' | 'ind' | 'params'>> {
+  return {
+    theme: 'light', skin: 'sage', vpvrMode: 'split', linkCross: true, linkSymbol: false, linkIv: false, linkTime: false,
+    slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] }, panel: 'watch', lastPanel: 'watch', watchTab: 'crypto',
+    alertScope: 'symbol', meSection: 'look', drawLocked: false, drawStyles: {}, toolLast: {},
   }
 }
 
 /** 换人：同步设置整份回到出厂（原地改），返回变了的字段 */
-export function resetSettings(s: SettingsState): string[] {
+export function resetSettings(s: CodecState): string[] {
   const before = SETTINGS_FIELDS.map(f => webSetting(s, f))
   const f = factorySettings()
   s.pinned = f.pinned; s.ind = f.ind; s.params = f.params; s.orderFlowOverrides = f.orderFlowOverrides; s.orderFlowHistory = f.orderFlowHistory; s.compareSymbols = f.compareSymbols; s.autoLayers = f.autoLayers; s.drawHidden = f.drawHidden; s.chartSettings = f.chartSettings
   if (hasLayouts(s)) { s.layouts = f.layouts; s.layout = f.layout; s.cells = f.cells; s.active = f.active }
+  // 只回状态里本来就有的那几项（单元测试里的精简状态没有它们，不凭空添上）
+  const put = <K extends keyof CodecState>(k: K, v: CodecState[K]): void => { if (k in s) s[k] = v }
+  put('orderFlow', f.orderFlow); put('bigTradeSigns', f.bigTradeSigns); put('updown', f.updown); put('sectorMarket', f.sectorMarket); put('sectorWindow', f.sectorWindow)
+  for (const [k, v] of Object.entries(factoryWebPrefs())) put(k as keyof CodecState, structuredClone(v) as never)
+  resetWebPrefParts()
   return SETTINGS_FIELDS.filter((x, i) => !same(before[i], webSetting(s, x)))
 }
 
 /** 云端这个字段装不了（没有 / 表达不了）时 seen 记什么：一般记网页现值（不推）；网页独有的记 null（推） */
-export function seenWhenUndecodable(s: SettingsState, f: string, cloud: Json | undefined): Json {
+export function seenWhenUndecodable(s: CodecState, f: string, cloud: Json | undefined): Json {
   return PUSH_WHEN_CLOUD_EMPTY.has(f) && (cloud === undefined || cloud === null) ? null : webSetting(s, f)
 }
 
 /** 应用：云端值和 seen 不同的字段写回状态。返回改了哪些字段（fields：只看这几个，缺省全部） */
-export function applySettings(s: SettingsState, cloud: SyncObject | undefined, seen: Record<string, Json>, fields: readonly string[] = SETTINGS_FIELDS): string[] {
+export function applySettings(s: CodecState, cloud: SyncObject | undefined, seen: Record<string, Json>, fields: readonly string[] = SETTINGS_FIELDS): string[] {
   if (!cloud || cloud.deleted) return []
   const changed: string[] = []
   for (const f of fields) {
@@ -385,9 +519,8 @@ export function applySettings(s: SettingsState, cloud: SyncObject | undefined, s
       continue
     }
     if (f in seen && same(d, seen[f])) continue
-    seen[f] = d
-    if (same(d, webSetting(s, f))) continue
-    putSetting(s, f, d); changed.push(f)
+    if (same(d, webSetting(s, f))) { seen[f] = d; continue }
+    adoptSetting(s, f, d, seen); changed.push(f)
   }
   return changed
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Drawing } from '../src/chart/chart'
 import { makeConditionAlert, makeDrawingAlert, makePriceAlert } from '../src/alerts/shape'
 import { OWNED, applyInto, captureInto, mergeFirst, type Prints, type WebState } from '../src/sync/bridge'
-import { alertToBody, factorySettings } from '../src/sync/codec'
+import { alertToBody, factorySettings, factoryWebPrefs } from '../src/sync/codec'
 import { hydrate } from '../src/app/store'
 import type { SubId } from '../src/chart/calc'
 import { Engine } from '../src/sync/engine'
@@ -123,7 +123,12 @@ describe('首次对上', () => {
   it('出厂设置与 app/store 的 defaults() 对得上', () => {
     const d = hydrate({})
     const f = factorySettings()
-    expect({ pinned: d.pinned, ind: d.ind, params: d.params, orderFlowOverrides: d.orderFlowOverrides, orderFlowHistory: d.orderFlowHistory, compareSymbols: d.compareSymbols, autoLayers: d.autoLayers, drawHidden: d.drawHidden, layouts: d.layouts, layout: d.layout, cells: d.cells, active: d.active, chartSettings: d.chartSettings }).toEqual(f)
+    expect({ pinned: d.pinned, ind: d.ind, params: d.params, orderFlowOverrides: d.orderFlowOverrides, orderFlowHistory: d.orderFlowHistory, compareSymbols: d.compareSymbols, autoLayers: d.autoLayers, drawHidden: d.drawHidden, layouts: d.layouts, layout: d.layout, cells: d.cells, active: d.active, chartSettings: d.chartSettings, orderFlow: d.orderFlow, bigTradeSigns: d.bigTradeSigns, updown: d.updown, sectorMarket: d.sectorMarket, sectorWindow: d.sectorWindow }).toEqual(f)
+  })
+  it('网页独有 webPrefs 的出厂值与 defaults() 对得上', () => {
+    const d = hydrate({}) as unknown as Record<string, unknown>
+    const f = factoryWebPrefs() as Record<string, unknown>
+    for (const k of Object.keys(f)) expect([k, d[k]]).toEqual([k, f[k]])
   })
 })
 
