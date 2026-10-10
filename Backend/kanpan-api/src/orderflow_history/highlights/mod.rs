@@ -14,6 +14,7 @@
 //!
 //! 落盘：账本、样本、小时线、持仓小时序列每 30 分钟进 `orderflow_highlights`（一只一行，jsonb），连同「账本记到哪」；
 //! 重启后先读回，再用库里的足迹 / 爆仓分钟 / 大单把落盘之后到这一任开始收之前那一段补上。7 天没更新的行删掉。
+mod board;
 mod events;
 mod fetch;
 mod ledger;
@@ -42,6 +43,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 pub(super) const PATH:&str="/v1/market/orderflow/highlights";
+pub(super) const BOARD_PATH:&str=board::PATH;
 const TTL:Duration=Duration::from_secs(20);
 const CACHE_CONTROL:&str="public, max-age=20";
 const M:i64=60_000;
@@ -56,6 +58,7 @@ static ON:AtomicBool=AtomicBool::new(false);
 static INBOX:LazyLock<Mutex<HashMap<String,Pending>>>=LazyLock::new(||Mutex::new(HashMap::new()));
 static SNAPS:LazyLock<RwLock<HashMap<String,Arc<Snap>>>>=LazyLock::new(||RwLock::new(HashMap::new()));
 static ANSWERS:LazyLock<Answers<(String,bool)>>=LazyLock::new(||Answers::new(TTL));
+static BOARD_ANSWERS:LazyLock<Answers<(String,bool)>>=LazyLock::new(||Answers::new(TTL));
 
 fn on()->bool {ON.load(Ordering::Relaxed)}
 fn push(base:&str,f:impl FnOnce(&mut Pending)) {
@@ -341,6 +344,22 @@ pub(super) async fn highlights(Axum(_s):Axum<AppState>,headers:axum::http::Heade
    Some(s) if tracked=>s.json.clone(),
    _=>untracked(&base,now),
   };
+  packed(json.to_string(),gzip,CACHE_CONTROL)
+ }).await?;
+ Ok(answer.response())
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct BoardQuery {bases:Option<String>}
+
+/// 首页异动一列：自选（`bases`，客户端带）∪ 热点层，每只一行。只读算好的那一份，不起跟。
+pub(super) async fn highlights_board(Axum(_s):Axum<AppState>,headers:axum::http::HeaderMap,Params(q):Params<BoardQuery>)->Result<Response> {
+ let gzip=accepts_gzip(&headers);
+ let favorites=board::parse(q.bases.as_deref());
+ let answer=BOARD_ANSWERS.get_or_build((favorites.join(","),gzip),||async {
+  let hot=REGISTRY.get().map(|r|r.hot_list()).unwrap_or_default();
+  let json=board::answer(&favorites,&hot,snapshot,now_ms());
   packed(json.to_string(),gzip,CACHE_CONTROL)
  }).await?;
  Ok(answer.response())

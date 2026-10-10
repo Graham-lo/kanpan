@@ -1152,6 +1152,8 @@ impl Registry {
  }
 
  fn tracked(&self)->Vec<String> {self.lock().keys().cloned().collect()}
+ /// 热点层此刻的名单（首页异动并进自选用）。
+ fn hot_list(&self)->Vec<String> {self.lists.lock().unwrap_or_else(|e|e.into_inner()).hot.clone()}
  /// 这只此刻的步长（没在跟或还没算出来为 None）；不像 `request` 那样记「有人要」。
  fn step(&self,base:&str)->Option<f64> {self.lock().get(base).and_then(|e|e.thresholds.borrow().step)}
  fn is_tracked(&self,base:&str)->bool {self.lock().contains_key(base)}
@@ -1728,6 +1730,7 @@ pub fn routes()->Router<AppState> {
  Router::new().route(PATH,get(history)).route(heat::PATH,get(heat::heat)).route(flow::PATH,get(flow::flow))
   .route(liq::PATH,get(liq::liq))
   .route(highlights::PATH,get(highlights::highlights))
+  .route(highlights::BOARD_PATH,get(highlights::highlights_board))
   .route(insights::PATH,get(insights::insights))
   .route(footprint::PATH,get(footprint::footprint)).route(seconds::PATH,get(seconds::seconds))
   .route_layer(axum::middleware::from_fn(per_client))

@@ -123,7 +123,6 @@ pub(super) struct BoardItem {pub count:usize,pub cat:&'static str,pub top:Value,
 
 /// 算好的一份：答复的 JSON、首页那一行、价与 24 时涨跌。
 #[derive(Clone,Debug)]
-#[allow(dead_code)] // board / price / change_pct：首页那一路（下一步）读。
 pub(super) struct Snap {pub json:Value,pub board:Option<BoardItem>,pub price:Option<f64>,pub change_pct:Option<f64>}
 
 pub(super) struct State {
