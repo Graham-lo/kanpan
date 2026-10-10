@@ -129,9 +129,10 @@ describe('波动行（急涨 / 急跌）', () => {
 })
 
 describe('顶部胶囊条不带计数', () => {
-  it('首页胶囊只写类名：不再算计数、不出数字徽记', () => {
+  it('首页胶囊只写类名：不再算计数、不出数字徽记、不带色点', () => {
     expect(homeSource).not.toMatch(/chipCounts/)
     expect(homeCss).not.toMatch(/\.hm-chips b\b/)
+    expect(homeCss).not.toMatch(/\.hm-chips[^{]*\bi\b/)
   })
 })
 

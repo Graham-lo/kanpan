@@ -64,6 +64,7 @@ for (const [skin, skinCn] of SKINS) for (const [theme, themeCn] of THEMES) {
     if (moves > 0) await shot('2b-波动')
     else problems.push(`${tag} 看板里暂无波动行（没截 2b-波动）`)
     if (await p.$eval('.hm-chips', el => /\d/.test(el.textContent || '')).catch(() => false)) problems.push(`${tag} 胶囊条上还有数字`)
+    if (await p.$('.hm-chips i')) problems.push(`${tag} 胶囊条上还有色点`)
     // 费率胶囊：事实行带 30 天百分位箭头（↑N / ↓N）
     await p.click('.hm-chips [data-chip=funding]')
     await sleep(500)

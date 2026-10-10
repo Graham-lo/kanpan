@@ -159,11 +159,10 @@ export function initHome(root: HTMLElement): PageHandle {
   // ───────── 异动 ─────────
 
   function renderChips(): void {
-    const chip = (id: Chip, label: string, dot: string | null): string =>
-      `<button type="button" role="tab" data-chip="${id}" class="${L.chip === id ? 'on' : ''}"${dot ? ` style="--c:${dot}"` : ''}>${dot ? '<i></i>' : ''}${esc(label)}</button>`
-    // 波动：圆点一半涨色一半跌色（急涨 / 急跌都在这一类里）
-    chipsEl.innerHTML = chip('all', HL.all, null) + chip('book', HL.catBook, CAT_COLOR.book) + chip('oi', HL.catOi, CAT_COLOR.oi)
-      + chip('funding', HL.catFunding, CAT_COLOR.funding) + chip('move', HL.catMove, 'linear-gradient(135deg, var(--up) 50%, var(--down) 50%)')
+    // 胶囊只写类名：不带计数、不带色点（与 iOS 一致）
+    const chip = (id: Chip, label: string): string =>
+      `<button type="button" role="tab" data-chip="${id}" class="${L.chip === id ? 'on' : ''}">${esc(label)}</button>`
+    chipsEl.innerHTML = chip('all', HL.all) + chip('book', HL.catBook) + chip('oi', HL.catOi) + chip('funding', HL.catFunding) + chip('move', HL.catMove)
   }
 
   function renderSub(): void {
