@@ -182,6 +182,41 @@ const PARAM_IDS: [string, string][] = [['ma', 'MA'], ['ema', 'EMA'], ['boll', 'B
 export const SETTINGS_FIELDS = ['webPrefs', 'quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlow', 'bigTradeSigns', 'orderFlowOverrides', 'orderFlowHistory', 'compareSymbols', 'autoLayers', 'drawingsHidden', 'redUp', 'sectorMarket', 'sectorWindow', LAYOUTS_FIELD, 'webChart']
 /** 网页独有的设置字段（手机不认、原样带回） */
 export const WEB_ONLY_SETTINGS = ['webPrefs', LAYOUTS_FIELD, 'webChart'] as const
+/** **电脑网页不用的跟人走字段**，每个一句为什么（2026-10-10「同步字段解耦」）。
+ *
+ * 契约（iOS PrefsFieldPlan 生成）里每个 synced 字段，要么上面 SETTINGS_FIELDS 认领（params 认领 params/<ID> 那几个），
+ * 要么列在这里——tests/pc-sync-fields-contract.test.ts 守着：漏一个、理由还是 TODO、认领了又列在这里都红。
+ * 不认领的键电脑不读不写，推送时原样带回（bridge 只碰 OWNED.settings），所以不会把手机的值抹掉。
+ * 新字段由 `make new-sync-field` 先在这里放一条 TODO，逼加字段的人想清楚：电脑要不要接？接就挪进 SETTINGS_FIELDS。 */
+export const PC_UNUSED_SYNCED_FIELDS: Readonly<Record<string, string>> = {
+  // ↓ new-sync-field 在这一行下面插 TODO（别删这行）
+  skin: '电脑网页自己一套视觉，皮肤记在 webPrefs.skin，不和手机共用',
+  theme: '深浅同上，记在 webPrefs.theme',
+  interval: '电脑每个图格各有自己的周期，记在 chartLayouts 的格子里',
+  barSpacing: '电脑的根宽按图格存在 chartLayouts 的格子里（bs），不是一人一个数',
+  landscapeBarSpacing: '横屏根宽，电脑没有横竖屏',
+  priceMode: '电脑的对数轴按图格开关，存在 chartLayouts 的格子里（log），没有百分比轴',
+  candleKind: '电脑的平均 K 线 / 等幅 K 线按图格开关，存在 chartLayouts 的格子里',
+  depth: '手机行情页的深度图开关，电脑盘口是常驻的侧栏小部件',
+  mainInverted: '手机主图上下翻转，电脑没有这个手势',
+  subInverted: '手机副图上下翻转，电脑没有这个手势',
+  indicatorColors: '电脑的指标线颜色跟着指标参数存在 webPrefs.params（colors），和手机按线序号的表对不上',
+  subHeightOverrides: '电脑副图高按多图网格的比例存在 webPrefs（panes），不是按指标的倍数',
+  alertSound: '提醒铃声是手机的系统通知声，电脑网页用浏览器通知',
+  watchMoveAlert: '自选五分钟波动提醒是手机推送开关，电脑网页不收推送',
+  notifyListingChanges: '品种上新与下架是手机推送开关，电脑网页不收推送',
+  favoritesGroup: '手机自选页停在哪一类，电脑自选是侧栏标签页（webPrefs.watchTab）',
+  favoritesTrend: '手机自选行尾迷你走势开关，电脑自选列表布局不同、不画这条线',
+  habitLearning: '「按我的习惯自动调整」只在手机记行为、学结论，电脑不学',
+  learnedDefaults: '手机学到的结论，电脑不学也不用',
+  lastDrawTool: '手机横屏画线台上次用的工具，电脑工具栏每组上次那把在 webPrefs.toolLast',
+  drawToolUsage: '手机画线条按次数挑常用工具，电脑工具栏是全量分组的',
+  drawingOverlaysShown: '手机横屏画线台里主图指标画不画，电脑没有画线台',
+  analysisUsage: '手机「分析」面板按次数排节序，电脑没有这个面板',
+  reviewSearchScope: '手机复盘搜索的范围，电脑复盘页签在 webPrefs.review',
+  reviewSegment: '手机复盘本停在哪一面，电脑复盘页签在 webPrefs.review',
+  reviewBookFilter: '手机复盘本筛选停在哪一档，电脑复盘页签在 webPrefs.review',
+}
 /** 云端没有这个字段时本机的值要推上去（网页独有，没有别的端会写它）：seen 记成 null，下一次记账一定推 */
 const PUSH_WHEN_CLOUD_EMPTY = new Set([LAYOUTS_FIELD, 'webPrefs'])
 /** 2026-10-10 新接上的共用字段：老账本续上时本机改过（不是出厂值）的留本机、推上去，没改过的装云端的
