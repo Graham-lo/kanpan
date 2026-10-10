@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Bar } from '../src/chart/calc'
 import type { Drawing } from '../src/chart/chart'
-import { QUOTA, anchoredVwap, vwapOf, familyOf, fvpRows, groupOf, placeCount, positionStats, quotaOK, snap45 } from '../src/chart/drawTools'
+import { QUOTA, anchoredVwap, vwapOf, familyOf, fvpRows, groupOf, placeCount, positionStats, quotaOK, recolorDrawings, snap45 } from '../src/chart/drawTools'
 import { vwap } from '../src/chart/indicators'
 import { sanitizeDrawings } from '../src/app/store'
 import { ANCHORS, KIND_OF, WEB_BODY_KEYS, decodeDrawings, drawingId, encodeDrawings } from '../src/sync/codec'
@@ -271,5 +271,21 @@ describe('同步自检：没推出去的账本只给同一个账号接着用', (
     expect(resumeArchive('user-a', 'user-a', text)?.operations).toHaveLength(1)
     expect(resumeArchive('user-a', 'user-b', text)).toBeNull()
     expect(resumeArchive(null, 'user-b', text)).toBeNull()
+  })
+})
+
+describe('PC 历史画线统一改色', () => {
+  it('当前品种跨工具改色，锁定与固定配色保留；几何和其它样式不变', () => {
+    const line = (id: string, type: Drawing['type'], extra: Partial<Drawing> = {}): Drawing => ({ id, type, color: '#FFFFFF', width: 3, dash: 'dashed', pts: Array.from({ length: type === 'hline' ? 1 : type === 'position' ? 3 : 2 }, (_, i) => ({ t: i + 1, p: 10 })), ...extra })
+    const lines = [line('a', 'hline'), line('b', 'trend'), line('c', 'ray', { locked: true }), line('d', 'position'), line('e', 'measure')]
+    const other = [line('other', 'hline')]
+    const before = structuredClone(lines)
+    expect(recolorDrawings(lines, '#f23645').map(d => d.id)).toEqual(['a', 'b'])
+    expect(lines.slice(0, 2).map(d => d.color)).toEqual(['#f23645', '#f23645'])
+    lines.forEach((d, i) => expect({ ...d, color: before[i].color }).toEqual(before[i]))
+    expect(lines.slice(2).map(d => d.color)).toEqual(['#FFFFFF', '#FFFFFF', '#FFFFFF'])
+    expect(other[0].color).toBe('#FFFFFF')
+    const changes = encodeDrawings({ BTCUSDT: lines.slice(0, 2) }, [])
+    expect(changes.map(o => o.body.color)).toEqual([{ value: '#f23645' }, { value: '#f23645' }])
   })
 })

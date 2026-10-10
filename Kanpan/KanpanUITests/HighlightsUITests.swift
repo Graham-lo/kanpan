@@ -24,4 +24,32 @@ final class HighlightsUITests: KanpanUICase {
     app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.12)).tap()
     expectGone(el("highlights.sheet"), Self.short)
   }
+  func testHomeFocusCanBeHiddenFromAnalysis() throws {
+    executionTimeAllowance = 180
+    XCTAssertTrue(app.openIndicatorPage())
+    let walls = app.buttons["indicator.switch.ORDERFLOW"]
+    if walls.value as? String != "开" { walls.tap() }
+    dismissSheet(until: app.staticTexts[Ids.panelHeader].firstMatch)
+    app.buttons["bottom.home"].tap()
+    let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "home.row.book.")).firstMatch
+    expectExists(row, 60, "首页没有盘口异动行")
+    row.tap()
+    let sheet = el("highlights.sheet")
+    expectExists(sheet, Self.long)
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.12)).tap()
+    expectGone(sheet, Self.short)
+    let band = app.staticTexts["highlights.chartBand"]
+    XCTAssertTrue(waitUntil(timeout: Self.short) { band.value as? String != "none" && band.exists })
+    XCTAssertTrue(app.openIndicatorPage())
+    XCTAssertEqual(walls.value as? String, "开")
+    walls.tap()
+    let signs = app.buttons["orderflow.bigTradeSigns"]
+    if signs.value as? String == "开" { signs.tap() }
+    dismissSheet(until: app.staticTexts[Ids.panelHeader].firstMatch)
+    XCTAssertTrue(waitUntil(timeout: Self.short) { band.value as? String == "none" })
+    XCTAssertTrue(waitUntil(timeout: Self.short) { (self.chartInfo()["orderFlowPhase"] as? String ?? "").isEmpty })
+    let image = XCTAttachment(screenshot: app.screenshot())
+    image.name = "首页进图关闭订单流标记"; image.lifetime = .keepAlways; add(image)
+  }
+
 }

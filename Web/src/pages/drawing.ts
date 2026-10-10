@@ -3,14 +3,14 @@
  *   · 左侧工具栏按组：一组一个按钮，显示这一组上次用的那把；单击 = 用它，双击 = 连续画（按钮上一个小点），
  *     右键工具栏 / 右键图 / Esc 退出；组按钮右边的小箭头展开同组的工具
  *   · 选中画线：格子上沿居中出一条临时快捷条（当前色 + 最近两种色、调色板、粗细、线型、提醒、锁、删），
- *     拖动画线时淡出；改过的样式记到同族工具上，下一条同族的画线照这个来
+ *     拖动画线时淡出；颜色统一改当前品种的历史画线，粗细线型只改选中项；样式记到同族工具上
  *   · ⌘C / ⌘V：复制选中的画线、贴回同一只品种（每贴一次往右下错开一点）
  *   · 方向键微移选中的画线：1 px，⇧ 10 px；松键才记一步撤销
  *   · 每只品种最多 500 条 / 2 MB，到了不再新建并提示
  */
 import { st, save } from '../app/store'
 import type { Drawing, DrawingType, TVChart } from '../chart/chart'
-import { DEFAULT_DRAW_COLOR, QUOTA, TOOL_GROUPS, cleanDrawColor, cleanDrawWidth, familyOf, groupOf, quotaOK, toolName, usesFill, usesLevels, usesText, type Dash } from '../chart/drawTools'
+import { DEFAULT_DRAW_COLOR, QUOTA, TOOL_GROUPS, cleanDrawColor, cleanDrawWidth, familyOf, groupOf, quotaOK, recolorDrawings, toolName, usesFill, usesLevels, usesText, type Dash } from '../chart/drawTools'
 import { drawingAlertOf, drawingCanAlert, toggleDrawingAlert } from '../alerts/model'
 import { askNotify } from '../alerts/panel'
 import { $$, I, esc, tgt } from '../ui/dom'
@@ -283,7 +283,10 @@ function applyStyle(patch: { color?: string; width?: number; dash?: Drawing['das
   if (!quick) return
   const { d, c } = quick
   if (d.locked) return
-  if (patch.color) d.color = patch.color
+  if (patch.color) {
+    const color = cleanDrawColor(patch.color)
+    for (const line of recolorDrawings(host.drawings(host.symbolOf(c)), color)) remember(line, { color })
+  }
   if (patch.width) d.width = patch.width
   if ('dash' in patch) { if (patch.dash) d.dash = patch.dash; else delete d.dash }
   remember(d, patch)

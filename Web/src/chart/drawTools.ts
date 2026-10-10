@@ -78,6 +78,15 @@ export function cleanDrawColor(c: unknown): string {
   if (!drawColorOk(c)) return DEFAULT_DRAW_COLOR
   return c.length === 4 ? '#' + c.slice(1).split('').map(x => x + x).join('') : c
 }
+/** 改色统一作用于当前品种的历史画线；锁定项与固定红绿的持仓工具保留。 */
+export function recolorDrawings(drawings: readonly Drawing[], color: string): Drawing[] {
+  const next = cleanDrawColor(color)
+  return drawings.filter(d => {
+    if (d.locked || d.type === 'position' || d.type === 'measure') return false
+    d.color = next
+    return true
+  })
+}
 export const drawWidthOk = (w: unknown): w is number => typeof w === 'number' && Number.isFinite(w) && w >= 0.5 && w <= 6
 export const cleanDrawWidth = (w: unknown): number => drawWidthOk(w) ? w : DEFAULT_DRAW_WIDTH
 

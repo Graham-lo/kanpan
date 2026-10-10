@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import KanpanCore
+import KanpanPresentation
 @testable import Kanpan
 
 // 「盘口要点」半页的状态：换品种清旧、首页带进来的那一条落地、价位展开 / 收起与带子。
@@ -59,6 +60,42 @@ import KanpanCore
     #expect(model.expanded == "lv-1")
     #expect(model.scrollTarget == "lv-1")
     #expect(model.band?.sourceID == "lv-1")
+  }
+
+  @Test func homeFocusedBandsRespectAnalysisSwitchesAfterRefresh() async throws {
+    let model = HighlightsModel()
+    model.expect(base: "BTC", focusID: wall.id, autoOpen: true)
+    await pollOnce(model, base: "BTC", answer: page("BTC"))
+    let band = try #require(model.band)
+    #expect(band.isVisible(walls: true, signs: false))
+    #expect(!band.isVisible(walls: false, signs: true), "气泡开着不能让挂单价区绕过关闭的显示开关")
+    await pollOnce(model, base: "BTC", answer: page("BTC"))
+    #expect(model.band?.isVisible(walls: false, signs: false) == false)
+    for kind in [HighlightEvent.Kind.flowBurst, .liqWave] {
+      let event = HighlightEvent(id: "flow", t: kind, atMs: 1_791_606_780_000, price: 82_899, usd: 12_000_000)
+      let sign = try #require(HighlightsModel.band(for: event, scale: 1, decimals: 1))
+      #expect(sign.isVisible(walls: false, signs: true))
+      #expect(!sign.isVisible(walls: true, signs: false))
+      #expect(!sign.isVisible(walls: false, signs: false))
+    }
+    #expect(model.band == band, "关闭显示不删除定位数据")
+  }
+
+  @Test func closedPrefsWinWhileFeedStillHasOldSwitches() {
+    let session = ChartSession(symbol: "BTCUSDT")
+    defer { session.stop() }
+    session.market.setOrderFlow(walls: true, signs: true)
+    var prefs = Prefs()
+    prefs.orderFlow = true
+    var input = ChartInput(prefs: prefs, seed: Palette.lightSeed, overlays: [], subs: [], subScale: [:],
+                           drawingCanvasOnly: false, comparing: false, compareKeys: [], compareNames: [:])
+    #expect(session.styleState(input).orderFlow != nil)
+    // SwiftUI 的偏好先到，订阅观察者尚未更新，也必须立即从图上撤下。
+    input.prefs.orderFlow = false
+    input.prefs.bigTradeSigns = false
+    #expect(session.market.orderFlow.walls)
+    #expect(session.styleState(input).orderFlow == nil)
+    #expect(session.styleState(input).bigTrades == nil)
   }
 
   @Test func failedRoundKeepsOldPageAsStale() async {

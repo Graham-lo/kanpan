@@ -13,6 +13,13 @@ struct HighlightBand: Equatable {
   var label: String
   /// 这条带子出自哪一条要点（价位 id / 事件 id）：再点同一条就收掉。
   var sourceID: String
+  /// 首页定位标记也服从「分析」里的挂单墙 / 大单标记开关。
+  enum Display: Equatable { case walls, signs }
+  var display: Display = .walls
+
+  func isVisible(walls: Bool, signs: Bool) -> Bool {
+    switch display { case .walls: walls; case .signs: signs }
+  }
 }
 
 /// 行情页上滑「盘口要点」（PROJECT.md §79）：一只品种的那份答复 + 半页开关、展开了哪个价位、图上画哪条带子。
@@ -164,19 +171,21 @@ final class HighlightsModel {
     let amount = level.wallUsd > 0 ? HighlightsText.usd(level.wallUsd)
       : HighlightTerm.fillMeta.fill(["v": HighlightsText.usd(level.fillUsd)])
     return HighlightBand(kind: .price(low: level.low * scale, high: level.high * scale),
-                         label: HighlightsText.zoneName(level.side) + " " + amount, sourceID: level.id)
+                         label: HighlightsText.zoneName(level.side) + " " + amount, sourceID: level.id,
+                         display: level.wallUsd > 0 ? .walls : .signs)
   }
 
   static func band(for event: HighlightEvent, scale: Double, decimals: Int?) -> HighlightBand? {
     let runs = HighlightsText.eventSentence(event, decimals: decimals, scale: scale, withPrice: false)
     // 带子上的签只要「事 + 数」：去掉「 · 距价 / 价格」那半句。
     let label = runs.plain.components(separatedBy: " · ").first ?? runs.plain
-    if let a = event.fromMs, let b = event.toMs { return HighlightBand(kind: .span(from: a, to: b), label: label, sourceID: event.id) }
-    if let p = event.price { return HighlightBand(kind: .price(low: p * scale, high: p * scale), label: label, sourceID: event.id) }
+    let display: HighlightBand.Display = [.flowBurst, .liqWave, .oiJump].contains(event.t) ? .signs : .walls
+    if let a = event.fromMs, let b = event.toMs { return HighlightBand(kind: .span(from: a, to: b), label: label, sourceID: event.id, display: display) }
+    if let p = event.price { return HighlightBand(kind: .price(low: p * scale, high: p * scale), label: label, sourceID: event.id, display: display) }
     if let lo = event.low, let hi = event.high {
-      return HighlightBand(kind: .price(low: lo * scale, high: hi * scale), label: label, sourceID: event.id)
+      return HighlightBand(kind: .price(low: lo * scale, high: hi * scale), label: label, sourceID: event.id, display: display)
     }
-    if let t = event.atMs { return HighlightBand(kind: .span(from: t, to: t + 5 * 60_000), label: label, sourceID: event.id) }
+    if let t = event.atMs { return HighlightBand(kind: .span(from: t, to: t + 5 * 60_000), label: label, sourceID: event.id, display: display) }
     return nil
   }
 }

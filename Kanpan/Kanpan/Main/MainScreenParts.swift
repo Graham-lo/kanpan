@@ -338,12 +338,23 @@ struct MainChartView: View {
   /// 「盘口要点」展开的价位 / 回图的事件画在图上的那条带子。
   var highlightBand: HighlightBand? = nil
 
+  private var visibleHighlightBand: HighlightBand? {
+    guard let highlightBand, highlightBand.isVisible(walls: input.prefs.orderFlow, signs: input.prefs.bigTradeSigns) else { return nil }
+    return highlightBand
+  }
+
   var body: some View {
     #if DEBUG
       let _ = FrameProbe.shared.countBody("MainChartView")
     #endif
     ZStack(alignment: .bottomTrailing) {
       theme.chartBG
+      #if DEBUG
+        Text(visibleHighlightBand?.sourceID ?? "")
+          .font(.system(size: 1)).opacity(0.001).frame(width: 1, height: 1)
+          .accessibilityIdentifier("highlights.chartBand")
+          .accessibilityValue(visibleHighlightBand?.sourceID ?? "none")
+      #endif
       ChartHost(
         portrait: portrait,
         renderingActive: renderingActive,
@@ -413,7 +424,7 @@ struct MainChartView: View {
       ReviewRangeOverlay(feature: review, bridge: reviewChart, liveProxy: proxy,
                          suppressed: drawingCanvasOnly, flash: review.lastSaved,
                          tappable: !draw.active && !panelOpen, onOpenRecord: onOpenRecord,
-                         highlightBand: draw.active || drawingCanvasOnly ? nil : highlightBand)
+                         highlightBand: draw.active || drawingCanvasOnly ? nil : visibleHighlightBand)
         .allowsHitTesting(reviewChart.mode == .capture || (reviewChart.mode == .live && !draw.active && !drawingCanvasOnly && !panelOpen))
       // 切线路一律静默：用户要看的是 K 线，不是我们从哪台机器取的数。
       // 历史数据真拉不下来才出这一条——那是「图不全」，得让人知道并且能重试。
