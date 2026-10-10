@@ -26,7 +26,7 @@ import { session, onSession } from '../../account/session'
 import { baseOfSymbol } from '../../orderflow/settings'
 import { HL, fill } from '../../terms'
 import { fetchBoard, fetchMarketBoard, type BoardRow, type BoardCat, type MarketKind, type MarketRow, type MarketWindow } from '../../highlights/api'
-import { agoText, boardFact, hhmm, signedPct, usd } from '../../highlights/format'
+import { agoText, boardFact, hhmm, levelPx, signedPct, usd } from '../../highlights/format'
 import { chipCounts, favoriteBases, filterRows, focusOf, mergeBoard, symbolFor, type Chip } from '../../highlights/home'
 
 const LS_KEY = 'hkline-m-home-v1'
@@ -65,7 +65,11 @@ function badge(base: string, size: number): string {
   const s = S.symbols.get(symOf(base))
   return badgeHTML(base, size, assetOf(s?.kind, base))
 }
-const pxText = (base: string, price: number | null): string => priceText(price, S.symbols.get(symOf(base))?.dec)
+/** 品种表到了按它的小数位写；还没到按五位有效数字写（不补尾零，免得先出 12.1100 再跳成 12.11） */
+function pxText(base: string, price: number | null): string {
+  const dec = S.symbols.get(symOf(base))?.dec
+  return dec != null ? priceText(price, dec) : price == null ? '—' : levelPx(price)
+}
 
 function pill(pct: number | null): string {
   const t = changePercentText(pct)
