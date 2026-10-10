@@ -1,0 +1,110 @@
+{
+  "synced_date": "2026-10-10 Asia/Shanghai",
+  "source_root": "/Users/mdd/.claude/projects/-Users-mdd-zhk-kanpan/memory",
+  "method": "读取项目相关记忆，按当前源码、Git、验收和部署证据归纳；不复制旧指令为授权，不导入会话或凭证",
+  "memory_sources": [
+    {
+      "file": "kanpan-web-refined-hierarchy-from-openmarket.md",
+      "sha256": "f74f448d34fe118fc509f8f59f81db54d87c8af6b095d56d6e2398b166c16352",
+      "mtime_utc": "2026-10-10T12:13:50.791423+00:00"
+    },
+    {
+      "file": "kanpan-web-icons-colored-tiles-like-orderflow-toggles.md",
+      "sha256": "89054a1f94cdc25fa0ace64457a3ed7679e7a107fc068bae6851f743325e38ee",
+      "mtime_utc": "2026-10-10T12:13:33.263380+00:00"
+    },
+    {
+      "file": "kanpan-web-must-adapt-to-any-screen-size.md",
+      "sha256": "034d1702c3674af88a682792bb1a8333f3d5b03a5c2ed3f792af4f744f117145",
+      "mtime_utc": "2026-10-10T12:13:58.756023+00:00"
+    },
+    {
+      "file": "kanpan-web-is-its-own-design-not-ios.md",
+      "sha256": "a7278456c2668bfd75d42c0c0973e5377dd19f18825eae91db9271e9db5a7e82",
+      "mtime_utc": "2026-09-29T07:05:32.585653+00:00"
+    },
+    {
+      "file": "kanpan-web-visual-spec-two-layers-soft-light.md",
+      "sha256": "9f9d4f6bbfc0aae660ae69a3ce1705aefabb1e3e20d437b4eed75c9e7bbfe9f8",
+      "mtime_utc": "2026-10-08T13:41:52.439159+00:00"
+    },
+    {
+      "file": "kanpan-web-drawings-tv-style-full-settings.md",
+      "sha256": "c6196f54d01d57aca44a77d95f3eba43fc1e8b0db6764a735bc073cd8d286642",
+      "mtime_utc": "2026-10-08T15:38:22.516197+00:00"
+    },
+    {
+      "file": "kanpan-web-sectors-no-sparkline-column.md",
+      "sha256": "f1ecf2f6f0ec45ca8beb11b548b73f6b983cb8e0cf01e1c6fc980423f85af9c4",
+      "mtime_utc": "2026-10-10T10:59:09.999574+00:00"
+    },
+    {
+      "file": "kanpan-web-16-chart-layout-is-a-key-review-target.md",
+      "sha256": "f4371120b7367a2b113da2d622a97345279ad06fd6204f2e42db7b4a3e35286b",
+      "mtime_utc": "2026-10-07T06:05:16.084466+00:00"
+    },
+    {
+      "file": "kanpan-web-bigtrade-drawer-design-approved.md",
+      "sha256": "8cb8a6cad0e5d0357348885052b08e76ca3d8fb20cd17e123fd20fafdfa9581b",
+      "mtime_utc": "2026-10-08T10:03:33.436424+00:00"
+    },
+    {
+      "file": "kanpan-web-orderbook-redesigned-for-desktop-ref-openmarket.md",
+      "sha256": "613e7ef4b2ae7e5d83cadbc5d4c6a65774a8d9c5086c73ad9ea1d61c28f37f35",
+      "mtime_utc": "2026-09-29T07:20:59.507206+00:00"
+    },
+    {
+      "file": "kanpan-web-chart-page-resizable-regions-up-to-16-charts.md",
+      "sha256": "6ec43a9916a90d5d4a09439ebcc01c1065d47aa0f359fca2f320066c2205d775",
+      "mtime_utc": "2026-09-29T12:14:04.787415+00:00"
+    },
+    {
+      "file": "kanpan-sg-deployment-current.md",
+      "sha256": "cefe23d5c990313b960d032abefed6d4eac482029007ec0ce3b5103cf2a03a71",
+      "mtime_utc": "2026-10-09T09:31:28.514215+00:00"
+    },
+    {
+      "file": "kanpan-web-subpanes-short-show-more.md",
+      "sha256": "86efbfa2d6e9861367f558c63b8a766be6145a52bde7b0ac3c02651fc059d9c2",
+      "mtime_utc": "2026-09-29T04:12:56.611624+00:00"
+    },
+    {
+      "file": "kanpan-web-uses-tradingview-chart-27in-2k.md",
+      "sha256": "b2556dc4b11c1b4f8192b543d2d263814f9ed061b81418eee8151f5c2e2ccd68",
+      "mtime_utc": "2026-09-28T19:09:10.950250+00:00"
+    },
+    {
+      "file": "kanpan-web-build-the-real-app-not-prototypes.md",
+      "sha256": "4e0b37505ee436925f0f9deebdc9f29633e76d5e4ca40e4cc028ab54f693b390",
+      "mtime_utc": "2026-09-29T07:17:10.364988+00:00"
+    },
+    {
+      "file": "kanpan-terms-professional-single-source.md",
+      "sha256": "9124ed4b2c73a1a973a8d9ab4a4586d89ac102b5e1d0dfb483c7bf92a253b32a",
+      "mtime_utc": "2026-10-08T12:02:09.123470+00:00"
+    },
+    {
+      "file": "kanpan-indicator-names-params-single-source.md",
+      "sha256": "854ef7566f067c9c0a0eefce5813a65b212dd8a0b29076d2780af28cf11b38f7",
+      "mtime_utc": "2026-10-08T10:12:26.759905+00:00"
+    },
+    {
+      "file": "kanpan-full-regression-after-feature-batch.md",
+      "sha256": "abcded3fac6ba85985a4f8f43c83e40f2f7cdd59a7461f213894b37254b396b5",
+      "mtime_utc": "2026-10-02T17:19:22.279547+00:00"
+    }
+  ],
+  "separate_attachment": {
+    "filename": "data-baf7d106-3589-44bf-8c96-5373b28af8fd-1791637593-79561201-batch-0000.zip",
+    "sha256": "9ba6a6af785976bd39e7995c3d8ae856ca8447d1e9b5510526a19692f325df58",
+    "entries": [
+      {
+        "name": "users.json",
+        "bytes": 146
+      }
+    ],
+    "assessment": "仅账户资料 users.json，无对话、项目文件或项目记忆；个人资料未导入仓库"
+  },
+  "code_revision": "e1096788fe2ac38a2f3206be51cdd18c936464b7",
+  "remote_pc_branch": "claude/clever-fermi-ti9o49@2151a56fd17cfaa71738a2123b76ecf98f3e735b"
+}

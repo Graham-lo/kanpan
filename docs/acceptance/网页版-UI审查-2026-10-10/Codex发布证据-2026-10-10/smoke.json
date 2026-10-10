@@ -1,0 +1,282 @@
+[
+  {
+    "name": "1440/light latest glyph",
+    "pass": true,
+    "detail": "0 0 24 24"
+  },
+  {
+    "name": "1440/light popover preserves chart",
+    "pass": true,
+    "detail": {
+      "before": 1040,
+      "after": 1040
+    }
+  },
+  {
+    "name": "1440/light watch remains",
+    "pass": true
+  },
+  {
+    "name": "1440/light Escape closes",
+    "pass": true
+  },
+  {
+    "name": "1440/light/home no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "name": "1440/light/sectors no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "name": "1440/light/review no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "name": "1440/light/me no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "name": "1440/light/chart no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "name": "1440/light aggregated search",
+    "pass": true
+  },
+  {
+    "name": "1440/light no JS errors",
+    "pass": true,
+    "detail": []
+  },
+  {
+    "name": "1920/light latest glyph",
+    "pass": true,
+    "detail": "0 0 24 24"
+  },
+  {
+    "name": "1920/light popover preserves chart",
+    "pass": true,
+    "detail": {
+      "before": 1512,
+      "after": 1512
+    }
+  },
+  {
+    "name": "1920/light watch remains",
+    "pass": true
+  },
+  {
+    "name": "1920/light Escape closes",
+    "pass": true
+  },
+  {
+    "name": "1920/light/home no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 1920,
+      "width": 1920
+    }
+  },
+  {
+    "name": "1920/light/sectors no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 1920,
+      "width": 1920
+    }
+  },
+  {
+    "name": "1920/light/review no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 1920,
+      "width": 1920
+    }
+  },
+  {
+    "name": "1920/light/me no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 1920,
+      "width": 1920
+    }
+  },
+  {
+    "name": "1920/light/chart no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 1920,
+      "width": 1920
+    }
+  },
+  {
+    "name": "1920/light aggregated search",
+    "pass": true
+  },
+  {
+    "name": "1920/light no JS errors",
+    "pass": true,
+    "detail": []
+  },
+  {
+    "name": "2560/light latest glyph",
+    "pass": true,
+    "detail": "0 0 24 24"
+  },
+  {
+    "name": "2560/light popover preserves chart",
+    "pass": true,
+    "detail": {
+      "before": 2120,
+      "after": 2120
+    }
+  },
+  {
+    "name": "2560/light watch remains",
+    "pass": true
+  },
+  {
+    "name": "2560/light Escape closes",
+    "pass": true
+  },
+  {
+    "name": "2560/light/home no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 2560,
+      "width": 2560
+    }
+  },
+  {
+    "name": "2560/light/sectors no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 2560,
+      "width": 2560
+    }
+  },
+  {
+    "name": "2560/light/review no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 2560,
+      "width": 2560
+    }
+  },
+  {
+    "name": "2560/light/me no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 2560,
+      "width": 2560
+    }
+  },
+  {
+    "name": "2560/light/chart no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 2560,
+      "width": 2560
+    }
+  },
+  {
+    "name": "2560/light aggregated search",
+    "pass": true
+  },
+  {
+    "name": "2560/light no JS errors",
+    "pass": true,
+    "detail": []
+  },
+  {
+    "name": "2560/dark latest glyph",
+    "pass": true,
+    "detail": "0 0 24 24"
+  },
+  {
+    "name": "2560/dark popover preserves chart",
+    "pass": true,
+    "detail": {
+      "before": 2120,
+      "after": 2120
+    }
+  },
+  {
+    "name": "2560/dark watch remains",
+    "pass": true
+  },
+  {
+    "name": "2560/dark Escape closes",
+    "pass": true
+  },
+  {
+    "name": "2560/dark/home no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 2560,
+      "width": 2560
+    }
+  },
+  {
+    "name": "2560/dark/sectors no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 2560,
+      "width": 2560
+    }
+  },
+  {
+    "name": "2560/dark/review no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 2560,
+      "width": 2560
+    }
+  },
+  {
+    "name": "2560/dark/me no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 2560,
+      "width": 2560
+    }
+  },
+  {
+    "name": "2560/dark/chart no horizontal overflow",
+    "pass": true,
+    "detail": {
+      "scroll": 2560,
+      "width": 2560
+    }
+  },
+  {
+    "name": "2560/dark aggregated search",
+    "pass": true
+  },
+  {
+    "name": "2560/dark no JS errors",
+    "pass": true,
+    "detail": []
+  }
+]
