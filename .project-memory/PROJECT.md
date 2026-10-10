@@ -2142,6 +2142,8 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 
 ## 77. 2026-10-10：手机全屏盘口洞察，真实大额成交价区已上线
 
+- **（10-10 用户判定理解有误，气泡页已按 §78 回退；上滑页另行设计）**
+
 - **用户决定**（10-09，10-10 继续）：从行情页上滑打开有交易价值的处理结果，补充爆仓等联合信息，直接做全屏并同步手机网页。采用纵向滚动、固定顶栏，行情画布外至少 44pt 入口；点击或上滑 48pt 且纵向超过横向 1.8 倍可开，横拖不能退化成点击。旧气泡与分析入口统一，保留当前图与所选根语义。
 - **已推送 main**：后端 `981607c7`、手机网页 `00493d31`、原生 `260519ea`、完整 15 分钟参与窗口修正 `010f5d0a`。最后本机 HTTPS Git 登录失效，使用已连接 GitHub 上传相同 tree、带预期旧提交非强制快进 main，再同步本地；没有 force-push。
 - **信息口径**：当前观察 → 主图本簿附近有效挂单 → 今日真实大额成交聚集区 → 同所 5 / 15 分钟成交与价格反应 / 已观测参与结构 → 爆仓与后续反应 → 近 15 分钟最多四条已结束挂单 → 折叠证据。挂单存量、主动成交、爆仓不相加；不同交易所价位不合成。只描述已发生的特征，不预测方向、胜率或爆仓价。
@@ -2151,3 +2153,12 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **验证**：服务端受影响 42 项通过，其中两个 PostgreSQL 用例在隔离数据库实际运行；网页最后洞察 14 + 图表手势定位 25、DOM 手势 12 项及最终 tsc / 构建通过。原生 Core 7（另复核边界 3）、Network 2、Feed 4、Chart 2、受影响 UI 5 通过，最终增量构建成功。真实线上两目标手机尺寸 18 项冒烟通过；原生 iPhone 16 Pro 00:46 无种子真实接口展示币安 / OKX / Bybit 非零价区与本簿有效挂单。不是全量测试或真机验收。
 - **本轮未安装真机**：原生代码已推送，模拟器已验收；§76 17:29 已安装的旧 Release 不含本节功能，不能把网页上线当成手机 app 已更新。未寻找签名或推送密钥。
 - **备份 / 证据**：`/opt/kanpan-backups/orderflow-insights-20261010-003901/` 保存旧源码、二进制、网页、散列清单与语法检查通过的回滚脚本（未运行，加法数据库迁移保留）。[盘口洞察验收](../docs/acceptance/盘口洞察-2026-10-09/验收报告.md) 与 [现行规格](../docs/design/手机盘口洞察-2026-10-09.md)。原始日志不入库，只留两目标机型挑选截图；临时构建与模拟器按资源纪律清理。
+
+## 78. 2026-10-10：气泡页回退到 10-08 定版
+
+- **用户决定**：10-09 原意是「在原有气泡页基础上**增加**一个上滑页展示盘口聚合数据」，§77 把气泡页整块替换成了「盘口洞察」，理解有误。气泡页纯回退到 10-08 定版（`4c76872d`：本根 / 爆仓 / 逐根 / 价位梯 / 24h 爆仓 / 门槛，iOS `.sheet` + `.large` + 下拉关）；后端 `/v1/market/orderflow/insights` 保留；行情画布外的上滑入口条保留，暂时打开旧的「大单与爆仓」页，文案改用 `BigTradeTerm.title` / `BT.title`。新「盘口要点」半页另行设计，不在本轮。
+- **已推送 main**：手机网页 `67d041f0`、iOS `062e12ae`（`BigTradeSheet.swift` / `BigTradeSheetUITests.swift` 回退与删 `OrderFlowInsightsContent.swift` 在暂存区时被另一窗口的 `4b06d9b0` 一并带进，两条合起来才完整）。`BigTradeSheet.swift`、`bigTradeSheet.ts`、`bigTrade.css`、两份大单页测试与 `4c76872d` 零差异。
+- **保留**：iOS `OrderFlowInsightsFeed` / `OrderFlowInsightLabels` / `OrderFlowInsights`（Core）/ `OrderFlowCatalog+Insights` / `placeCrosshair(atTime:price:)`（`price` 默认 nil，原互斥行为不变）；网页 `insights.ts` / `insightLabels.ts` / `InsightPoller` 代码。两端轮询都关住（iOS `MarketModel.syncLiquidations` 那段注释掉，网页 `INSIGHTS_ENABLED=false`），旧页不白拉 /insights 与 1m K 线。iOS `LiquidationFeed` 恢复「从没拿到过才算不可用」；网页今日起点、stale 断流、价位梯 1m 典型价回退恢复旧算法，去掉旧弹层没有的 `showSelected` / `onLocate`。
+- **点击修复仍在**：iOS `ChartView+Gesture.swift` 自 `4c76872d` 未改，`ChartView+BigTrades.swift` 只多了可选 `price`；网页 f9e85239 的金额签实际矩形命中、`source === 'bigTrade'` 不触发挂单悬停、`crosshairTo(…, 'bigTrade')` 均在，旧弹层 `GHOST_MS = 400` 吞补发 click 随文件恢复。
+- **验证**：网页 tsc / 发布构建、`m-bigtrade-sheet` + `m-orderflow-insights` + `m-chart-gesture-view` 62 项、连同订单流 / 气泡签 / 用词共 6 文件 135 项通过；本机 dev 实开两尺寸入口手势冒烟 12 项通过、入口与面板文案「大单与爆仓」、打开后 0 次 /insights 请求、无页面异常。iOS iPhone 16 Pro 模拟器 `BigTradeSheetUITests` 9 项 + `OrderFlowInsightsUITests` 入口 1 项全过（含点金额签只出挂单详情、点气泡只开大单页、关页无残留卡）；已提交树在干净 worktree 里 app 目标编译通过。截图 [气泡页回退](../docs/acceptance/气泡页回退-2026-10-10/)。
+- **未做**：没有部署网页、没有装真机（由主窗口统一做）；没有跑全量测试；上滑「盘口要点」半页未设计。
