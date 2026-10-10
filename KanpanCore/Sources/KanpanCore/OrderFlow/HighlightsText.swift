@@ -181,8 +181,9 @@ public enum HighlightsText {
   }
 
   /// 价位行左边第二行：`距 0.4%`，叠了结构位时再加 ` · = 今日低点`（只写第一个）。
-  public static func levelDistance(_ level: HighlightLevel) -> String {
-    var s = T.dist.fill(["v": distance(level.distPct)])
+  /// 价区包住现价时写「现价内」（`price` 按每枚币）。
+  public static func levelDistance(_ level: HighlightLevel, price: Double? = nil) -> String {
+    var s = level.straddles(price) ? T.atPrice.text : T.dist.fill(["v": distance(level.distPct)])
     if let ref = level.refs.lazy.compactMap(refName).first { s += " · = " + ref }
     return s
   }
@@ -233,12 +234,21 @@ public enum HighlightsText {
   /// 价区名：下方是买区、上方是卖区。
   public static func zoneName(_ side: HighlightSide) -> String { side == .bid ? T.buyZone.text : T.sellZone.text }
 
-  /// 入口条那一句：`下方 86,120 买区 35M · 挂 48 分 · 测 2 次`；没价位时写 `1 时净主动 +46M`；都没有给 `nil`。
-  public static func entrySentence(_ page: HighlightsPage, decimals: Int?, scale: Double = 1) -> [HighlightRun]? {
-    if let l = page.nearestLevel {
-      var runs = [HighlightRun((l.side == .bid ? T.below : T.above).text + " "),
-                  HighlightRun(price(l.low * scale, decimals: decimals), strong: true),
-                  HighlightRun(" " + zoneName(l.side) + " ")]
+  /// 价位句的头：`下方 86,120`；价区包住现价时 `现价内 63.405–63.659`（`price` 按每枚币，画的数乘 `scale`）。
+  static func levelHead(_ l: HighlightLevel, price p: Double?, decimals: Int?, scale: Double) -> [HighlightRun] {
+    if l.straddles(p) {
+      return [HighlightRun(T.atPrice.text + " "),
+              HighlightRun(band(low: l.low * scale, high: l.high * scale, decimals: decimals), strong: true)]
+    }
+    return [HighlightRun((l.side == .bid ? T.below : T.above).text + " "),
+            HighlightRun(price(l.low * scale, decimals: decimals), strong: true)]
+  }
+
+  /// 入口条那一句：`下方 86,120 买区 35M · 挂 48 分 · 测 2 次`（包住现价的写 `现价内 a–b 卖区 …`，且优先取它）；
+  /// 没价位时写 `1 时净主动 +46M`；都没有给 `nil`。`price` 是每枚币的现价。
+  public static func entrySentence(_ page: HighlightsPage, decimals: Int?, scale: Double = 1, price p: Double? = nil) -> [HighlightRun]? {
+    if let l = page.nearestLevel(price: p) {
+      var runs = levelHead(l, price: p, decimals: decimals, scale: scale) + [HighlightRun(" " + zoneName(l.side) + " ")]
       if l.wallUsd > 0 {
         runs.append(HighlightRun(usd(l.wallUsd)))
         runs.append(HighlightRun(" · " + T.heldFor.fill(["d": duration(l.wallHeldMs)])))
@@ -359,9 +369,7 @@ public enum HighlightsText {
     switch row.top {
     case .level(let l):
       let amount = l.wallUsd > 0 ? usd(l.wallUsd) : T.fillMeta.fill(["v": usd(l.fillUsd)])
-      return [HighlightRun((l.side == .bid ? T.below : T.above).text + " "),
-              HighlightRun(price(l.low, decimals: nil), strong: true),
-              HighlightRun(" " + zoneName(l.side) + " · " + amount)]
+      return levelHead(l, price: row.price, decimals: nil, scale: 1) + [HighlightRun(" " + zoneName(l.side) + " · " + amount)]
     case .event(let e):
       let t = eventTime(e, zone: zone, compact: false)
       return (t.isEmpty ? [] : [HighlightRun(t + " ")]) + eventSentence(e, decimals: nil, withPrice: false)

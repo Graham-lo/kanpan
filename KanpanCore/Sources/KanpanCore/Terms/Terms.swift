@@ -119,6 +119,10 @@ public enum HighlightTerm: String, CaseIterable, Sendable {
   case calmSub
   case newMoves
   case offline
+  case failed
+  case retry
+  case noRows
+  case addFavorite
   case justNow
   case minutesAgo
   case hoursAgo
@@ -170,6 +174,7 @@ public enum HighlightTerm: String, CaseIterable, Sendable {
   case touch
   case overlap
   case unbroken
+  case atPrice
   case wallLive
   case wallReducing
   case wallBroken

@@ -107,17 +107,20 @@ struct HighlightsLevelsBlock: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    let above = Array(page.above().reversed()), below = page.below()
-    let shown = above + below
+    // 现价按每枚币（价位都是每枚币的）。价区包住现价的那几条紧贴现价线下面，写「现价内」。
+    let price = market.ticker.map { $0.last / max(model.scale, 1e-12) }
+    let above = Array(page.above(price: price).reversed()), inside = page.atPrice(price), below = page.below(price: price)
+    let shown = above + inside + below
     let peak = shown.map { $0.wallUsd + $0.fillUsd + $0.liqUsd }.max() ?? 0
     HighlightsBlock(title: HT.levels.text) {
       legend
     } content: {
       VStack(spacing: 0) {
         if let r = page.range { rangeRow(r).padding(.bottom, Space.xs) }
-        ForEach(above) { row($0, peak: peak) }
+        ForEach(above) { row($0, peak: peak, price: price) }
         nowDivider
-        ForEach(below) { row($0, peak: peak) }
+        ForEach(inside) { row($0, peak: peak, price: price) }
+        ForEach(below) { row($0, peak: peak, price: price) }
       }
     }
   }
@@ -180,7 +183,7 @@ struct HighlightsLevelsBlock: View {
     Line().stroke(t.ink3.opacity(0.5), style: StrokeStyle(lineWidth: 0.5, dash: [3, 3])).frame(height: 1)
   }
 
-  private func row(_ l: HighlightLevel, peak: Double) -> some View {
+  private func row(_ l: HighlightLevel, peak: Double, price: Double?) -> some View {
     let open = model.expanded == l.id
     let side = l.side == .bid ? t.up : t.down
     let meta = HighlightsText.levelMeta(l)
@@ -197,7 +200,7 @@ struct HighlightsLevelsBlock: View {
             .font(TypeScale.caption2).monospacedDigit().lineLimit(1).fixedSize()
         }
         HStack(spacing: Space.s) {
-          Text(HighlightsText.levelDistance(l)).foregroundStyle(t.ink3)
+          Text(HighlightsText.levelDistance(l, price: price)).foregroundStyle(t.ink3)
           Spacer(minLength: Space.s)
           Text(meta.bottom).foregroundStyle(t.ink3)
         }

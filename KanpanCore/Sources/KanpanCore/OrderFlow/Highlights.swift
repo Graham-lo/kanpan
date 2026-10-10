@@ -53,19 +53,28 @@ public struct HighlightsPage: Sendable, Equatable, Decodable {
     case base, generatedAtMs, tracked, staleMs, flow, range, levels, position, events
   }
 
-  /// 现价上方的价位（距离从近到远），最多 `limit` 条。
-  public func above(limit: Int = 2) -> [HighlightLevel] {
-    Array(levels.filter { $0.side == .ask }.sorted { abs($0.distPct) < abs($1.distPct) }.prefix(limit))
+  /// 现价上方的价位（距离从近到远），最多 `limit` 条。包住现价的那几条不算（见 `atPrice(_:)`）。
+  /// `price` 是每枚币的现价（不乘缩放）；不知道时传 nil，只按服务端距离 0 判。
+  public func above(limit: Int = 2, price: Double? = nil) -> [HighlightLevel] {
+    Array(levels.filter { $0.side == .ask && !$0.straddles(price) }.sorted { abs($0.distPct) < abs($1.distPct) }.prefix(limit))
   }
 
-  /// 现价下方的价位（距离从近到远），最多 `limit` 条。
-  public func below(limit: Int = 2) -> [HighlightLevel] {
-    Array(levels.filter { $0.side == .bid }.sorted { abs($0.distPct) < abs($1.distPct) }.prefix(limit))
+  /// 现价下方的价位（距离从近到远），最多 `limit` 条。包住现价的那几条不算。
+  public func below(limit: Int = 2, price: Double? = nil) -> [HighlightLevel] {
+    Array(levels.filter { $0.side == .bid && !$0.straddles(price) }.sorted { abs($0.distPct) < abs($1.distPct) }.prefix(limit))
   }
 
-  /// 离现价最近的那一条（入口条写它）。
-  public var nearestLevel: HighlightLevel? {
-    levels.min { abs($0.distPct) < abs($1.distPct) }
+  /// 价区把现价包在里面的那几条（梯子上紧贴现价线下面，写「现价内」）。
+  public func atPrice(_ price: Double?) -> [HighlightLevel] {
+    levels.filter { $0.straddles(price) }
+  }
+
+  /// 离现价最近的那一条（入口条写它）。包住现价的优先。
+  public func nearestLevel(price: Double? = nil) -> HighlightLevel? {
+    levels.min { a, b in
+      let ka = a.straddles(price) ? -1 : abs(a.distPct), kb = b.straddles(price) ? -1 : abs(b.distPct)
+      return ka < kb
+    }
   }
 
   /// 有没有可写的东西（价位、区间、事件、三格任一）。只有流向的算「平静」。
@@ -143,6 +152,12 @@ public struct HighlightLevel: Sendable, Equatable, Decodable, Identifiable {
   public var refs: [String]
 
   public var fillUsd: Double { fillBuyUsd + fillSellUsd }
+
+  /// 价区把现价包在里面：low ≤ 现价 ≤ high（现价按每枚币），或服务端距离正好是 0。和手机网页 `straddles` 同一条。
+  public func straddles(_ price: Double?) -> Bool {
+    if let p = price, p.isFinite, p > 0, low <= p, p <= high { return true }
+    return distPct == 0
+  }
 
   public init(id: String, low: Double, high: Double, side: HighlightSide, distPct: Double, wallUsd: Double = 0,
               wallHeldMs: Int64 = 0, wallState: WallState? = nil, fillBuyUsd: Double = 0, fillSellUsd: Double = 0,

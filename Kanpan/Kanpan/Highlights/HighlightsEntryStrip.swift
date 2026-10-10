@@ -14,6 +14,8 @@ func highlightText(_ runs: [HighlightRun], strong: Color) -> Text {
 /// （纵向超过横向 1.8 倍）打开半页，横拖不算。
 struct HighlightsEntryStrip: View {
   let model: HighlightsModel
+  /// 现价（每枚币）：价区包住它时那句写「现价内 a–b」，并优先取那条。
+  var price: Double? = nil
   let open: () -> Void
   @Environment(\.panelTheme) private var t
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -21,7 +23,7 @@ struct HighlightsEntryStrip: View {
   private var sentence: [HighlightRun]? {
     guard let page = model.page, page.tracked else { return nil }
     // 没价位也没 1 时净主动、但有事件：写最近那一条事件。
-    return HighlightsText.entrySentence(page, decimals: model.decimals, scale: model.scale)
+    return HighlightsText.entrySentence(page, decimals: model.decimals, scale: model.scale, price: price)
       ?? page.events.first.map { HighlightsText.eventSentence($0, decimals: model.decimals, scale: model.scale, withPrice: false) }
   }
 

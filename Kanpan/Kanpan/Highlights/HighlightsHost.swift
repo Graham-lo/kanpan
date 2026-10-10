@@ -14,7 +14,7 @@ struct HighlightsEntryHost: View {
 
   var body: some View {
     let norm = OrderFlowBase.normalize(market.info.base)
-    HighlightsEntryStrip(model: model, open: open)
+    HighlightsEntryStrip(model: model, price: market.ticker.map { $0.last / norm.scale }, open: open)
       // 半页开关也进 id：一打开就立刻拉一轮新的，节奏换成 30 秒。
       .task(id: "\(norm.base)|\(model.open)") {
         model.scale = norm.scale

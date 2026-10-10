@@ -97,6 +97,8 @@ struct MainScreen: View {
   @State private var proxy = ChartProxy()
   /// 「盘口要点」（PROJECT.md §79）：行情页入口条、半页、图上带子共用这一份；首页点一行也往这儿记。
   @State private var highlights = HighlightsModel()
+  /// 首页「异动 · 榜单」：页每次切走都拆掉，顺序与数据活在这儿。
+  @State private var home = HomeModel()
   @State private var review = ReviewFeature()
   /// 复盘待办到点叫人的唯一一处（本机日历通知；没有通知权限时前台自己补叫）。
   @State private var reviewDue = ReviewDueReminders.live()
@@ -132,13 +134,15 @@ struct MainScreen: View {
   /// 初值不再写死 `.chart`：上一次档案判定的落点在本机有一份镜像（`LaunchLandingMirror`），
   /// 判的是自选页就从第一帧起画自选——登录用户的档案要等 `account.restore()` 回来，
   /// 写死图表就是「先画 BTC 图、约 0.2s 后跳自选」那一闪。
-  @State private var tab: Tab = LaunchLandingMirror.favorites ? .favorites : .chart
+  ///
+  /// 2026-10-10 起冷启动落在「首页」（`HomeLanding`），自选 / 行情的判定只在 UI 用例档案下还管用。
+  @State private var tab: Tab = HomeLanding.enabled ? .home : (LaunchLandingMirror.favorites ? .favorites : .chart)
   /// 第一帧是按镜像停在自选页的、而真档案还没到货吗。
   ///
   /// 这一段里 `picker.prefs` 挂的还是访客那份（登录用户的自选表在账号档案里），
   /// 自选页只铺底（`FavoritesLandingPlaceholder`），不画「这一栏还空着」。
   /// 档案判定一次（`honorProfile()`）或用户自己换一格就放下。
-  @State private var landingHeld = LaunchLandingMirror.favorites
+  @State private var landingHeld = !HomeLanding.enabled && LaunchLandingMirror.favorites
   /// 自选表的预热跑过了吗。见 `primeFavorites(_:)`。
   @State private var didPrimeFavorites = false
   /// `boot()` 已经把行情、报价簿、品种表这套线全接好了吗。
@@ -376,6 +380,35 @@ struct MainScreen: View {
                   // 点一行进图的同一瞬间冻结这张表的顺序，顶栏横滑就照着它一只只看过去。
                   onScanList: { adoptScanList($0) })
       .environment(\.symbolWarmup, symbolWarmup)
+  }
+
+  /// 首页（异动 · 榜单）。点异动一行：去行情页、换到这只，「盘口要点」到了就展开那一条并升起半页；
+  /// 点榜单一行只开图。
+  private var homePage: some View {
+    HomeScreen(model: home, catalog: market.highlightsCatalog, favorites: picker.prefs.favorites,
+               signedIn: account.user != nil, zone: prefs.timeZone.offsetMinutes,
+               bottomInset: tabBarHeight + TabBar.fadeClearance,
+               isFavorite: { homeFavorite(base: $0) != nil },
+               onStar: { base in Haptics.tap(); picker.addFavorite(homeSymbol(base: base)) },
+               onOpenMove: { row in
+                 highlights.expect(base: row.base, focusID: HighlightsText.focusID(row), autoOpen: true)
+                 open(linkedSymbol: homeSymbol(base: row.base))
+               },
+               onOpenBoard: { open(linkedSymbol: homeSymbol(base: $0)) })
+  }
+
+  /// 自选里同一只币的那一条（去掉缩放前缀比）。
+  private func homeFavorite(base: String) -> String? {
+    picker.prefs.favorites.first { OrderFlowBase.normalize(Alert.base(of: $0)).base == base }
+  }
+
+  /// 首页给的是币名：自选里有同币的那只优先；否则 <币>USDT，没有就 1000<币>USDT（千枚计价）；都不在目录里照板块页的挑法。
+  private func homeSymbol(base: String) -> String {
+    if let fav = homeFavorite(base: base) { return fav }
+    for candidate in [base + "USDT", "1000" + base + "USDT"] {
+      if let info = picker.info(for: candidate) { return info.symbol }
+    }
+    return sectorFeed.symbol(forBase: base)
   }
 
   /// 板块列表页那一整页。计算全在 `KanpanCore`，画全在 `Kanpan/Sector/`，
@@ -671,6 +704,7 @@ struct MainScreen: View {
   /// 行情页不铺——图不在栏身后滚，渐变上沿会压淡时间轴。
   private var tabBarFade: Color? {
     switch tab {
+    case .home: FavoritesView.pageGround(theme)
     case .chart: nil
     case .favorites: FavoritesView.pageGround(theme)
     case .sectors: SectorSkin(theme: theme).ground
@@ -681,6 +715,7 @@ struct MainScreen: View {
   private var portraitBody: some View {
     Group {
       switch tab {
+      case .home: homePage
       case .chart: chartPage
       case .favorites:
         if landingHeld, picker.prefs.favorites.isEmpty { FavoritesLandingPlaceholder() }
@@ -2178,7 +2213,9 @@ struct MainScreen: View {
       // 落地页：有自选就停在自选。还在等 `account.restore()` 的那一小段里手上挂的
       // 是访客那份空档案，不能拿「自选是空的」当真，否则会先翻到行情页、账号回来
       // 再翻回自选，闪一下。
-      if !profile.favorites.isEmpty { if !symbolSearch.isActive { tab = .favorites } }
+      // 首页落点（`HomeLanding`）下不再按自选翻页：第一帧就是首页，档案到了也不动。
+      if HomeLanding.enabled {}
+      else if !profile.favorites.isEmpty { if !symbolSearch.isActive { tab = .favorites } }
       else if !awaitingAccount { tab = .chart }
       // 上次看的那张图。`boot()` 中途调到这儿时行情还没开张，那一次交给
       // `market.start(symbol:)` 直接开对，不在这儿切。

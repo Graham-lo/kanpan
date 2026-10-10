@@ -24,10 +24,12 @@ import ReviewUI
 ///
 /// 「板块分类」只有这一格——加密和美股是那一页顶上的硬切换，**不会**再为美股开一格。
 enum Tab: String, CaseIterable, Sendable {
-  case chart, favorites, sectors, me
+  // 2026-10-10 最左加「首页」（异动 · 榜单，PROJECT.md §79），冷启动默认落在它上面。
+  case home, chart, favorites, sectors, me
 
   var title: String {
     switch self {
+    case .home: HighlightTerm.home.text
     case .chart: "图表"
     case .favorites: "自选"
     case .sectors: "板块分类"
@@ -235,6 +237,7 @@ private struct TabGlyph: View {
   var body: some View {
     Group {
       switch tab {
+      case .home: radar
       case .chart: candles
       case .favorites: star
       case .sectors: bubbles
@@ -323,6 +326,19 @@ private struct TabGlyph: View {
         .fill(accentGlaze)
       shape([.circle(x: 12, y: 6.6, r: 3.9)]).fill(goldGlaze)
     }
+  }
+
+  /// 首页：一面雷达——主色的圆盘中间挖一道环缝，金色的扫描扇从圆心扫向右上，盘上一颗浅主色的光点。
+  /// 和其余几枚同一种画法：实心、两支釉，环缝是挖穿的（同「记一笔」的字行）。
+  private var radar: some View {
+    ZStack {
+      shape([.circle(x: 12, y: 12.4, r: 9)]).fill(accentGlaze)
+      shape([.circle(x: 12, y: 12.4, r: 5.5)]).fill(.black).blendMode(.destinationOut)
+      shape([.circle(x: 12, y: 12.4, r: 4)]).fill(accentLightGlaze)
+      shape([.path("M12 12.4V3.4a9 9 0 0 1 8.5 6.1z")]).fill(goldGlaze)
+      shape([.circle(x: 16.6, y: 16.6, r: 1.7)]).fill(goldGlaze)
+    }
+    .compositingGroup()
   }
 
   private func shape(_ items: [IconItem]) -> IconShape { IconShape(box: Self.box, items: items) }

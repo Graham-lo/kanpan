@@ -260,4 +260,35 @@ struct HighlightsTests {
     #expect(HighlightsText.homeFact(fr, zone: Self.utc8).plain == "费率 \u{2212}0.26% · 30 天第 1 位")
     #expect(HighlightsText.focusID(fr) == nil)
   }
+
+  @Test("价区包住现价：写「现价内 a–b」、优先当最近那条、梯子上不算上方 / 下方")
+  func straddlingBand() {
+    let inside = HighlightLevel(id: "in", low: 63.405, high: 63.659, side: .ask, distPct: 0.05, wallUsd: 2_300_000,
+                                wallHeldMs: 3_600_000, tests: 2)
+    let below = HighlightLevel(id: "dn", low: 63.10, high: 63.20, side: .bid, distPct: -0.02, wallUsd: 9_000_000, tests: 1)
+    let above = HighlightLevel(id: "up", low: 64.0, high: 64.1, side: .ask, distPct: 0.6, fillBuyUsd: 1e6, tests: 1)
+    let p = HighlightsPage(base: "HYPE", generatedAtMs: 1, tracked: true, levels: [below, inside, above])
+    let price = 63.5
+    #expect(inside.straddles(price))
+    #expect(!below.straddles(price))
+    // 服务端距离正好是 0 也算（不知道现价时）。
+    #expect(HighlightLevel(id: "z", low: 1, high: 2, side: .bid, distPct: 0).straddles(nil))
+
+    // 距离上 `dn` 更近，但包住现价的那条赢。
+    #expect(p.nearestLevel(price: price)?.id == "in")
+    #expect(p.nearestLevel()?.id == "dn")
+    let s = HighlightsText.entrySentence(p, decimals: 3, price: price)
+    #expect(s?.plain == "现价内 63.405–63.659 卖区 2.3M · 挂 1 时 · 测 2 次")
+    #expect(s?.first(where: \.strong)?.text == "63.405–63.659")
+
+    #expect(p.atPrice(price).map(\.id) == ["in"])
+    #expect(p.above(price: price).map(\.id) == ["up"])
+    #expect(p.below(price: price).map(\.id) == ["dn"])
+    #expect(HighlightsText.levelDistance(inside, price: price) == "现价内")
+    #expect(HighlightsText.levelDistance(inside) == "距 0.05%")
+
+    let row = HighlightsBoard.Row(base: "HYPE", favorite: false, count: 1, cat: .book, tier: 2, top: .level(inside),
+                                  price: price, changePct: 1.2, atMs: 0)
+    #expect(HighlightsText.homeFact(row, zone: Self.utc8).plain == "现价内 63.405–63.659 卖区 · 2.3M")
+  }
 }
