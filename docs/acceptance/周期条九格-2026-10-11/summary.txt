@@ -1,0 +1,5 @@
+iPhone 16 Pro	PASS	7	103
+iPhone 17 Pro Max	PASS	7	104
+Web build PASS
+Web related tests PASS 43
+Web responsive layouts PASS 20

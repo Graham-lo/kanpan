@@ -1,0 +1,2165 @@
+{
+  "results": [
+    {
+      "label": "light-320-常用周期",
+      "width": 320,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 7.1875,
+          "contentRight": 28.359375,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 35.546875,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 38.53125,
+          "contentRight": 68.125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 71.109375,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(46, 125, 107, 0.1)",
+          "borderRadius": "0px",
+          "contentLeft": 79.1875,
+          "contentRight": 98.5625,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 106.65625,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 113.6875,
+          "contentRight": 135.171875,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 142.21875,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 150.40625,
+          "contentRight": 169.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 177.765625,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 185.953125,
+          "contentRight": 205.125,
+          "scroll": false
+        },
+        {
+          "text": "更多",
+          "x": 213.328125,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 214.59375,
+          "contentRight": 247.59375,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 248.875,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 284.4375,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 293.21875,
+          "contentRight": 311.21875,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "light-320-更多12时",
+      "width": 320,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 7.1875,
+          "contentRight": 28.359375,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 35.546875,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 38.53125,
+          "contentRight": 68.125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 71.109375,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 79.296875,
+          "contentRight": 98.46875,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 106.65625,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 113.6875,
+          "contentRight": 135.171875,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 142.21875,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 150.40625,
+          "contentRight": 169.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 177.765625,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 185.953125,
+          "contentRight": 205.125,
+          "scroll": false
+        },
+        {
+          "text": "12时",
+          "x": 213.328125,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(46, 125, 107, 0.1)",
+          "borderRadius": "0px",
+          "contentLeft": 213.859375,
+          "contentRight": 248.34375,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 248.875,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 284.4375,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 293.21875,
+          "contentRight": 311.21875,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "light-360-常用周期",
+      "width": 360,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 9.40625,
+          "contentRight": 30.578125,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 40,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 45.203125,
+          "contentRight": 74.796875,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 80,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(46, 125, 107, 0.1)",
+          "borderRadius": "0px",
+          "contentLeft": 90.3125,
+          "contentRight": 109.6875,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 120,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 129.25,
+          "contentRight": 150.734375,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 160,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 170.40625,
+          "contentRight": 189.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 200,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 210.40625,
+          "contentRight": 229.578125,
+          "scroll": false
+        },
+        {
+          "text": "更多",
+          "x": 240,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 241.5,
+          "contentRight": 278.5,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 280,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 320,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 331,
+          "contentRight": 349,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "light-360-更多12时",
+      "width": 360,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 9.40625,
+          "contentRight": 30.578125,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 40,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 45.203125,
+          "contentRight": 74.796875,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 80,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 90.40625,
+          "contentRight": 109.578125,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 120,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 129.25,
+          "contentRight": 150.734375,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 160,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 170.40625,
+          "contentRight": 189.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 200,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 210.40625,
+          "contentRight": 229.578125,
+          "scroll": false
+        },
+        {
+          "text": "12时",
+          "x": 240,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(46, 125, 107, 0.1)",
+          "borderRadius": "0px",
+          "contentLeft": 240.75,
+          "contentRight": 279.234375,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 280,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 320,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 331,
+          "contentRight": 349,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "light-393-常用周期",
+      "width": 393,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 11.234375,
+          "contentRight": 32.40625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 43.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 50.6875,
+          "contentRight": 80.28125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 87.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(46, 125, 107, 0.1)",
+          "borderRadius": "0px",
+          "contentLeft": 99.46875,
+          "contentRight": 118.84375,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 131,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 142.078125,
+          "contentRight": 163.5625,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 174.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 186.90625,
+          "contentRight": 206.078125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 218.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 230.578125,
+          "contentRight": 249.75,
+          "scroll": false
+        },
+        {
+          "text": "更多",
+          "x": 262,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 265.328125,
+          "contentRight": 302.328125,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 305.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 349.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 362.15625,
+          "contentRight": 380.15625,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "light-393-更多12时",
+      "width": 393,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 11.234375,
+          "contentRight": 32.40625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 43.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 50.6875,
+          "contentRight": 80.28125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 87.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 99.578125,
+          "contentRight": 118.75,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 131,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 142.078125,
+          "contentRight": 163.5625,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 174.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 186.90625,
+          "contentRight": 206.078125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 218.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 230.578125,
+          "contentRight": 249.75,
+          "scroll": false
+        },
+        {
+          "text": "12时",
+          "x": 262,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(46, 125, 107, 0.1)",
+          "borderRadius": "0px",
+          "contentLeft": 264.578125,
+          "contentRight": 303.0625,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 305.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 349.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 362.15625,
+          "contentRight": 380.15625,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "light-402-常用周期",
+      "width": 402,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 11.734375,
+          "contentRight": 32.90625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 44.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 52.1875,
+          "contentRight": 81.78125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 89.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(46, 125, 107, 0.1)",
+          "borderRadius": "0px",
+          "contentLeft": 101.96875,
+          "contentRight": 121.34375,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 134,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 145.578125,
+          "contentRight": 167.0625,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 178.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 191.40625,
+          "contentRight": 210.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 223.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 236.078125,
+          "contentRight": 255.25,
+          "scroll": false
+        },
+        {
+          "text": "更多",
+          "x": 268,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 271.828125,
+          "contentRight": 308.828125,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 312.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 357.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 370.65625,
+          "contentRight": 388.65625,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "light-402-更多12时",
+      "width": 402,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 11.734375,
+          "contentRight": 32.90625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 44.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 52.1875,
+          "contentRight": 81.78125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 89.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 102.078125,
+          "contentRight": 121.25,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 134,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 145.578125,
+          "contentRight": 167.0625,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 178.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 191.40625,
+          "contentRight": 210.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 223.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 236.078125,
+          "contentRight": 255.25,
+          "scroll": false
+        },
+        {
+          "text": "12时",
+          "x": 268,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(46, 125, 107, 0.1)",
+          "borderRadius": "0px",
+          "contentLeft": 271.078125,
+          "contentRight": 309.5625,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 312.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 357.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 370.65625,
+          "contentRight": 388.65625,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "light-440-常用周期",
+      "width": 440,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 48.875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 13.84375,
+          "contentRight": 35.015625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 48.875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 58.515625,
+          "contentRight": 88.109375,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 97.765625,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(46, 125, 107, 0.1)",
+          "borderRadius": "0px",
+          "contentLeft": 112.515625,
+          "contentRight": 131.890625,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 146.65625,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 160.359375,
+          "contentRight": 181.84375,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 195.546875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 210.40625,
+          "contentRight": 229.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 244.4375,
+          "width": 48.875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 259.28125,
+          "contentRight": 278.453125,
+          "scroll": false
+        },
+        {
+          "text": "更多",
+          "x": 293.328125,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 299.265625,
+          "contentRight": 336.265625,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 342.21875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 391.109375,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 406.546875,
+          "contentRight": 424.546875,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "light-440-更多12时",
+      "width": 440,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 48.875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 13.84375,
+          "contentRight": 35.015625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 48.875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 58.515625,
+          "contentRight": 88.109375,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 97.765625,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 112.625,
+          "contentRight": 131.796875,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 146.65625,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 160.359375,
+          "contentRight": 181.84375,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 195.546875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 210.40625,
+          "contentRight": 229.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 244.4375,
+          "width": 48.875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 259.28125,
+          "contentRight": 278.453125,
+          "scroll": false
+        },
+        {
+          "text": "12时",
+          "x": 293.328125,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(46, 125, 107, 0.1)",
+          "borderRadius": "0px",
+          "contentLeft": 298.53125,
+          "contentRight": 337.015625,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 342.21875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 391.109375,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 406.546875,
+          "contentRight": 424.546875,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "dark-320-常用周期",
+      "width": 320,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 7.1875,
+          "contentRight": 28.359375,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 35.546875,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 38.53125,
+          "contentRight": 68.125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 71.109375,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(79, 182, 156, 0.14)",
+          "borderRadius": "0px",
+          "contentLeft": 79.1875,
+          "contentRight": 98.5625,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 106.65625,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 113.6875,
+          "contentRight": 135.171875,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 142.21875,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 150.40625,
+          "contentRight": 169.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 177.765625,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 185.953125,
+          "contentRight": 205.125,
+          "scroll": false
+        },
+        {
+          "text": "更多",
+          "x": 213.328125,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 214.59375,
+          "contentRight": 247.59375,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 248.875,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 284.4375,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 293.21875,
+          "contentRight": 311.21875,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "dark-320-更多12时",
+      "width": 320,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 7.1875,
+          "contentRight": 28.359375,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 35.546875,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 38.53125,
+          "contentRight": 68.125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 71.109375,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 79.296875,
+          "contentRight": 98.46875,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 106.65625,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 113.6875,
+          "contentRight": 135.171875,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 142.21875,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 150.40625,
+          "contentRight": 169.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 177.765625,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 185.953125,
+          "contentRight": 205.125,
+          "scroll": false
+        },
+        {
+          "text": "12时",
+          "x": 213.328125,
+          "width": 35.546875,
+          "height": 43,
+          "background": "rgba(79, 182, 156, 0.14)",
+          "borderRadius": "0px",
+          "contentLeft": 213.859375,
+          "contentRight": 248.34375,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 248.875,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 284.4375,
+          "width": 35.5625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 293.21875,
+          "contentRight": 311.21875,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "dark-360-常用周期",
+      "width": 360,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 9.40625,
+          "contentRight": 30.578125,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 40,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 45.203125,
+          "contentRight": 74.796875,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 80,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(79, 182, 156, 0.14)",
+          "borderRadius": "0px",
+          "contentLeft": 90.3125,
+          "contentRight": 109.6875,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 120,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 129.25,
+          "contentRight": 150.734375,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 160,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 170.40625,
+          "contentRight": 189.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 200,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 210.40625,
+          "contentRight": 229.578125,
+          "scroll": false
+        },
+        {
+          "text": "更多",
+          "x": 240,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 241.5,
+          "contentRight": 278.5,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 280,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 320,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 331,
+          "contentRight": 349,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "dark-360-更多12时",
+      "width": 360,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 9.40625,
+          "contentRight": 30.578125,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 40,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 45.203125,
+          "contentRight": 74.796875,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 80,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 90.40625,
+          "contentRight": 109.578125,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 120,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 129.25,
+          "contentRight": 150.734375,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 160,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 170.40625,
+          "contentRight": 189.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 200,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 210.40625,
+          "contentRight": 229.578125,
+          "scroll": false
+        },
+        {
+          "text": "12时",
+          "x": 240,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(79, 182, 156, 0.14)",
+          "borderRadius": "0px",
+          "contentLeft": 240.75,
+          "contentRight": 279.234375,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 280,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 320,
+          "width": 40,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 331,
+          "contentRight": 349,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "dark-393-常用周期",
+      "width": 393,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 11.234375,
+          "contentRight": 32.40625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 43.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 50.6875,
+          "contentRight": 80.28125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 87.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(79, 182, 156, 0.14)",
+          "borderRadius": "0px",
+          "contentLeft": 99.46875,
+          "contentRight": 118.84375,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 131,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 142.078125,
+          "contentRight": 163.5625,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 174.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 186.90625,
+          "contentRight": 206.078125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 218.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 230.578125,
+          "contentRight": 249.75,
+          "scroll": false
+        },
+        {
+          "text": "更多",
+          "x": 262,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 265.328125,
+          "contentRight": 302.328125,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 305.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 349.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 362.15625,
+          "contentRight": 380.15625,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "dark-393-更多12时",
+      "width": 393,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 11.234375,
+          "contentRight": 32.40625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 43.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 50.6875,
+          "contentRight": 80.28125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 87.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 99.578125,
+          "contentRight": 118.75,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 131,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 142.078125,
+          "contentRight": 163.5625,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 174.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 186.90625,
+          "contentRight": 206.078125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 218.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 230.578125,
+          "contentRight": 249.75,
+          "scroll": false
+        },
+        {
+          "text": "12时",
+          "x": 262,
+          "width": 43.65625,
+          "height": 43,
+          "background": "rgba(79, 182, 156, 0.14)",
+          "borderRadius": "0px",
+          "contentLeft": 264.578125,
+          "contentRight": 303.0625,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 305.65625,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 349.328125,
+          "width": 43.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 362.15625,
+          "contentRight": 380.15625,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "dark-402-常用周期",
+      "width": 402,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 11.734375,
+          "contentRight": 32.90625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 44.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 52.1875,
+          "contentRight": 81.78125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 89.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(79, 182, 156, 0.14)",
+          "borderRadius": "0px",
+          "contentLeft": 101.96875,
+          "contentRight": 121.34375,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 134,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 145.578125,
+          "contentRight": 167.0625,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 178.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 191.40625,
+          "contentRight": 210.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 223.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 236.078125,
+          "contentRight": 255.25,
+          "scroll": false
+        },
+        {
+          "text": "更多",
+          "x": 268,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 271.828125,
+          "contentRight": 308.828125,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 312.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 357.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 370.65625,
+          "contentRight": 388.65625,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "dark-402-更多12时",
+      "width": 402,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 11.734375,
+          "contentRight": 32.90625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 44.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 52.1875,
+          "contentRight": 81.78125,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 89.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 102.078125,
+          "contentRight": 121.25,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 134,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 145.578125,
+          "contentRight": 167.0625,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 178.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 191.40625,
+          "contentRight": 210.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 223.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 236.078125,
+          "contentRight": 255.25,
+          "scroll": false
+        },
+        {
+          "text": "12时",
+          "x": 268,
+          "width": 44.65625,
+          "height": 43,
+          "background": "rgba(79, 182, 156, 0.14)",
+          "borderRadius": "0px",
+          "contentLeft": 271.078125,
+          "contentRight": 309.5625,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 312.65625,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 357.328125,
+          "width": 44.671875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 370.65625,
+          "contentRight": 388.65625,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "dark-440-常用周期",
+      "width": 440,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 48.875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 13.84375,
+          "contentRight": 35.015625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 48.875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 58.515625,
+          "contentRight": 88.109375,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 97.765625,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(79, 182, 156, 0.14)",
+          "borderRadius": "0px",
+          "contentLeft": 112.515625,
+          "contentRight": 131.890625,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 146.65625,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 160.359375,
+          "contentRight": 181.84375,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 195.546875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 210.40625,
+          "contentRight": 229.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 244.4375,
+          "width": 48.875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 259.28125,
+          "contentRight": 278.453125,
+          "scroll": false
+        },
+        {
+          "text": "更多",
+          "x": 293.328125,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 299.265625,
+          "contentRight": 336.265625,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 342.21875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 391.109375,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 406.546875,
+          "contentRight": 424.546875,
+          "scroll": false
+        }
+      ]
+    },
+    {
+      "label": "dark-440-更多12时",
+      "width": 440,
+      "left": 0,
+      "divider": false,
+      "overflow": false,
+      "cells": [
+        {
+          "text": "5分",
+          "x": 0,
+          "width": 48.875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 13.84375,
+          "contentRight": 35.015625,
+          "scroll": false
+        },
+        {
+          "text": "30分",
+          "x": 48.875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 58.515625,
+          "contentRight": 88.109375,
+          "scroll": false
+        },
+        {
+          "text": "1时",
+          "x": 97.765625,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 112.625,
+          "contentRight": 131.796875,
+          "scroll": false
+        },
+        {
+          "text": "4时",
+          "x": 146.65625,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 160.359375,
+          "contentRight": 181.84375,
+          "scroll": false
+        },
+        {
+          "text": "1日",
+          "x": 195.546875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 210.40625,
+          "contentRight": 229.578125,
+          "scroll": false
+        },
+        {
+          "text": "1周",
+          "x": 244.4375,
+          "width": 48.875,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 259.28125,
+          "contentRight": 278.453125,
+          "scroll": false
+        },
+        {
+          "text": "12时",
+          "x": 293.328125,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(79, 182, 156, 0.14)",
+          "borderRadius": "0px",
+          "contentLeft": 298.53125,
+          "contentRight": 337.015625,
+          "scroll": false
+        },
+        {
+          "text": "分析",
+          "x": 342.21875,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": null,
+          "contentRight": null,
+          "scroll": false
+        },
+        {
+          "text": "",
+          "x": 391.109375,
+          "width": 48.890625,
+          "height": 43,
+          "background": "rgba(0, 0, 0, 0)",
+          "borderRadius": "0px",
+          "contentLeft": 406.546875,
+          "contentRight": 424.546875,
+          "scroll": false
+        }
+      ]
+    }
+  ],
+  "errors": []
+}
