@@ -250,6 +250,7 @@ fn merge(s:&mut State,old:State) {
  fill(&mut s.samples.n15,o.n15);fill(&mut s.samples.n1h,o.n1h);fill(&mut s.samples.n4h,o.n4h);fill(&mut s.samples.n24,o.n24);
  fill(&mut s.samples.oi,o.oi);fill(&mut s.samples.funding,o.funding);fill(&mut s.samples.premium,o.premium);
  s.until=s.until.max(old.until);
+ s.touches_backfilled|=old.touches_backfilled;
 }
 
 fn hash(base:&str)->i64 {base.bytes().fold(0i64,|h,b|(h*31+i64::from(b)).rem_euclid(1_000_003))}

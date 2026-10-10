@@ -71,10 +71,10 @@ pub(super) fn spans(t0:i64,values:&[f64],thr:f64,since:i64)->Vec<Span> {
  out.into_iter().map(|(a,b,_,peak)|Span{from:t0+a as i64*M,to:t0+(b as i64+1)*M,sum:values[a..=b].iter().sum(),peak}).collect()
 }
 
-/// 持仓跳变：相邻两点变化 ≥ 1% 的，连着同向的并成一次。回（时刻 = 最后一点，累计变化 %）。
-pub(super) fn oi_jumps(oi:&BTreeMap<i64,f64>,since:i64)->Vec<(i64,f64)> {
+/// 持仓跳变：相邻两点变化 ≥ 1% 的，连着同向的并成一次。回（第一跳的时刻, 最后一点的时刻, 累计变化 %）。
+pub(super) fn oi_jumps(oi:&BTreeMap<i64,f64>,since:i64)->Vec<(i64,i64,f64)> {
  let points:Vec<(i64,f64)>=oi.iter().filter(|(_,v)|**v>0.0).map(|(t,v)|(*t,*v)).collect();
- let mut out:Vec<(i64,f64,f64)>=Vec::new(); // 时刻、起点值、终点值
+ let mut out:Vec<(i64,i64,f64,f64)>=Vec::new(); // 第一跳、最后一点、起点值、终点值
  let mut last_jump:Option<usize>=None;
  for (i,w) in points.windows(2).enumerate() {
   let ((_,a),(t,b))=(w[0],w[1]);
@@ -82,12 +82,29 @@ pub(super) fn oi_jumps(oi:&BTreeMap<i64,f64>,since:i64)->Vec<(i64,f64)> {
   let pct=(b/a-1.0)*100.0;
   if pct.abs()<OI_JUMP_PCT {continue}
   match (out.last_mut(),last_jump) {
-   (Some(j),Some(prev)) if prev+1==i&&(j.2/j.1-1.0).signum()==pct.signum()=>{j.0=t;j.2=b;},
-   _=>out.push((t,a,b)),
+   (Some(j),Some(prev)) if prev+1==i&&(j.3/j.2-1.0).signum()==pct.signum()=>{j.1=t;j.3=b;},
+   _=>out.push((t,t,a,b)),
   }
   last_jump=Some(i);
  }
- out.into_iter().map(|(t,a,b)|(t,(b/a-1.0)*100.0)).collect()
+ out.into_iter().map(|(first,t,a,b)|(first,t,(b/a-1.0)*100.0)).collect()
+}
+
+/// 账本里被破的格 → 「价位被破」事件：同一侧、键相邻、15 分钟内相继破的格是同一条价位被打穿（一根大阴线会连破好几格），
+/// 并成一条；`id` 用这一串里最早破的那一格（时刻 + 键），后面再并进来的格不改它。
+pub(super) fn broken_events(broken:&[ledger::Broke])->Vec<Ev> {
+ const SAME_BREAK_MS:i64=15*M;
+ let mut sorted:Vec<&ledger::Broke>=broken.iter().collect();
+ sorted.sort_by_key(|b|(b.at,b.k));
+ // (第一格的时刻, 第一格的键, 最近一次破的时刻, 键的下沿, 键的上沿, 原来是支撑)
+ let mut groups:Vec<(i64,i64,i64,i64,i64,bool)>=Vec::new();
+ for b in sorted {
+  match groups.iter_mut().rev().find(|g|g.5==b.was_support&&b.at-g.2<=SAME_BREAK_MS&&b.k>=g.3-1&&b.k<=g.4+1) {
+   Some(g)=>{g.2=b.at;g.3=g.3.min(b.k);g.4=g.4.max(b.k);},
+   None=>groups.push((b.at,b.k,b.at,b.k,b.k,b.was_support)),
+  }
+ }
+ groups.into_iter().map(|(first,k,at,lo,hi,was_support)|Ev::Broken{first,k,at,low:super::state::sig(ledger::low(lo)),high:super::state::sig(ledger::high(hi)),was_support}).collect()
 }
 
 /// 结束了的一堵墙（要点引擎从写库那一步拿一份）。
@@ -115,7 +132,7 @@ pub(super) fn wall_events(ended:&[Ended],px_at:impl Fn(i64)->Option<f64>,floor:f
   if let Some(Ev::Wall{usd,at,..})=out.iter_mut().rev().find(|x|matches!(x,Ev::Wall{kind:kk,k:kk2,bid,at,..} if *kk==kind&&*kk2==k&&*bid==e.bid&&e.end-*at<=SAME_WALL_MS)) {
    *usd+=e.initial;*at=e.end;continue;
   }
-  out.push(Ev::Wall{kind,at:e.end,price:e.price,usd:e.initial,bid:e.bid,k});
+  out.push(Ev::Wall{kind,first:e.end,at:e.end,price:e.price,usd:e.initial,bid:e.bid,k});
  }
  out.retain(|e|matches!(e,Ev::Wall{usd,..} if *usd>=floor));
  out
@@ -124,11 +141,14 @@ pub(super) fn wall_events(ended:&[Ended],px_at:impl Fn(i64)->Option<f64>,floor:f
 /// 一条事件（结构化事实，文案由客户端按 terms.json 拼）。
 #[derive(Clone,Debug,PartialEq)]
 pub(super) enum Ev {
- Wall{kind:&'static str,at:i64,price:f64,usd:f64,bid:bool,k:i64},
+ /// `first` 是这一组里最早结束的那堵（id 用它，几家相继结束并进来不改 id）；`at` 是最后一堵结束的时刻。
+ Wall{kind:&'static str,first:i64,at:i64,price:f64,usd:f64,bid:bool,k:i64},
  Flow{from:i64,to:i64,net:f64,px_pct:Option<f64>,pctile:u8},
  Liq{from:i64,to:i64,usd:f64,long:bool,px_pct:Option<f64>,pctile:u8},
- Oi{at:i64,pct:f64},
- Broken{at:i64,low:f64,high:f64,was_support:bool},
+ /// `first` 是第一跳的时刻，`at` 是连着同向的最后一点。
+ Oi{first:i64,at:i64,pct:f64},
+ /// `first` / `k` 是最早破的那一格，`at` 是这一串里最近一次破。
+ Broken{first:i64,k:i64,at:i64,low:f64,high:f64,was_support:bool},
 }
 
 impl Ev {
@@ -139,16 +159,26 @@ impl Ev {
  pub fn kind(&self)->&'static str {
   match self {Ev::Wall{kind,..}=>kind,Ev::Flow{..}=>"flowBurst",Ev::Liq{..}=>"liqWave",Ev::Oi{..}=>"oiJump",Ev::Broken{..}=>"levelBroken"}
  }
+ /// 稳定、唯一的 id：只用事实开头那一刻定下来的东西（墙：最早结束的时刻 + 侧 + 价位格；时段：开始；持仓：第一跳；
+ /// 价位被破：最早破的格的时刻 + 键）。时段往后延、同一组再并进来都不改它，每分钟重算出来的是同一个。
+ pub fn id(&self)->String {
+  match self {
+   Ev::Wall{kind,first,bid,k,..}=>format!("E:{kind}:{first}:{}:{k}",if *bid {"b"} else {"s"}),
+   Ev::Flow{from,..}|Ev::Liq{from,..}=>format!("E:{}:{from}",self.kind()),
+   Ev::Oi{first,..}=>format!("E:oiJump:{first}"),
+   Ev::Broken{first,k,..}=>format!("E:levelBroken:{first}:{k}"),
+  }
+ }
  pub fn json(&self,price:f64)->serde_json::Value {
   use serde_json::json;
   let dist=|p:f64|if price>0.0 {Some(round((p-price)/price*100.0,3))} else {None};
-  let id=format!("E:{}:{}",self.kind(),self.time());
+  let id=self.id();
   match self {
    Ev::Wall{kind,at,price:p,usd:amount,bid,..}=>json!({"id":id,"t":kind,"atMs":at,"price":p,"usd":usd(*amount),"side":if *bid {"buy"} else {"sell"},"distPct":dist(*p)}),
    Ev::Flow{from,to,net,px_pct,..}=>json!({"id":id,"t":"flowBurst","fromMs":from,"toMs":to,"netUsd":usd(*net),"pxPct":px_pct.map(|v|round(v,2))}),
    Ev::Liq{from,to,usd:amount,long,px_pct,..}=>json!({"id":id,"t":"liqWave","fromMs":from,"toMs":to,"usd":usd(*amount),"side":if *long {"long"} else {"short"},"pxPct":px_pct.map(|v|round(v,2))}),
-   Ev::Oi{at,pct}=>json!({"id":id,"t":"oiJump","atMs":at,"pct":round(*pct,2)}),
-   Ev::Broken{at,low,high,was_support}=>json!({"id":id,"t":"levelBroken","atMs":at,"low":low,"high":high,"side":if *was_support {"bid"} else {"ask"},"distPct":dist((low+high)/2.0)}),
+   Ev::Oi{at,pct,..}=>json!({"id":id,"t":"oiJump","atMs":at,"pct":round(*pct,2)}),
+   Ev::Broken{at,low,high,was_support,..}=>json!({"id":id,"t":"levelBroken","atMs":at,"low":low,"high":high,"side":if *was_support {"bid"} else {"ask"},"distPct":dist((low+high)/2.0)}),
   }
  }
 }
@@ -156,7 +186,10 @@ impl Ev {
 /// 近 4 小时、≤ 4 条、时间倒序。
 pub(super) fn newest(mut all:Vec<Ev>,now:i64)->Vec<Ev> {
  all.retain(|e|e.time()>=now-WINDOW_MS);
- all.sort_by(|a,b|b.time().cmp(&a.time()).then(a.kind().cmp(b.kind())));
+ all.sort_by(|a,b|b.time().cmp(&a.time()).then(a.kind().cmp(b.kind())).then_with(||a.id().cmp(&b.id())));
+ // 兜底：同一个 id 只留一条（上面的 id 已经各不相同，这里保证客户端拿到的永远唯一）。
+ let mut seen=std::collections::HashSet::new();
+ all.retain(|e|seen.insert(e.id()));
  all.truncate(MAX_EVENTS);
  all
 }
@@ -210,9 +243,9 @@ mod tests {
   for (i,v) in [100.0,100.2,101.5,103.0,103.1,101.0,101.1].iter().enumerate() {oi.insert(i as i64*300_000,*v);}
   let j=oi_jumps(&oi,0);
   assert_eq!(j.len(),2);
-  assert_eq!(j[0].0,3*300_000);
-  assert!((j[0].1-(103.0/100.2-1.0)*100.0).abs()<1e-9);
-  assert!(j[1].1 < -1.0);
+  assert_eq!((j[0].0,j[0].1),(2*300_000,3*300_000),"first jump and the last point of the run");
+  assert!((j[0].2-(103.0/100.2-1.0)*100.0).abs()<1e-9);
+  assert!(j[1].2 < -1.0);
  }
 
  #[test]
@@ -229,14 +262,46 @@ mod tests {
   ];
   let evs=wall_events(&ended,px,5e5,0);
   assert_eq!(evs.len(),2);
-  assert!(matches!(evs[0],Ev::Wall{kind:"wallCancel",usd,at,..} if usd==3e6&&at==11*M));
+  assert!(matches!(evs[0],Ev::Wall{kind:"wallCancel",usd,at,first,..} if usd==3e6&&at==11*M&&first==10*M));
   assert!(matches!(evs[1],Ev::Wall{kind:"wallEaten",..}));
+  assert_eq!(evs[0].id(),wall_events(&ended[..1],px,5e5,0)[0].id(),"merging a later wall does not change the id");
+ }
+
+ #[test]
+ fn walls_ending_in_the_same_millisecond_at_different_prices_get_different_ids() {
+  let e=|bid:bool,price:f64|Ended{bid,price,initial:2e6,filled:2e6,left:0.0,cancelled:false,end:5*M};
+  let evs=wall_events(&[e(false,100.0),e(false,101.0),e(true,99.0)],|_|Some(100.0),0.0,0);
+  assert_eq!(evs.len(),3);
+  let ids:std::collections::HashSet<String>=evs.iter().map(Ev::id).collect();
+  assert_eq!(ids.len(),3,"{ids:?}");
+ }
+
+ #[test]
+ fn adjacent_buckets_breaking_together_are_one_event_with_a_stable_id() {
+  let br=|k:i64,at:i64|ledger::Broke{k,at,was_support:true};
+  // 一根大阴线连破三格（同一分钟两格、下一分钟一格），另有一格两小时后在别处破。
+  let first=broken_events(&[br(10,5*M),br(11,5*M)]);
+  let later=broken_events(&[br(10,5*M),br(11,5*M),br(9,6*M),br(40,125*M)]);
+  assert_eq!(first.len(),1);
+  assert_eq!(later.len(),2);
+  assert_eq!(first[0].id(),later[0].id(),"a bucket joining later does not change the id");
+  assert!(matches!(later[0],Ev::Broken{at,..} if at==6*M));
+  assert_ne!(later[0].id(),later[1].id());
+ }
+
+ #[test]
+ fn spans_and_oi_runs_keep_their_id_while_they_extend() {
+  let a=Ev::Flow{from:M,to:5*M,net:1.0,px_pct:None,pctile:96};
+  let b=Ev::Flow{from:M,to:9*M,net:2.0,px_pct:None,pctile:97};
+  assert_eq!(a.id(),b.id());
+  assert_eq!(Ev::Oi{first:M,at:2*M,pct:1.2}.id(),Ev::Oi{first:M,at:3*M,pct:2.0}.id());
+  assert_ne!(a.id(),Ev::Liq{from:M,to:5*M,usd:1.0,long:true,px_pct:None,pctile:96}.id());
  }
 
  #[test]
  fn newest_four_in_reverse_time_within_four_hours() {
   let now=10*3_600_000;
-  let evs:Vec<Ev>=(0..8).map(|i|Ev::Oi{at:now-i*3_600_000/2-1,pct:1.5}).collect();
+  let evs:Vec<Ev>=(0..8).map(|i|Ev::Oi{first:now-i*3_600_000/2-1,at:now-i*3_600_000/2-1,pct:1.5}).collect();
   let kept=newest(evs,now);
   assert_eq!(kept.len(),4);
   assert!(kept.windows(2).all(|w|w[0].time()>w[1].time()));

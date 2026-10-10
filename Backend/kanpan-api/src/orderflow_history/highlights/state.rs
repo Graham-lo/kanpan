@@ -4,7 +4,7 @@ use super::events::{self,Ended,Ev,round,usd};
 use super::fetch::{Boot,K};
 use super::ledger::{self,Broke,Ledger,Live,Ref};
 use super::range::{self,Range};
-use super::stats::{DAY_MS,HOUR_MS,Hl,Samples,Sizes,atr,four_hour,rank};
+use super::stats::{DAY_MS,HOUR_MS,Hl,Samples,Sizes,atr,four_hour,quantile_distinct,rank};
 use serde_json::{Value,json};
 use std::collections::{BTreeMap,VecDeque};
 
@@ -154,6 +154,25 @@ pub(super) struct State {
  pub sampled:i64,
  pub booted:bool,
  pub created:i64,
+ /// 账本的触及次数是不是已经按历史 K 线补过整段（落盘带着；10-10 补次数上线前落的盘没有，起步时重补一遍）。
+ pub touches_backfilled:bool,
+ /// 首页「持仓 · 费率 · 现货溢价」那一项从哪一刻起一直是同一类极端（`atMs` 用它，不是每分钟重算的时刻）。
+ pub position_since:Option<(&'static str,i64)>,
+}
+
+/// 价位上几段（墙 / 吃单 / 爆仓）各自的地板：占这条价位合计不到 [`SEGMENT_SHARE`] 的不显示（写 0，客户端不画），
+/// 爆仓还要过这只自己「有爆仓的分钟」的中位数；墙只要过了墙规模 P90（`wall_floor`）就留，哪怕旁边的吃单大得多。
+const SEGMENT_SHARE:f64=0.02;
+pub(super) fn trim_segments(v:&mut ledger::Level,liq_p50:Option<f64>,wall_floor:f64) {
+ let total=v.wall_usd+v.fill_buy+v.fill_sell+v.liq;
+ let share=SEGMENT_SHARE*total;
+ if v.liq<share.max(liq_p50.unwrap_or(0.0)) {v.liq=0.0;}
+ if v.fill_buy<share {v.fill_buy=0.0;}
+ if v.fill_sell<share {v.fill_sell=0.0;}
+ if v.wall_usd>0.0&&v.wall_usd<share&&v.wall_usd<wall_floor {
+  v.wall_usd=0.0;
+  if matches!(v.wall_state,Some("live")|Some("reducing")) {v.wall_state=None;}
+ }
 }
 
 fn finite(x:f64)->Option<f64> {x.is_finite().then_some(x)}
@@ -171,7 +190,8 @@ impl State {
  pub fn new(base:&str,now:i64)->Self {
   Self{base:base.to_string(),flow:Series::new(FLOW_MINUTES,0.0),px:Series::new(PX_MINUTES,f32::NAN),hours:BTreeMap::new(),
    oi5:BTreeMap::new(),oi1h:BTreeMap::new(),funding:None,ledger:Ledger::default(),until:0,live_from:None,samples:Sampled::default(),
-   live:Vec::new(),ended:Vec::new(),sizes:Sizes::default(),broken:Vec::new(),last_bar:0,sampled:0,booted:false,created:now}
+   live:Vec::new(),ended:Vec::new(),sizes:Sizes::default(),broken:Vec::new(),last_bar:0,sampled:0,booted:false,created:now,
+   touches_backfilled:false,position_since:None}
  }
 
  fn mark_live(&mut self,minute:i64) {
@@ -274,12 +294,17 @@ impl State {
   for (m,(long,short,price)) in &b.liq {
    if *m>=gap_from&&*m<gap_to {self.ledger.liq(*price,long+short,*m,px);}
   }
-  // 触及次数：洞里的历史 K 线（5 分钟线没盖到的更早那段用小时线）。
-  let to=gap_to.min(lf);
+  // 触及次数：洞里的历史 K 线（5 分钟线没盖到的更早那段用小时线）。账本还没整段补过（新起跟，或补次数上线前落的盘）
+  // 就把次数清零、按账本保留的 7 天历史 K 线整段重数一遍——历史 K 线是完整的，比上一任实时数到的那几段更全，也不会重复算。
+  let (replay_from,to)=if self.touches_backfilled {(gap_from,gap_to.min(lf))} else {
+   for b in self.ledger.b.values_mut() {b.tests=0;}
+   (now-ledger::FORGET_MS,lf.min(now))
+  };
   let five_from=b.fives.first().map_or(i64::MAX,|k|k.t);
-  let mut bars:Vec<(i64,i64,f64,f64)>=b.hours.iter().filter(|k|k.t>=gap_from&&k.t+HOUR_MS<=five_from.min(to)).map(|k|(k.t,HOUR_MS,k.h,k.l)).collect();
-  bars.extend(b.fives.iter().filter(|k|k.t>=gap_from&&k.t+5*M<=to).map(|k|(k.t,5*M,k.h,k.l)));
+  let mut bars:Vec<(i64,i64,f64,f64)>=b.hours.iter().filter(|k|k.t>=replay_from&&k.t+HOUR_MS<=five_from.min(to)).map(|k|(k.t,HOUR_MS,k.h,k.l)).collect();
+  bars.extend(b.fives.iter().filter(|k|k.t>=replay_from&&k.t+5*M<=to).map(|k|(k.t,5*M,k.h,k.l)));
   self.ledger.replay(&bars);
+  self.touches_backfilled=true;
   for (block,bin,n) in &b.sizes {self.sizes.add_n(*block,Some(*bin),*n);}
   let mut seen:std::collections::HashSet<(i64,u64,u64)>=self.ended.iter().map(|e|(e.end,e.price.to_bits(),e.initial.to_bits())).collect();
   for e in b.ended {if seen.insert((e.end,e.price.to_bits(),e.initial.to_bits())) {self.ended.push(e);}}
@@ -459,10 +484,13 @@ impl State {
   let premium=match (self.spot_at(end),self.close_at(end)) {(Some(s),Some(p))=>pct(p,s),_=>None};
   let prem_p=premium.and_then(|v|self.samples.premium.pctile(v));
   let fund_p=self.funding.and_then(|v|self.samples.funding.pctile(v));
+  // 等于样本里最常见的那个值（交易所默认费率这类常态）的不算异常，分位照写。
+  let flag=|p:Option<u8>,x:Option<f64>,samples:&Samples|p.filter(|_|!x.is_some_and(|x|samples.is_mode(x)));
+  let (oi_f,fund_f,prem_f)=(flag(oi_p,pct1h,&self.samples.oi),flag(fund_p,self.funding,&self.samples.funding),flag(prem_p,premium,&self.samples.premium));
   let extreme=|p:Option<u8>|p.is_some_and(|p|p>=EXTREME_HI||p<=EXTREME_LO);
-  let show=extreme(oi_p)||extreme(fund_p)||extreme(prem_p);
-  // 最极端的那一项（首页分类用）：离 50 最远。
-  let strongest=[("oi",oi_p),("funding",fund_p),("funding",prem_p)].into_iter().filter_map(|(c,p)|p.map(|p|(c,(f64::from(p)-50.0).abs()/50.0))).max_by(|a,b|a.1.total_cmp(&b.1));
+  let show=extreme(oi_f)||extreme(fund_f)||extreme(prem_f);
+  // 最极端的那一项（首页分类用）：离 50 最远，只在极端的里挑。
+  let strongest=[("oi",oi_f),("funding",fund_f),("funding",prem_f)].into_iter().filter(|(_,p)|extreme(*p)).filter_map(|(c,p)|p.map(|p|(c,(f64::from(p)-50.0).abs()/50.0))).max_by(|a,b|a.1.total_cmp(&b.1));
   let v=json!({"show":show,
    "oi":{"pct1h":pct1h.map(|v|round(v,2)),"combo":combo,"pctile":oi_p},
    "funding":{"rate":self.funding,"pctile":fund_p},
@@ -481,7 +509,7 @@ impl State {
    if let Some(thr)=events::threshold(&slides) {
     let abs:Vec<f64>=slides.iter().map(|s|s.abs()).collect();
     for s in events::spans(t0,&net,thr,since) {
-     all.push(Ev::Flow{from:s.from,to:s.to,net:s.sum,px_pct:span_px(s.from,s.to),pctile:rank(&abs,s.peak)});
+     all.push(Ev::Flow{from:s.from,to:s.to,net:s.sum,px_pct:span_px(s.from,s.to),pctile:rank(&abs,s.peak).unwrap_or(95)});
     }
    }
    let liq:Vec<f64>=self.flow.v.iter().map(|r|f64::from(r[2])+f64::from(r[3])).collect();
@@ -490,14 +518,19 @@ impl State {
     let abs:Vec<f64>=slides.iter().map(|s|s.abs()).collect();
     for s in events::spans(t0,&liq,thr,since) {
      let long=self.flow.sum(2,s.from,s.to)>=self.flow.sum(3,s.from,s.to);
-     all.push(Ev::Liq{from:s.from,to:s.to,usd:s.sum,long,px_pct:span_px(s.from,s.to),pctile:rank(&abs,s.peak)});
+     all.push(Ev::Liq{from:s.from,to:s.to,usd:s.sum,long,px_pct:span_px(s.from,s.to),pctile:rank(&abs,s.peak).unwrap_or(95)});
     }
    }
   }
-  for (at,p) in events::oi_jumps(&self.oi5,since) {all.push(Ev::Oi{at,pct:p});}
+  for (first,at,p) in events::oi_jumps(&self.oi5,since) {all.push(Ev::Oi{first,at,pct:p});}
   all.extend(events::wall_events(&self.ended,|t|self.close_at(t+M),wall_floor,since));
-  for b in &self.broken {all.push(Ev::Broken{at:b.at,low:sig(ledger::low(b.k)),high:sig(ledger::high(b.k)),was_support:b.was_support});}
+  all.extend(events::broken_events(&self.broken));
   events::newest(all,end)
+ }
+
+ /// 近 3 天有爆仓的分钟里，每分钟爆仓额的中位数（价位上的爆仓段要过它才显示）；值太单一为 None。
+ fn liq_minute_p50(&self)->Option<f64> {
+  quantile_distinct(self.flow.v.iter().map(|r|f64::from(r[2])+f64::from(r[3])).filter(|v|*v>0.0).collect(),0.5)
  }
 
  fn level_json(v:&ledger::Level)->Value {
@@ -508,7 +541,7 @@ impl State {
  }
 
  /// 这一分钟的答复。`tracked` 是注册表此刻在不在跟。
- pub fn compute(&self,now:i64,tracked:bool)->Snap {
+ pub fn compute(&mut self,now:i64,tracked:bool)->Snap {
   let end=if self.last_bar>0 {self.last_bar+M} else {now.div_euclid(M)*M};
   let reference=if self.last_bar>0 {end} else {self.created};
   let stale=(now-reference>STALE_MS&&(self.last_bar>0||self.booted)).then_some(now-reference);
@@ -531,8 +564,18 @@ impl State {
    json!({"low":sig(r.low),"high":sig(r.high),"sinceMs":r.since_ms,"lowFillUsd":usd(low_fill),"lowTests":low_tests,"highFillUsd":usd(high_fill),"highTests":high_tests})
   });
   let refs=self.refs(end,range);
-  let levels=price.map(|p|self.ledger.levels(p,atr4h,&self.live,&refs,now)).unwrap_or_default();
+  let (wall_floor,_)=self.wall_sizes();
+  let liq_floor=self.liq_minute_p50();
+  let mut levels=price.map(|p|self.ledger.levels(p,atr4h,&self.live,&refs,now)).unwrap_or_default();
+  for v in &mut levels {trim_segments(v,liq_floor,wall_floor);}
   let (position,show,strongest)=self.position(end);
+  // 同一类极端一直在，`atMs` 就停在它开始的那一分钟。
+  self.position_since=match (show,strongest,self.position_since) {
+   (true,Some((cat,_)),Some((was,since))) if was==cat=>Some((cat,since)),
+   (true,Some((cat,_)),_)=>Some((cat,end)),
+   _=>None,
+  };
+  let position_at=self.position_since.map_or(end,|(_,t)|t);
   let (wall_floor,sizes)=self.wall_sizes();
   let evs=if price.is_some() {self.events(end,wall_floor)} else {Vec::new()};
   let p=price.unwrap_or(0.0);
@@ -541,16 +584,16 @@ impl State {
    "levels":levels.iter().map(Self::level_json).collect::<Vec<_>>(),
    "position":position,
    "events":evs.iter().map(|e|e.json(p)).collect::<Vec<_>>()});
-  let board=self.board_item(now,p,&levels,&evs,show,strongest,&position,wall_floor,sizes);
+  let board=self.board_item(now,p,&levels,&evs,show,strongest,&position,position_at,wall_floor,sizes);
   let change_pct=match (self.close_at(end-DAY_MS),price) {(Some(a),Some(b))=>pct(a,b).map(|v|round(v,2)),_=>None};
   Snap{json,board,price:price.map(sig),change_pct}
  }
 
  /// 首页那一行：每条要点的权重 = 规模分位 × 近度 × 叠加系数（只用于排序）。
  #[allow(clippy::too_many_arguments)]
- fn board_item(&self,now:i64,price:f64,levels:&[ledger::Level],evs:&[Ev],show:bool,strongest:Option<(&'static str,f64)>,position:&Value,wall_floor:f64,sizes:&Sizes)->Option<BoardItem> {
+ fn board_item(&self,now:i64,price:f64,levels:&[ledger::Level],evs:&[Ev],show:bool,strongest:Option<(&'static str,f64)>,position:&Value,position_at:i64,wall_floor:f64,sizes:&Sizes)->Option<BoardItem> {
   let recency=|at:i64|(-((now-at).max(0) as f64)/RECENCY_MS).exp();
-  let size=|usd:f64|if sizes.count()>=WALL_MIN_SAMPLES {f64::from(sizes.rank(usd))/100.0} else {0.9};
+  let size=|usd:f64|if sizes.count()>=WALL_MIN_SAMPLES {sizes.rank(usd).map_or(0.9,|r|f64::from(r)/100.0)} else {0.9};
   let mut items:Vec<(f64,&'static str,Value,i64)>=Vec::new();
   for e in evs {
    let (s,cat)=match e {
@@ -566,12 +609,14 @@ impl State {
   for v in levels.iter().filter(|v|v.wall_usd>0.0&&v.wall_usd>=wall_floor&&v.dist_pct.abs()<=BOARD_LEVEL_DIST&&matches!(v.wall_state,Some("live")|Some("reducing"))) {
    let mut top=Self::level_json(v);
    top["kind"]=json!("level");
-   items.push((size(v.wall_usd)*(1.0+0.25*v.refs.len() as f64),"book",top,now));
+   // 时刻 = 这堵墙最早挂出来的那一刻（没有就是最后一次触及），不是这一分钟。
+   let at=v.wall_first.or(v.touch.1).unwrap_or(now);
+   items.push((size(v.wall_usd)*(1.0+0.25*v.refs.len() as f64),"book",top,at));
   }
   if show && let Some((cat,s))=strongest {
    let mut top=position.clone();
    top["kind"]=json!("position");
-   items.push((s,cat,top,now));
+   items.push((s,cat,top,position_at));
   }
   let count=items.len();
   let (weight,cat,top,at)=items.into_iter().max_by(|a,b|a.0.total_cmp(&b.0))?;
@@ -584,7 +629,7 @@ impl State {
   let ledger:Vec<Value>=self.ledger.b.iter().map(|(k,b)|json!([k,b.w,b.wm,b.fb,b.fs,b.lq,b.tests,b.first,b.last,b.active,b.role,b.pos,b.broken])).collect();
   let s=&self.samples;
   let pairs=|x:&Samples|x.pairs().into_iter().map(|(t,v)|json!([t,v])).collect::<Vec<_>>();
-  json!({"v":1,"until":self.until,"ledger":ledger,
+  json!({"v":1,"until":self.until,"tb":self.touches_backfilled,"ledger":ledger,
    "samples":{"n15":pairs(&s.n15),"n1h":pairs(&s.n1h),"n4h":pairs(&s.n4h),"n24":pairs(&s.n24),"oi":pairs(&s.oi),"funding":pairs(&s.funding),"premium":pairs(&s.premium)},
    "hours":self.hours.iter().map(|(t,h)|json!([t,h.o,h.h,h.l,h.c,h.net])).collect::<Vec<_>>(),
    "oi1h":self.oi1h.iter().map(|(t,v)|json!([t,v])).collect::<Vec<_>>()})
@@ -595,6 +640,7 @@ impl State {
   if v["v"].as_i64()!=Some(1) {return None}
   let mut s=Self::new(base,now);
   s.until=v["until"].as_i64()?;
+  s.touches_backfilled=v["tb"].as_bool().unwrap_or(false);
   let f=|x:&Value|x.as_f64();
   let i=|x:&Value|x.as_i64();
   for r in v["ledger"].as_array()? {
@@ -689,7 +735,7 @@ mod tests {
 
  #[test]
  fn compute_has_the_contract_shape_with_insufficient_history() {
-  let s=flat_state(300,50_000.0);
+  let mut s=flat_state(300,50_000.0);
   let snap=s.compute(T0+300*M+5_000,true);
   let j=&snap.json;
   assert_eq!(j["base"],"TEST");
@@ -743,6 +789,93 @@ mod tests {
   let rows=j["flow"]["rows"].as_array().unwrap();
   assert_eq!(rows[0]["netUsd"],json!(15_000.0));
   assert_eq!(rows[1]["netUsd"],Value::Null);
+ }
+
+ #[test]
+ fn event_ids_are_unique_and_the_same_on_every_recompute() {
+  let mut s=flat_state(300,100.0);
+  let k=ledger::key(99.0);
+  // 一根大阴线同一分钟连破两格、下一分钟再破一格；两堵不同价的墙在同一毫秒被吃穿。
+  s.broken=vec![Broke{k,at:T0+200*M,was_support:true},Broke{k:k+1,at:T0+200*M,was_support:true},Broke{k:k-1,at:T0+201*M,was_support:true}];
+  let eaten=|price:f64|Ended{bid:false,price,initial:2e6,filled:2e6,left:0.0,cancelled:false,end:T0+250*M+123};
+  s.ended=vec![eaten(100.5),eaten(101.0)];
+  let ids=|s:&mut State,now:i64|{
+   let snap=s.compute(now,true);
+   (snap.json["events"].as_array().unwrap().iter().map(|e|(e["id"].as_str().unwrap().to_string(),e["t"].as_str().unwrap().to_string())).collect::<Vec<_>>(),snap.board.map(|b|b.at))
+  };
+  let (first,at1)=ids(&mut s,T0+300*M+5_000);
+  let (again,at2)=ids(&mut s,T0+303*M+5_000);
+  let unique:std::collections::HashSet<&String>=first.iter().map(|(id,_)|id).collect();
+  assert_eq!(unique.len(),first.len(),"{first:?}");
+  assert_eq!(first.iter().filter(|(_,t)|t=="levelBroken").count(),1,"three buckets of one level broke: one event, not re-emitted");
+  assert_eq!(first.iter().filter(|(_,t)|t=="wallEaten").count(),2);
+  assert_eq!(first,again,"same data, same ids");
+  assert_eq!(at1,at2);
+  assert_eq!(at1,Some(T0+250*M+123),"atMs is the fact's time, not the recompute's");
+ }
+
+ #[test]
+ fn position_at_is_when_the_extreme_started_and_the_mode_is_never_extreme() {
+  let mut s=flat_state(300,100.0);
+  // 30 天费率：600 个零散的低值 + 120 个交易所默认值（默认值排在 P92，但它是常态）。
+  for i in 0..720 {
+   let v=if i<600 {f64::from(i)*5e-8} else {5e-5};
+   s.samples.funding.put(T0-(720-i64::from(i))*HOUR_MS,v);
+  }
+  s.funding=Some(5e-5);
+  let snap=s.compute(T0+300*M+5_000,true);
+  assert!(snap.json["position"]["funding"]["pctile"].as_u64().unwrap()>=90);
+  assert_eq!(snap.json["position"]["show"],false,"the default rate is the mode: not flagged");
+  assert!(snap.board.is_none());
+  s.funding=Some(0.01);
+  let a=s.compute(T0+300*M+5_000,true).board.unwrap();
+  assert_eq!((a.cat,a.at),("funding",T0+300*M));
+  let mut p=Pending::default();
+  p.bars.push(Bar{t:T0+300*M,o:100.0,h:100.0,l:100.0,c:100.0,spot:None});
+  s.fold(p,T0+301*M);
+  let b=s.compute(T0+301*M+5_000,true).board.unwrap();
+  assert_eq!(b.at,T0+300*M,"still the minute it became extreme");
+ }
+
+ #[test]
+ fn level_segments_below_their_floor_are_zeroed() {
+  let level=|wall:f64,fill:f64,liq:f64|ledger::Level{k:0,low:1.0,high:1.01,bid:true,dist_pct:-1.0,wall_usd:wall,wall_held_ms:0,
+   wall_state:Some("live"),wall_first:Some(1),fill_buy:fill,fill_sell:fill*0.01,liq,tests:3,touch:(None,None),refs:vec![],weight:1.0};
+  let mut v=level(103_000.0,4_300_000.0,456.0);
+  trim_segments(&mut v,Some(20_000.0),50_000.0);
+  assert_eq!((v.wall_usd,v.liq,v.fill_sell),(103_000.0,0.0,0.0),"wall passes its P90, liq is noise, a 1% fill side is noise");
+  let mut v=level(50_000.0,4_300_000.0,200_000.0);
+  trim_segments(&mut v,Some(20_000.0),200_000.0);
+  assert_eq!((v.wall_usd,v.wall_state,v.liq),(0.0,None,200_000.0),"small wall below both floors goes; liq above both stays");
+  let mut v=level(0.0,1_000_000.0,15_000.0);
+  trim_segments(&mut v,Some(20_000.0),0.0);
+  assert_eq!(v.liq,0.0,"below the symbol's own liquidation-minute median");
+ }
+
+ #[test]
+ fn touches_are_recounted_once_for_ledgers_saved_before_the_backfill() {
+  let mut s=flat_state(10,100.0);
+  let k=ledger::key(99.0);
+  let mut b=Boot{gap:(T0-HOUR_MS,T0),..Boot::default()};
+  b.walls.insert(k,(600.0,10.0));
+  b.hours=vec![K{t:T0-30*HOUR_MS,o:100.0,h:100.0,l:98.9,c:100.0},K{t:T0-20*HOUR_MS,o:100.0,h:100.0,l:98.9,c:100.0},K{t:T0-2*HOUR_MS,o:100.0,h:100.0,l:99.5,c:100.0}];
+  s.apply(b,T0+10*M);
+  assert!(s.touches_backfilled);
+  assert_eq!(s.ledger.b[&k].tests,2,"both touches a day and more back count, not only the gap");
+  // 下一任：落过盘带着标记，只补洞，不重复数。
+  let mut again=State::restore("TEST",&s.payload(),T0+20*M).unwrap();
+  assert!(again.touches_backfilled);
+  let mut b=Boot{gap:(T0+10*M,T0+20*M),..Boot::default()};
+  b.hours=vec![K{t:T0-30*HOUR_MS,o:100.0,h:100.0,l:98.9,c:100.0}];
+  again.apply(b,T0+20*M);
+  assert_eq!(again.ledger.b[&k].tests,2);
+  // 标记之前落的盘：次数清零按历史重数（不会在原来的基础上再加）。
+  let mut legacy=State::restore("TEST",&s.payload(),T0+20*M).unwrap();
+  legacy.touches_backfilled=false;
+  let mut b=Boot{gap:(T0+10*M,T0+20*M),..Boot::default()};
+  b.hours=vec![K{t:T0-30*HOUR_MS,o:100.0,h:100.0,l:98.9,c:100.0}];
+  legacy.apply(b,T0+20*M);
+  assert_eq!(legacy.ledger.b[&k].tests,1);
  }
 
  #[test]

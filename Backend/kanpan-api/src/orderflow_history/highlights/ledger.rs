@@ -74,6 +74,8 @@ pub(super) struct Ref {pub name:&'static str,pub price:f64}
 pub(super) struct Level {
  pub k:i64,pub low:f64,pub high:f64,pub bid:bool,pub dist_pct:f64,
  pub wall_usd:f64,pub wall_held_ms:i64,pub wall_state:Option<&'static str>,
+ /// 此刻挂着的墙里最早挂出来的那一刻（首页那一行的 `atMs`）。
+ pub wall_first:Option<i64>,
  pub fill_buy:f64,pub fill_sell:f64,pub liq:f64,pub tests:u32,pub touch:(Option<i64>,Option<i64>),
  pub refs:Vec<&'static str>,pub weight:f64,
 }
@@ -240,7 +242,8 @@ impl Ledger {
   let cancelled:f64=walls.iter().map(|w|w.cancelled()).sum();
   let wall_state=if !walls.is_empty() {Some(if initial>0.0&&cancelled/initial>=REDUCING {"reducing"} else {"live"})}
    else if buckets.iter().any(|b|b.broken) {Some("broken")} else {None};
-  let wall_held_ms=match walls.iter().map(|w|w.first).min() {
+  let wall_first=walls.iter().map(|w|w.first).min();
+ let wall_held_ms=match wall_first {
    Some(first)=>(now-first).max(0),
    None=>(buckets.iter().map(|b|b.wm).fold(0.0,f64::max)*60_000.0) as i64,
   };
@@ -248,7 +251,7 @@ impl Ledger {
   let mut names:Vec<&'static str>=refs.iter().filter(|r|r.price>0.0&&margin(r.price)).map(|r|r.name).collect();
   names.dedup();
   Level{k:lo,low:low_px,high:high_px,bid:mid<price,dist_pct:(mid-price)/price*100.0,
-   wall_usd,wall_held_ms,wall_state,
+   wall_usd,wall_held_ms,wall_state,wall_first,
    fill_buy:buckets.iter().map(|b|b.fb).sum(),fill_sell:buckets.iter().map(|b|b.fs).sum(),liq:buckets.iter().map(|b|b.lq).sum(),
    tests:buckets.iter().map(|b|b.tests).max().unwrap_or(0),
    touch:(buckets.iter().filter_map(|b|b.first).min(),buckets.iter().filter_map(|b|b.last).max()),
