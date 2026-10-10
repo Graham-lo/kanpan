@@ -56,13 +56,15 @@ import KanpanCore
     #expect(model.visibleRows.count == 2)
   }
 
-  @Test func chipFiltersAndCounts() async {
+  @Test func chipFilters() async {
     let model = HomeModel(defaults: UserDefaults(suiteName: "home.tests.\(UUID())")!)
     await model.load(bases: [], reorder: true) { _ in
       board([row("BTC", at: 1, cat: .book), row("ETH", at: 2, cat: .oi), row("SOL", at: 3, cat: .book)])
     }
-    #expect(model.count(.cat(.book)) == 2)
-    #expect(model.count(.cat(.funding)) == 0)
+    model.chip = .cat(.book)
+    #expect(model.visibleRows.map(\.base) == ["BTC", "SOL"])
+    model.chip = .cat(.funding)
+    #expect(model.visibleRows.isEmpty)
     model.chip = .cat(.oi)
     #expect(model.visibleRows.map(\.base) == ["ETH"])
   }

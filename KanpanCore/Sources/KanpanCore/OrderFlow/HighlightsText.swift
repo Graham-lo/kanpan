@@ -327,7 +327,11 @@ public enum HighlightsText {
     }
   }
 
-  public static func pctileWord(_ p: Int) -> String { T.pctile.fill(["n": "\(min(100, max(0, p)))"]) }
+  /// 30 天分位写成箭头 + 数：≥ 50 写「↑N」，< 50 写「↓N」（N 是 1–100 的那个分位）。
+  public static func pctileWord(_ p: Int) -> String {
+    let n = min(100, max(0, p))
+    return (n >= 50 ? T.pctileUp : T.pctileDown).fill(["n": "\(n)"])
+  }
 
   // MARK: 事件
 

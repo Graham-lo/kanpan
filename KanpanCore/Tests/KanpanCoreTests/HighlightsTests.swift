@@ -224,7 +224,10 @@ struct HighlightsTests {
     #expect(t[0].value == "+0.2%")
     #expect(t[0].fact == "增仓上涨")
     #expect(t[1].value == "\u{2212}0.0015%")
-    #expect(t[1].fact == "30 天第 5 位")
+    #expect(t[1].fact == "↓5")
+    #expect(t[2].fact == "↑99")
+    #expect(HighlightsText.pctileWord(50) == "↑50")
+    #expect(HighlightsText.pctileWord(49) == "↓49")
     #expect(t[2].value == "+0.06%")
     #expect(t[2].pctile == 99)
     #expect(HighlightsText.comboWord(.oiDownPxDown) == "减仓下跌")
@@ -257,7 +260,7 @@ struct HighlightsTests {
     let fr = HighlightsBoard.Row(base: "XDP", favorite: false, count: 1, cat: .funding, tier: 2,
                                  top: .position(.init(show: true, oi: nil, funding: .init(rate: -0.0026, pctile: 1), spotPremium: .init(pct: 0.02, pctile: 60))),
                                  price: 0.1072, changePct: 4.3, atMs: 0)
-    #expect(HighlightsText.homeFact(fr, zone: Self.utc8).plain == "费率 \u{2212}0.26% · 30 天第 1 位")
+    #expect(HighlightsText.homeFact(fr, zone: Self.utc8).plain == "费率 \u{2212}0.26% · ↓1")
     #expect(HighlightsText.focusID(fr) == nil)
   }
 

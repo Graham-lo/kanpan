@@ -208,7 +208,8 @@ public enum HighlightTerm: String, CaseIterable, Sendable {
   case oiDownPxUp
   case oiUpPxDown
   case oiDownPxDown
-  case pctile
+  case pctileUp
+  case pctileDown
   case events
   case eventsCaption
   case buyWall

@@ -69,14 +69,6 @@ final class HomeModel {
     }
   }
 
-  func count(_ chip: Chip) -> Int {
-    let rows = shown ?? []
-    switch chip {
-    case .all: return rows.count
-    case .cat(let c): return rows.lazy.filter { $0.cat == c }.count
-    }
-  }
-
   /// 新拉到的并进正在显示的：顺序不动，已有的换成新数据；没了的留着旧数据；新来的（或同一只更新了的）只计数。
   static func merge(shown: [HighlightsBoard.Row], latest: [HighlightsBoard.Row]) -> (rows: [HighlightsBoard.Row], fresh: Int) {
     let byBase = Dictionary(latest.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })

@@ -163,7 +163,7 @@ private struct HomeMovesView: View {
     }
   }
 
-  // 全部 / 盘口 / 持仓 / 费率，带条数。
+  // 全部 / 盘口 / 持仓 / 费率 / 波动，只放字。
   private var chips: some View {
     let items: [(HomeModel.Chip, String, String)] = [
       (.all, HighlightTerm.all.text, "all"), (.cat(.book), HighlightTerm.catBook.text, "book"),
@@ -177,13 +177,8 @@ private struct HomeMovesView: View {
           guard !on else { return }
           Haptics.tap(); model.chip = chip
         } label: {
-          HStack(spacing: Space.xs) {
-            if case .cat(let c) = chip { Circle().fill(HomeCategory.tint(c, t)).frame(width: 6, height: 6) }
-            Text(title).font(on ? TypeScale.controlOn : TypeScale.footnote)
-            if model.shown != nil {
-              Text("\(model.count(chip))").font(TypeScale.caption2).monospacedDigit().foregroundStyle(on ? t.ink2 : t.ink3)
-            }
-          }
+          // 只放字：不带条数、不带色点（用户 10-10 真机反馈）。
+          Text(title).font(on ? TypeScale.controlOn : TypeScale.footnote)
           .foregroundStyle(on ? t.ink : t.ink2)
           .padding(.horizontal, Space.m)
           .frame(height: 30)
