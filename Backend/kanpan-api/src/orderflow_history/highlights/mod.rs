@@ -185,7 +185,8 @@ enum Job {
  Purge,
 }
 enum Done {
- Boot{base:String,restored:Option<Value>,boot:Box<fetch::Boot>},
+ /// `started`：快路那份带上请求到的时刻（「观察中」从它算，和快路答复里的一致）。
+ Boot{base:String,restored:Option<Value>,boot:Box<fetch::Boot>,started:Option<i64>},
  Oi{base:String,five:Vec<(i64,f64)>,hour:Vec<(i64,f64)>,funding:Vec<(i64,f64)>},
  Funding(HashMap<String,f64>),
 }
@@ -228,7 +229,7 @@ impl Drop for Abort {fn drop(&mut self) {self.0.abort();}}
 fn receive(states:&mut HashMap<String,State>,booting:&mut HashSet<String>,d:Done) {
  let now=now_ms();
  match d {
-  Done::Boot{base,restored,boot}=>{
+  Done::Boot{base,restored,boot,started}=>{
    booting.remove(&base);
    // 接口快路补齐时引擎可能还没给它建状态（起跟是在请求里起的，状态要等下一拍）：在跟就现在建。
    if !states.contains_key(&base) {
@@ -238,7 +239,7 @@ fn receive(states:&mut HashMap<String,State>,booting:&mut HashSet<String>,d:Done
    let Some(s)=states.get_mut(&base) else {return};
    // 快路与引擎自己的起步都补齐了：只认先到的那份，不然账本里补的那段会加两遍。
    if s.booted {return}
-   let started=s.created.min(s.live_from.unwrap_or(i64::MAX));
+   let started=started.unwrap_or_else(||s.created.min(s.live_from.unwrap_or(i64::MAX)));
    boot_state(s,restored,*boot,now,started);
    tracing::info!("Orderflow highlights: {base} ready ({} hours, {} ledger buckets, {} oi points)",s.hours.len(),s.ledger.b.len(),s.oi5.len());
    // 补齐就出一份，不等下一拍。
@@ -355,7 +356,7 @@ async fn worker(pool:PgPool,mut jobs:mpsc::UnboundedReceiver<Job>,done:mpsc::Sen
     let until=restored.as_ref().and_then(|v|v["until"].as_i64()).filter(|u|*u>0).unwrap_or(0);
     let from=until.max(now-3*stats::DAY_MS).min(live_from);
     let boot=fetch::boot(&pool,&base,from,live_from,now).await;
-    Some(Done::Boot{base,restored,boot:Box::new(boot)})
+    Some(Done::Boot{base,restored,boot:Box::new(boot),started:None})
    },
    Job::Oi{base,hourly,price}=>{
     let (five,hour)=fetch::oi(&base,hourly,price,now_ms()).await;
@@ -436,7 +437,7 @@ async fn fill(base:String,q:Arc<Quick>) {
  fetch::boot_into(pool,&base,from,live_from,now,&q.boot).await;
  let boot=q.boot.lock().unwrap_or_else(|e|e.into_inner()).clone();
  let tx=INJECT.lock().unwrap_or_else(|e|e.into_inner()).clone();
- if let Some(tx)=tx {let _=tx.send(Done::Boot{base:base.clone(),restored,boot:Box::new(boot)}).await;}
+ if let Some(tx)=tx {let _=tx.send(Done::Boot{base:base.clone(),restored,boot:Box::new(boot),started:Some(q.started)}).await;}
  let _=q.done.send(true);
  QUICK.lock().unwrap_or_else(|e|e.into_inner()).remove(&base);
 }
