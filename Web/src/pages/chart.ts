@@ -392,6 +392,8 @@ function makeCell(i: number): Cell {
     onViewChange: (t0, t1) => linkView(cell, t0, t1),
     onViewSettled: noteViews,
   })
+  // 先选工具再增加图格（或首屏还没建好图格）：新画布必须接上工具栏当前拿着的工具。
+  cell.chart.setTool(drawTool())
   cell.chart.setPaneRatios(sizes.panes ?? null)
   cell.chart.setIndicators(structuredClone(st.ind))
   if (st.params) for (const [k, p] of Object.entries(st.params)) cell.chart.params[k as IndicatorId] = structuredClone(p)
