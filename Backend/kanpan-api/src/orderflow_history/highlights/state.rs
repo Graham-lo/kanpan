@@ -269,6 +269,12 @@ impl State {
   for (m,(long,short,price)) in &b.liq {
    if *m>=gap_from&&*m<gap_to {self.ledger.liq(*price,long+short,*m,px);}
   }
+  // 触及次数：洞里的历史 K 线（5 分钟线没盖到的更早那段用小时线）。
+  let to=gap_to.min(lf);
+  let five_from=b.fives.first().map_or(i64::MAX,|k|k.t);
+  let mut bars:Vec<(i64,i64,f64,f64)>=b.hours.iter().filter(|k|k.t>=gap_from&&k.t+HOUR_MS<=five_from.min(to)).map(|k|(k.t,HOUR_MS,k.h,k.l)).collect();
+  bars.extend(b.fives.iter().filter(|k|k.t>=gap_from&&k.t+5*M<=to).map(|k|(k.t,5*M,k.h,k.l)));
+  self.ledger.replay(&bars);
   for (block,bin,n) in &b.sizes {self.sizes.add_n(*block,Some(*bin),*n);}
   let mut seen:std::collections::HashSet<(i64,u64,u64)>=self.ended.iter().map(|e|(e.end,e.price.to_bits(),e.initial.to_bits())).collect();
   for e in b.ended {if seen.insert((e.end,e.price.to_bits(),e.initial.to_bits())) {self.ended.push(e);}}

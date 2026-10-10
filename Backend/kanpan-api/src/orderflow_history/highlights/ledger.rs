@@ -150,6 +150,21 @@ impl Ledger {
   out
  }
 
+ /// 起步补洞：落盘之后到这一任开始收之前那一段的历史 K 线（`(开始时刻, 根长, 高, 低)`，按时间升序）只补触及次数与
+ /// 首末触及——已破只由实时的线判。连着几根都碰到同一格算一次（相邻两根的间隔不超过根长与 5 分钟里大的那个）。
+ pub fn replay(&mut self,bars:&[(i64,i64,f64,f64)]) {
+  let mut last:std::collections::HashMap<i64,i64>=std::collections::HashMap::new();
+  for &(t,len,h,l) in bars {
+   if !(h>0.0&&l>0.0&&h>=l) {continue}
+   for (&k,b) in self.b.range_mut(key(l)..=key(h)) {
+    if last.insert(k,t).is_none_or(|p|t-p>len.max(TEST_GAP_MS)) {b.tests+=1;}
+    b.first=Some(b.first.map_or(t,|f|f.min(t)));
+    b.last=Some(b.last.map_or(t,|x|x.max(t)));
+    b.active=b.active.max(t);
+   }
+  }
+ }
+
  /// 7 天没有任何记账的格删掉。
  pub fn expire(&mut self,now:i64) {self.b.retain(|_,b|now-b.active<=FORGET_MS);}
 
@@ -244,6 +259,21 @@ impl Ledger {
 #[cfg(test)]
 mod tests {
  use super::*;
+
+ #[test]
+ fn replay_counts_each_visit_once_and_keeps_touch_times() {
+  let mut l=Ledger::default();
+  let k=key(100.0);
+  l.b.insert(k,Bucket{w:1.0,..Default::default()});
+  l.b.insert(key(120.0),Bucket{w:1.0,..Default::default()});
+  let h=60*60_000;let f=5*60_000;
+  // 两根小时线连着碰（一次），离开，再用三根 5 分钟线连着碰（又一次）。
+  l.replay(&[(0,h,100.2,99.8),(h,h,100.2,99.9),(2*h,h,110.0,105.0),(3*h,f,100.1,99.9),(3*h+f,f,100.1,99.9),(3*h+2*f,f,100.1,99.9)]);
+  let b=&l.b[&k];
+  assert_eq!(b.tests,2);
+  assert_eq!((b.first,b.last),(Some(0),Some(3*h+2*f)));
+  assert_eq!(l.b[&key(120.0)].tests,0);
+ }
  const M:i64=60_000;
 
  fn wall(price:f64,usd:f64)->Live {Live{bid:true,price,usd,initial:usd,filled:0.0,first:0}}

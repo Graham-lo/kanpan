@@ -189,10 +189,15 @@ pub(super) fn push(ring:&mut VecDeque<Snapshot>,snap:Snapshot) {
  }
 }
 
-/// 离 `target` 最近、相差不超过 `tol` 的那份。
-fn near(ring:&VecDeque<Snapshot>,target:i64,tol:i64)->Option<&Snapshot> {
- ring.iter().filter(|s|(s.at-target).abs()<=tol).min_by_key(|s|(s.at-target).abs())
+/// 离 `target` 相差不超过 `tol` 的那几份，近的在前。一只在最近那份里没有（冷启动补的那一天各合约的起点差几分钟、
+/// 币安前 150 进进出出）就往下一份找。
+fn near(ring:&VecDeque<Snapshot>,target:i64,tol:i64)->Vec<&Snapshot> {
+ let mut out:Vec<&Snapshot>=ring.iter().filter(|s|(s.at-target).abs()<=tol).collect();
+ out.sort_by_key(|s|(s.at-target).abs());
+ out
 }
+
+fn cell<'a>(then:&[&'a Snapshot],base:&str)->Option<&'a Cell> {then.iter().find_map(|s|s.cells.get(base))}
 
 /// 持仓变化（%）：只比两边都有的那几家。
 fn oi_change(now:&[Option<f64>;4],then:&[Option<f32>;4])->Option<f64> {
@@ -205,19 +210,19 @@ fn oi_change(now:&[Option<f64>;4],then:&[Option<f32>;4])->Option<f64> {
 pub(super) enum Kind {Oi,Gainers,Losers}
 const WINDOWS:[(&str,i64);3]=[("1h",HOUR_MS),("4h",4*HOUR_MS),("24h",24*HOUR_MS)];
 
-/// 拼一份榜：`then` 是窗口起点那份快照（24 时涨跌不用它）。
-pub(super) fn rank(kind:Kind,window:usize,latest:&HashMap<String,Cur>,then:Option<&Snapshot>,now:i64)->Value {
+/// 拼一份榜：`then` 是窗口起点附近的快照、近的在前（24 时涨跌不用它）。
+pub(super) fn rank(kind:Kind,window:usize,latest:&HashMap<String,Cur>,then:&[&Snapshot],now:i64)->Value {
  let mut rows:Vec<(f64,&String,&Cur)>=latest.iter().filter_map(|(b,c)| {
   let total:Option<f64>=c.oi.iter().flatten().copied().reduce(|a,b|a+b);
   let change=match kind {
    Kind::Oi=>{
     if total.unwrap_or(0.0)<MIN_OI_USD {return None}
-    oi_change(&c.oi,&then?.cells.get(b)?.oi)?
+    oi_change(&c.oi,&cell(then,b)?.oi)?
    },
    Kind::Gainers|Kind::Losers=>{
     if c.turnover<MIN_TURNOVER {return None}
     if WINDOWS[window].0=="24h" {c.change24?} else {
-     let old=then?.cells.get(b)?.px;
+     let old=cell(then,b)?.px;
      if !(old>0.0) {return None}
      (c.px/old-1.0)*100.0
     }
@@ -395,7 +400,7 @@ pub(in super::super) async fn market_board(Axum(_s):Axum<AppState>,headers:axum:
     Some((at,latest))=>{
      let span=WINDOWS[window].1;
      let then=near(&b.ring,at-span,if span>=24*HOUR_MS {40*M} else {10*M});
-     rank(kind,window,latest,then,now)
+     rank(kind,window,latest,&then,now)
     },
     None=>json!({"generatedAtMs":now,"rows":[]}),
    }
@@ -474,8 +479,8 @@ mod tests {
   let coarse:Vec<i64>=ring.iter().filter(|s|end-s.at>FINE_MS).map(|s|s.at.div_euclid(HOUR_MS)).collect();
   let mut d=coarse.clone();d.dedup();
   assert_eq!(coarse,d,"one per hour beyond 4.5h");
-  assert!(near(&ring,end-24*HOUR_MS,40*M).is_some());
-  assert!(near(&ring,end-HOUR_MS,10*M).is_some_and(|s|s.at==end-HOUR_MS));
+  assert!(!near(&ring,end-24*HOUR_MS,40*M).is_empty());
+  assert_eq!(near(&ring,end-HOUR_MS,10*M)[0].at,end-HOUR_MS);
  }
 
  #[test]
@@ -493,16 +498,25 @@ mod tests {
   for (b,px,oi) in [("A",100.0,1e6),("B",100.0,3.3e6),("C",40.0,1e5),("D",0.5,1e6)] {cells.insert(b.to_string(),Cell{px,oi:[Some(oi as f32),None,None,None]});}
   let then=Snapshot{at:0,cells};
   let bases=|v:&Value|v["rows"].as_array().unwrap().iter().map(|r|r["base"].as_str().unwrap().to_string()).collect::<Vec<_>>();
-  let oi=rank(Kind::Oi,0,&latest,Some(&then),5);
+  let oi=rank(Kind::Oi,0,&latest,&[&then],5);
   assert_eq!(bases(&oi),vec!["D","A","B"],"C below the OI floor");
   assert_eq!(oi["rows"][1]["changePct"],100.0);
   assert_eq!(oi["rows"][1]["oiUsd"],2e6);
-  assert_eq!(bases(&rank(Kind::Gainers,1,&latest,Some(&then),5)),vec!["C","A","B"],"D below turnover floor");
-  assert_eq!(bases(&rank(Kind::Losers,1,&latest,Some(&then),5)),vec!["B","A","C"]);
-  assert_eq!(bases(&rank(Kind::Gainers,2,&latest,None,5)),vec!["A","C","B"],"24h uses the venue's own change");
-  assert!(rank(Kind::Gainers,0,&latest,None,5)["rows"].as_array().unwrap().is_empty());
-  let r=&rank(Kind::Gainers,2,&latest,None,5)["rows"][0];
+  assert_eq!(bases(&rank(Kind::Gainers,1,&latest,&[&then],5)),vec!["C","A","B"],"D below turnover floor");
+  assert_eq!(bases(&rank(Kind::Losers,1,&latest,&[&then],5)),vec!["B","A","C"]);
+  assert_eq!(bases(&rank(Kind::Gainers,2,&latest,&[],5)),vec!["A","C","B"],"24h uses the venue's own change");
+  assert!(rank(Kind::Gainers,0,&latest,&[],5)["rows"].as_array().unwrap().is_empty());
+  let r=&rank(Kind::Gainers,2,&latest,&[],5)["rows"][0];
   for k in ["base","oiUsd","changePct","price"] {assert!(r.get(k).is_some(),"{k}");}
+ }
+
+ #[test]
+ fn a_base_missing_from_the_nearest_snapshot_falls_back_to_the_next() {
+  let latest=HashMap::from([("A".to_string(),Cur{px:110.0,src:BN,change24:None,oi:[Some(2e6),None,None,None],turnover:5e6})]);
+  let near_one=Snapshot{at:0,cells:HashMap::new()};
+  let next=Snapshot{at:5,cells:HashMap::from([("A".to_string(),Cell{px:100.0,oi:[Some(1e6),None,None,None]})])};
+  let v=rank(Kind::Gainers,0,&latest,&[&near_one,&next],9);
+  assert_eq!(v["rows"][0]["changePct"],10.0);
  }
 
  #[test]

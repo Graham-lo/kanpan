@@ -60,6 +60,8 @@ const TICK_OFFSET_MS:i64=12_000;
 static ON:AtomicBool=AtomicBool::new(false);
 static INBOX:LazyLock<Mutex<HashMap<String,Pending>>>=LazyLock::new(||Mutex::new(HashMap::new()));
 static SNAPS:LazyLock<RwLock<HashMap<String,Arc<Snap>>>>=LazyLock::new(||RwLock::new(HashMap::new()));
+/// 最近一次全市场费率（按 base）。
+static FUNDING:LazyLock<Mutex<HashMap<String,f64>>>=LazyLock::new(||Mutex::new(HashMap::new()));
 static ANSWERS:LazyLock<Answers<(String,bool)>>=LazyLock::new(||Answers::new(TTL));
 static BOARD_ANSWERS:LazyLock<Answers<(String,bool)>>=LazyLock::new(||Answers::new(TTL));
 
@@ -221,7 +223,11 @@ fn receive(states:&mut HashMap<String,State>,booting:&mut HashSet<String>,d:Done
    for (t,v) in hour {s.oi1h.insert(t,v);}
    for (t,v) in funding {s.samples.funding.put(t,v);}
   },
-  Done::Funding(rates)=>for (base,s) in states.iter_mut() {if let Some(r)=rates.get(base) {s.funding=Some(*r);}},
+  Done::Funding(rates)=>{
+   for (base,s) in states.iter_mut() {if let Some(r)=rates.get(base) {s.funding=Some(*r);}}
+   // 后起跟的那几只起步时就有费率，不用等下一个 5 分钟。
+   *FUNDING.lock().unwrap_or_else(|e|e.into_inner())=rates;
+  },
  }
 }
 
@@ -263,7 +269,13 @@ fn step(states:&mut HashMap<String,State>,booting:&mut HashSet<String>,jobs:&mps
   SNAPS.write().unwrap_or_else(|e|e.into_inner()).remove(&base);
  }
  let inbox=std::mem::take(&mut *INBOX.lock().unwrap_or_else(|e|e.into_inner()));
- for base in &tracked {states.entry(base.clone()).or_insert_with(||State::new(base,now));}
+ for base in &tracked {
+  states.entry(base.clone()).or_insert_with(||{
+   let mut s=State::new(base,now);
+   s.funding=FUNDING.lock().unwrap_or_else(|e|e.into_inner()).get(base).copied();
+   s
+  });
+ }
  for (base,p) in inbox {if let Some(s)=states.get_mut(&base) {s.fold(p,now);}}
  let mut snaps=HashMap::with_capacity(states.len());
  // 主币先补（冷启动时一百多只排队，打开最多的几只别排在后面）。
