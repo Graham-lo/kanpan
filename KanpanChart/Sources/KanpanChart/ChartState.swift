@@ -63,6 +63,15 @@ public struct ChartState: Sendable, Equatable {
     /// 量程被拉宽、K 线被压扁，画出来的线就和真实的价格结构对不上。放在 `input` 里，
     /// 这一项一变几何缓存（`InputCache` / `ViewportCache`）跟着整只换掉。
     public var overlaysAffectPriceRange: Bool = true
+    /// 自动分析层（`Prefs.autoLayers`，跟人走）：开着哪几样，目前只有公允价值缺口（`ChartRenderer+FVG`）。
+    /// 对比态（百分比轴）不画；不参与价格区间。
+    public var autoLayers: Set<AutoLayer> = []
+    /// 末根还在走（没收线）。自动分析层只拿已收线的 K 线生成（`closedBarCount`）。
+    ///
+    /// 不在渲染器里读系统时钟（`ChartState` 是纯值，见 `nowMs`）：宿主按 `BarSeries.closedCount(nowMs:)`
+    /// 判好喂进来。它只在 K 线收线的那一刻翻一次，所以不会让输入层每笔推送都多失效一次。出厂 `true`：
+    /// 实时图的末根几乎总在走，判错的代价也只是少一根参与生成，不会画出还会变的缺口。
+    public var lastBarLive: Bool = true
   }
 
   /// 看哪一段、多大：手势只改这一层。
@@ -202,6 +211,16 @@ public struct ChartState: Sendable, Equatable {
     get { input.overlaysAffectPriceRange }
     _modify { yield &input.overlaysAffectPriceRange }
   }
+  public var autoLayers: Set<AutoLayer> {
+    get { input.autoLayers }
+    _modify { yield &input.autoLayers }
+  }
+  public var lastBarLive: Bool {
+    get { input.lastBarLive }
+    _modify { yield &input.lastBarLive }
+  }
+  /// 前多少根已收线：末根还在走就少算它一根。自动分析层的 `closedCount` 一律读这个。
+  public var closedBarCount: Int { max(0, series.count - (lastBarLive ? 1 : 0)) }
   public var view: ViewWindow {
     get { viewport.view }
     _modify { yield &viewport.view }

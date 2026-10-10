@@ -53,6 +53,8 @@ public struct ChartRenderer {
   var orderFlowCache = OrderFlowCache()
   /// 大单与爆仓气泡每根向上 / 向下与门槛：盒子内按「序列身份 + 分钟账」自认，长驻不换。见 `ChartRenderer+BigTrades`。
   let bigTradeBarsCache = BigTradeBarsCache()
+  /// 公允价值缺口的区间：按「序列身份戳 + 根数 + 已收线根数」自认，长驻不换。见 `ChartRenderer+FVG`。
+  let fvgCache = FVGCache()
   /// 这一屏摆好的大单与爆仓气泡：和订单流色带同一套失效，另外分钟账一变也换。
   var bigTradeBubbleCache = BigTradeBubbleCache()
   /// 主力订单流的并墙（与视野无关的那一半）放到后台算：快照换了、还没算好时先拿同一只的上一份顶着画，
@@ -408,7 +410,11 @@ public struct ChartRenderer {
     drawPriceGrid(ctx, pane: main, r: r, L: L, scale: s)
     drawTimeGrid(ctx, L: L, scale: s)
     // 主力订单流垫在 K 线下面：先画线与淡底，再画蜡烛、均线、副图（2026-09-25：「K 线是主体」）。
-    if !state.percentAxis { drawOrderFlow(ctx, pane: main, range: r, L: L) }
+    // 公允价值缺口压在订单流上面、K 线下面（订单流是不透明预混色块，缺口是少量真透明）。
+    if !state.percentAxis {
+      drawOrderFlow(ctx, pane: main, range: r, L: L)
+      drawFVG(ctx, pane: main, range: r, L: L)
+    }
     drawCandles(ctx, pane: main, r: r, L: L, scale: s)
     drawExtrema(ctx, r: r, L: L, scale: s)
     if state.percentAxis { drawCompare(ctx, pane: main, r: r, L: L) }

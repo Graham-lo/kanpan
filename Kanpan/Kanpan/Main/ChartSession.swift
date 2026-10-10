@@ -243,6 +243,11 @@ final class ChartSession {
     // 横屏画线台：主图指标可以开着（顶行「指标」胶囊管），但价格轴只按 K 线定——
     // 挂一条 MA256 不该把量程拉宽、把蜡烛压扁，画出来的线才落在真实的价格结构上。
     result.overlaysAffectPriceRange = !input.drawingCanvasOnly
+    // 自动分析层（公允价值缺口）跟人走：面板里一拨，下一帧就画 / 不画。只拿已收线的 K 线生成，
+    // 末根收没收按交易所周期边界判（`BarSeries.closedCount`）；它只在收线那一刻翻，不会每笔推送都失效输入层。
+    // 横屏画线台里跟主图指标同一颗「指标」胶囊走：胶囊关掉 = 一整屏原始 K 线，缺口也收起。
+    result.autoLayers = input.drawingCanvasOnly && !prefs.drawingOverlaysShown ? [] : Set(prefs.autoLayers)
+    result.lastBarLive = s.closedCount(nowMs: Int64(Date().timeIntervalSince1970 * 1000)) < s.count
     // 持仓量和衍生统计分开认：网关线路上的替身有持仓量历史（kanpan-api 代问 OKX），
     // 多空比、主动买卖、基差没有。
     result.oiSupported = market.capabilities.hasOpenInterestHistory

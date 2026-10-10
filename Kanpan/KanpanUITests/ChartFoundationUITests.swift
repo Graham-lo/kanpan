@@ -1315,6 +1315,43 @@ final class ChartFoundationUITests: XCTestCase {
     shot("面板外点击-只收起不触发十字线")
   }
 
+  /// 「分析 › 指标」里那颗「公允价值缺口」开关（2026-10-10）：开 → 收面板 → 图上认到这一层 →
+  /// 再开面板还是开着 → 关掉 → 图上没了。开关跟人走（`Prefs.autoLayers`），不是指标、不进主图叠加。
+  func testFairValueGapSwitchStaysOnAcrossPanelReopen() throws {
+    func revealSwitch() -> XCUIElement {
+      let toggle = app.buttons["indicator.auto.FVG"]
+      let scroll = app.scrollViews["panel.content"]
+      for _ in 0..<6 {
+        if toggle.exists, toggle.isHittable, scroll.frame.contains(toggle.frame) { break }
+        scroll.swipeUp()
+      }
+      XCTAssertTrue(toggle.waitForExistence(timeout: 5), "分析面板里没有「公允价值缺口」开关")
+      return toggle
+    }
+    func layers() -> [String] { (info()["autoLayers"] as? [String]) ?? [] }
+    XCTAssertEqual(layers(), [], "出厂不开")
+
+    XCTAssertTrue(app.openIndicatorPage())
+    var toggle = revealSwitch()
+    XCTAssertTrue(app.staticTexts["公允价值缺口"].exists, "行名不是「公允价值缺口」")
+    XCTAssertEqual(toggle.value as? String, "关")
+    toggle.tap()
+    XCTAssertTrue(wait(seconds: 5) { toggle.value as? String == "开" }, "点了没开")
+    shot("分析面板-公允价值缺口开")
+    closePanel()
+    XCTAssertTrue(wait { layers() == ["FVG"] }, "开了图上没认到：\(info()["autoLayers"] ?? "?")")
+    shot("图上-公允价值缺口 \((info()["fvgSides"] as? [String])?.count ?? 0) 个")
+
+    XCTAssertTrue(app.openIndicatorPage())
+    toggle = revealSwitch()
+    XCTAssertEqual(toggle.value as? String, "开", "重开面板后开关掉回去了")
+    toggle.tap()
+    XCTAssertTrue(wait(seconds: 5) { toggle.value as? String == "关" }, "再点没关")
+    closePanel()
+    XCTAssertTrue(wait { layers().isEmpty }, "关了图上还认着：\(info()["autoLayers"] ?? "?")")
+    XCTAssertEqual((info()["fvgSides"] as? [String])?.count ?? 0, 0, "关了还画着缺口")
+  }
+
   /// 副图开满，主图和副图仍然一起落在一屏可视区里，不用翻页。
   ///
   /// 「开满」是成交量 + 三个：`Prefs.maxSubs` 从 `181a5bc`「交互定板落地」起卡死在 3

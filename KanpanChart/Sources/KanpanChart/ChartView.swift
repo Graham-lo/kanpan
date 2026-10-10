@@ -231,6 +231,9 @@ public final class ChartView: UIView {
           "compareBaseTime": s.series.time(at: s.compareBaseIndex()),
           "compareLegend": renderer?.compareLegend.map { ["name": $0.name, "label": ChartState.comparePercentLabel($0.value)] } ?? [],
           "drawingsVisible": s.options.drawings,
+          // 自动分析层：开着哪几样、此刻画出来几个公允价值缺口（多 / 空）。
+          "autoLayers": s.autoLayers.map(\.rawValue).sorted(),
+          "fvgSides": renderer?.fvgDiagnostics(size: bounds.size).map { $0.zone.side.rawValue } ?? [],
           "mode": s.effectivePriceMode.rawValue, "inverted": s.price.inverted,
           "zoomY": s.price.zoom, "centerY": s.price.centerFraction,
           "axisW": layout.axisW, "height": layout.H,

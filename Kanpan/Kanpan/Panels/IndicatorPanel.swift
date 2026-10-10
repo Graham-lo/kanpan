@@ -121,6 +121,7 @@ struct IndicatorPage: View {
         row(id, last: id == Self.overlayPalette.last)
       }
     }
+    autoLayerCard
   }
 
   @ViewBuilder private var fullBody: some View {
@@ -164,6 +165,7 @@ struct IndicatorPage: View {
         row(id, last: id == Self.overlayPalette.last)
       }
     }
+    autoLayerCard
 
     // 上限写在标题里：满了再点第四个是「换一个」而不是「点不动」，先把规矩摆出来。
     // 成交量不占名额（`Prefs.maxSubs`，与网页版同一口径），标题上一并说清。
@@ -274,6 +276,28 @@ struct IndicatorPage: View {
         }
       }
     }
+  }
+
+  /// 自动分析层（2026-10-10）：公允价值缺口一颗开关，紧跟主图叠加、单独一张卡——它画在主图上，
+  /// 但不是指标（不进 `IndicatorID` / `overlays`，没有参数）。跟人走（`Prefs.autoLayers`），计在「指标」那一节。
+  /// 画线台那一版（`mainOnly`）同一行：开的时候「指标」胶囊关着就跟着睁开，和主图叠加那排一个规矩。
+  private var autoLayerCard: some View {
+    let on = prefs.isAutoLayerOn(.fvg)
+    return PanelCard {
+      PanelRow(name: AnalysisTerm.fvg.text, swatch: Color(hex: t.chart.band), divider: false) {
+        PanelSwitch(isOn: on) {
+          store.byHand {
+            $0.toggleAutoLayer(.fvg)
+            if mainOnly, !on, !$0.prefs.drawingOverlaysShown {
+              $0.update { $0.drawingOverlaysShown = true }
+            }
+          }
+          if !mainOnly { used(.indicators) }
+        }
+        .accessibilityIdentifier("indicator.auto.\(AutoLayer.fvg.rawValue)")
+      }
+    }
+    .padding(.top, Space.m)
   }
 
   private func row(_ id: IndicatorID, last: Bool) -> some View {
