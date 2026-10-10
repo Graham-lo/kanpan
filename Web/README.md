@@ -2,7 +2,7 @@
 
 看盘（Hkline）的网页端：Vite + TypeScript（strict），不用 UI 框架。视觉是网页版自己的一套（设计原型在 `prototype/web-2026-09-29/`），先按 27 寸 2K（2560×1440）屏设计。
 
-线上：<https://kanpan.43-160-232-253.sslip.io/web/>（Caddy 把 `/var/www/kanpan/` 当静态目录，`/web/` 就是其中的子目录，不用改 Caddy。路由走 hash，比如 `#chart`、`#sectors`、`#review`、`#me`）
+线上：<https://kanpan.43-160-232-253.sslip.io/web/>（Caddy 把 `/var/www/kanpan/` 当静态目录，`/web/` 就是其中的子目录，不用改 Caddy。路由走 hash，比如 `#home`、`#chart`、`#sectors`、`#review`、`#me`）
 
 ## 怎么跑
 
@@ -30,7 +30,7 @@ make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:51
 | `src/chart/` | K 线引擎（canvas）：`chart.ts` 绘制与交互，`calc.ts` 聚合与指标，`timeAxis.ts` 上海时区刻度 |
 | `src/market/` | 行情：`rest.ts` 币安 REST，`stream.ts` WS 订阅与重连，`symbols.ts` 品种表与搜索排序，`meta.ts` 供应量，`state.ts` 实时状态 |
 | `src/account/` | 账号会话：用户名 + 密码登录、令牌续期、同一类设备只留一台在线；`src/sync/` 跨设备同步 |
-| `src/pages/` | `chart.ts` 图表页，`drawing.ts` 画线工具栏 / 选中快捷条 / 剪贴板，`sectors.ts` 板块，`review.ts` 复盘，`me.ts` 我的 |
+| `src/pages/` | `home.ts` 首页，`chart.ts` 图表页，`drawing.ts` 画线工具栏 / 选中快捷条 / 剪贴板，`sectors.ts` 板块，`review.ts` 复盘，`me.ts` 我的 |
 | `src/chart/drawTools.ts` | 画线工具的几何、命中与绘制（锚定 VWAP、固定区间成交量分布、多空持仓、⇧ 吸 45°、每只品种上限） |
 | `src/watch/` | 自选小部件（键盘、在第 N 格打开、宽侧栏资金费与持仓额、闪色）与 TradingView 导入 |
 | `src/review/` | 复盘：`model.ts` 回合统计与 KPI，回放与图上叠加 |
@@ -127,6 +127,23 @@ make web-verify       # 本机 Chrome 截验收图；WEB_URL=http://localhost:51
 | ? | 快捷键表（能按功能或按键搜，alt / option / ⌥ 通用） |
 
 工具栏最下面的垃圾桶：全部画线 / 全部指标 / 全部，带数量，⌘ Z 能撤销。
+
+## 首页（2026-10-10，原型 `docs/prototypes/web-layout-2026-10-10.html` 第 2 节）
+
+顶栏导航是「首页 · 图表 · 板块 · 复盘」，「我的」在右上头像里。代码在 `src/pages/home.ts`、`src/home/`（折栏、榜单行数、板块精简榜、落页的纯逻辑）、`src/styles/home.css`。
+
+- **四栏**：异动 · 涨跌 · 持仓 · 板块，宽度比 1.5 : 1 : 1 : .95。页宽窄于 1800 时，板块栏并到持仓栏下方；窄于 1300 时，改成两栏两行，整页可以滚动。
+- **异动**：数据来自 `/v1/market/orderflow/highlights/board`（`highlights/api.ts` 的 `fetchBoard`）。登录后会带上自选的币名，未登录只看热门。分类胶囊有全部 / 盘口 / 持仓 / 费率 / 波动，带计数。
+  - 每 60 秒拉一次。已有的行就地换数、不换位置；有新异动时浮出「有 N 条新异动」药丸，点药丸才重排。合并 / 筛选逻辑和手机网页共用 `highlights/home.ts`。
+  - 点一行打开图表页的这只品种（电脑版还没有盘口要点半页，不往下传要展开的卡）。悬停行尾出星，点星加自选。
+- **涨跌 / 持仓**：数据来自 `/v1/market/board?kind=gainers|losers|oi|oidown&window=1h|4h|24h`。每栏一个窗口，出厂 4 时；每 60 秒拉一次。
+  - 每张榜默认的行数按栏高自动算：两张榜各占半栏，减去榜头后按 40 的行高向下取整，最少 8 行。窗口大小一变就重算。
+  - 「全部」展开，「收起」收回。持仓栏的数值列写持仓额。
+- **板块**：和板块页同一份行情与口径（`sectors/feed`、`sectors/aggregate`），只取加密、今日。
+  - 每行是板块名 + 强弱条 · 跑赢 / 落后大盘 · 涨跌药丸；不到 3 只有行情的板块不上榜。
+  - 点一行进板块页并选中它；「全部板块 →」进板块页。
+- **落页**：地址不带 `#页名` 时冷启动落首页。带 `s`、`i`、`layout`、`panel`、`ladder`、`drawer` 参数的深链仍然进图表（`home/landing.ts`）。
+- **本机只记**分类胶囊与两栏的窗口（localStorage `hkline-home-v1`），不同步，也没有设置项。
 
 ## 自选小部件、复盘 KPI、板块、找相似（2026-09-29，详见 `docs/网页版-吸收-复盘与自选-2026-09-29.md`）
 

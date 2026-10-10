@@ -1,0 +1,155 @@
+/* Hkline Web · 首页（照 docs/prototypes/web-layout-2026-10-10.html 第 2 节；只用 app.css 已有的令牌与皮肤变量）
+ *
+ * 四栏：异动 1.5 · 涨跌 1 · 持仓 1 · 板块 .95；页面宽度窄于 1800 板块栏并到持仓栏下方，窄于 1300 两栏两行（data-cols 由 pages/home.ts 按页宽写）。
+ * 数值一律等宽数字；榜单行高 40；药丸 26 高、7 圆角、按方向涨跌色；分类色点；前三名次强调色。字：正文 13、名 14/600、次要 12。
+ */
+#page-home {
+  /* 「持仓」分类色：琥珀（只用在类别字与色点上） */
+  --hm-oi: #A86A00;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, .95fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--gutter); padding: var(--gutter);
+  font-variant-numeric: tabular-nums;
+}
+[data-theme="dark"] #page-home { --hm-oi: #E0A341; }
+
+#page-home[data-cols="3"] {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+}
+#page-home[data-cols="3"] .hm-moves, #page-home[data-cols="3"] .hm-rank[data-page="change"] { grid-row: 1 / 3; }
+#page-home[data-cols="3"] .hm-rank[data-page="oi"] { grid-column: 3; grid-row: 1; }
+#page-home[data-cols="3"] .hm-sectors { grid-column: 3; grid-row: 2; }
+#page-home[data-cols="2"] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(560px, 1fr) minmax(560px, 1fr);
+  overflow: auto;
+}
+
+.hm-col { display: flex; flex-direction: column; overflow: hidden; }
+
+/* 栏头：标题 16 · 内容（胶囊）· 右侧次要字 */
+.hm-hd {
+  height: 48px; flex: none; display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4);
+  box-shadow: inset 0 -1px 0 var(--line); min-width: 0;
+}
+.hm-hd h4 { margin: 0; font-size: var(--t16); font-weight: 650; color: var(--text-1); flex: none; }
+.hm-hd .sub { margin-left: auto; font-size: var(--t12); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* 分类胶囊（全部 / 盘口 / 持仓 / 费率 / 波动） */
+.hm-chips { display: flex; gap: var(--s1); min-width: 0; overflow: hidden; flex: none; }
+.hm-chips button {
+  height: 28px; padding: 0 var(--s3); border-radius: 999px; font-size: var(--t13); color: var(--text-2);
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: none;
+}
+.hm-chips button:hover { background: var(--surface-3); color: var(--text-1); }
+.hm-chips button i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); flex: none; }
+.hm-chips button b { font-weight: 500; color: var(--text-3); font-size: var(--t12); }
+.hm-chips button.on { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.hm-chips button.on b { color: var(--accent-text); }
+
+/* 涨跌药丸 */
+.hm-pill {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 74px; height: 26px; padding: 0 10px;
+  border-radius: 7px; font-size: var(--t13); font-weight: 600; color: #fff; white-space: nowrap; flex: none;
+}
+.hm-pill.up { background: var(--up); }
+.hm-pill.down { background: var(--down); }
+.hm-pill.none { background: var(--surface-3); color: var(--text-2); }
+
+.hm-row .tk, .rk-row .tk, .sc-row .tk { font-weight: 600; font-size: var(--t14); color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ───────── 异动 ───────── */
+.hm-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.hm-list { flex: 1; min-height: 0; padding: var(--s1) var(--s2); }
+.hm-list.stale { opacity: .55; }
+.hm-row {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 0 var(--s3); align-items: center;
+  padding: 9px 10px; border-radius: var(--r-md); cursor: pointer; outline: none;
+}
+.hm-row:hover, .hm-row:focus-visible { background: var(--surface-3); }
+.hm-row .mid { min-width: 0; }
+.hm-row .l1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hm-row .p { margin-left: auto; padding-left: var(--s2); font-weight: 500; font-size: var(--t14); color: var(--text-1); white-space: nowrap; }
+.hm-row .l2 {
+  display: flex; align-items: center; gap: var(--s2); font-size: var(--t12); line-height: 16px; color: var(--text-2);
+  margin-top: 3px; white-space: nowrap; min-width: 0;
+}
+.hm-row .l2 .tx { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.hm-row .l2 b { color: var(--text-1); font-weight: 600; }
+.hm-row .kind { color: var(--c); font-weight: 600; flex: none; }
+.hm-row .plus { color: var(--text-3); flex: none; }
+.hm-row .ago { color: var(--text-3); margin-left: auto; padding-left: var(--s2); flex: none; }
+.hm-row .star {
+  width: 20px; height: 20px; display: grid; place-items: center; border-radius: var(--r-xs); color: var(--text-3);
+  opacity: 0; flex: none;
+}
+.hm-row .star svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+.hm-row:hover .star, .hm-row:focus-within .star { opacity: 1; }
+.hm-row .star:hover { color: var(--accent-text); background: var(--accent-soft); }
+
+/* 强度三格 */
+#page-home .mt { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 10px; margin: 0 2px; flex: none; }
+#page-home .mt i { width: 3px; border-radius: 1px; background: var(--line-strong); }
+#page-home .mt i.on { background: var(--c); }
+
+/* 「有 N 条新异动」 */
+.hm-newpill {
+  position: absolute; top: var(--s2); left: 50%; transform: translateX(-50%); z-index: 2;
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 var(--s3); border-radius: 999px;
+  background: var(--accent); color: #fff; font-size: var(--t13); font-weight: 600; box-shadow: var(--shadow-menu, 0 4px 16px rgba(0,0,0,.18));
+}
+.hm-newpill[hidden] { display: none; }
+.hm-newpill svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.hm-empty, .hm-gempty { display: flex; align-items: center; justify-content: center; gap: var(--s3); padding: var(--s8) var(--s4); color: var(--text-2); }
+.hm-calm { display: grid; justify-items: center; gap: var(--s1); padding: var(--s12) var(--s4); color: var(--text-2); text-align: center; }
+.hm-calm svg { width: 24px; height: 24px; fill: none; stroke: var(--text-3); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; margin-bottom: var(--s1); }
+.hm-calm b { color: var(--text-1); font-weight: 600; font-size: var(--t14); }
+.hm-calm span { font-size: var(--t12); }
+
+/* 骨架 */
+#page-home .sk { display: inline-block; border-radius: var(--r-xs); background: var(--surface-3); }
+#page-home .sk-b { width: 28px; height: 28px; border-radius: 50%; }
+#page-home .skel { cursor: default; pointer-events: none; }
+
+/* ───────── 涨跌 / 持仓 ───────── */
+.hm-rk-body { flex: 1; min-height: 0; padding-bottom: var(--s2); }
+.rk.stale .rk-rows { opacity: .55; }
+.rk-sh { display: flex; align-items: center; gap: 10px; padding: 14px var(--s4) 6px; min-height: 26px; }
+.rk-sh h5 { margin: 0; font-size: var(--t14); font-weight: 600; color: var(--text-1); }
+.rk-sh .more { margin-left: auto; font-size: var(--t12); color: var(--accent-text); padding: 2px 4px; border-radius: var(--r-xs); }
+.rk-sh .more:hover { background: var(--accent-soft); }
+.hm-wins { display: inline-flex; background: color-mix(in srgb, var(--text-1) 6%, transparent); border-radius: 7px; padding: 2px; gap: 2px; }
+.hm-wins button { height: 24px; padding: 0 10px; border-radius: 5px; font-size: var(--t12); color: var(--text-2); }
+.hm-wins button:hover { color: var(--text-1); }
+.hm-wins button.on { background: var(--surface); color: var(--text-1); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.rk-row {
+  display: grid; grid-template-columns: 22px 28px minmax(0, 1fr) auto 86px; gap: var(--s3); align-items: center;
+  width: 100%; height: 40px; padding: 0 var(--s4); font-size: var(--t14); text-align: left;
+}
+.rk-row:hover, .rk-row:focus-visible { background: var(--surface-3); outline: none; }
+.rk-row .i { color: var(--text-3); font-size: var(--t12); text-align: center; }
+.rk-row:nth-child(-n+3) .i { color: var(--accent-text); font-weight: 600; }
+.rk-row .v { color: var(--text-2); font-weight: 500; text-align: right; white-space: nowrap; }
+.rk-row .hm-pill, .sc-row .hm-pill { justify-self: end; }
+
+/* ───────── 板块 ───────── */
+.hm-sc-list { flex: 1; min-height: 0; padding: var(--s1) 0; }
+.sc-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 90px 86px; gap: var(--s3); align-items: center;
+  width: 100%; height: 40px; padding: 0 var(--s4); font-size: var(--t14); text-align: left;
+}
+.sc-row:hover, .sc-row:focus-visible { background: var(--surface-3); outline: none; }
+.sc-row .nm { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sc-row .nm .tk { line-height: 18px; }
+.sc-row .bar { height: 4px; border-radius: 2px; background: var(--line); width: min(160px, 100%); position: relative; }
+.sc-row .bar i { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+.sc-row .bar i.up { background: var(--up); }
+.sc-row .bar i.down { background: var(--down); }
+.sc-row .beat { color: var(--text-2); text-align: right; font-weight: 500; font-size: var(--t13); white-space: nowrap; }
+.hm-scbtn {
+  flex: none; margin: var(--s2) var(--s4) 14px; height: 32px; border-radius: var(--r-sm);
+  background: var(--accent-soft); color: var(--accent-text); font-weight: 600; font-size: var(--t13);
+}
+.hm-scbtn:hover { filter: brightness(.97); }

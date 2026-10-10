@@ -3,8 +3,9 @@ import { st, save, type PageId } from './store'
 import { $, $$, I, esc } from '../ui/dom'
 import { hideTip } from '../ui/overlay'
 import { session } from '../account/session'
+import { landingPage } from '../home/landing'
 
-export const PAGES: PageId[] = ['chart', 'sectors', 'review', 'me']
+export const PAGES: PageId[] = ['home', 'chart', 'sectors', 'review', 'me']
 
 /** 各页挂进来的回调 */
 export const hooks = {
@@ -32,8 +33,19 @@ export function applyTheme(): void {
   hooks.onTheme.forEach(fn => fn())
 }
 
+/** 首页按需装：第一次显示时才取它的代码（pages/home.ts 引用图表页的入口，静态引进来会和外壳成环） */
+let homeLoading: Promise<void> | null = null
+function ensureHome(): void {
+  if (hooks.pageShown.home || homeLoading) return
+  homeLoading = import('../pages/home').then(m => {
+    m.initHome()
+    if (st.page === 'home') hooks.pageShown.home?.()
+  }).catch(e => { homeLoading = null; console.error(e) })
+}
+
 export function go(page: string, push = true): void {
   const p = (PAGES as string[]).includes(page) ? page as PageId : 'chart'
+  if (p === 'home') ensureHome()
   const prev = st.page
   st.page = p
   PAGES.forEach(x => $('#page-' + x)?.classList.toggle('show', x === p))
@@ -60,6 +72,8 @@ export function goLogin(): void {
 }
 
 export function installShell(): void {
+  // 地址不带 #页名：冷启动落首页；带品种 / 周期 / 布局参数的深链照旧进图表（home/landing.ts）
+  if (!location.hash || location.hash === '#') history.replaceState(history.state, '', '#' + landingPage())
   addEventListener('hashchange', () => go(location.hash.slice(1), false))
   // 没登录时头像就是登录入口：落在「我的 · 账号」那一栏（默认那栏是外观，点了看不到登录框）
   $('#hdrAvatar').onclick = () => session.user ? go('me') : goLogin()

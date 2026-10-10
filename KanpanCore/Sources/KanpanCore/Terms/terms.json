@@ -207,6 +207,11 @@
     "wallReducingPct": "撤单 {p}",
     "addFavorite": "加入自选",
     "search": "搜索",
-    "noRows": "暂无"
+    "noRows": "暂无",
+    "binancePerp": "币安永续",
+    "marketAvg": "大盘 {v}",
+    "beatAhead": "跑赢 {v}",
+    "beatBehind": "落后 {v}",
+    "allSectors": "全部板块"
   }
 }

@@ -6,6 +6,7 @@
 //     heavy：先把「主力订单流」与「关键价位」打开（B 路量「每次切换约 33 权重」时的状态）
 //
 // cold：本机 Chrome 无头、2560×1440、每次新开上下文（无缓存、无本地状态），和 C 路第 5 节同一测法。
+//   2026-10-10 起不带 #页名 冷启动落首页，这里量的是图表冷启动：默认地址是 /web/#chart，给的地址不带 # 时也补上 #chart（switch 同）。
 //   各列从开始导航算起（performance.now()，毫秒）：
 //   DOM 就绪   —— navigation 的 domContentLoadedEventEnd
 //   价格出现   —— 标题里第一次出现价格（syncTitle 在品种表到了之后写）
@@ -20,7 +21,9 @@
 //   再单切一只量一次；另外按主机 + 路径数这段时间发出去的请求。
 import { chromium } from 'playwright-core'
 
-const URL_ = process.argv[2] || 'http://localhost:5193/web/'
+const URL_ = process.argv[2] || 'http://localhost:5193/web/#chart'
+/** 图表页地址：冷启动默认落首页了，cold / switch 量图表要显式带 #chart */
+const CHART_URL = URL_.includes('#') ? URL_ : URL_ + '#chart'
 const MODE = process.argv[3] || 'cold'
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const browser = await chromium.launch({ executablePath: CHROME, headless: true })
@@ -63,7 +66,7 @@ async function coldOnce(route) {
   if (route === 'gateway') await ctx.addInitScript(() => { if (!localStorage.getItem('hkline-web-v1')) localStorage.setItem('hkline-web-v1', JSON.stringify({ route: 'gateway' })) })
   await ctx.addInitScript(probe)
   const page = await ctx.newPage()
-  await page.goto(URL_, { waitUntil: 'domcontentloaded' })
+  await page.goto(CHART_URL, { waitUntil: 'domcontentloaded' })
   const t0 = Date.now()
   while (Date.now() - t0 < 15000) {
     const done = await page.evaluate(() => window.__fs && window.__fs.tick != null)
@@ -116,7 +119,7 @@ if (MODE === 'cold') {
   const reqs = []
   let counting = false
   page.on('request', q => { if (counting) { const u = new URL(q.url()); reqs.push(`${u.host}${u.pathname}`) } })
-  await page.goto(URL_, { waitUntil: 'domcontentloaded' })
+  await page.goto(CHART_URL, { waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => /\d/.test(document.title), null, { timeout: 30000 })
   await page.waitForTimeout(8000)
   const lim = () => page.evaluate(() => window.__limit())

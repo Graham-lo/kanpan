@@ -38,7 +38,7 @@ export const GRID: Record<Layout, GridSpec> = {
   '9': { cols: 3, rows: 3 }, '12': { cols: 4, rows: 3 }, '16': { cols: 4, rows: 4 },
 }
 export type PanelId = 'watch' | 'alerts' | 'flow' | 'notes' | 'trades'
-export type PageId = 'chart' | 'sectors' | 'review' | 'me'
+export type PageId = 'home' | 'chart' | 'sectors' | 'review' | 'me'
 /** 侧栏「自选」视图里按顺序堆叠的小部件（自选、品种详情、盘口、逐笔成交、大单、提醒、24 小时流动性、24 小时成交），用户可调顺序与开合 */
 export type WidgetId = 'watch' | 'detail' | 'book' | 'tape' | 'walls' | 'alerts' | 'liq' | 'vol'
 

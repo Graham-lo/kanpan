@@ -7,6 +7,7 @@ import { clampActive, ensureCells, LAYOUTS, LAYOUT_N, type Layout, type PanelId,
 import { INTERVALS } from '../market/symbols'
 import { displayKey } from '../market/identity'
 import { validSymbol } from './layouts'
+import { noteQueryKeys } from '../home/landing'
 
 export const QUERY_KEYS = ['s', 'i', 'theme', 'skin', 'layout', 'panel', 'ladder', 'drawer'] as const
 const PANELS: readonly string[] = ['watch', 'alerts', 'flow', 'notes', 'trades']
@@ -30,7 +31,10 @@ export function applyQueryTo(s: State, search: string): string[] {
   else if (pn && PANELS.includes(pn)) s.panel = pn as PanelId
   if (q.has('ladder')) s.slots.ladder = q.get('ladder') === '1'
   if (q.has('drawer')) s.slots.drawer = q.get('drawer') === '1'
-  return QUERY_KEYS.filter(k => q.has(k))
+  const used = QUERY_KEYS.filter(k => q.has(k))
+  // 冷启动落哪页要看带没带图表参数（地址栏马上会被拿干净），记一下给外壳读（home/landing.ts）
+  noteQueryKeys(used)
+  return used
 }
 
 /** 拿掉用过的键之后的地址（其余参数与 # 原样留着） */

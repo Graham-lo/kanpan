@@ -16,8 +16,9 @@
 <body>
 <div id="app">
   <header class="app-header">
-    <a class="brand" href="#chart" aria-label="Hkline 首页"><span class="mark" data-icon="logo:icon-24"></span>Hkline</a>
+    <a class="brand" href="#home" aria-label="Hkline 首页"><span class="mark" data-icon="logo:icon-24"></span>Hkline</a>
     <nav class="nav" aria-label="主导航">
+      <a href="#home" data-page="home">首页</a>
       <a href="#chart" data-page="chart">图表</a>
       <a href="#sectors" data-page="sectors">板块</a>
       <a href="#review" data-page="review">复盘</a>
@@ -32,6 +33,8 @@
   </header>
 
   <main id="pages" style="min-height:0;display:grid">
+    <section class="page" id="page-home" aria-label="首页"></section>
+
     <!-- 图表：画线栏 | 图 | 深度梯子（槽位）| 侧栏 | 图标栏；图下方是底部抽屉（槽位）。网格由 layoutSlots() 按开合状态生成 -->
     <section class="page" id="page-chart" aria-label="图表">
       <div class="card chart-toolbar" id="toolbar"></div>
