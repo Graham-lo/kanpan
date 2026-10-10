@@ -106,6 +106,8 @@ export interface ChartInput {
   rsiLower: number
   oiSupported: boolean
   externalSupported: boolean
+  /** 公允价值缺口层（Prefs.autoLayers 含 'FVG'，iOS ChartState.fvg）：垫在 K 线下、主力订单流之上；对比 / 百分比轴不画 */
+  fvg: boolean
 }
 
 export interface ChartViewport {
@@ -151,6 +153,7 @@ export interface MakeStateOptions {
   options?: ChartOptions
   nowMs?: number | null
   subScale?: Partial<Record<IndicatorID, number>>
+  fvg?: boolean
 }
 
 /** ChartState.init：默认值照 Swift（对数价格轴、主图 MA、副图 AICoinBehavior.subpanels = 成交量 + MACD）。 */
@@ -163,6 +166,7 @@ export function makeState(o: MakeStateOptions): ChartState {
       tzOffset: o.tzOffset ?? SHANGHAI_OFFSET_MIN, indicatorColors: {},
       decimals: o.decimals ?? o.symbol.priceDecimals, options: o.options ?? defaultChartOptions(),
       hiddenOutputs: {}, subInverted: [], rsiUpper: 70, rsiLower: 30, oiSupported: true, externalSupported: true,
+      fvg: o.fvg ?? false,
     },
     viewport: { view: o.view, price: o.price ?? priceTransform('log'), axisScaleAnchor: null, subScale: o.subScale ?? {} },
     overlay: {

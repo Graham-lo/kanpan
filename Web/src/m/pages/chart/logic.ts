@@ -18,6 +18,7 @@ import { THRESHOLD_RANGE, STEP_RANGE } from '../../../orderflow/settings'
 import { ALL_INDICATOR_IDS, hasVariablePeriods } from '../../indicator/ids'
 import type { Drawing } from '../../chart/draw/drawing'
 import { ago } from '../../../util/clock'
+import { AUTO_LAYERS, type AutoLayerId } from '../../../analysis/fvg'
 
 export { MAX_QUICK, MAX_SUBS, THRESHOLD_RANGE, STEP_RANGE }
 
@@ -155,6 +156,11 @@ export function replaceQuick(quick: readonly IntervalId[], old: IntervalId, add:
 /** 主图叠加开关 */
 export function toggleOverlay(list: readonly IndicatorId[], id: IndicatorId): IndicatorId[] {
   return list.includes(id) ? list.filter(x => x !== id) : [...list, id]
+}
+/** 自动分析层开关（Prefs.autoLayers，iOS Prefs.toggleAutoLayer）：开就追加到末尾、关就去掉；结果去重、只留白名单里的名字 */
+export function toggleAutoLayer(list: readonly string[], id: AutoLayerId): AutoLayerId[] {
+  const clean = list.filter((x, i): x is AutoLayerId => (AUTO_LAYERS as readonly string[]).includes(x) && list.indexOf(x) === i)
+  return clean.includes(id) ? clean.filter(x => x !== id) : [...clean, id]
 }
 /** 副图开关：成交量不占名额；开第四个时换下最早开的那个（返回被换下的） */
 export function toggleSub(list: readonly IndicatorId[], id: IndicatorId): { list: IndicatorId[]; dropped: IndicatorId | null } {

@@ -525,8 +525,8 @@ function orderFlowVisibleTimes(r: ChartRenderer, spacing: number, plotW: number)
   return { lo: iL < n ? b.time(iL) : Infinity, hi: iR < n ? b.time(iR) : Infinity }
 }
 
-/** 某一时刻落在哪根 K 线上，那根的左右缘（蜡烛中心落在 openTime 上）。早于序列的给 −∞。 */
-function orderFlowBarX(r: ChartRenderer, ms: number, spacing: number, plotW: number): { left: number; right: number } {
+/** 某一时刻落在哪根 K 线上，那根的左右缘（蜡烛中心落在 openTime 上）。早于序列的给 −∞。公允价值缺口（renderer.fvg.ts）也用它。 */
+export function orderFlowBarX(r: ChartRenderer, ms: number, spacing: number, plotW: number): { left: number; right: number } {
   const b = r.state.input.series
   if (ms < b.firstTime) return { left: -Infinity, right: -Infinity }
   let i = b.index(ms)

@@ -34,12 +34,13 @@ import type { Thresholds } from '../../../orderflow/types'
 import {
   toggleOverlay, toggleSub, moveSubAmong, sanitizeParam, clampParam, VARIABLE_PARAMS, MAX_VARIABLE_PARAMS,
   sanitizeAmount, clampAmount, mergeOverride, compactAmount, plainNumber, type OrderFlowField,
-  mainOverlaysOf, toggleMainOverlay,
+  mainOverlaysOf, toggleMainOverlay, toggleAutoLayer,
 } from './logic'
 import { TERMS, splitPair } from './header'
 import type { PagePort } from './data'
 import { notePriceAxisPicked } from '../habitsRuntime'
-import { BT } from '../../../terms'
+import { AN, BT } from '../../../terms'
+import { AUTO_LAYERS, type AutoLayerId } from '../../../analysis/fvg'
 import { countedSection, sectionOrder, type AnalysisSection } from './analysisRank'
 import { compareSymbolOf } from '../../chart/compare.source'
 import { normKey } from '../../chart/symbolKey'
@@ -150,6 +151,8 @@ export function openAnalysis(ctx: PanelContext): Sheet {
         case 'edit': tally('indicators'); save(); openIndicatorEditor(id); break
         case 'height': delete st.subHeightOverrides[id]; tally('indicators'); save(); break
         case 'ov': st.overlays = toggleOverlay(st.overlays, id); tally('indicators'); save(); break
+        // 公允价值缺口这类自动分析层：不进指标列表，记在 autoLayers（跟人走），算「指标」一节的用量
+        case 'auto': toggleAutoLayerPref(arg, true); break
         case 'sub': {
           const r = toggleSub(st.subs, id)
           st.subs = r.list
@@ -184,6 +187,20 @@ export function openAnalysis(ctx: PanelContext): Sheet {
     })
   }, { title: '分析', detent: 'medium', dim: 'large', id: 'analysis', className: 'cp-sheet cp-list cp-cards', onClose: () => { off?.(); reorder?.destroy(); if (btTimer) clearInterval(btTimer) } })
   return sheet
+}
+
+/** 拨一个自动分析层（data-act="auto:FVG"）：改 st.autoLayers（去重）、落盘（经 save 进同步、行情页订阅重画图）；
+ *  counted：在「分析」面板里拨的算「指标」一节用了一次（横屏画线台那张「主图指标」不计，和主图叠加一样） */
+export function toggleAutoLayerPref(arg: string | undefined, counted: boolean): void {
+  if (!(AUTO_LAYERS as readonly string[]).includes(arg ?? '')) return
+  st.autoLayers = toggleAutoLayer(st.autoLayers, arg as AutoLayerId)
+  if (counted) st.analysisUsage = countedSection(st.analysisUsage, 'indicators')
+  save()
+}
+
+/** 自动分析层那一组（目前只有「公允价值缺口」一行）：排在主图叠加之后、副图之前，单独一组、不进指标列表 */
+export function autoLayerGroupHTML(): string {
+  return `<div class="cp-group"><div class="cp-row"><span class="cp-rn">${dot('var(--k-band)')}${esc(AN.fvg)}</span>${sw(st.autoLayers.includes('FVG'), 'auto:FVG', AN.fvg)}</div></div>`
 }
 
 /** 在用那一行：名字 + 参数 + 「›」，点进参数编辑（副图行带拖动把手；同一段里有把手时主图行垫一块空位对齐） */
@@ -227,6 +244,7 @@ export function openMainIndicators(): Sheet {
       const [act, arg] = (b.dataset.act || '').split(':') as [string, string | undefined]
       const id = arg as IndicatorId
       if (act === 'edit') openIndicatorEditor(id)
+      else if (act === 'auto') toggleAutoLayerPref(arg, false)
       else if (act === 'ov') {
         const next = toggleMainOverlay({ overlays: st.overlays, drawingOverlaysShown: st.drawingOverlaysShown }, id)
         st.overlays = next.overlays
@@ -247,6 +265,7 @@ function mainOnlyHTML(): string {
   }
   out.push(gt('主图叠加'))
   out.push(`<div class="cp-group">${OVERLAY_ROWS.map(id => toggleRowHTML(id, st.overlays.includes(id), 'ov')).join('')}</div>`)
+  out.push(autoLayerGroupHTML())
   return out.join('')
 }
 
@@ -288,6 +307,7 @@ function indicatorSectionsHTML(): string {
   }
   out.push(gt(inUse ? '主图叠加' : '指标 · 主图叠加'))
   out.push(`<div class="cp-group">${OVERLAY_ROWS.map(id => toggleRowHTML(id, st.overlays.includes(id), 'ov')).join('')}</div>`)
+  out.push(autoLayerGroupHTML())
   out.push(gt('副图 · 最多三个 · 成交量不占'))
   out.push(`<div class="cp-group">${SUB_ROWS.map(id => toggleRowHTML(id, st.subs.includes(id), 'sub')).join('')}</div>`)
   return out.join('')

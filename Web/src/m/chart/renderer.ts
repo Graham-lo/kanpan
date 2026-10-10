@@ -30,6 +30,7 @@ import { comparePercentLabel, effectiveGrid, effectivePriceMode, effectiveShape,
 import type { Drawing } from './drawing'
 import { DrawAxes, paintDrawing } from './drawing'
 import { DRAW_REST_ALPHA } from './draw/pen'
+import { drawFVG } from './renderer.fvg'
 import { drawOrderFlow, drawOrderFlowHover, drawOrderFlowLabels, hasOrderFlow, orderFlowHoversBand } from './renderer.orderflow'
 import { drawLegend, drawLegends, drawSub, subAxisLabels, subCrosshairY, subValueText } from './renderer.sub'
 import { compareLegendInset, compareRange, drawCompare, mainPriceTicks } from './renderer.compare'
@@ -505,6 +506,8 @@ export class ChartRenderer {
     this.drawTimeGrid(ctx, L, scale)
     // 主力订单流垫在 K 线下面：先画线与淡底，再画蜡烛、均线、副图（「K 线是主体」）。
     if (!s.input.percentAxis) drawOrderFlow(this, ctx, main, r, L, scale)
+    // 公允价值缺口压在订单流上、垫在蜡烛下（真透明，不撑价格轴；对比 / 百分比轴下自己不画）
+    drawFVG(this, ctx, main, r, L)
     this.drawCandles(ctx, main, r, L, scale)
     this.drawExtrema(ctx, r, L, scale)
     if (s.input.percentAxis) drawCompare(this, ctx, main, r, L)

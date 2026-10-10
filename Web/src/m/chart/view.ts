@@ -73,7 +73,7 @@ const sameLastValues = (a: SeriesMark['last'], b: SeriesMark['last']): boolean =
 
 const INPUT_KEYS_EXCEPT_SERIES = [
   'compare', 'percentAxis', 'oi', 'external', 'symbol', 'colors', 'overlays', 'subs', 'params', 'tzOffset',
-  'indicatorColors', 'decimals', 'options', 'hiddenOutputs', 'subInverted', 'rsiUpper', 'rsiLower', 'oiSupported', 'externalSupported',
+  'indicatorColors', 'decimals', 'options', 'hiddenOutputs', 'subInverted', 'rsiUpper', 'rsiLower', 'oiSupported', 'externalSupported', 'fvg',
 ] as const
 
 const sameCrosshair = (a: Crosshair | null, b: Crosshair | null): boolean =>

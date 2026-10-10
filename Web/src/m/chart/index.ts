@@ -89,6 +89,8 @@ export interface CreateChartOptions extends Partial<ChartLook> {
   barSpacing?: number
   orderFlow?: boolean
   orderFlowDisplay?: OrderFlowDisplay
+  /** 公允价值缺口层（Prefs.autoLayers 含 'FVG'）。 */
+  fvg?: boolean
   drawings?: Drawing[]
   landscape?: boolean
   /**
@@ -167,6 +169,8 @@ export interface ChartHandle {
   setCandleStyle(p: Partial<ChartOptions> & { priceMode?: PriceMode; mainInverted?: boolean }): void
   setLook(p: Partial<ChartLook>): void
   setOrderFlow(on: boolean, display?: OrderFlowDisplay): void
+  /** 公允价值缺口层开关（Prefs.autoLayers 含 'FVG'）。 */
+  setFVG(on: boolean): void
   /** 对比品种（整组替换；空数组 = 退出对比）。 */
   setCompare(keys: string[]): void
   /** 盘口五档开关。 */
@@ -374,6 +378,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
   let orderFlowOn = !!opts.orderFlow
   let orderFlowDisplay = opts.orderFlowDisplay ?? defaultOrderFlowDisplay()
   let orderFlowSnapshot: OrderFlowSnapshot | null = null
+  let fvgOn = !!opts.fvg
   let orderFlowPort = null as OrderFlowPort | null
   let drawings: Drawing[] = opts.drawings ?? []
   let compareKeys: string[] = [...(opts.compareSymbols ?? [])]
@@ -522,6 +527,7 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       external, subInverted: look.subInverted, indicatorColors: look.indicatorColors, hiddenOutputs: look.hiddenOutputs,
       rsiUpper: look.rsiUpper, rsiLower: look.rsiLower, oiSupported: true, externalSupported: true,
       percentAxis: comparing, compare: comparing ? compareSeries(s) : (syncCompare(s), []),
+      fvg: fvgOn,
     })
     st = withOverlay(st, {
       orderFlow: landscape || !orderFlowOn ? null : orderFlowSnapshot,
@@ -1237,6 +1243,12 @@ export function createChart(host: HTMLElement, opts: CreateChartOptions): ChartH
       if (display) orderFlowDisplay = display
       if (!on) orderFlowSnapshot = null
       orderFlowPort?.setWanted(on && !landscape, symbol, interval)
+      update()
+    },
+
+    setFVG(on) {
+      if (on === fvgOn) return
+      fvgOn = on
       update()
     },
 

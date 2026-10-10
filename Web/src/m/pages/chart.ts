@@ -159,6 +159,8 @@ export function initChart(root: HTMLElement): PageHandle {
   }
   // 美元指数在图上收掉成交量类与合约衍生指标、不起订单流与盘口（偏好原样不动）
   const isMacroSym = (x: string): boolean => x === 'DXY' || S.symbols.get(x)?.macro === true
+  // 公允价值缺口（分析面板指标节那一行，Prefs.autoLayers）：开关一拨图就重画
+  const fvgOn = (): boolean => st.autoLayers.includes('FVG')
   const shownInd = () => chartIndicatorsFor(isMacroSym(sym()), st.overlays as IndicatorId[], st.subs as IndicatorId[])
   const chart: ChartHandle = createChart(box, {
     symbol: sym(), interval: iv(),
@@ -168,6 +170,7 @@ export function initChart(root: HTMLElement): PageHandle {
     subScale: { ...st.subHeightOverrides },
     barSpacing: st.barSpacing, orderFlow: st.orderFlow && shownInd().orderFlow,
     orderFlowDisplay: { spot: true, contract: true, filled: true, cancelled: true, history: st.orderFlowHistory },
+    fvg: fvgOn(),
     landscapeOverlays: st.drawingOverlaysShown,
     // 对比整串交给引擎（它自己去掉主图那只、去重、最多三只）；盘口只在页面露着时开，见 syncChart 的 extraKey
     compareSymbols: [...st.compareSymbols], depth: false,
@@ -372,6 +375,7 @@ export function initChart(root: HTMLElement): PageHandle {
       card.set(null, '', 2)
     }
     chart.setLandscapeOverlays(st.drawingOverlaysShown)
+    chart.setFVG(fvgOn())
     const pm = effectivePriceMode(sym())
     const lk = lookKeyOf(pm)
     if (lk !== lookKey) {
