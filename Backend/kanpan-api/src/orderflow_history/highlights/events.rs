@@ -144,9 +144,9 @@ impl Ev {
   let dist=|p:f64|if price>0.0 {Some(round((p-price)/price*100.0,3))} else {None};
   let id=format!("E:{}:{}",self.kind(),self.time());
   match self {
-   Ev::Wall{kind,at,price:p,usd,bid,..}=>json!({"id":id,"t":kind,"atMs":at,"price":p,"usd":usd.round(),"side":if *bid {"buy"} else {"sell"},"distPct":dist(*p)}),
-   Ev::Flow{from,to,net,px_pct,..}=>json!({"id":id,"t":"flowBurst","fromMs":from,"toMs":to,"netUsd":net.round(),"pxPct":px_pct.map(|v|round(v,2))}),
-   Ev::Liq{from,to,usd,long,px_pct,..}=>json!({"id":id,"t":"liqWave","fromMs":from,"toMs":to,"usd":usd.round(),"side":if *long {"long"} else {"short"},"pxPct":px_pct.map(|v|round(v,2))}),
+   Ev::Wall{kind,at,price:p,usd:amount,bid,..}=>json!({"id":id,"t":kind,"atMs":at,"price":p,"usd":usd(*amount),"side":if *bid {"buy"} else {"sell"},"distPct":dist(*p)}),
+   Ev::Flow{from,to,net,px_pct,..}=>json!({"id":id,"t":"flowBurst","fromMs":from,"toMs":to,"netUsd":usd(*net),"pxPct":px_pct.map(|v|round(v,2))}),
+   Ev::Liq{from,to,usd:amount,long,px_pct,..}=>json!({"id":id,"t":"liqWave","fromMs":from,"toMs":to,"usd":usd(*amount),"side":if *long {"long"} else {"short"},"pxPct":px_pct.map(|v|round(v,2))}),
    Ev::Oi{at,pct}=>json!({"id":id,"t":"oiJump","atMs":at,"pct":round(*pct,2)}),
    Ev::Broken{at,low,high,was_support}=>json!({"id":id,"t":"levelBroken","atMs":at,"low":low,"high":high,"side":if *was_support {"bid"} else {"ask"},"distPct":dist((low+high)/2.0)}),
   }
@@ -161,7 +161,9 @@ pub(super) fn newest(mut all:Vec<Ev>,now:i64)->Vec<Ev> {
  all
 }
 
-pub(super) fn round(v:f64,digits:i32)->f64 {let f=10f64.powi(digits);(v*f).round()/f}
+pub(super) fn round(v:f64,digits:i32)->f64 {let f=10f64.powi(digits);(v*f).round()/f+0.0}
+/// 金额取整；`+ 0.0` 把空和（Rust 浮点 `sum` 的起点是 -0.0）写成 0 而不是 -0。
+pub(super) fn usd(v:f64)->f64 {v.round()+0.0}
 
 #[cfg(test)]
 mod tests {

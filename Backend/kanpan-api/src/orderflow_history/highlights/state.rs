@@ -1,6 +1,6 @@
 //! 一只 base 的要点状态：分钟序列（3 天净主动 / 成交额 / 爆仓，26 小时价）、小时线（30 天，带净主动）、持仓、
 //! 账本、分位样本、此刻挂着的墙、近 3 天结束的墙；每分钟由引擎折进新数据、算一份答复。
-use super::events::{self,Ended,Ev,round};
+use super::events::{self,Ended,Ev,round,usd};
 use super::fetch::{Boot,K};
 use super::ledger::{self,Broke,Ledger,Live,Ref};
 use super::range::{self,Range};
@@ -402,12 +402,17 @@ impl State {
   out
  }
 
- /// 净主动最早从哪一分钟起有数（分钟序列里成交额 > 0 的第一格，或更早的小时线里净额非 0 的第一小时）。
- /// 刚起跟、库里又没有这只的足迹时只有这一任收的几分钟，长窗口不能拿它当整窗的净额。
+ /// 净主动从哪一刻起连续有数：分钟序列里成交额 > 0 的第一格，再往前接上紧挨着、净额非 0 的小时线
+ /// （中间断一小时就停——库里几天前跟过一阵的足迹不能让「4 时」「区间」看起来盖住了）。
+ /// 刚起跟、库里又没有这只近期足迹时只有这一任收的几分钟，长窗口不能拿它当整窗的净额。
  pub fn flow_start(&self)->Option<i64> {
   let minute=self.flow.v.iter().position(|r|r[1]>0.0).map(|j|self.flow.t0+j as i64*M);
-  let hour=self.hours.iter().find(|(_,h)|h.net!=0.0).map(|(t,_)|*t);
-  match (minute,hour) {(Some(a),Some(b))=>Some(a.min(b)),(a,b)=>a.or(b)}
+  let mut start=minute.or_else(||self.hours.iter().rev().find(|(_,h)|h.net!=0.0).map(|(t,_)|*t+HOUR_MS))?;
+  loop {
+   let h=(start-1).div_euclid(HOUR_MS)*HOUR_MS;
+   match self.hours.get(&h) {Some(x) if x.net!=0.0=>start=h,_=>break}
+  }
+  Some(start)
  }
 
  fn flow_row(&self,w:&str,from:i64,end:i64,samples:&Samples)->Value {
@@ -420,7 +425,7 @@ impl State {
    (Some(p),Some(f))=>covered&&net!=0.0&&p!=0.0&&net.signum()!=p.signum()&&net.abs()>=f&&p.abs()>=DIVERGE_PX,
    _=>false,
   };
-  let mut row=json!({"w":w,"netUsd":covered.then(||net.round()),"pxPct":px.map(|v|round(v,2)),"oiPct":oi.map(|v|round(v,2)),"diverge":diverge});
+  let mut row=json!({"w":w,"netUsd":covered.then(||usd(net)),"pxPct":px.map(|v|round(v,2)),"oiPct":oi.map(|v|round(v,2)),"diverge":diverge});
   if w=="range" {row["sinceMs"]=json!(from);}
   row
  }
@@ -485,8 +490,8 @@ impl State {
 
  fn level_json(v:&ledger::Level)->Value {
   json!({"id":format!("L:{}",v.k),"low":sig(v.low),"high":sig(v.high),"side":if v.bid {"bid"} else {"ask"},"distPct":round(v.dist_pct,2),
-   "wallUsd":v.wall_usd.round(),"wallHeldMs":v.wall_held_ms,"wallState":v.wall_state,
-   "fillBuyUsd":v.fill_buy.round(),"fillSellUsd":v.fill_sell.round(),"liqUsd":v.liq.round(),"tests":v.tests,
+   "wallUsd":usd(v.wall_usd),"wallHeldMs":v.wall_held_ms,"wallState":v.wall_state,
+   "fillBuyUsd":usd(v.fill_buy),"fillSellUsd":usd(v.fill_sell),"liqUsd":usd(v.liq),"tests":v.tests,
    "touchMs":[v.touch.0,v.touch.1],"refs":v.refs})
  }
 
@@ -511,7 +516,7 @@ impl State {
    let edge=(r.high-r.low)*0.15;
    let (low_fill,low_tests)=self.ledger.edge(r.low,r.low+edge);
    let (high_fill,high_tests)=self.ledger.edge(r.high-edge,r.high);
-   json!({"low":sig(r.low),"high":sig(r.high),"sinceMs":r.since_ms,"lowFillUsd":low_fill.round(),"lowTests":low_tests,"highFillUsd":high_fill.round(),"highTests":high_tests})
+   json!({"low":sig(r.low),"high":sig(r.high),"sinceMs":r.since_ms,"lowFillUsd":usd(low_fill),"lowTests":low_tests,"highFillUsd":usd(high_fill),"highTests":high_tests})
   });
   let refs=self.refs(end,range);
   let levels=price.map(|p|self.ledger.levels(p,atr4h,&self.live,&refs,now)).unwrap_or_default();
@@ -690,6 +695,24 @@ mod tests {
   assert_eq!(j["position"]["show"],false);
   assert!(j["events"].as_array().unwrap().is_empty());
   assert_eq!(snap.price,Some(50_000.0));
+ }
+
+ #[test]
+ fn flow_coverage_stops_at_the_first_gap() {
+  let mut s=flat_state(20,10.0);
+  assert_eq!(s.flow_start(),Some(T0));
+  let hour=|net:f64|Hour{o:10.0,h:10.0,l:10.0,c:10.0,net};
+  s.hours.insert(T0-HOUR_MS,hour(5.0));
+  s.hours.insert(T0-2*HOUR_MS,hour(-3.0));
+  assert_eq!(s.flow_start(),Some(T0-2*HOUR_MS),"footprint hours right before the minutes extend coverage");
+  s.hours.insert(T0-3*HOUR_MS,hour(0.0));
+  s.hours.insert(T0-30*HOUR_MS,hour(7.0));
+  assert_eq!(s.flow_start(),Some(T0-2*HOUR_MS),"a REST hour without direction or an older stretch after a gap does not");
+  let j=s.compute(T0+20*M+5_000,true).json;
+  let rows=j["flow"]["rows"].as_array().unwrap();
+  assert_eq!(rows[0]["netUsd"],json!(15_000.0));
+  assert_eq!(rows[1]["netUsd"],json!(20_000.0+5.0),"1h reaches back into the hour it mostly covers");
+  assert_eq!(rows[2]["netUsd"],Value::Null,"4h starts before the gap");
  }
 
  #[test]
