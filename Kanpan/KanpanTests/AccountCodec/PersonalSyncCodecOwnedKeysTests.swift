@@ -95,7 +95,10 @@ import KanpanAccount
     for kind in Drawing.Kind.allCases {
       #expect(owned.contains("styles/" + kind.rawValue), "`styles/\(kind.rawValue)` 不在表里")
     }
-    for key in ["favorites", "magnet", "continuous"] { #expect(owned.contains(key)) }
+    for key in ["magnet", "continuous"] { #expect(owned.contains(key)) }
+    // 收藏的画线工具 2026-10-10 三端退役：不替它说话，云端老 body 里残留的是「外来键」，原样留着不发 null，
+    // 由服务端 `strip_retired` 在下一次合并时洗掉。
+    #expect(!owned.contains("favorites"), "`favorites` 已退役，替它说话会把 null 推上去")
   }
 
   // MARK: 设置
@@ -104,9 +107,8 @@ import KanpanAccount
   ///
   /// 契约（`Backend/kanpan-api/contract/settings-fields.json`）是 iOS 和 Rust 之间那份
   /// 白名单的唯一权威副本，由 `PrefsFieldPlan.table` 生成。线上会出现的顶层键 =
-  /// 契约里的 `wireKeys`；其中 `styleID` 是**服务端认、客户端不发**的老键
-  /// （`wireOnlyKeys`），所以它正是那种「不该由这个客户端说话」的字段——
-  /// 它要是进了表，`drawings.created` 那一出会在 settings 上再演一遍。
+  /// 契约里的 `wireKeys`；其中**服务端认、客户端不发**的老键（`wireOnlyKeys`，2026-10-10 起是空表）
+  /// 正是那种「不该由这个客户端说话」的字段——它要是进了表，`drawings.created` 那一出会在 settings 上再演一遍。
   @Test("settings 替哪些字段说话，和生成的契约对得上")
   func theSettingsTopLevelKeysMatchTheGeneratedContract() throws {
     let path = repository.appendingPathComponent("Backend/kanpan-api/contract/settings-fields.json")
@@ -114,19 +116,12 @@ import KanpanAccount
     let owned = try #require(PersonalSyncCodec.ownedKeys["settings"])
     // 契约里的 `wireKeys` 是**服务端认的顶层键**，而客户端发上去的路径是拍平过的：
     // `params` 那几摊在线上长的是 `params/MA`，服务端按第一段去对白名单。所以这儿比的是
-    // 「每个键的第一段」，下面这两个单独减掉——它们是**服务端认、客户端不发**的键，
-    // 照定义就不该由这个客户端替它们说话：
-    //
-    // - `styleID`：十二款蜡烛造型那一阵子的遗留，客户端早就不发了。
-    // - `routePolicy`：2026-09-19 起是本机字段（直连 / 网关那两档不再跟着人走），
-    //   服务端留着它只为不把还在发它的老客户端整条操作拒掉。
-    // - `drawToolGroup`：「绘图」面板上次停在哪个分类。2026-09-22 工具砍到十二把、
-    //   分类标签整条去掉之后这个键就没东西可存了，客户端既不发也不收；服务端同理留着。
-    // - `compactValues`：「简化指标数值」开关。2026-09-23 起数额一律 K / M / B / T、价格原样，
-    //   不再交给用户选，开关连同 Prefs 字段收掉；服务端同理留着。
-    let serverKnownButUnsent: Set<String> = ["styleID", "routePolicy", "drawToolGroup", "compactValues"]
-    for key in serverKnownButUnsent {
-      #expect(contract.wireOnlyKeys[key] != nil, "`\(key)` 客户端不发，契约里就得写清楚它为什么只在线上存在")
+    // 「每个键的第一段」，`wireOnlyKeys` 单独减掉——它们是**服务端认、客户端不发**的键，
+    // 照定义就不该由这个客户端替它们说话。原来那四个（`styleID`、`routePolicy`、`drawToolGroup`、
+    // `compactValues`）2026-10-10 走服务端 `RETIRED_SETTINGS_FIELDS` 两端退役，这张表现在是空的。
+    let serverKnownButUnsent = Set(contract.wireOnlyKeys.keys)
+    for key in ["styleID", "routePolicy", "drawToolGroup", "compactValues", "portraitHeight", "indicatorLayouts"] {
+      #expect(!contract.wireKeys.contains(key), "`\(key)` 2026-10-10 已退役，契约里不该还有它")
     }
     let expected = Set(contract.wireKeys).subtracting(serverKnownButUnsent)
     let covered = Set(owned.map { String($0.split(separator: "/")[0]) })
@@ -151,6 +146,9 @@ import KanpanAccount
     #expect(!top.contains("showDrawings"), "`showDrawings` 两端都删了，替它说话会把 null 推上去")
     #expect(!owned.contains { $0.hasPrefix("subHeights/") || $0 == "subHeights" }, "`subHeights` 两端都删了")
     #expect(!top.contains("routePolicy"), "线路那两档 2026-09-19 起是本机字段，新客户端不发它")
+    #expect(!top.contains("portraitHeight"), "竖屏主图占比 2026-10-10 退役，新客户端不发它")
+    #expect(!owned.contains { $0 == "indicatorLayouts" || $0.hasPrefix("indicatorLayouts/") },
+            "周期分组布局 2026-10-10 退役，新客户端不发、也不再对云端残留发 null")
     #expect(!top.contains("drawToolGroup"), "「绘图」面板没有分类标签了，新客户端不发它")
     #expect(!top.contains("compactValues"), "数额怎么缩写不再交给用户选，新客户端不发它")
     for key in Prefs.deviceOnlyFieldNames { #expect(!top.contains(key), "`\(key)` 压根不上线") }

@@ -15,6 +15,14 @@ import Foundation
 ///   A 手机的网络环境带到 B 手机上。`deviceOnly`。
 /// - 「最近打开过哪些品种」「哪些品种看得勤」这类**每开一张图就变的统计**——不是他摆出来的
 ///   样子，而且每变一次就得生成一条同步操作，代价远大于收益。`derivedLocal`。
+/// - 面板停在哪一栏（复盘本「观点 / 交易」那一面、筛选停在哪一档、板块停在哪个市场）也是他用手点出来的
+///   习惯，跨重启、跨设备都该还在。`synced`。**自动替他翻过去的那一下不算**：比如复盘本「观点」空着
+///   时自动翻到「交易」，只改这一次显示、不回写（`TradeReviewFeature.chosenSegment`）。
+///
+/// **例外：统计结果直接决定界面怎么摆的，跟着人走。** `drawToolUsage`（画线条露哪几把）、
+/// `analysisUsage`（「分析」面板四节的顺序）、`learnedDefaults`（「按我的习惯自动调整」学到的结论）
+/// 都是自动累积的，照字面该是 `derivedLocal`；但它们定的是界面长什么样——同一个人换台手机，条上还该
+/// 是那几把、节序还该一样——所以是 `synced`。量都很小且有上限，别照字面把它们挪回本机。
 ///
 /// ## 「线路」这一摊整个留在本机（2026-09-19 改的）
 ///
@@ -36,11 +44,9 @@ import Foundation
 /// `PrefsFieldPlanTests.routePolicyStaysOnThisDevice` 与
 /// `RoutePolicyStaysHomeTests` 把这件事钉住了。
 ///
-/// 服务端那一侧**仍然认 `routePolicy`**（见下面的 `wireOnlyKeys`）：库里存着的老 body
-/// 还带着它，直接从白名单删掉，那条设置对象下一次合并就会因为这个键没有值规则整条 400。
-/// 要下线得走服务端 `RETIRED_SETTINGS_FIELDS` 两端退役。新客户端既不发也不收。
-/// （老客户端多发一个服务端不认的键，服务端现在只是丢掉它、在 `droppedFields` 里报回，
-/// 不再整条拒绝——早先这里写的「堵死同步队列」说的是那之前的服务端。）
+/// 服务端 2026-10-10 起**不再认 `routePolicy`**：它进了 `sync.rs` 的 `RETIRED_SETTINGS_FIELDS`，
+/// 老客户端发上来被丢掉并在 `droppedFields` 里报回，库里老 body 带着的由 `strip_retired` 在下一次
+/// 合并时洗掉。新客户端既不发也不收，本机照旧存它（`.deviceOnly`）。
 ///
 /// 来回搬过的字段各留了一条记录，免得下一个人再翻一次：`interval` / `keepAwake` 曾经被当成
 /// 本机设置，结果是「换台设备登同一个账号，周期回到出厂 1h」，2026-09-19 改回 `synced`；
@@ -85,13 +91,9 @@ enum PrefsFieldPlan {
     "barSpacing": .synced, "mainInverted": .synced, "subInverted": .synced,
     // 横屏自己记的根间距（2026-10-05）：横竖图宽差两倍多，共用一份转屏就乱，见 `Prefs.landscapeBarSpacing`。
     "landscapeBarSpacing": .synced,
-    "portraitHeight": .synced,
     "indicatorColors": .synced,
     "overlays": .synced, "subs": .synced, "params": .synced,
     "subHeightOverrides": .synced,
-    // 2026-09-27~10-02 的「周期分组记忆」留下的键：现在永远写空表，只为读老档、并把云端残留的
-    // `indicatorLayouts/<组>` 发 null 清掉（指标布局一人一份，就是上面那六个键）。
-    "indicatorLayouts": .synced,
     // 他在各页上摆出来的样子（见 `Prefs` 末尾那一节）。
     "favoritesGroup": .synced,
     "sectorMarket": .synced, "sectorWindow": .synced,
@@ -110,6 +112,9 @@ enum PrefsFieldPlan {
     // 2026-10-08「自选走势线」：个人的看表偏好，换台手机还该是那样，跟账号走。
     "favoritesTrend": .synced,
     "reviewSearchScope": .synced,
+    // 2026-10-10 复盘本「观点 / 交易」停在哪一面、筛选停在「全部 / 待判定 / 已判定」哪一档：
+    // 面板停在哪一栏也是用手点出来的习惯，跨重启、跨设备。自动翻面不回写（见 `Prefs.reviewSegment`）。
+    "reviewSegment": .synced, "reviewBookFilter": .synced,
     "alertSound": .synced,
     "watchMoveAlert": .synced,
     // 条件提醒协议第 6 节：设置 › 通知「品种上新与停牌下架」。
@@ -136,6 +141,17 @@ enum PrefsFieldPlan {
     // E 组：watchMoveThreshold（自选波动提醒的幅度，改为按波动自动定，见 `WatchMove.autoThreshold`）。
     // G 组：favoritesSort、favoritesAscending、favoritesAmount、favoritesSparkline（自选页排序与迷你走势）、
     // sectorSort（板块品种列表排序，固定按涨跌幅）。
+    //
+    // 2026-10-10「同步字段整理」退役的，同样在服务端 `RETIRED_SETTINGS_FIELDS` 里（老客户端发上来丢掉并在
+    // droppedFields 报回，库里老 body 由 strip_retired 洗掉）。退役前的代码在 tag
+    // sync-fields-before-retire-2026-10-10，恢复某一项从那里取回字段、Codec 键与服务端值规则，再 make sync-contract：
+    // - portraitHeight（竖屏主图占比）：三端只读不写、永远 0.5，读端改用 `ChartOptions` 的出厂值。
+    // - indicatorLayouts（09-27~10-02 周期分组留下的键）：10-03 之前的老客户端已经没了，读老档的迁移一起删掉
+    //   （老存档里的这个键解码时忽略，退回顶层那份布局）。
+    // - 原来的四个 wireOnly 键：styleID、drawToolGroup、compactValues 客户端早就不发；routePolicy 在本机照旧
+    //   （下面 `.deviceOnly` 那一行），只是服务端不再认。
+    // - 画线偏好集合里的 favorites（收藏的画线工具，`DrawingPreferences` 那边，见服务端
+    //   `RETIRED_DRAWING_PREFERENCE_FIELDS`）。
 
     // ---------------------------------------------------------------- 留在这台机器上
     // 走直连还是走 VPS 网关，是这台手机所处网络的属性，不是他的习惯。`routePolicy`
@@ -167,25 +183,11 @@ enum PrefsFieldPlan {
   /// 服务端 `SETTINGS_FIELDS` 里有、而客户端这张表里没有的那几个键 → 它为什么只在线上存在。
   ///
   /// 理由写在值里，跟着键一起被导进契约文件（`Backend/kanpan-api/contract/settings-fields.json`），
-  /// 所以加一个键就必须当场写清楚为什么，下一个人不用去翻 git log。
+  /// 所以加一个键就必须当场写清楚为什么，下一个人不用去翻提交历史。
   ///
-  /// 留着它们的理由是**存量**，不是「老客户端还在发」：服务端对不认识的字段现在是丢掉并在
-  /// `droppedFields` 里报回（不再整条拒绝），但库里存着的老 body 里的键如果突然没了值规则，
-  /// 那条对象之后的每次合并都会 400。所以删它们要走服务端 `RETIRED_SETTINGS_FIELDS`。
-  /// 四个退下来的键共用的那半句理由（见上）。
-  private static let keptForStoredBodies = "服务端仍然认这个键：库里存着的老 body 还带着它，直接从 SETTINGS_FIELDS 删掉，下一次合并到那条对象上会因为这个键没有值规则整条 400；真要下线它，走 sync.rs 的 RETIRED_SETTINGS_FIELDS 两端退役（strip_retired 会顺手把存量 body 洗掉）。老客户端单纯多发一个服务端不认的键，如今只会被丢掉并在 droppedFields 里报回，不再堵队列。"
-
-  static let wireOnlyKeys: [String: String] = [
-    "styleID": "十二款蜡烛造型那一阵子的选择，客户端早就不发了。"
-      + Self.keptForStoredBodies,
-    "drawToolGroup": "「绘图」面板上次停在哪个分类。2026-09-22 工具砍到十二把、"
-      + "分类标签整条去掉之后，客户端既不发也不收了（见 Drawing.Kind.palette）。"
-      + Self.keptForStoredBodies,
-    "compactValues": "「简化指标数值」开关。2026-09-23 起数额（量、均量、持仓量、成交量差）一律 K / M / B / T、"
-      + "价格与振荡类读数一律原样不缩写，这件事不再交给用户选，开关连同 Prefs 字段一起收掉，客户端既不发也不收。"
-      + Self.keptForStoredBodies,
-    "routePolicy": "直连 / 网关那两档。2026-09-19 起是本机字段（PrefsFieldClass.deviceOnly）："
-      + "它说的是这台手机这张网连得通哪一头，不跟着人走，新客户端既不发也不收。"
-      + Self.keptForStoredBodies,
-  ]
+  /// 2026-10-10 起是空表：原来的四个（`styleID`、`drawToolGroup`、`compactValues`、`routePolicy`）
+  /// 走服务端 `RETIRED_SETTINGS_FIELDS` 两端退役了——老客户端发上来丢掉并在 `droppedFields` 里报回，
+  /// 库里存着的老 body 由 `strip_retired` 在下一次合并时洗掉，不会因为键没有值规则整条 400。
+  /// 表和契约里那一栏留着，是为了以后真有「服务端先认、客户端不发」的键时有地方写理由。
+  static let wireOnlyKeys: [String: String] = [:]
 }

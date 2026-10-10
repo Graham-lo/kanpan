@@ -298,6 +298,67 @@ struct PrefsFieldPlanTests {
     #expect(PrefsCodec.decode(Data("{}".utf8)).favoritesTrend)
   }
 
+  /// 复盘本停在「观点 / 交易」哪一面、筛选停在哪一档（2026-10-10）：跟着人走，换设备、重开都回到上次那里。
+  /// 认不出的值（手改的档、更高版本写下的新档位）退回出厂，不推上去被服务端整条拒收。
+  @Test("复盘本停在哪一面、哪一档跟着人走，认不出的退回出厂")
+  func reviewBookPositionIsSynced() throws {
+    for name in ["reviewSegment", "reviewBookFilter"] {
+      #expect(PrefsFieldPlan.table[name] == .synced, "\(name)")
+      #expect(Prefs.syncedFieldNames.contains(name), "\(name)")
+      #expect(Prefs.stampedFieldNames.contains(name), "\(name) 改了要记脏，才会推上去")
+    }
+    var prefs = Prefs.defaults
+    #expect(prefs.reviewSegment == "views")
+    #expect(prefs.reviewBookFilter == "todo")
+    for segment in Prefs.reviewSegments {
+      for filter in Prefs.reviewBookFilters {
+        prefs.reviewSegment = segment
+        prefs.reviewBookFilter = filter
+        let back = PrefsCodec.decode(PrefsCodec.encode(prefs))
+        #expect(back.reviewSegment == segment && back.reviewBookFilter == filter)
+        #expect(Prefs.changedStampedFields(from: .defaults, to: prefs)
+          == Set([segment == "views" ? nil : "reviewSegment", filter == "todo" ? nil : "reviewBookFilter"].compactMap { $0 }))
+      }
+    }
+    for bad in [#"{"reviewSegment":"notes","reviewBookFilter":"done"}"#,
+                #"{"reviewSegment":"","reviewBookFilter":""}"#,
+                #"{"reviewSegment":7,"reviewBookFilter":["all"]}"#,
+                #"{"reviewSegment":"Trades","reviewBookFilter":"ALL"}"#] {
+      let back = PrefsCodec.decode(Data(bad.utf8))
+      #expect(back.reviewSegment == "views", "\(bad)")
+      #expect(back.reviewBookFilter == "todo", "\(bad)")
+    }
+    // 认得的一个、认不出的一个：只丢认不出的那一项。
+    let half = PrefsCodec.decode(Data(#"{"reviewSegment":"trades","reviewBookFilter":"nope"}"#.utf8))
+    #expect(half.reviewSegment == "trades" && half.reviewBookFilter == "todo")
+    #expect(PrefsCodec.decode(Data("{}".utf8)).reviewBookFilter == "todo")
+  }
+
+  /// 2026-10-10 三端退役的设置键（删除前在 tag `sync-fields-before-retire-2026-10-10`）：
+  /// 母表、同步白名单、线上只认的那一档里都不许再有；老存档带着它们照常读回，其余字段一个不丢。
+  @Test("2026-10-10 退役的键不在母表里，老存档带着照常读")
+  func retiredKeysAreGoneButOldArchivesDecode() throws {
+    let retired = ["portraitHeight", "indicatorLayouts", "styleID", "drawToolGroup", "compactValues"]
+    for name in retired + ["routePolicy"] {
+      #expect(!Prefs.syncedFieldNames.contains(name), "\(name)")
+      #expect(PrefsFieldPlan.wireOnlyKeys[name] == nil, "\(name)")
+    }
+    for name in retired { #expect(PrefsFieldPlan.table[name] == nil, "\(name)") }
+    #expect(PrefsFieldPlan.wireOnlyKeys.isEmpty)
+    let old = """
+      {"v":3,"interval":"4h","redUp":false,"portraitHeight":0.62,"styleID":"paper","drawToolGroup":"lines",
+       "compactValues":true,"routePolicy":"gateway",
+       "indicatorLayouts":{"hour":{"subs":["RSI"]},"day":{"overlays":["EMA"]}},"subs":["VOL","MACD"]}
+      """
+    let prefs = PrefsCodec.decode(Data(old.utf8))
+    #expect(prefs.interval == .h4)
+    #expect(prefs.redUp == false)
+    #expect(prefs.subs == [.vol, .macd], "布局就是顶层那份，周期分叉忽略")
+    #expect(prefs.routePolicy == .gateway, "线路仍是本机字段，照读")
+    let text = try #require(String(data: PrefsCodec.encode(prefs), encoding: .utf8))
+    for name in retired { #expect(!text.contains("\"\(name)\""), "\(name) 不再写进档里") }
+  }
+
   /// 「分析」面板四节的使用次数（2026-10-08）：自动统计，但定的是面板怎么排，跟着人走；出厂空表。
   @Test("分析面板四节次数跟着人走，出厂空表")
   func analysisUsageIsSyncedAndEmptyByDefault() {
@@ -323,9 +384,9 @@ struct PrefsFieldPlanTests {
   /// **产品规则本身一个字没变**：只有两档、手动选、没有任何自动切换（出厂 2026-10-08 起是网关）。
   /// 变的只有一件事——这个选择不再跨设备覆盖。
   ///
-  /// 服务端那一侧仍然认 `routePolicy`（进了 `PrefsFieldPlan.wireOnlyKeys`）：库里存着的
-  /// 老 body 还带着它，直接从白名单删掉，那条设置对象之后的每次合并都会因为它没有值规则
-  /// 整条 400；要下线得走服务端 `RETIRED_SETTINGS_FIELDS`。新客户端既不发也不收。
+  /// 服务端那一侧 2026-10-10 起也不再认 `routePolicy`：它从 `PrefsFieldPlan.wireOnlyKeys` 挪进服务端
+  /// `RETIRED_SETTINGS_FIELDS`，老客户端推上来的那条被丢掉（droppedFields 报回），库里老 body 里的残留
+  /// 合并时由 `strip_retired` 洗掉、不会整条 400。新客户端既不发也不收，本机照旧是 `.deviceOnly`。
   @Test("直连 / 网关留在这台设备上")
   func routePolicyStaysOnThisDevice() {
     for name in ["apiHost", "streamHost", "launchSnapshot"] {
@@ -344,9 +405,9 @@ struct PrefsFieldPlanTests {
     #expect(Prefs.changedStampedFields(from: .defaults, to: gateway).isEmpty,
             "改线路不该记脏，更不该推一条操作上去")
 
-    // 但服务端还得继续认这个键：老客户端还在发。
-    #expect(PrefsFieldPlan.wireOnlyKeys["routePolicy"] != nil,
-            "服务端不认它，存着它的老 body 合并时会整条 400；要删走 RETIRED_SETTINGS_FIELDS")
+    // 线上也不再有它（2026-10-10 进服务端退役名单）：契约里的线上键不含它。
+    #expect(PrefsFieldPlan.wireOnlyKeys["routePolicy"] == nil,
+            "2026-10-10 起走服务端 RETIRED_SETTINGS_FIELDS，不再是「服务端认、客户端不发」")
 
     // 换档案（登录 / 退登 / 切账号）时按 `deviceOnlyFieldNames` 保本机值：
     // 线路那两档留住。
@@ -554,7 +615,8 @@ enum SettingsFieldContract {
         + "库里已经存着它的 body 还会在下一次合并时整条 400——要下线一个键，走 sync.rs 的 RETIRED_SETTINGS_FIELDS。"
         + "多一个而 sync_validation::field 没配值规则：同一种死法，_=>false 让整条操作 400。",
       wireKeys: PrefsFieldPlan.names(.synced).union(PrefsFieldPlan.wireOnlyKeys.keys).sorted(),
-      wireOnlyKeysNote: "服务端认、客户端不发的键，以及它们为什么只在线上存在。",
+      wireOnlyKeysNote: "服务端认、客户端不发的键，以及它们为什么只在线上存在。"
+        + "2026-10-10 起为空：原来的 styleID、drawToolGroup、compactValues、routePolicy 进了 sync.rs 的 RETIRED_SETTINGS_FIELDS。",
       wireOnlyKeys: PrefsFieldPlan.wireOnlyKeys,
       indicatorIDsNote: "`IndicatorID` 的全部 rawValue，顺序就是枚举的顺序：主图那几种在前、副图那几种在后。"
         + "服务端 sync_validation 的 OVERLAY_INDICATORS ++ SUB_INDICATORS 必须逐项等于它——"
@@ -574,8 +636,8 @@ enum SettingsFieldContract {
         + "（测试 auto_layers_are_the_contract_ones）。少一个：带它的那条设置操作整条 400。",
       autoLayerIDs: AutoLayer.allCases.map(\.rawValue),
       drawingKindsNote: "`Drawing.Kind` 的全部 rawValue。服务端 sync_validation 的 KINDS 必须和它一样——"
-        + "drawings.kind、drawingPreferences.favorites 与 styles/<kind>、settings.lastDrawTool "
-        + "四条值规则都拿它当词表。少一个：用那把工具画出来的线被服务端整条拒绝，永远离不开这台手机。",
+        + "drawings.kind、drawingPreferences.styles/<kind>、settings.lastDrawTool "
+        + "三条值规则都拿它当词表。少一个：用那把工具画出来的线被服务端整条拒绝，永远离不开这台手机。",
       drawingKinds: Drawing.Kind.allCases.map(\.rawValue),
       orderFlowNote: "主力订单流 settings.orderFlowOverrides 的值规则与币安缩放前缀表。"
         + "门槛（spot / usdtPerp / coinPerp / delivery，美元）在 thresholdMin…thresholdMax，"

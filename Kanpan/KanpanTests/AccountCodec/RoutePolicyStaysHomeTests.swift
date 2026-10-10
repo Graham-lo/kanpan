@@ -47,8 +47,8 @@ struct RoutePolicyStaysHomeTests {
     #expect(aAfter.routePolicy == .gateway, "A 选的网关不被 B 那份盖掉")
   }
 
-  /// 云端那份是**老客户端**传上去的，带着 `routePolicy`（服务端仍然认这个键，
-  /// 见 `PrefsFieldPlan.wireOnlyKeys`）。新客户端读到它也不改自己的选择。
+  /// 云端那份是**老客户端**传上去的，带着 `routePolicy`（2026-10-10 起服务端把它退役，
+  /// 合并时洗掉；这里验的是万一还收到，新客户端读到它也不改自己的选择）。
   @Test("云端那份带着老客户端发上来的 routePolicy，也改不动这台设备")
   func aLegacyCloudObjectDoesNotMoveThisDevice() throws {
     var legacy = try PersonalSyncCodec.settings(.defaults)

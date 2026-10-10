@@ -76,7 +76,6 @@ enum PrefsCodec {
     var p = prefs
     p.barSpacing = Prefs.clampSpacing(p.barSpacing)
     p.landscapeBarSpacing = Prefs.clampSpacing(p.landscapeBarSpacing)
-    p.portraitHeight = Prefs.clampPortraitHeight(p.portraitHeight)
     p.subHeightOverrides = p.subHeightOverrides.compactMapValues { $0.isFinite ? min(2, max(0.5, $0)) : nil }
     p.orderFlowOverrides = p.orderFlowOverrides.compactMapValues { $0.normalized }
     p.learnedDefaults = p.learnedDefaults.sanitized()
@@ -150,13 +149,11 @@ extension Prefs: Codable {
     case candleKind
     case barSpacing, mainInverted, subInverted
     case landscapeBarSpacing
-    // `hiddenOutputs`、`rsiUpper`、`rsiLower` 2026-09-28 收掉（收设置项 C 组），老档里的这几个键读时忽略；
-    // `indicatorLayouts/<组>` 里嵌着的 `hiddenOutputs` 同样忽略。
-    case portraitHeight
+    // `hiddenOutputs`、`rsiUpper`、`rsiLower` 2026-09-28 收掉（收设置项 C 组），老档里的这几个键读时忽略。
+    // `portraitHeight`（竖屏主图占比，永远 0.5）2026-10-10 退役：老档里的键读时忽略，图用 `ChartOptions` 的出厂值。
     case overlays, subs, params, subHeightOverrides
-    // 指标按周期分组记忆（2026-09-27 到 10-02）留下的键：10-03 起布局一人一份，上面那六个键就是
-    // 那一份；这个键只读老档（取当前周期那组），写出去永远是空表，见 `IndicatorLayouts.swift`。
-    case indicatorLayouts
+    // `indicatorLayouts`（2026-09-27~10-02 按周期分组记忆留下的键）2026-10-10 退役：10-03 之前的老客户端已经
+    // 没了，读老档取当前周期那组的迁移一起删掉；老档里的这个键读时忽略，布局就是上面那六个键。
     // `apiHost` / `streamHost`（自定义行情域名）2026-09-24 删了：设置里早就没有入口，
     // 线路只剩直连 / 网关两档，主机一律由 `RouteResolver` 定。旧存档里的这两个键解码时忽略。
     case routePolicy
@@ -173,6 +170,8 @@ extension Prefs: Codable {
     case favoritesTrend
     // `replaySpeed`（回放倍速）2026-09-28 收掉（收设置项）：老存档里的键读时忽略，服务端退役。
     case reviewSearchScope
+    // 复盘本「观点 / 交易」那一面、筛选那一档（2026-10-10）。
+    case reviewSegment, reviewBookFilter
     case alertSound
     // `watchMoveThreshold` 2026-09-28 收掉（收设置项 E 组），老档读时忽略。
     case watchMoveAlert
@@ -200,17 +199,9 @@ extension Prefs: Codable {
     try c.encode(landscapeBarSpacing, forKey: .landscapeBarSpacing)
     try c.encode(mainInverted, forKey: .mainInverted)
     try c.encode(subInverted.map(\.rawValue).sorted(), forKey: .subInverted)
-    try c.encode(portraitHeight, forKey: .portraitHeight)
     try c.encode(Dictionary(uniqueKeysWithValues: indicatorColors.map { ($0.key.rawValue, $0.value) }), forKey: .indicatorColors)
-    // 指标布局：老键写这个人的那一份；`indicatorLayouts` 永远是空表（键留着，老客户端读得懂、云端残留的分叉被清掉）。
-    let book = layoutBook
-    try Prefs.encode(book.shared, into: &c)
-    var groups = c.nestedContainer(keyedBy: IntervalGroup.self, forKey: .indicatorLayouts)
-    for group in IntervalGroup.allCases {
-      guard let fork = book.forks[group] else { continue }
-      var one = groups.nestedContainer(keyedBy: CodingKeys.self, forKey: group)
-      try Prefs.encode(fork, into: &one)
-    }
+    // 指标布局：这个人的那一份（一人一份、不分周期）。
+    try Prefs.encode(indicatorLayout, into: &c)
     try c.encode(routePolicy.rawValue, forKey: .routePolicy)
     try c.encode(favoritesGroup, forKey: .favoritesGroup)
     try c.encode(sectorMarket.rawValue, forKey: .sectorMarket)
@@ -222,6 +213,8 @@ extension Prefs: Codable {
     try c.encode(drawingsHidden, forKey: .drawingsHidden)
     try c.encode(favoritesTrend, forKey: .favoritesTrend)
     try c.encode(reviewSearchScope, forKey: .reviewSearchScope)
+    try c.encode(reviewSegment, forKey: .reviewSegment)
+    try c.encode(reviewBookFilter, forKey: .reviewBookFilter)
     try c.encode(alertSound.rawValue, forKey: .alertSound)
     try c.encode(watchMoveAlert, forKey: .watchMoveAlert)
     try c.encode(notifyListingChanges, forKey: .notifyListingChanges)
@@ -229,7 +222,7 @@ extension Prefs: Codable {
     try c.encode(learnedDefaults, forKey: .learnedDefaults)
   }
 
-  /// 指标布局的六个键。顶层和老档 `indicatorLayouts/<组>` 里写法一样。
+  /// 指标布局的六个键。
   private static func encode(_ layout: IndicatorLayout, into c: inout KeyedEncodingContainer<CodingKeys>) throws {
     let l = layout.sanitized
     try c.encode(l.priceMode.rawValue, forKey: .priceMode)
@@ -241,9 +234,8 @@ extension Prefs: Codable {
     try c.encode(Dictionary(uniqueKeysWithValues: l.subHeightOverrides.map { ($0.key.rawValue, $0.value) }), forKey: .subHeightOverrides)
   }
 
-  /// 反过来：档里有哪一键就整项换掉哪一项，没有的留着 `layout` 原来的值
-  /// （顶层从出厂起步；分叉那份从共用的那份起步——半截的分叉档缺的项就跟共用的走）。
-  /// 认不出的字面量、放错位置的指标、越界的数，规则和原来顶层那几段一模一样。
+  /// 反过来：档里有哪一键就整项换掉哪一项，没有的留着 `layout` 原来的值（从出厂起步）。
+  /// 认不出的字面量、放错位置的指标、越界的数一项一项丢或夹回来。
   private static func decode(_ c: KeyedDecodingContainer<CodingKeys>, into layout: inout IndicatorLayout) {
     func str(_ k: CodingKeys) -> String? { (try? c.decodeIfPresent(String.self, forKey: k)) ?? nil }
     func strs(_ k: CodingKeys) -> [String]? { (try? c.decodeIfPresent([String].self, forKey: k)) ?? nil }
@@ -340,7 +332,6 @@ extension Prefs: Codable {
     landscapeBarSpacing = (try? c.decode(Double.self, forKey: .landscapeBarSpacing)).map(Prefs.clampSpacing) ?? barSpacing
     if let v = bool(.mainInverted) { mainInverted = v }
     if let raw = strs(.subInverted) { subInverted = Set(Prefs.ids(raw, placement: .sub)) }
-    if let v = try? c.decode(Double.self, forKey: .portraitHeight), v.isFinite { portraitHeight = Prefs.clampPortraitHeight(v) }
 
     if let raw = try? c.decode([String: [Int: Hex]].self, forKey: .indicatorColors) {
       for (key, values) in raw {
@@ -348,21 +339,11 @@ extension Prefs: Codable {
         indicatorColors[id] = values.filter { (0..<21).contains($0.key) && $0.value.value.range(of: "^#[0-9a-fA-F]{6}$", options: .regularExpression) != nil }
       }
     }
-    // 指标布局一人一份、不分周期（2026-10-03）。老键就是那一份；老档（与老客户端写在云端的）
-    // `indicatorLayouts` 里还有按周期分的叉时，取当前周期所在组那一份当作唯一那份，其余丢掉。
-    var shared = indicatorLayout
-    Prefs.decode(c, into: &shared)
-    var book = IndicatorLayoutBook(shared: shared)
-    if let groups = try? c.nestedContainer(keyedBy: IntervalGroup.self, forKey: .indicatorLayouts) {
-      for group in IntervalGroup.allCases {
-        guard let one = try? groups.nestedContainer(keyedBy: CodingKeys.self, forKey: group) else { continue }
-        var fork = shared
-        Prefs.decode(one, into: &fork)
-        book.forks[group] = fork
-      }
-    }
-    adopt(book)
-    collapseIndicatorLayouts()
+    // 指标布局一人一份、不分周期（2026-10-03）：就是顶层那六个键。老档里的 `indicatorLayouts`
+    // （周期分组那阵子的分叉）2026-10-10 起不再读，认不出的键直接忽略。
+    var layout = indicatorLayout
+    Prefs.decode(c, into: &layout)
+    indicatorLayout = layout
 
     // 认不出的值（比如旧版本的「自动」）退回直连。
     if let raw = str(.routePolicy), let v = MarketRoutePolicy(rawValue: raw) { routePolicy = v }
@@ -401,6 +382,9 @@ extension Prefs: Codable {
       analysisUsage = Prefs.cleanAnalysisUsage(usage)
     }
     if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }
+    // 和服务端值规则逐字对齐：认不出的（手改的档、更高版本写下的新面 / 新档）退回出厂值，不推上去整条拒收。
+    if let raw = str(.reviewSegment), Prefs.reviewSegments.contains(raw) { reviewSegment = raw }
+    if let raw = str(.reviewBookFilter), Prefs.reviewBookFilters.contains(raw) { reviewBookFilter = raw }
     if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }
     if let v = bool(.watchMoveAlert) { watchMoveAlert = v }
     if let v = bool(.notifyListingChanges) { notifyListingChanges = v }

@@ -37,7 +37,8 @@ import { toast } from '../ui/toast'
 import { registerTerms, termHTML } from '../ui/hint'
 import { loggedIn, onSession, session } from '../../account/session'
 import { go, hooks, setMeBadge } from '../app/shell'
-import { st, save as saveState } from '../app/store'
+import { st, save as saveState, subscribe } from '../app/store'
+import { REVIEW_BOOK_FILTERS, REVIEW_SEGMENTS, type ReviewBookFilter, type ReviewSegment } from '../app/prefs'
 import { S, REST, j } from '../../market'
 import { fmtPrice, priceDecimalsFallback } from '../chart/format'
 import { makeState } from '../chart/state'
@@ -339,14 +340,22 @@ function sendIntent<P extends { symbol: string; iv: string }>(kind: M.IntentKind
 let focusTradeNote: string | null = null
 
 // ───────── 两页共用的「观点 · 交易」 ─────────
-type Segment = 'views' | 'trades'
-let segment: Segment = 'views'
-let bookTab: 'all' | 'todo' | 'decided' = 'todo'
+type Segment = ReviewSegment
+// 此刻显示的那一面。人**手点**的那一面在 st.reviewSegment（2026-10-10 起跟账号同步，与 iOS `Prefs.reviewSegment` 同义）；
+// 「观点」空、「交易」有时自动翻到交易（settle）只改这一格、不回写。筛选那一档同样跟人走：st.reviewBookFilter（出厂「待判定」）。
+let segment: Segment = st.reviewSegment
 const segSubs = new Set<() => void>()
 function setSegment(v: Segment): void {
   if (segment === v) return
   segment = v
   segSubs.forEach(fn => fn())
+}
+/** 手点分段：显示的那面与记下的那面一起换（落盘、记账推送） */
+function pickSegment(raw: string | undefined): void {
+  if (!(REVIEW_SEGMENTS as readonly string[]).includes(raw ?? '')) return
+  const v = raw as Segment
+  if (st.reviewSegment !== v) { st.reviewSegment = v; saveState() }
+  setSegment(v)
 }
 const segHTML = (): string =>
   `<div class="m-seg rv-seg" role="radiogroup">${([['views', '观点'], ['trades', '交易']] as const).map(([v, t]) =>
@@ -586,6 +595,8 @@ export function buildReviewBook(body: HTMLElement, layer: MeLayer, host: MeHost)
 }
 
 function mountBook(body: HTMLElement, host: MeHost): () => void {
+  // 打开时从他手点过的那面起步（下面 settle 再按两面有没有东西摆一次）
+  segment = st.reviewSegment
   body.innerHTML = `<div class="rv-top">${segHTML()}
       <div class="rv-top-views">
         <button type="button" class="rv-card rv-summary" data-stats></button>
@@ -619,7 +630,7 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
   let typingTimer: ReturnType<typeof setTimeout> | undefined
 
   const query = (): { todo?: boolean; decided?: boolean; q?: string } =>
-    bookTab === 'todo' ? { todo: true, q } : bookTab === 'decided' ? { decided: true, q } : { q }
+    st.reviewBookFilter === 'todo' ? { todo: true, q } : st.reviewBookFilter === 'decided' ? { decided: true, q } : { q }
 
   async function load(reset: boolean): Promise<void> {
     if (!reset && (loading || !next)) return
@@ -642,7 +653,7 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
 
   /** 记一笔还没传上去的那几条（按本机记录先列出来；已判定那一档里没有它们） */
   function localRows(): ViewRecordFull[] {
-    if (bookTab === 'decided') return []
+    if (st.reviewBookFilter === 'decided') return []
     const have = new Set(records.map(r => r.draft.id))
     const needle = q.toLowerCase()
     return pendingNotes()
@@ -674,7 +685,7 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
       <span class="rv-stats">${stat('记录', t.live)}${stat('判对', t.realized)}${stat('判错', t.unrealized)}</span>`
     const pending = pendingNow()
     chips.innerHTML = ([['all', '全部'], ['todo', pending > 0 ? `待判定 ${pending}` : '待判定'], ['decided', '已判定']] as const)
-      .map(([v, label]) => `<button type="button" class="rv-chip${bookTab === v ? ' on' : ''}" role="radio" aria-checked="${bookTab === v}" data-tab="${v}"><span class="num">${label}</span></button>`).join('')
+      .map(([v, label]) => `<button type="button" class="rv-chip${st.reviewBookFilter === v ? ' on' : ''}" role="radio" aria-checked="${st.reviewBookFilter === v}" data-tab="${v}"><span class="num">${label}</span></button>`).join('')
     paintWeek()
   }
 
@@ -704,15 +715,15 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
       list.length ? `<section class="rv-lsec">${title ? secHead(title) : ''}<div class="rv-rows">${list.map(recordRow).join('')}</div></section>` : ''
     const d = unfinishedNote()
     let html = d ? `<button type="button" class="rv-resume" data-resume><b>继续未完成的记录</b><small class="num">${esc(d.symbol)} · ${esc(INTERVAL_SHORT[d.interval as keyof typeof INTERVAL_SHORT] ?? d.interval)}</small><span class="me-chev">${CHEV}</span></button>` : ''
-    html += bookTab === 'todo' ? group('待处理', s.pending) + group('等答案', s.waiting)
-      : bookTab === 'decided' ? group(null, s.decided) : group(null, s.all)
+    html += st.reviewBookFilter === 'todo' ? group('待处理', s.pending) + group('等答案', s.waiting)
+      : st.reviewBookFilter === 'decided' ? group(null, s.decided) : group(null, s.all)
     if (loading) html += spinner()
     if (error) html += `<div class="rv-line rv-danger">${esc(error)}</div><button type="button" class="rv-link" data-retry>重试</button>`
     if (viewsEmpty() && !error && !q) {
       // 一条观点都没有（照 iOS 10-08 走查）：一句话 + 一颗「去记一笔」，点了关上复盘本回到图上记
       html += `<div class="rv-empty rv-views-empty"><span data-id="review.empty">还没有观点 · 在图上记一笔</span>
         <button type="button" class="rv-empty-note" data-empty-note data-id="review.empty.note">${icon('note', 16)}<span>去记一笔</span></button></div>`
-    } else if (!s.all.length && !loading && !error) html += `<div class="rv-empty">${q ? '没有搜到' : bookTab === 'todo' ? '没有待判定的' : '还没有记录'}</div>`
+    } else if (!s.all.length && !loading && !error) html += `<div class="rv-empty">${q ? '没有搜到' : st.reviewBookFilter === 'todo' ? '没有待判定的' : '还没有记录'}</div>`
     if (next && !error) html += '<div class="rv-more" aria-hidden="true"></div>'
     viewsList.innerHTML = html
     io?.disconnect()
@@ -765,7 +776,8 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
     if (key === settled) return
     const viewsChanged = settled.split('|')[0] !== String(ve)
     settled = key
-    const nextSeg = M.preferredSegment(segment, ve, te)
+    // 起点是他手点过的那面（st.reviewSegment），结果只改显示的那面：自动翻面不回写
+    const nextSeg = M.preferredSegment(st.reviewSegment, ve, te)
     if (nextSeg !== segment) setSegment(nextSeg)
     if (viewsChanged) paintViews()
   }
@@ -776,11 +788,15 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
   body.addEventListener('click', e => {
     const t = e.target as HTMLElement
     const seg = t.closest<HTMLElement>('[data-seg]')
-    if (seg) { setSegment(seg.dataset.seg as Segment); return }
+    if (seg) { pickSegment(seg.dataset.seg); return }
     const chip = t.closest<HTMLElement>('[data-tab]')
     if (chip) {
-      const v = chip.dataset.tab as typeof bookTab
-      if (v !== bookTab) { bookTab = v; paintTop(); if (sc) sc.scrollTop = 0; void load(true) }
+      const v = chip.dataset.tab as ReviewBookFilter
+      if ((REVIEW_BOOK_FILTERS as readonly string[]).includes(v) && v !== st.reviewBookFilter) {
+        // 当场进内存、落盘、记账推送（跟账号走）；seenFilter 先对上，免得下面的订阅再拉一次
+        st.reviewBookFilter = v; seenFilter = v; saveState()
+        paintTop(); if (sc) sc.scrollTop = 0; void load(true)
+      }
       return
     }
     if (t.closest('[data-stats]')) { openStats(host); return }
@@ -821,6 +837,12 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
 
   const segFn = (): void => { paintTop(); if (segment === 'trades') paintTrades() }
   segSubs.add(segFn)
+  // 云端换下来一份（另一台设备点了别的面 / 档）：跟着换。本机手点的已经对上了，什么都不做
+  let seenFilter = st.reviewBookFilter, seenChosen = st.reviewSegment
+  const offPrefs = subscribe(() => {
+    if (st.reviewBookFilter !== seenFilter) { seenFilter = st.reviewBookFilter; paintTop(); void load(true) }
+    if (st.reviewSegment !== seenChosen) { seenChosen = st.reviewSegment; setSegment(seenChosen) }
+  })
   const offStatus = onReviewStatus(() => { paintAll(); settle() })
   // 队列动了：就地重画（叠的那层变了）；服务端回了新的一版：换掉手上那份；记一笔刚传上去：整张重拉
   const offRecord = onRecord((id, server) => {
@@ -848,6 +870,7 @@ function mountBook(body: HTMLElement, host: MeHost): () => void {
     io?.disconnect()
     offThumbs()
     segSubs.delete(segFn)
+    offPrefs()
     offStatus()
     offRecord()
   }
@@ -909,7 +932,7 @@ function openStats(host: MeHost): void {
     body.addEventListener('click', e => {
       const t = e.target as HTMLElement
       const seg = t.closest<HTMLElement>('[data-seg]')
-      if (seg) setSegment(seg.dataset.seg as Segment)
+      if (seg) pickSegment(seg.dataset.seg)
       else if (t.closest('[data-login]')) host.openLogin()
     })
     const segFn = (): void => paintSeg()

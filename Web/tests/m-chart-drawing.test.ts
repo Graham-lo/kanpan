@@ -828,7 +828,9 @@ describe('画线：每一族记住上次选的画法', () => {
       + '"hline":{"lineWidth":2,"dash":"wavy","filled":true,"levels":[]}},'
       + '"variants":{"trend":"extended"}}'
     const tolerant = decodePreferences(JSON.parse(mixed))
-    expect(tolerant.favorites).toEqual(['trend'])
+    // 收藏的工具（favorites）2026-10-10 退役：老档里的这个键读时忽略，再写出去也不带
+    expect('favorites' in tolerant).toBe(false)
+    expect('favorites' in encodePreferences(tolerant)).toBe(false)
     expect(tolerant.magnet).toBe(false)
     expect(Object.keys(tolerant.styles).sort()).toEqual(['trend'])
     expect(tolerant.styles.trend?.lineWidth).toBe(2)

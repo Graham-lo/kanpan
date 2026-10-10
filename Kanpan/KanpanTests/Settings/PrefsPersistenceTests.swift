@@ -36,6 +36,8 @@ struct PrefsPersistenceTests {
     p.barSpacing = 9.5
     p.mainInverted = true
     p.subInverted = [.vol]
+    p.reviewSegment = "trades"
+    p.reviewBookFilter = "decided"
     return p
   }
 
@@ -234,10 +236,7 @@ struct PrefsPersistenceTests {
     #expect(b.prefs == a.prefs)
     // 指标布局一人一份（2026-10-03）：整份换进来的那份就是它。
     #expect(b.prefs.indicatorLayout == Self.mutated().indicatorLayout)
-    #expect(b.prefs.indicatorLayouts == IndicatorLayoutMemory())
-    var rest = b.prefs
-    rest.indicatorLayouts = Self.mutated().indicatorLayouts
-    #expect(rest == Self.mutated(), "指标布局以外的字段原样读回")
+    #expect(b.prefs == Self.mutated(), "指标布局以外的字段原样读回")
   }
 
   @Test("没真改动就不落盘")

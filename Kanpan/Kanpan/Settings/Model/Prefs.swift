@@ -94,17 +94,9 @@ struct Prefs: Sendable, Equatable {
   var mainInverted = false
   /// 哪几个副图被上下翻转（双击副图那一侧）。同上，手势直接生效。
   var subInverted: Set<IndicatorID> = []
-  /// 主图在竖屏里占多少（0…1，越大主图越高）。**只有读端，没有写端。**
-  ///
-  /// 读端是活的：`ChartRenderer` 拿它算主图权重（`ChartContentLayout.mainWeight`）。
-  /// 但全仓库没有任何地方改过它——没有设置项、没有手势、没有迁移，它永远是 0.5，
-  /// 落盘和跨设备同步的都是同一个常数。
-  ///
-  /// **这不是漏了持久化，也不该靠新增一个旋钮来「修」。** 主副图比例该由我们定一个
-  /// 好用的值，不是摆出来让人调（`kanpan-sector-page-no-basis-picker`：算法口径、
-  /// 比例参数这类东西不交给用户选）。字段和 codec 键留着是因为老存档里带着它，
-  /// 删了解码会踩空、版本号又不许动；留这段注释是免得下一个人以为哪儿漏了写入。
-  var portraitHeight = 0.5
+  // 「主图在竖屏里占多少」（`portraitHeight`）2026-10-10 退役：三端只读不写、永远 0.5，主副图比例由我们定，
+  // 不摆出来让人调（`kanpan-sector-page-no-basis-picker`）。图表直接用 `ChartOptions.portraitHeight` 的出厂值；
+  // 老存档、云端老 body 里的这个键读时忽略，服务端在 RETIRED_SETTINGS_FIELDS 里退役。
   var indicatorColors: [IndicatorID: [Int: Hex]] = [:]
   // 「指标输出」开关（`hiddenOutputs`，指标编辑页「输出」一节）与 RSI 上下限（`rsiUpper` / `rsiLower`，
   // 线上合成 `rsiRange`）2026-09-28 收掉（收设置项 C 组）：线一律全画（不想要哪条均线就左滑删掉那个周期），
@@ -155,10 +147,8 @@ struct Prefs: Sendable, Equatable {
   /// 点数——`Layout` 拿它和主图权重一起分配当前视口，所以同一个值在两种朝向下给出
   /// 的是同一个比例。拆成横竖两份等于「设置跟着页面走」，恰恰是要避免的那一类。
   var subHeightOverrides: [IndicatorID: Double] = [:]
-  /// 只为读老档留着的一格（2026-10-03 起指标布局一人一份、不分周期）：老档 / 老客户端写在云端的
-  /// 按周期分叉读进来那一瞬间非空，`settleIndicatorLayouts` 取当前周期那份当唯一那份之后
-  /// 永远是空的，存档与线上写 `{}`。规则见 `IndicatorLayouts.swift` 文件头。
-  var indicatorLayouts = IndicatorLayoutMemory()
+  // `indicatorLayouts`（2026-09-27~10-02 按周期分组记忆留下的那一格）2026-10-10 退役：10-03 之前的老客户端
+  // 已经没了，读老档的迁移一起删掉。老存档里的这个键读时忽略（布局就是顶层那六项），服务端退役。
 
   // ---------------------------------------------------------------- 网络
   /// 行情线路：网关（默认，2026-10-08 起）/ 直连。选了哪条就走哪条，代码不做自动切换。
@@ -249,6 +239,14 @@ struct Prefs: Sendable, Equatable {
   // （`ReplayPace`，整趟 20–40 秒），回放条上那颗倍速键只改这一趟，不再存。
   /// 「找相似」的搜索范围：`history`（市场历史）/ `private`（我的记录）。
   var reviewSearchScope: String = "history"
+  /// 复盘本「观点 / 交易」停在哪一面：`views` / `trades`（2026-10-10，跟账号同步）。
+  ///
+  /// 只记他**手点**的那一面（`TradeReviewFeature.chosenSegment`）：「观点」空着、「交易」有回合时
+  /// 复盘本会自动翻到交易那面（`TradeReviewFeature.preferredSegment`），那一下只改这次显示、不回写。
+  var reviewSegment: String = "views"
+  /// 复盘本筛选停在哪一档：`all`（全部）/ `todo`（待判定）/ `decided`（已判定）（2026-10-10，跟账号同步）。
+  /// 出厂「待判定」：打开复盘本九成是奔着「有什么该我处理的」去的（§2G2）。
+  var reviewBookFilter: String = "todo"
 
   init() {}
 
@@ -286,6 +284,10 @@ struct Prefs: Sendable, Equatable {
 
   /// 「找相似」认得的两档范围。
   static let searchScopes: Set<String> = ["history", "private"]
+  /// 复盘本「观点 / 交易」认得的两面。和服务端 `sync_validation.rs` 的 `reviewSegment` 逐字相同。
+  static let reviewSegments: Set<String> = ["views", "trades"]
+  /// 复盘本筛选认得的三档。和服务端 `sync_validation.rs` 的 `reviewBookFilter` 逐字相同。
+  static let reviewBookFilters: Set<String> = ["all", "todo", "decided"]
 
   /// 根间距存进档案之前夹一道。
   ///
@@ -295,16 +297,6 @@ struct Prefs: Sendable, Equatable {
   static func clampSpacing(_ value: Double) -> Double {
     guard value.isFinite else { return AICoinBehavior.initialSpacing }
     return min(AICoinBehavior.maximumSpacing, max(AICoinBehavior.minimumSpacing, value))
-  }
-
-  /// 竖屏主图占比的合法区间。和服务端 `sync_validation.rs` 的 `number(v, 0.1, 1.0)` 逐字相同：
-  /// 原来读档夹的是 0…1，0 这种值客户端收、服务端拒，推上去整条操作被打回。
-  static let portraitHeightRange: ClosedRange<Double> = 0.1...1
-
-  /// 读档、写档都走这一道：非数退回出厂的 0.5，越界夹到边上。
-  static func clampPortraitHeight(_ value: Double) -> Double {
-    guard value.isFinite else { return 0.5 }
-    return min(portraitHeightRange.upperBound, max(portraitHeightRange.lowerBound, value))
   }
 
   // ---------------------------------------------------------------- 取用
@@ -338,7 +330,7 @@ struct Prefs: Sendable, Equatable {
     o.allowMainInversion = true
     o.allowSubInversion = true
     o.adaptiveIndicators = true      // 主图图例折行时往下让位，不压蜡烛
-    o.portraitHeight = portraitHeight
+    // 竖屏主图占比（`portraitHeight`）不存、不同步，用 `ChartOptions` 的出厂值（2026-10-10 退役）。
     // 副图高度（`subHeightOverrides`）**不**走这里：它改的是分区怎么切，归 `Layout`，
     // 由主界面另行接线。放进来会变成两条路各说各话。
     return o

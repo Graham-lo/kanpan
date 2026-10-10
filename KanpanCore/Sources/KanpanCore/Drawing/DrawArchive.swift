@@ -26,15 +26,10 @@ public struct DrawingStyle: Sendable, Equatable, Codable {
 }
 
 public struct DrawingPreferences: Sendable, Equatable, Codable {
-  /// 收藏的那几把工具。**2026-09-22 起界面上没有入口了**，这个字段只剩下兼容的用处。
-  ///
-  /// 收藏是 41 把工具时代的解法：面板一屏摆不下，翻不到就先把常用的几把收起来。
-  /// 工具砍到 12 把之后（`Drawing.Kind.palette`）面板一屏就是全部，那排 chip 也直接摆全量，
-  /// 收藏没有了要解决的问题，那颗星就跟着分类标签和搜索框一起去掉了。
-  ///
-  /// 字段本身不删：口袋里还有在发它的老版本，云端也存着老的值；删掉等于让那些
-  /// 存档和同步操作里多出一个谁都不认的键。它照常编解码、照常同步，只是没人读。
-  public var favorites: [Drawing.Kind] = [.trend, .hline, .fibonacci, .measure]
+  // 「收藏的那几把工具」（`favorites`）2026-10-10 删掉：收藏是 41 把工具时代的解法，工具砍到 12 把
+  // （`Drawing.Kind.palette`）之后 2026-09-22 起界面上就没有入口了，只剩兼容。服务端同一天把它挪进
+  // `RETIRED_DRAWING_PREFERENCE_FIELDS`：老客户端发上来丢掉、云端老 body 合并时洗掉。老存档里的这个键
+  // 解码时忽略（`init(from:)` 只认下面这几项），删除前的代码在 tag `sync-fields-before-retire-2026-10-10`。
   public var magnet = true
   public var continuous = false
   public var styles: [String: DrawingStyle] = [:]
@@ -106,12 +101,10 @@ public struct DrawingPreferences: Sendable, Equatable, Codable {
   public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     let fallback = DrawingPreferences()
-    // 收藏与样式同 `variants`：逐条解、解不开的那一条丢掉，别整份抛。整份抛的代价很大——
+    // 样式同 `variants`：逐条解、解不开的那一条丢掉，别整份抛。整份抛的代价很大——
     // 本机存档里它会连累 `DrawArchive` 整份解不开（所有品种的画线一起没了），云端那份
     // 则在 `SyncOverlay` 里被整份跳过，磁吸、画法记忆、别的工具样式从此一个都同步不过来。
     // 以后的版本多一种线型、多一把工具，老版本读到的就是这种「只有一条认不出」的数据。
-    let favs = (try? c.decodeIfPresent([String].self, forKey: .favorites)) ?? nil
-    favorites = favs.map { $0.compactMap(Drawing.Kind.init(rawValue:)) } ?? fallback.favorites
     magnet = try c.decodeIfPresent(Bool.self, forKey: .magnet) ?? fallback.magnet
     continuous = try c.decodeIfPresent(Bool.self, forKey: .continuous) ?? fallback.continuous
     let rawStyles = (try? c.decodeIfPresent([String: TolerantStyle].self, forKey: .styles)) ?? nil

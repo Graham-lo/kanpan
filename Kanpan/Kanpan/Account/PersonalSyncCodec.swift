@@ -10,10 +10,9 @@ enum PersonalSyncCodec {
   /// 计字段，而脏标识做在 `PrefsStore` 那一层（包里，M1 抽 `PersonalStore` 时整块搬走），
   /// 包看不见 app 靶子里的这个文件。**一份清单，两处用**——别在这儿再抄一份。
   static var fields: Set<String> { Prefs.syncedFieldNames }
-  /// `indicatorLayouts/<组>`（2026-09-27~10-02 的周期分组，老客户端还会写）的值是一整组布局对象，只拍一层；
-  /// 这一版读进来就收拢成一份，推送时对它们发 `null`。
-  // `hiddenOutputs` 2026-09-28 收掉（收设置项 C 组），不再发也不再收。
-  static let nested: Set<String> = ["params", "indicatorColors", "subHeightOverrides", "indicatorLayouts", "styles", "variants"]
+  // `hiddenOutputs` 2026-09-28 收掉（收设置项 C 组），不再发也不再收。`indicatorLayouts/<组>`（周期分组
+  // 那阵子的整组布局）2026-10-10 三端退役：不再发、不再收，云端残留由服务端 `strip_retired` 洗掉。
+  static let nested: Set<String> = ["params", "indicatorColors", "subHeightOverrides", "styles", "variants"]
   static func flatten(_ value: [String: KanpanAccount.JSONValue]) -> [String: KanpanAccount.JSONValue] {
     var result: [String: KanpanAccount.JSONValue] = [:]
     for (key, value) in value {
@@ -76,7 +75,7 @@ enum PersonalSyncCodec {
   /// 他点的是**这台手机怎么连得上行情**，不是他想让所有设备都长成什么样——
   /// 同一个账号的两台手机完全可能一台直连通、一台非走网关不可。产品规则一个字没变
   /// （两档、手动选、没有自动切换；出厂 2026-10-08 起是网关），变的只是这个选择不再跨设备覆盖；理由写在
-  /// `PrefsFieldPlan` 的注释里，服务端为老客户端保留这个键的原因在它的 `wireOnlyKeys`。
+  /// `PrefsFieldPlan` 的注释里；服务端 2026-10-10 起不再认这个键（`RETIRED_SETTINGS_FIELDS`）。
   ///
   /// `interval`（周期）和 `keepAwake`（屏幕常亮）**2026-09-19 从这张表里拿掉了**：
   /// 早先把它们当成本机设置，结果是「换台设备登同一个账号，周期回到出厂 1h」。
@@ -229,7 +228,7 @@ enum PersonalSyncCodec {
   ///   拒绝，于是那条操作被隔离，`retryRejected` 重新差分又发一遍同一个 null，再被拒一次。
   ///   一个账号从此每次整份同步都白跑一趟跨洋请求，后面对这个对象的每一次编辑也一起卡死。
   ///   真实案例：云端两条文字标注上带着 `created`（`Drawing` 上压根没有这个属性，
-  ///   服务端却认得——和 `PrefsFieldPlan.wireOnlyKeys` 里的 `styleID` 是同一类只活在线上的
+  ///   服务端却认得——和当年 `PrefsFieldPlan.wireOnlyKeys` 里的 `styleID` 是同一类只活在线上的
   ///   老键），用户只是改了一下标注的样式，整条操作就 400 了。
   /// - 反过来，如果服务端**收**了这些 null，那就更糟：一个老版本客户端会把它仅仅是不认识的
   ///   字段悄悄抹掉，新版本那边的东西就这么没了。今天是服务端的拒绝挡住了这场数据丢失。
@@ -286,11 +285,6 @@ enum PersonalSyncCodec {
       prefs.indicatorColors[id] = colors
       prefs.subHeightOverrides[id] = 1
     }
-    // 三组都分了叉：`indicatorLayouts/minute|hour|day` 三条路径仍是这一版的词汇——
-    // 老客户端留在云端的分叉，这一版收拢之后要对它们发 null 才清得掉。
-    var book = prefs.layoutBook
-    for group in IntervalGroup.allCases { book.forks[group] = prefs.indicatorLayout }
-    prefs.adopt(book)
     return prefs
   }
 

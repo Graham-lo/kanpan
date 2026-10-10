@@ -127,14 +127,15 @@ struct DrawingVariantTests {
     let newer = try JSONDecoder().decode(DrawingPreferences.self, from: Data(future.utf8))
     #expect(newer.variants == ["vline": .crossLine])
 
-    // 收藏里多了一把不认识的工具、某把工具的样式用了一种不认识的线型：只丢那一条，
-    // 磁吸、画法记忆、其余工具的样式照读。
+    // 老存档里还带着已退役的收藏（2026-10-10 删的 `favorites`，里面还有一把不认识的工具）、
+    // 某把工具的样式用了一种不认识的线型：收藏整个忽略、坏样式只丢那一条，磁吸、画法记忆、其余工具的样式照读。
     let mixed = #"{"favorites":["trend","laserBeam"],"magnet":false,"styles":{"#
       + #""trend":{"lineWidth":2,"dash":"solid","filled":true,"levels":[]},"#
       + #""hline":{"lineWidth":2,"dash":"wavy","filled":true,"levels":[]}},"#
       + #""variants":{"trend":"extended"}}"#
     let tolerant = try JSONDecoder().decode(DrawingPreferences.self, from: Data(mixed.utf8))
-    #expect(tolerant.favorites == [.trend])
+    let reencoded = String(decoding: try JSONEncoder().encode(tolerant), as: UTF8.self)
+    #expect(!reencoded.contains("favorites"), "已退役的收藏不再写回存档")
     #expect(tolerant.magnet == false)
     #expect(tolerant.styles.keys.sorted() == ["trend"])
     #expect(tolerant.styles["trend"]?.lineWidth == 2)

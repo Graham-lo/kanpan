@@ -21,12 +21,24 @@ public struct TradeItem: Identifiable, Hashable, Sendable {
 /// 3. 周报、战绩这些数从合好的列表上现算（客户端算，服务端不存聚合）。
 @MainActor @Observable public final class TradeReviewFeature {
   public enum Segment: String, Sendable { case views, trades }
-  /// 复盘本顶上「观点 · 交易」那一刀。战绩页也跟着它。
+  /// 复盘本顶上「观点 · 交易」那一刀此刻显示的那一面。战绩页也跟着它。
+  ///
+  /// 界面上的分段不直接写它，走 `pick(_:)`：自动翻面（`ReviewFeature.settleSegment`）只改这一格，
+  /// 人手点的那一面另记在 `chosenSegment`。
   public var segment: Segment = .views
+  /// 人**手点**的那一面（2026-10-10 起跟账号同步：宿主落到 `Prefs.reviewSegment`，云端换下来一份
+  /// 再经 `ReviewFeature.adoptSegment` 灌回）。自动翻到「交易」那一下不动它——不回写。
+  public var chosenSegment: Segment = .views
+
+  /// 手点分段：显示的那一面与记下的那一面一起换。
+  public func pick(_ value: Segment) {
+    if chosenSegment != value { chosenSegment = value }
+    if segment != value { segment = value }
+  }
 
   /// 复盘本打开时该停在哪一面：「观点」一条都没有、「交易」有回合，就直接翻到交易那面——
-  /// 不让人先对着一张空页再自己去点；两面都有（或都没有）就留在上次用的那面（`current`，
-  /// 只记在这次运行的内存里）。
+  /// 不让人先对着一张空页再自己去点；两面都有（或都没有）就留在他手点过的那面（`current`
+  /// 传 `chosenSegment`，2026-10-10 起跟着账号走、跨重启跨设备）。
   public static func preferredSegment(current: Segment, viewsEmpty: Bool, tradesEmpty: Bool) -> Segment {
     viewsEmpty && !tradesEmpty ? .trades : current
   }

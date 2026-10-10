@@ -304,9 +304,12 @@ final class ReviewFeatureSyncTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: directory) }
     let server = FakeReviewServer()
     let feature = ReviewFeature()
+    XCTAssertEqual(feature.tab, "todo", "出厂落在待办（§2G2）")
+    // 2026-10-10 起筛选那一档跟账号同步：宿主先灌进来上次那一档，换进档案（冷启动 / 登录 / 退登）不许把它冲回待办。
+    feature.tab = "decided"
     let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
     feature.activate(store: store, client: client(server))
-    XCTAssertEqual(feature.tab, "todo", "复盘本每次**打开**都落在待办（§2G2）")
+    XCTAssertEqual(feature.tab, "decided", "换进档案不动筛选那一档，免得冷启动就把同步来的那档写回待办")
 
     feature.tab = "all"
     await feature.loadHistory()

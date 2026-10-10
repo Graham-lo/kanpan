@@ -13,7 +13,7 @@
  * 首帧前的皮肤由 m/index.html 的内联脚本按同一个键套上（theme / skin / redUp 三个字段，
  * redUp 只在 greenUpMigrated 之后才当真）。
  */
-import { defaultPrefs, layoutSnapshot, normalizePrefs, settleIndicatorLayouts, type Prefs } from './prefs'
+import { defaultPrefs, normalizePrefs, type Prefs } from './prefs'
 import { migrateAlert, type Alert } from '../../alerts/shape'
 import { tabGuard } from './tabGuard'
 import { backupUnreadable } from './unreadable'
@@ -131,16 +131,9 @@ const subs = new Set<(s: State) => void>()
 /** 每次 save() 之后回调；返回取消函数 */
 export function subscribe(fn: (s: State) => void): () => void { subs.add(fn); return () => { subs.delete(fn) } }
 
-let layoutBefore = layoutSnapshot(st)
-
-/** 指标布局是整份换进来的（云端装进来、恢复出厂）：以现在这份为「改动之前」，下一次 save 不把它当成用户在当前组改了指标 */
-export function layoutSettled(): void { layoutBefore = layoutSnapshot(st) }
-
 /** 落盘（手势结束、改设置、切页……立刻调，不节流）并通知订阅者。
- *  落盘前先把指标布局收拢成一份（iOS PrefsStore 的每一条改法都过 settleIndicatorLayouts） */
+ *  （2026-10-10 之前落盘前还要把老档的周期分叉收拢成一份——`indicatorLayouts` 退役，那一步连同 layoutSettled 一起删了） */
 export function save(): void {
-  settleIndicatorLayouts(st, layoutBefore)
-  layoutBefore = layoutSnapshot(st)
   // 被别的标签页比下去了（tabGuard）就不写盘，切回来会重载
   tabGuard.write(KEY)
   subs.forEach(fn => { try { fn(st) } catch (e) { console.error(e) } })
@@ -148,8 +141,6 @@ export function save(): void {
 
 /** 只落盘、不通知（滚动位置这种高频又没人关心的） */
 export function persistQuiet(): void {
-  settleIndicatorLayouts(st, layoutBefore)
-  layoutBefore = layoutSnapshot(st)
   tabGuard.write(KEY)
 }
 
@@ -165,7 +156,6 @@ function adopt(): void {
   if (!Object.keys(raw).length) return
   const keep = { page: st.page, symbol: st.symbol, scroll: st.scroll, stale: st.stale }
   Object.assign(st, hydrate(raw), keep)
-  layoutSettled()
   save()
 }
 tabGuard.register(KEY, serialize, adopt)
@@ -178,7 +168,6 @@ if (ls()?.getItem(LEGACY_ALERTS_KEY) != null && tabGuard.write(KEY) && 'alerts' 
 export function resetAll(): void {
   // 提醒不是设置：恢复出厂不动它
   Object.assign(st, defaults(), { alerts: st.alerts })
-  layoutSettled()
   save()
 }
 

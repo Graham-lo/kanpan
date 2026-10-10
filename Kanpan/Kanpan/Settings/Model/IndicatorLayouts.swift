@@ -12,29 +12,13 @@ import KanpanCore
 // 随后把规矩说死：「应该是通用的啊，不管什么周期」——分组整套拆掉，删除前的代码在
 // tag `before-remove-interval-indicator-groups-2026-10-03`。
 //
-// 留下来的只有「读老档」：老档（与老客户端写在云端的）`indicatorLayouts = {minute?, hour?, day?}`
-// 里可能还有分叉。读进来时取**当前周期所在组**那一份当作唯一那份（那是用户此刻正看着的），
-// 其余一律丢掉；`Prefs.indicatorLayouts` 从此永远是空的，存档与线上写 `{}`，
-// 云端残留的 `indicatorLayouts/<组>` 在下一次推送时发 `null` 清掉（`PersonalSyncCodec.ownedKeys`）。
+// 当时还留了一段「读老档」：老档（与老客户端写在云端的）`indicatorLayouts = {minute?, hour?, day?}`
+// 里的分叉取当前周期那组当唯一那份，存档写空表、云端残留的分叉发 null 清掉。2026-10-10 那个键三端退役
+// （10-03 之前的老客户端已经没了，手机与网页都装着最新版），这段迁移连同 `Prefs.indicatorLayouts`
+// 一起删掉：老存档里的那个键解码时忽略，云端残留由服务端 `strip_retired` 洗掉。删除前的代码在
+// tag `sync-fields-before-retire-2026-10-10`。
 
-/// 周期分组。`rawValue` 是存档与线上的键名，和服务端 `sync_validation.rs` 逐字相同。
-enum IntervalGroup: String, CaseIterable, Sendable, CodingKey {
-  case minute, hour, day
-
-  init(_ interval: Interval) {
-    switch interval {
-    case .m1, .m3, .m5, .m15, .m30: self = .minute
-    case .h1, .h2, .h4, .h6, .h12: self = .hour
-    case .d1, .w1, .mo1, .y1: self = .day
-    }
-  }
-}
-
-extension Interval {
-  var layoutGroup: IntervalGroup { IntervalGroup(self) }
-}
-
-/// 一组的布局。
+/// 一份指标布局（就是 `Prefs` 顶层那六项）。
 struct IndicatorLayout: Sendable, Equatable {
   var overlays: [IndicatorID]
   var subs: [IndicatorID]
@@ -46,7 +30,7 @@ struct IndicatorLayout: Sendable, Equatable {
   /// 出厂那一份（「恢复默认指标」回到的就是它）。
   static var factory: IndicatorLayout { Prefs.defaults.indicatorLayout }
 
-  /// 落盘前夹一道，和 `PrefsCodec.sanitized` 对顶层那份做的一样。
+  /// 落盘前夹一道，和 `PrefsCodec.sanitized` 对其余字段做的一样。
   var sanitized: IndicatorLayout {
     var l = self
     // 副图名额和读档同一把尺子：成交量不占，别的最多三个（`Prefs.cappedSubs`）。
@@ -54,24 +38,6 @@ struct IndicatorLayout: Sendable, Equatable {
     l.subHeightOverrides = l.subHeightOverrides.compactMapValues { $0.isFinite ? min(2, max(0.5, $0)) : nil }
     return l
   }
-}
-
-/// 老档里三组的全貌：共用的一份 + 分了叉的组各自那份（只为读老档）。
-struct IndicatorLayoutBook: Sendable, Equatable {
-  var shared: IndicatorLayout
-  var forks: [IntervalGroup: IndicatorLayout] = [:]
-
-  func layout(for group: IntervalGroup) -> IndicatorLayout { forks[group] ?? shared }
-  func isForked(_ group: IntervalGroup) -> Bool { forks[group] != nil }
-}
-
-/// `Prefs` 上存的那一格：老档里当前组以外的分叉。读档与 `settleIndicatorLayouts` 之后永远是空的，
-/// 只在「读老档、装云端老客户端写的那份」那一瞬间非空。
-struct IndicatorLayoutMemory: Sendable, Equatable {
-  /// 当前组分了叉时，共用的那一份；当前组没分叉时为 nil（共用的就是顶层那份）。
-  var shared: IndicatorLayout?
-  /// 当前组以外、已经分叉的组。
-  var others: [IntervalGroup: IndicatorLayout] = [:]
 }
 
 extension Prefs {
@@ -86,44 +52,5 @@ extension Prefs {
       subHeightOverrides = newValue.subHeightOverrides
       candleKind = newValue.candleKind; priceMode = newValue.priceMode
     }
-  }
-
-  /// 当前周期所在组。
-  var layoutGroup: IntervalGroup { interval.layoutGroup }
-
-  /// 三组全貌。
-  var layoutBook: IndicatorLayoutBook { layoutBook(activeGroup: layoutGroup) }
-
-  /// 把顶层那份当成 `group` 那一组来读出三组全貌（换周期那一下，顶层还是旧组的）。
-  func layoutBook(activeGroup group: IntervalGroup) -> IndicatorLayoutBook {
-    var forks = indicatorLayouts.others
-    forks[group] = nil
-    guard let shared = indicatorLayouts.shared else { return IndicatorLayoutBook(shared: indicatorLayout, forks: forks) }
-    forks[group] = indicatorLayout
-    return IndicatorLayoutBook(shared: shared, forks: forks)
-  }
-
-  /// 按当前周期把三组全貌装回来：顶层换成当前组那份，其余进记忆。
-  mutating func adopt(_ book: IndicatorLayoutBook) {
-    let group = layoutGroup
-    indicatorLayout = book.layout(for: group)
-    var others = book.forks
-    others[group] = nil
-    indicatorLayouts = IndicatorLayoutMemory(shared: book.isForked(group) ? book.shared : nil, others: others)
-  }
-
-  /// 一次改动（`before` → 现在这份）之后把指标布局收拢成一份。`PrefsStore` 的每一条改法都过这里。
-  ///
-  /// - 调用方连 `indicatorLayouts` 一起写了（整份换成另一份 `Prefs`、撤销还原、老档）：
-  ///   取当前周期所在组那一份当作唯一那份。
-  /// - 其余情况（改指标、换周期）：顶层那份就是答案，换周期不换指标。
-  mutating func settleIndicatorLayouts(after before: Prefs) {
-    if indicatorLayouts != before.indicatorLayouts { adopt(layoutBook) }
-    collapseIndicatorLayouts()
-  }
-
-  /// 只留顶层那一份，老档的分叉丢掉。
-  mutating func collapseIndicatorLayouts() {
-    if indicatorLayouts != IndicatorLayoutMemory() { indicatorLayouts = IndicatorLayoutMemory() }
   }
 }

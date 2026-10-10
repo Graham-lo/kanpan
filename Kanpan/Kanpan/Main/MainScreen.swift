@@ -445,6 +445,8 @@ struct MainScreen: View {
       chartOnScreen: tab == .chart && !review.bookOpen,
       syncGate: syncGate,
       reviewScope: review.searchScope,
+      reviewSegment: review.trades.chosenSegment.rawValue,
+      reviewBookFilter: review.tab,
       routePolicy: prefs.routePolicy,
       session: session,
       catalogCount: picker.catalog.count,
@@ -476,6 +478,15 @@ struct MainScreen: View {
       onSyncGate: { accountBridge?.resumeApply() },
       onReviewScope: { value in store.update { $0.reviewSearchScope = value } },
       onPrefsReviewScope: { value in review.searchScope = value },
+      // 复盘本停在哪一面、哪一档（2026-10-10）：同一个两头对接。面那一格只观察手点的那面
+      // （`chosenSegment`），自动翻到「交易」不回写。
+      onReviewSegment: { value in store.update { $0.reviewSegment = value } },
+      onPrefsReviewSegment: { value in review.adoptSegment(value) },
+      onReviewBookFilter: { value in
+        guard Prefs.reviewBookFilters.contains(value) else { return }
+        store.update { $0.reviewBookFilter = value }
+      },
+      onPrefsReviewBookFilter: { value in review.tab = value },
       onInterval: { next in followProfileInterval(next) },
       onRoutePolicy: { next in
         let route = RouteResolver(policy: next)
@@ -1375,6 +1386,9 @@ struct MainScreen: View {
     // 「找相似」的范围同理。`ReviewUI` 那个包看不见 `Prefs`，所以在这儿对接两头：
     // 这一句灌初值，下面 `lifecycleContent` 里那两条 `onChange` 管往返（R3-5）。
     review.searchScope = prefs.reviewSearchScope
+    // 复盘本停在哪一面、筛选哪一档（2026-10-10，跟账号同步）同理：灌初值，往返在 `displaySection`。
+    review.adoptSegment(prefs.reviewSegment)
+    review.tab = prefs.reviewBookFilter
     // 复盘本里的时刻与口价（审查 B-07 / B-08，复核项 5）。`ReviewUI` 那个包既看不见
     // `Prefs` 也看不见品种目录，所以两样都在这儿灌：时刻跟着图表那一档时区
     // （`prefs.timeZone`，下面 `lifecycleContent` 里有 `onChange` 跟着改），

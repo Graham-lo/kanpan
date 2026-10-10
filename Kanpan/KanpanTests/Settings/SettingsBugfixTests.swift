@@ -166,15 +166,13 @@ struct SettingsBugfixTests {
   func 非有限数() throws {
     var p = Prefs.defaults
     p.barSpacing = .nan
-    p.portraitHeight = .infinity
     p.subHeightOverrides = [.macd: .nan, .vol: 5]
     let data = try #require(PrefsCodec.encoded(p))
     #expect(!data.isEmpty)
     let back = PrefsCodec.decode(data)
-    #expect(back.barSpacing.isFinite && back.portraitHeight.isFinite)
+    #expect(back.barSpacing.isFinite)
     #expect(back.subHeightOverrides[.macd] == nil)
     #expect(back.subHeightOverrides[.vol] == 2)
-    #expect(back.portraitHeight <= 1)
   }
 
   @Test("落盘永远不写空 Data：带非有限数的改动照样存得下、读得回")
@@ -192,12 +190,15 @@ struct SettingsBugfixTests {
 
   // MARK: 11 · 解码校验
 
-  @Test("竖屏图高夹到 0.1…1，和服务端校验同一个范围")
-  func 竖屏图高() {
-    #expect(decode(#"{"portraitHeight":0}"#).portraitHeight == 0.1)
-    #expect(decode(#"{"portraitHeight":7}"#).portraitHeight == 1)
-    #expect(decode(#"{"portraitHeight":0.62}"#).portraitHeight == 0.62)
-    #expect(Prefs.clampPortraitHeight(.nan) == Prefs.defaults.portraitHeight)
+  @Test("竖屏图高 2026-10-10 退役：老档里怎么写都只是被忽略，图用出厂值，也不再写回档里")
+  func 竖屏图高() throws {
+    for text in [#"{"portraitHeight":0}"#, #"{"portraitHeight":7}"#, #"{"portraitHeight":0.62,"redUp":false}"#] {
+      let prefs = decode(text)
+      #expect(prefs.chartOptions.portraitHeight == ChartOptions().portraitHeight)
+      let out = try #require(String(data: PrefsCodec.encode(prefs), encoding: .utf8))
+      #expect(!out.contains("portraitHeight"))
+    }
+    #expect(decode(#"{"portraitHeight":0.62,"redUp":false}"#).redUp == false, "同一份档里的其它键照读")
   }
 
   @Test("上次用的画线工具：认不出的退回空，认得的留着")

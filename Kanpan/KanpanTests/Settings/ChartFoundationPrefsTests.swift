@@ -21,7 +21,6 @@ struct ChartFoundationPrefsTests {
   @Test("全部新增设置落盘并容错读取")
   func persistence() {
     var prefs = Prefs()
-    prefs.portraitHeight = 0.9
     prefs.subHeightOverrides = [.vol: 0.73, .rsi: 1.42]
     // 副图上限是成交量 + 三个（`Prefs.maxSubs`，成交量不占名额），读档时多出来的会被裁掉，
     // 所以这儿摆满成交量 + 三个来验往返——摆多了验的就不是「落盘读回一致」，
@@ -34,7 +33,8 @@ struct ChartFoundationPrefsTests {
     #expect(restored.chartOptions.crossPrice == .selected)
     #expect(restored.chartOptions.allowMainInversion && restored.chartOptions.allowSubInversion)
     #expect(restored.chartOptions.adaptiveIndicators)
-    #expect(restored.chartOptions.portraitHeight == 0.9)
+    // 竖屏主图占比 2026-10-10 退役（不存、不同步）：图拿的永远是 `ChartOptions` 的出厂值。
+    #expect(restored.chartOptions.portraitHeight == ChartOptions().portraitHeight)
   }
 
   /// 老存档里攒了五个副图的用户，升级后读回来留成交量 + 最早的三个，不是整份档案作废。

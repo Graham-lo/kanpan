@@ -64,7 +64,6 @@ struct DrawStoreTests {
       return d
     }
     archive.preferences.magnet = false; archive.preferences.continuous = true
-    archive.preferences.favorites = [.channel, .hray]
     archive.preferences.styles["trend"] = DrawingStyle(archive["BTCUSDT"][0])
     let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("draws.json")
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

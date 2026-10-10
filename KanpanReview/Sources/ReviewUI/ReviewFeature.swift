@@ -91,10 +91,21 @@ import ReviewData
   /// 免得服务端那几条还在路上就把人翻到「交易」去。
   public var viewsEmpty: Bool { records.isEmpty && history.isEmpty && !historyLoading }
   /// 按两面有没有东西把「观点 · 交易」摆到该停的那面（`TradeReviewFeature.preferredSegment`）。
+  ///
+  /// 起点是他手点过的那面（`trades.chosenSegment`），结果只写显示的那面（`trades.segment`）：
+  /// 自动翻面不回写，宿主落盘、同步的只有手点的那一面（2026-10-10）。
   public func settleSegment() {
-    let next = TradeReviewFeature.preferredSegment(current: trades.segment, viewsEmpty: viewsEmpty,
+    let next = TradeReviewFeature.preferredSegment(current: trades.chosenSegment, viewsEmpty: viewsEmpty,
                                                    tradesEmpty: trades.items.isEmpty)
     if next != trades.segment { trades.segment = next }
+  }
+  /// 宿主灌进来的那一面（冷启动读档、云端换下来一份、换账号）：当作他手点过的那面，再按两面有没有东西摆一次。
+  /// 认不出的字面量不动（宿主那边读档时已经挡过一道）。
+  public func adoptSegment(_ raw: String) {
+    guard let value = TradeReviewFeature.Segment(rawValue: raw) else { return }
+    if trades.chosenSegment != value { trades.chosenSegment = value }
+    if trades.segment != value { trades.segment = value }
+    settleSegment()
   }
   /// 「记一笔」的那一刻，把当前这张图离屏画成一张 PNG（§4.3）。
   ///
@@ -322,14 +333,15 @@ import ReviewData
     // 换进一份档案（冷启动、登录、退登）时扫一次没人认领的图；不挂定时器（审查 D4）。
     store.pruneShots()
   }
-  /// 复盘本每次打开都落在「待办」（§2G2）。
+  /// 换进一份档案时只读记录与草稿，**不动筛选那一档**（`tab`）。
   ///
-  /// 原来这儿读的是 `archive.lastTab`：上次翻到「战绩」，下次进来还停在战绩，可打开
-  /// 复盘本九成是奔着「有什么该我处理的」去的，落在别的标签上等于每次都要先自己拨回来。
-  /// `lastTab` 字段留在存档里没动（老档照旧能读），只是不再拿它定开场。
+  /// 2026-09 的 §2G2 是「每次打开都落在待办」（`archive.lastTab` 不再拿来定开场）；2026-10-10 起
+  /// 筛选停在哪一档跟账号同步（`Prefs.reviewBookFilter`，出厂仍是「待办」）：宿主进来时灌初值、
+  /// 云端换下来一份再灌一次。这儿要是再写一次 `"todo"`，冷启动 / 登录 / 退登都会把它冲回待办并推上去。
+  /// `lastTab` 字段留在存档里没动（老档照旧能读），只是不拿它定开场。
   private func reload() {
     guard let store else { return }
-    records = store.archive.records; draft = store.archive.draft; tab = "todo"
+    records = store.archive.records; draft = store.archive.draft
   }
   @discardableResult private func change(_ edit: (inout ReviewArchive) throws -> Void) -> Bool {
     guard let store else { notice = "复盘存档暂时不可用，原文件已保留"; return false }

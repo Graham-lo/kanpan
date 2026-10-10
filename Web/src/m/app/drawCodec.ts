@@ -12,7 +12,8 @@
  * 带文字的工具总写 `text`（空也写 ""）。老客户端留下的 `created` 不归这里管，原样带回。
  *
  * ## drawingPreferences（id "tools"，一份）
- * DrawingPreferences 的编码拍平一层：`favorites` / `magnet` / `continuous`，`styles/<工具>`、`variants/<一格>`。
+ * DrawingPreferences 的编码拍平一层：`magnet` / `continuous`，`styles/<工具>`、`variants/<一格>`。
+ * （`favorites` 2026-10-10 三端退役：不发、不认领，云端老对象里的残留由服务端 strip_retired 洗掉。）
  *
  * ## 规矩
  * - 应用：云端对象叠到本机存档上（删 → 移除；活 → 原位替换或接在后面；解不开的跳过），再按「多老」裁到每品种 50 条
@@ -44,7 +45,7 @@ class RootSet extends Set<string> {
 /** 画线与工具偏好里手机网页版替它说话的键 */
 export const DRAW_OWNED: Owned = {
   drawings: new Set(['kind', 'anchors', 'color', 'lineWidth', 'dash', 'filled', 'locked', 'hidden', 'levels', 'text', 'symbol', 'market', 'venue']),
-  drawingPreferences: new RootSet(['favorites', 'magnet', 'continuous', 'styles', 'variants']),
+  drawingPreferences: new RootSet(['magnet', 'continuous', 'styles', 'variants']),
 }
 
 // ═════════════════════════════ 一条线 ═════════════════════════════

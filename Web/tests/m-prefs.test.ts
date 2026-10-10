@@ -40,6 +40,16 @@ describe('手机网页版 · 同步字段白名单三方对账', () => {
     for (const k of webOnly) { expect(serverSettingsFields()).toContain(k); expect(contract.wireKeys).not.toContain(k); expect(mobile).not.toContain(k) }
   })
   it('手机 = 服务端 SETTINGS_FIELDS − wireOnlyKeys', () => { expect(mobile).toEqual(sorted(server.filter(k => !wireOnly.has(k)))) })
+  it('2026-10-10 起 wireOnlyKeys 是空表：退役的键三方都不认（服务端进 RETIRED_SETTINGS_FIELDS）', () => {
+    expect(wireOnly.size).toBe(0)
+    const retired = /pub const RETIRED_SETTINGS_FIELDS:&\[&str\]=&\[([\s\S]*?)\];/.exec(syncRs)
+    expect(retired).toBeTruthy()
+    for (const k of ['portraitHeight', 'indicatorLayouts', 'styleID', 'drawToolGroup', 'compactValues', 'routePolicy']) {
+      expect(retired![1]).toContain(`"${k}"`)
+      expect(server).not.toContain(k)
+      expect(mobile).not.toContain(k)
+    }
+  })
   it('契约 wireKeys 与服务端 SETTINGS_FIELDS 是同一份', () => { expect(sorted(contract.wireKeys)).toEqual(sorted(server)) })
   it('本机字段与契约 deviceOnly 一致、且不进同步', () => {
     expect(sorted(DEVICE_ONLY_FIELDS)).toEqual(sorted(Object.entries(contract.fieldClasses).filter(([, c]) => c === 'deviceOnly').map(([k]) => k)))
@@ -85,5 +95,54 @@ describe('手机网页版 · 偏好出厂值与容错', () => {
     expect(normalizePrefs({ barSpacing: 9, landscapeBarSpacing: 3 }).landscapeBarSpacing).toBe(3)
     expect(normalizePrefs({ landscapeBarSpacing: 500 }).landscapeBarSpacing).toBe(40)
     expect(normalizePrefs({ barSpacing: 0.1 }).landscapeBarSpacing).toBe(1.6)
+  })
+})
+
+describe('手机网页版 · 复盘本停在哪一面、哪一档（2026-10-10，跟人走）', () => {
+  it('出厂停在「观点」「待判定」，两个都进同步', () => {
+    const d = defaultPrefs()
+    expect(d.reviewSegment).toBe('views')
+    expect(d.reviewBookFilter).toBe('todo')
+    expect(SYNCED_FIELDS).toContain('reviewSegment')
+    expect(SYNCED_FIELDS).toContain('reviewBookFilter')
+    expect(syncedSlice({ ...d, reviewSegment: 'trades', reviewBookFilter: 'decided' })).toMatchObject({ reviewSegment: 'trades', reviewBookFilter: 'decided' })
+  })
+  it('认得的照读，认不出的（大小写不对、空、类型错、更高版本的新档位）退回出厂、只丢那一项', () => {
+    for (const seg of ['views', 'trades'] as const) for (const f of ['all', 'todo', 'decided'] as const) {
+      const p = normalizePrefs({ reviewSegment: seg, reviewBookFilter: f })
+      expect([p.reviewSegment, p.reviewBookFilter]).toEqual([seg, f])
+    }
+    for (const bad of [{ reviewSegment: 'Trades', reviewBookFilter: 'ALL' }, { reviewSegment: '', reviewBookFilter: '' },
+      { reviewSegment: 7, reviewBookFilter: ['all'] }, { reviewSegment: 'notes', reviewBookFilter: 'done' }]) {
+      const p = normalizePrefs(bad)
+      expect([p.reviewSegment, p.reviewBookFilter]).toEqual(['views', 'todo'])
+    }
+    const half = normalizePrefs({ reviewSegment: 'trades', reviewBookFilter: 'nope', skin: 'terra' })
+    expect([half.reviewSegment, half.reviewBookFilter, half.skin]).toEqual(['trades', 'todo', 'terra'])
+  })
+})
+
+describe('手机网页版 · 上次用的画线工具按画线词表清洗', () => {
+  it('认得的留着，认不出的（更高版本的新工具、手改的档、类型错）退回空', () => {
+    expect(normalizePrefs({ lastDrawTool: 'trend' }).lastDrawTool).toBe('trend')
+    expect(normalizePrefs({ lastDrawTool: 'fibonacci' }).lastDrawTool).toBe('fibonacci')
+    for (const bad of ['laser', 'Trend', 'trend ', 3, null, ['trend']]) expect(normalizePrefs({ lastDrawTool: bad }).lastDrawTool).toBe('')
+    expect(defaultPrefs().lastDrawTool).toBe('')
+  })
+})
+
+describe('手机网页版 · 2026-10-10 退役的键', () => {
+  it('老档里带着 portraitHeight / indicatorLayouts 照常读，其余字段一个不丢，也不再写回', () => {
+    const p = normalizePrefs({
+      skin: 'terra', interval: '4h', subs: ['VOL', 'MACD'], portraitHeight: 0.62,
+      indicatorLayouts: { others: { hour: { subs: ['RSI'] } }, shared: { overlays: ['EMA'] } },
+    })
+    expect([p.skin, p.interval]).toEqual(['terra', '4h'])
+    expect(p.subs).toEqual(['VOL', 'MACD'])
+    expect(p.overlays).toEqual(defaultPrefs().overlays)
+    expect('portraitHeight' in p).toBe(false)
+    expect('indicatorLayouts' in p).toBe(false)
+    expect(Object.keys(syncedSlice(p))).not.toContain('portraitHeight')
+    expect(Object.keys(syncedSlice(p))).not.toContain('indicatorLayouts')
   })
 })

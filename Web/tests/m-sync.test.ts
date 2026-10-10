@@ -2,7 +2,7 @@
  * 两台「手机网页」接同一个假服务端（tests/sync-fake.ts，合并规则照 kanpan-api sync.rs）来回。 */
 import { describe, expect, it } from 'vitest'
 import { makePriceAlert, type Alert } from '../src/alerts/shape'
-import { defaultPrefs, settleIndicatorLayouts, layoutSnapshot, type Prefs } from '../src/m/app/prefs'
+import { defaultPrefs, type Prefs } from '../src/m/app/prefs'
 import type { SymbolPrefs } from '../src/m/app/store'
 import * as C from '../src/m/app/syncCodec'
 import { Engine } from '../src/sync/engine'
@@ -59,8 +59,8 @@ function phone(server: FakeServer, s = dev()) {
     },
     async sync() { await engine.push(); await engine.pull(); await engine.push() },
     capture,
-    /** 像 store.save() 一样：改完顶层指标先理顺分组 */
-    edit(fn: (p: Prefs) => void) { const before = layoutSnapshot(s.p); fn(s.p); settleIndicatorLayouts(s.p, before) },
+    /** 改一下（2026-10-10 起指标布局只有顶层那一份，不再有分组要理顺） */
+    edit(fn: (p: Prefs) => void) { fn(s.p) },
   }
 }
 
@@ -73,7 +73,9 @@ describe('settings 编码（照 iOS PrefsCodec / PersonalSyncCodec.flatten）', 
     p.subInverted = ['RSI', 'MACD']
     p.params = { MA: [5, 10] }
     const b = C.settingsBody(p)
-    for (const r of C.ROOTS) if (!['params', 'indicatorColors', 'subHeightOverrides', 'indicatorLayouts'].includes(r)) expect(b).toHaveProperty(r)
+    for (const r of C.ROOTS) if (!['params', 'indicatorColors', 'subHeightOverrides'].includes(r)) expect(b).toHaveProperty(r)
+    // 2026-10-10 退役的两个根不再是根、也不写
+    for (const k of ['indicatorLayouts', 'portraitHeight']) { expect(C.ROOTS).not.toContain(k); expect(b).not.toHaveProperty(k) }
     expect(b['indicatorColors/MA/0']).toEqual({ value: '#112233' })
     expect(b['params/MA']).toEqual([5, 10])
     expect(b.subInverted).toEqual(['MACD', 'RSI'])
@@ -83,9 +85,7 @@ describe('settings 编码（照 iOS PrefsCodec / PersonalSyncCodec.flatten）', 
   it('指标布局只有一份：在哪个周期改都写顶层，不写 indicatorLayouts/<组>', () => {
     const p = defaultPrefs()
     p.interval = '5m'
-    const before = layoutSnapshot(p)
     p.overlays = ['EMA']
-    settleIndicatorLayouts(p, before)
     const b = C.settingsBody(p)
     expect(b.overlays).toEqual(['EMA'])
     expect(Object.keys(b).some(k => k.startsWith('indicatorLayouts'))).toBe(false)
@@ -124,18 +124,22 @@ describe('两台来回', () => {
     expect(b.s.p.indicatorColors).toEqual({ MA: { 1: '#222222' } })
   })
 
-  it('指标跟人走、跨周期跨设备：A 在 5 分换了指标，B 在日线上也是那一份；老客户端写在云端的分叉被收拢并删掉', async () => {
+  it('指标跟人走、跨周期跨设备：A 在 5 分换了指标，B 在日线上也是那一份；老客户端写在云端的分叉忽略、不替它说话', async () => {
     const server = new FakeServer()
-    // 老客户端（10-03 之前的 iOS）留在云端的小时组分叉
-    server.put({ collection: 'settings', id: 'chart', body: { interval: '1h', overlays: ['MA'], 'indicatorLayouts/hour': { overlays: ['EMA'], subs: ['KDJ'], params: {}, subHeightOverrides: { KDJ: 1.4 }, candleKind: 'candle', priceMode: 'log' } }, deleted: false })
+    // 老客户端（10-03 之前的 iOS）留在云端的小时组分叉：2026-10-10 退役，读时忽略，也不发 null（服务端 strip_retired 洗）
+    server.put({ collection: 'settings', id: 'chart', body: { interval: '1h', overlays: ['EMA'], portraitHeight: 0.7, 'indicatorLayouts/hour': { overlays: ['BOLL'], subs: ['KDJ'], params: {}, subHeightOverrides: { KDJ: 1.4 }, candleKind: 'candle', priceMode: 'log' } }, deleted: false })
     const a = phone(server), b = phone(server)
     await a.first(); await b.first()
-    // 当前在 1 小时：以小时组那份为准并成一份
     expect(a.s.p.overlays).toEqual(['EMA'])
-    expect(a.s.p.subs).toEqual(['KDJ'])
-    expect(a.s.p.indicatorLayouts).toEqual({ others: {} })
+    expect(a.s.p.subs).toEqual(defaultPrefs().subs)
+    expect('indicatorLayouts' in a.s.p).toBe(false)
+    expect('portraitHeight' in a.s.p).toBe(false)
     a.capture(); await a.sync()
-    expect(settingsOnServer(server).body['indicatorLayouts/hour']).toBeNull()
+    // 退役的键原样留在云端那份上（不认领、不发 null），等服务端洗
+    expect(settingsOnServer(server).body['indicatorLayouts/hour']).toEqual({ overlays: ['BOLL'], subs: ['KDJ'], params: {}, subHeightOverrides: { KDJ: 1.4 }, candleKind: 'candle', priceMode: 'log' })
+    expect(settingsOnServer(server).body.portraitHeight).toBe(0.7)
+    const sent = server.pushes.flat().flatMap(o => Object.keys(o.fields))
+    expect(sent.some(k => k.startsWith('indicatorLayouts') || k === 'portraitHeight')).toBe(false)
     expect(settingsOnServer(server).body.overlays).toEqual(['EMA'])
     await b.sync()
     expect(b.s.p.overlays).toEqual(['EMA'])
@@ -148,7 +152,6 @@ describe('两台来回', () => {
     b.capture(); await b.sync(); await a.sync()
     expect(a.s.p.interval).toBe('1d')
     expect(a.s.p.overlays).toEqual(['BOLL'])
-    expect(a.s.p.indicatorLayouts).toEqual({ others: {} })
   })
 
   it('iOS 写了本机认不得的子路径（更新版的新指标）：记账时原样留着，不发 null', async () => {

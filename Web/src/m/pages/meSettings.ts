@@ -8,7 +8,7 @@
  * 价格轴（线性 / 对数）不在这里：iOS 收设置项时把它留在图表设置里，网页版同样只在行情页的图表设置里切。
  * 改一下立刻生效、立刻落盘；进下一页的行尾一律是箭头，就地动作（恢复、清除）是强调色 / 红色的字。
  */
-import { st, save, subscribe, layoutSettled, resolvedTheme } from '../app/store'
+import { st, save, subscribe, resolvedTheme } from '../app/store'
 import { applyTheme, hooks } from '../app/shell'
 import type { AlertSound } from '../app/prefs'
 import { setRoute } from '../../market'
@@ -143,7 +143,6 @@ export function buildSettings(body: HTMLElement, layer: MeLayer, host: MeHost): 
 
   function resetAll(): void {
     const { changed, before } = resetPrefs(st)
-    layoutSettled()
     save()
     applyTheme()
     paint()
@@ -152,7 +151,6 @@ export function buildSettings(body: HTMLElement, layer: MeLayer, host: MeHost): 
       title: '撤销',
       run: () => {
         if (!restorePrefs(st, changed, before).length) return
-        layoutSettled()
         save()
         applyTheme()
       },

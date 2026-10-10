@@ -30,7 +30,9 @@ struct PrefsStressTests {
   nonisolated private static let keys: [String] = {
     let object = (try? JSONSerialization.jsonObject(with: PrefsCodec.encoded(.defaults)!)) as? [String: Any] ?? [:]
     return object.keys.sorted() + ["orderFlowFilledBid", "orderFlowFilledAsk", "orderFlowCancelledBid",
-                                   "orderFlowCancelledAsk", "styleID", "recordButtonX", "apiHost", "未来的键"]
+                                   "orderFlowCancelledAsk", "styleID", "recordButtonX", "apiHost", "未来的键",
+                                   // 2026-10-10 退役的键：老档里还躺着，读时忽略。
+                                   "portraitHeight", "indicatorLayouts", "drawToolGroup", "compactValues"]
   }()
 
   /// 认得出的字面量池：周期、指标、各个枚举的取值，混上认不出的。
@@ -93,7 +95,7 @@ struct PrefsStressTests {
   /// 服务端字节上限（`sync_validation.rs`：`string(v, 128)` / `string(v, 64)` 数的是 UTF-8 字节）。
   nonisolated private func withinServerLimits(_ data: Data) -> Bool {
     guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
-    for key in ["favoritesGroup", "drawToolGroup"] {
+    for key in ["favoritesGroup"] {
       if let s = object[key] as? String, s.utf8.count > 128 { return false }
     }
     for key in ["theme", "priceMode", "candleKind"] {
@@ -142,7 +144,7 @@ struct PrefsStressTests {
     let good = String(data: PrefsCodec.encoded(.defaults)!, encoding: .utf8)!
     let broken = [
       good.replacingOccurrences(of: "\"barSpacing\":4", with: "\"barSpacing\":1e999"),
-      good.replacingOccurrences(of: "\"portraitHeight\":", with: "\"portraitHeight\":-1e999,\"x\":"),
+      good.replacingOccurrences(of: "\"barSpacing\":", with: "\"portraitHeight\":-1e999,\"barSpacing\":"),
       String(good.prefix(good.count / 2)),
       "{\"v\":2,\"quickIntervals\":[\"5m\",\"30m\",\"1h\",\"4h\",\"1d\"],\"skin\":\"terra\"}",
       "{\"v\":3,\"quickIntervals\":[\"5m\",\"30m\",\"1h\",\"4h\",\"1d\"],\"skin\":\"terra\"}",
@@ -152,7 +154,7 @@ struct PrefsStressTests {
       let prefs = PrefsCodec.decode(Data(text.utf8))
       let encoded = try #require(PrefsCodec.encoded(prefs))
       #expect(PrefsCodec.decode(encoded) == prefs)
-      #expect(prefs.barSpacing.isFinite && prefs.portraitHeight.isFinite)
+      #expect(prefs.barSpacing.isFinite && prefs.chartOptions.portraitHeight.isFinite)
     }
     // RSI 上下限 2026-09-28 收掉（收设置项 C 组）：老档里的这两个键怎么写都只是被忽略。
     for text in ["{\"v\":3,\"rsiUpper\":1}", "{\"v\":3,\"rsiUpper\":20,\"rsiLower\":\"x\"}"] {
@@ -178,12 +180,13 @@ struct PrefsStressTests {
     store.onChange = { _ in changes += 1 }
     for frame in 0..<600 {
       // 每四帧里有一帧是同一个值（图每改一次状态都会报一遍），不该写。
-      let height = 0.3 + Double(frame / 4 * 4 % 600) / 1_000
-      store.update { $0.portraitHeight = height }
-      #expect(PrefsStore.load(from: box).portraitHeight == store.prefs.portraitHeight)
+      // （原来拿竖屏主图占比 `portraitHeight` 当手势值，2026-10-10 它退役，换成同样连续的 K 线间距。）
+      let spacing = 3 + Double(frame / 4 * 4 % 600) / 100
+      store.update { $0.barSpacing = spacing }
+      #expect(PrefsStore.load(from: box).barSpacing == store.prefs.barSpacing)
     }
     #expect(changes == 150)
-    #expect(PrefsStore.load(from: box).portraitHeight == store.prefs.portraitHeight)
-    #expect(store.dirtyFields.contains("portraitHeight"))
+    #expect(PrefsStore.load(from: box).barSpacing == store.prefs.barSpacing)
+    #expect(store.dirtyFields.contains("barSpacing"))
   }
 }

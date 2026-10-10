@@ -244,11 +244,10 @@ final class PrefsStore {
 
   /// 唯一的改法。没真改动就不落盘，免得每次滑动都写一遍。
   ///
-  /// 指标布局一人一份、不分周期（2026-10-03，见 `settleIndicatorLayouts`）：换周期不动指标。
+  /// 指标布局一人一份、不分周期（2026-10-03，见 `IndicatorLayouts.swift`）：换周期不动指标。
   func update(_ change: (inout Prefs) -> Void) {
     var next = prefs
     change(&next)
-    next.settleIndicatorLayouts(after: prefs)
     guard next != prefs else { return }
     let changed = Prefs.changedStampedFields(from: prefs, to: next)
     prefs = next
@@ -260,7 +259,6 @@ final class PrefsStore {
     var next = prefs
     let why = change(&next)
     if let why { note(why); return }
-    next.settleIndicatorLayouts(after: prefs)
     guard next != prefs else { return }
     let changed = Prefs.changedStampedFields(from: prefs, to: next)
     prefs = next
@@ -284,7 +282,6 @@ final class PrefsStore {
     let before = prefs
     var next = prefs
     let why = next.toggle(id)
-    next.settleIndicatorLayouts(after: prefs)
     guard next != prefs else { return }
     let changed = Prefs.changedStampedFields(from: prefs, to: next)
     prefs = next
@@ -299,7 +296,6 @@ final class PrefsStore {
     let before = prefs
     var next = prefs
     next.indicatorLayout = .factory
-    next.settleIndicatorLayouts(after: prefs)
     guard next != prefs else { return }
     let changed = Prefs.changedStampedFields(from: prefs, to: next)
     prefs = next

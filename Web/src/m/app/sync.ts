@@ -13,7 +13,7 @@
  * 界面：皮肤 / 深浅 / 涨跌色由这里 applyTheme()；自选页、「我的」页开着就重画；
  * 别的（图表的指标、周期……）订 shell 的 hooks.onSync 或 window 的 `hkline:sync` 事件自己重取。
  */
-import { st, save, subscribe, layoutSettled } from './store'
+import { st, save, subscribe } from './store'
 import { applyTheme, hooks, refreshPage, type SyncChange } from './shell'
 import * as C from './syncCodec'
 import { alertsReplaced, announceRemoteFire, onAlertFired } from '../model/alerts'
@@ -114,7 +114,6 @@ function settle(store: SyncStore | null, r: SyncChange, fired: Alert[], merged: 
   applying = true
   try {
     if (st.favoritesGroup && merged[st.favoritesGroup]) st.favoritesGroup = merged[st.favoritesGroup]
-    if (r.settings.length) layoutSettled()
     if (r.settings.length || r.favorites || r.alerts) save()
     if (r.settings.length) applyTheme()
     if (r.alerts) alertsReplaced()

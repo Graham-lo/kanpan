@@ -8,6 +8,10 @@ public struct ReviewBook: View {
   @Environment(\.reviewTheme) private var t
   @State private var savedOpen = false
   public init(feature: ReviewFeature) { self.feature = feature }
+  /// 「观点 · 交易」分段：读的是此刻显示的那面，手点走 `pick`（连同手点的那面一起记，宿主落盘同步）。
+  private var segmentPick: Binding<TradeReviewFeature.Segment> {
+    Binding(get: { feature.trades.segment }, set: { feature.trades.pick($0) })
+  }
   public var body: some View {
     // 一次 body 只取一次：过滤、分组都在 feature 里按输入缓存（`bookSections`）。
     let sections = feature.bookSections
@@ -15,7 +19,7 @@ public struct ReviewBook: View {
       VStack(spacing: 0) {
         // 「观点 · 交易」（自动复盘 3c）：交易那一面是交易所成交自动拼出来的回合。
         ReviewSegment(options: [("观点", TradeReviewFeature.Segment.views), ("交易", .trades)],
-                      selection: Bindable(feature.trades).segment, id: "review.segment")
+                      selection: segmentPick, id: "review.segment")
           .reviewPageInset().padding(.top, ReviewSpace.xs)
         if feature.trades.segment == .trades {
           TradeBookList(feature: feature)
@@ -233,7 +237,8 @@ struct ReviewStatisticsView: View {
   var body: some View {
     VStack(spacing: 0) {
       ReviewSegment(options: [("观点", TradeReviewFeature.Segment.views), ("交易", .trades)],
-                    selection: Bindable(feature.trades).segment, id: "review.stats.segment")
+                    selection: Binding(get: { feature.trades.segment }, set: { feature.trades.pick($0) }),
+                    id: "review.stats.segment")
         .reviewPageInset().padding(.top, ReviewSpace.xs)
       if feature.trades.segment == .trades { TradeStatisticsList(feature: feature) } else { viewsList }
     }

@@ -58,7 +58,7 @@ describe('手机网页「分析」面板：隐藏画线一行', () => {
 describe('手机网页行情页：偏好 → 引擎', () => {
   it('建图与 syncChart 都按 drawingsOn() 设 drawings；看朋友分享的线时照画', () => {
     expect(mChartSource).toContain('const drawingsOn = (): boolean => !st.drawingsHidden || !!preview?.previewing()')
-    expect(mChartSource).toMatch(/setCandleStyle\(\{ kind: st\.candleKind, portraitHeight: st\.portraitHeight, drawings: drawingsOn\(\) \}\)/)
+    expect(mChartSource).toMatch(/setCandleStyle\(\{ kind: st\.candleKind, drawings: drawingsOn\(\) \}\)/)
     expect(mChartSource).toMatch(/mainInverted: st\.mainInverted, drawings: drawingsOn\(\) \}\)/)
     // 改了偏好要能触发 setCandleStyle：lookKey 里带着它
     expect(mChartSource).toMatch(/const lookKeyOf = [^\n]*\n[^\n]*drawingsOn\(\)\]\)/)

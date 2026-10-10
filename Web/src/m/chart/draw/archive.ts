@@ -54,10 +54,10 @@ export function decodeStyle(v: unknown): DrawingStyle | null {
 
 // ------------------------------------------------------------ 画线偏好
 
-/** 收藏、磁吸、连续画、每把工具的样式、每一族「换画法」记住的那一种。 */
+/** 磁吸、连续画、每把工具的样式、每一族「换画法」记住的那一种。
+ *  （「收藏的工具」`favorites` 界面上早没有入口，2026-10-10 三端退役：老存档、云端老对象里的这个键读时忽略，
+ *  服务端在 drawingPreferences 的退役名单里洗掉。删除前的代码在 tag sync-fields-before-retire-2026-10-10。） */
 export class DrawingPreferences {
-  /** 收藏的那几把工具。界面上已经没有入口，字段只剩兼容与同步。 */
-  favorites: DrawingKind[] = ['trend', 'hline', 'fibonacci', 'measure']
   magnet = true
   continuous = false
   styles: Record<string, DrawingStyle> = {}
@@ -66,7 +66,7 @@ export class DrawingPreferences {
 
   clone(): DrawingPreferences {
     const p = new DrawingPreferences()
-    p.favorites = this.favorites.slice(); p.magnet = this.magnet; p.continuous = this.continuous
+    p.magnet = this.magnet; p.continuous = this.continuous
     p.styles = Object.fromEntries(Object.entries(this.styles).map(([k, s]) => [k, { ...s, levels: s.levels.slice() }]))
     p.variants = { ...this.variants }
     return p
@@ -76,7 +76,6 @@ export class DrawingPreferences {
     const sk = Object.keys(this.styles), ok = Object.keys(o.styles)
     const vk = Object.keys(this.variants), ovk = Object.keys(o.variants)
     return this.magnet === o.magnet && this.continuous === o.continuous
-      && this.favorites.length === o.favorites.length && this.favorites.every((f, i) => f === o.favorites[i])
       && sk.length === ok.length && sk.every(k => o.styles[k] !== undefined && styleEquals(this.styles[k], o.styles[k]))
       && vk.length === ovk.length && vk.every(k => this.variants[k] === o.variants[k])
   }
@@ -120,7 +119,6 @@ export class DrawingPreferences {
 
 export function encodePreferences(p: DrawingPreferences): Record<string, unknown> {
   return {
-    favorites: p.favorites.slice(),
     magnet: p.magnet,
     continuous: p.continuous,
     styles: Object.fromEntries(Object.entries(p.styles).map(([k, s]) => [k, encodeStyle(s)])),
@@ -134,8 +132,6 @@ export class PreferencesDecodeError extends Error {}
 export function decodePreferences(v: unknown): DrawingPreferences {
   if (!isObj(v)) throw new PreferencesDecodeError('偏好不是对象')
   const p = new DrawingPreferences()
-  const favs = v.favorites
-  if (Array.isArray(favs) && favs.every(x => typeof x === 'string')) p.favorites = (favs as string[]).filter(isDrawingKind)
   for (const k of ['magnet', 'continuous'] as const) {
     const x = v[k]
     if (x === undefined || x === null) continue

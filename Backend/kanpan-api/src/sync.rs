@@ -100,6 +100,11 @@ pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favorit
  "watchMoveThreshold",
  // 收设置项 G 组（2026-09-28）。
  "favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline","sectorSort",
+ // 同步字段整理（2026-10-10，退役前的代码在 tag `sync-fields-before-retire-2026-10-10`）：
+ // `portraitHeight` 三端只读不写、永远 0.5，读端改用出厂值；`styleID` / `drawToolGroup` /
+ // `compactValues` / `routePolicy` 是早就不发的四个 wireOnly 键（`routePolicy` 在 iOS 仍是本机字段，只是不再上线）；
+ // `indicatorLayouts`（含 `indicatorLayouts/<组>`）是 09-27~10-02 周期分组留下的键，10-03 之前的老客户端已经没了。
+ "portraitHeight","styleID","drawToolGroup","compactValues","routePolicy","indicatorLayouts",
 ];
 /// Favorite names deleted from both ends. `pinned` (2026-09-24): the favorites page never had a
 /// way to pin anything once custom groups were judged 「不做」, so `setPinned` had no caller and
@@ -107,9 +112,13 @@ pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights","favorit
 /// ones: an older build pushing it has it dropped and named in `droppedFields`, and stored
 /// bodies still carrying it are cleaned on their next merge (see `strip_retired`).
 pub const RETIRED_FAVORITE_FIELDS:&[&str]=&["pinned"];
+/// 画线偏好里两端删掉的名字。`favorites`（收藏的画线工具，2026-10-10 退役）：09-22 工具砍到十二把、
+/// 面板去掉收藏之后就没有入口了，客户端只为兼容一直原样带着它。老客户端推上来照样只丢这个字段并在
+/// `droppedFields` 报回，库里老 body 带着的下次合并时洗掉（`strip_retired`）。
+pub const RETIRED_DRAWING_PREFERENCE_FIELDS:&[&str]=&["favorites"];
 /// Retired names, per collection.
 pub fn retired_fields(c:&str)->&'static [&'static str] {
- match c {SETTINGS=>RETIRED_SETTINGS_FIELDS,FAVORITES=>RETIRED_FAVORITE_FIELDS,_=>&[]}
+ match c {SETTINGS=>RETIRED_SETTINGS_FIELDS,FAVORITES=>RETIRED_FAVORITE_FIELDS,DRAWING_PREFERENCES=>RETIRED_DRAWING_PREFERENCE_FIELDS,_=>&[]}
 }
 /// First path segment is a retired name in that collection (`subHeights/MACD` counts).
 pub fn retired_field(c:&str,path:&str)->bool {retired_fields(c).contains(&path.split('/').next().unwrap_or_default())}
@@ -170,19 +179,19 @@ pub fn lenient(c:&str)->bool {matches!(c,SETTINGS|DRAWING_PREFERENCES)}
 pub const SETTINGS_FIELDS:&[&str]=&[
  "compareSymbols",
  "overlays","subs","subHeightOverrides","params","indicatorColors",
- // 指标按周期分组记忆（2026-09-27~10-02）留下的键：2026-10-03 起客户端指标布局一人一份（就是上面那几项），
- // 只读老客户端写的 `indicatorLayouts/<minute|hour|day>` 并对它们发 null 清掉——所以白名单留着。
- "indicatorLayouts",
- "portraitHeight","quickIntervals","theme","skin","styleID","redUp","priceMode",
+ // `indicatorLayouts`、`portraitHeight`、`styleID`、`compactValues`、`routePolicy`（2026-10-10）在 RETIRED_SETTINGS_FIELDS 里。
+ "quickIntervals","theme","skin","redUp","priceMode",
  "depth","orderFlow","orderFlowHistory","candleKind",
- "compactValues","barSpacing","mainInverted","subInverted","interval",
- "routePolicy",
+ "barSpacing","mainInverted","subInverted","interval",
  // How the person left each page looking: which category, which market, which tool.
  // 自选排序 / 迷你走势与板块排序（收设置项 G 组）在 RETIRED_SETTINGS_FIELDS 里。
  // Which category the favorites page is parked on. It used to live in the phone's own symbol
  // archive (`SymbolPrefs.selectedGroupID`), so it never followed the person to a second device.
  "favoritesGroup",
- "sectorMarket","sectorWindow","drawToolGroup","lastDrawTool","reviewSearchScope",
+ "sectorMarket","sectorWindow","lastDrawTool","reviewSearchScope",
+ // 复盘本「观点 / 交易」停在哪一面、筛选停在「全部 / 待判定 / 已判定」哪一档（2026-10-10，跟人走）。
+ // `drawToolGroup`（2026-10-10）在 RETIRED_SETTINGS_FIELDS 里。
+ "reviewSegment","reviewBookFilter",
  "alertSound",
  // 自选五分钟波动提醒（P3.1）：开关。幅度按波动自动定，`watchMoveThreshold` 已退役。
  "watchMoveAlert",
@@ -241,7 +250,8 @@ pub const WEB_SETTINGS_FIELDS:&[&str]=&["webChart","webPrefs"];
 pub const WEB_DRAWING_FIELDS:&[&str]=&["style"];
 // `variants/<palette tool>` is the drawing method last picked for that family in the style sheet
 // (trend → extended, hline → hray, vline → crossLine): the next line from that tool is drawn that way.
-pub const DRAWING_PREFERENCE_FIELDS:[&str;5]=["favorites","magnet","continuous","styles","variants"];
+// `favorites`（收藏的画线工具）2026-10-10 退役，见 RETIRED_DRAWING_PREFERENCE_FIELDS。
+pub const DRAWING_PREFERENCE_FIELDS:[&str;4]=["magnet","continuous","styles","variants"];
 // `text` is the note/callout/flag caption; `created` only old archives carry.
 // Checked against `contract/drawing-fields.json` (`syncFields` + `legacySyncFields`, generated from what
 // the client's `PersonalSyncCodec.drawings` really sends) by `drawing_fields_are_what_the_codec_sends`.
@@ -748,7 +758,7 @@ mod tests {
     regenerating — run `make sync-contract` from the repo root first.");
 
   let expected=[
-   ("drawingPreferences",&["favorites","magnet","continuous","styles","variants"][..]),
+   ("drawingPreferences",&["magnet","continuous","styles","variants"][..]),
    ("drawings",&["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"][..]),
    ("favorites",&["symbol","market","venue","groupId","order","alerts"][..]),
    ("groups",&["name","order","members"][..]),
@@ -781,7 +791,7 @@ mod tests {
   let probes=[
    json!(true),json!(""),json!(0.5),json!(1),json!(4.0),json!([5]),
    json!(["MA"]),json!(["VOL"]),json!(["FVG"]),json!(["1m"]),json!(["BTCUSDT"]),json!(["binance/usd_m/BTCUSDT"]),json!([30,70]),
-   json!("1m"),json!("sage"),json!("direct"),json!("custom"),json!("crypto"),json!("today"),
+   json!("1m"),json!("sage"),json!("custom"),json!("crypto"),json!("today"),json!("views"),json!("todo"),
    json!("change"),json!("history"),json!("medium"),json!({"value":"#112233"}),json!("default"),json!({}),
    json!({"active":"default","sets":[{"id":"default","name":"默认","layout":"1","cells":[{"symbol":"BTCUSDT","iv":"1h"}]}]}),
   ];
@@ -811,32 +821,64 @@ mod tests {
   assert_eq!(object.body["variants/vline"],json!("crossLine"));
   assert!(op("drawingPreferences",&[("variants/trend",json!("telekinesis"))]).validate().is_err());
  }
- /// 指标按周期分组记忆（2026-09-27）：分了叉的那一组整份布局走 `indicatorLayouts/<组>`，
- /// 过白名单、过值校验、真的合并；null 是「这一组并回共用」；组名、布局里的键与值都按规则拒。
- #[test] fn indicator_layouts_per_interval_group_are_stored() {
-  let hour=json!({"overlays":["MA","EMA"],"subs":["VOL","KDJ"],"params":{"MA":[7,25,99]},
-   "hiddenOutputs":{"MA":[2]},"subHeightOverrides":{"KDJ":1.2},"candleKind":"heikin","priceMode":"log"});
-  let fields=[("indicatorLayouts/hour",hour.clone()),("indicatorLayouts/day",json!({"subs":["RSI"]}))];
-  let operation=op("settings",&fields);
-  assert!(operation.validate().is_ok());
-  assert!(operation.unknown_fields().is_empty());
-  let object=applied("settings",&fields);
-  assert_eq!(object.body["indicatorLayouts/hour"],hour);
-  assert_eq!(object.body["indicatorLayouts/day"],json!({"subs":["RSI"]}));
-  assert!(op("settings",&[("indicatorLayouts/minute",Value::Null)]).validate().is_ok(),"null = 这一组回到共用");
-  for (path,value) in [
-   ("indicatorLayouts/8h",json!({})),                         // 组名只有三个
-   ("indicatorLayouts",json!({"hour":{}})),                   // 必须拍平到组
-   ("indicatorLayouts/hour/subs",json!(["VOL"])),             // 不再往下拆
-   ("indicatorLayouts/hour",json!({"skin":"sage"})),          // 皮肤不属于分组布局
-   ("indicatorLayouts/hour",json!({"subs":["MA"]})),          // 主图指标放不进副图
-   ("indicatorLayouts/hour",json!({"params":{"NOPE":[1]}})),  // 认不出的指标
-   ("indicatorLayouts/hour",json!({"params":{"MA":[0]}})),    // 参数越界
-   ("indicatorLayouts/hour",json!({"subHeightOverrides":{"VOL":9.0}})),
-   ("indicatorLayouts/hour",json!(["VOL"])),                  // 不是对象
-  ] {
-   assert!(!crate::sync_validation::field("settings",path,&value),"{path} = {value} must be refused");
+ /// 同步字段整理（2026-10-10）：`portraitHeight`、四个 wireOnly 键（`styleID` / `drawToolGroup` /
+ /// `compactValues` / `routePolicy`）与 `indicatorLayouts`（含拍平的 `indicatorLayouts/<组>`）退役。
+ /// 老客户端推上来只丢这几个字段并在回执里点名、同一条里别的照常合并；库里老 body 带着的下次合并洗掉，
+ /// 不会因为没有值规则把整条对象拖死。退役前的代码在 tag `sync-fields-before-retire-2026-10-10`。
+ #[test] fn retired_2026_10_10_settings_are_dropped_and_stripped() {
+  let retired:[(&str,Value);7]=[("portraitHeight",json!(0.5)),("styleID",json!("aicoin")),("drawToolGroup",json!("斐波那契")),
+   ("compactValues",json!(true)),("routePolicy",json!("gateway")),
+   ("indicatorLayouts/hour",json!({"subs":["RSI"]})),("indicatorLayouts/day",Value::Null)];
+  for name in ["portraitHeight","styleID","drawToolGroup","compactValues","routePolicy","indicatorLayouts"] {
+   assert!(RETIRED_SETTINGS_FIELDS.contains(&name)&&!SETTINGS_FIELDS.contains(&name),"{name} 应已退役");
   }
+  let mut fields:Vec<(&str,Value)>=retired.iter().cloned().collect();
+  fields.push(("reviewSegment",json!("trades")));
+  let operation=op("settings",&fields);
+  assert!(operation.validate().is_ok(),"老版本带着退役字段推上来不能整条 400");
+  let mut named=operation.unknown_fields();named.sort();
+  let mut expected:Vec<String>=retired.iter().map(|(n,_)|n.to_string()).collect();expected.sort();
+  assert_eq!(named,expected);
+  assert!(named.iter().all(|k|retired_settings_field(k)),"回执里点名的都是退役名");
+  let mut stored=blank("settings","chart");
+  for (path,value) in [("portraitHeight",json!(0.5)),("styleID",json!("aicoin")),("drawToolGroup",json!("绘图")),("compactValues",json!(false)),
+   ("routePolicy",json!("direct")),("indicatorLayouts/minute",json!({"overlays":["EMA"]})),("indicatorLayouts/hour",json!({"subs":["KDJ"]}))] {
+   stored.body.insert(path.into(),value);stored.fields.insert(path.into(),json!({"revision":1}));
+  }
+  let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
+  assert_eq!(merged.body["reviewSegment"],json!("trades"));
+  for key in merged.body.keys().chain(merged.fields.keys()) {
+   assert!(!retired_settings_field(key),"{key} 没被清掉");
+  }
+ }
+ /// 复盘本「观点 / 交易」停在哪一面、筛选停在哪一档（2026-10-10，跟人走）：过白名单、过值规则、真的合并；
+ /// 认不出的值整条拒（客户端只会发这几个字面量）。
+ #[test] fn review_book_position_travels_with_the_account() {
+  for (name,good) in [("reviewSegment","views"),("reviewSegment","trades"),("reviewBookFilter","all"),("reviewBookFilter","todo"),("reviewBookFilter","decided")] {
+   let operation=op("settings",&[(name,json!(good))]);
+   assert!(operation.validate().is_ok(),"{name}={good}");
+   assert!(operation.unknown_fields().is_empty());
+   assert_eq!(applied("settings",&[(name,json!(good))]).body[name],json!(good));
+  }
+  for (name,bad) in [("reviewSegment",json!("stats")),("reviewSegment",json!(null)),("reviewBookFilter",json!("records")),("reviewBookFilter",json!(1))] {
+   assert!(op("settings",&[(name,bad.clone())]).validate().is_err(),"{name}={bad} 应整条拒");
+  }
+ }
+ /// 画线偏好里的 `favorites`（收藏的画线工具，2026-10-10 退役）：老客户端推上来只丢这个字段、吸附照常合并；
+ /// 库里老 body 带着的下次合并洗掉。`retired_fields` 只认它在画线偏好这个集合里。
+ #[test] fn retired_drawing_preference_favorites_are_dropped_and_stripped() {
+  assert!(!DRAWING_PREFERENCE_FIELDS.contains(&"favorites"));
+  assert!(retired_field(DRAWING_PREFERENCES,"favorites")&&!retired_field(DRAWING_PREFERENCES,"magnet"));
+  assert!(!retired_field(SETTINGS,"favorites")&&!retired_field(FAVORITES,"favorites"));
+  let operation=op("drawingPreferences",&[("favorites",json!(["trend","hline"])),("magnet",json!(true))]);
+  assert!(operation.validate().is_ok(),"老版本带着 favorites 推上来不能整条 400");
+  assert_eq!(operation.unknown_fields(),vec!["favorites".to_string()]);
+  let mut stored=blank("drawingPreferences","drawing");
+  stored.body.insert("favorites".into(),json!(["fibonacci"]));stored.fields.insert("favorites".into(),json!({"revision":1}));
+  stored.body.insert("continuous".into(),json!(false));
+  let merged=merge(stored,&operation,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old drawing preference body: {}",e.1));
+  assert_eq!(merged.body["magnet"],json!(true));
+  assert!(!merged.body.contains_key("favorites")&&!merged.fields.contains_key("favorites"),"favorites 没被清掉");
  }
  /// 铃声同时通过字段白名单、值校验与实际合并。
  #[test] fn alert_sound_is_accepted_and_invalid_values_are_refused() {
@@ -1156,7 +1198,7 @@ mod tests {
  }
  /// 收设置项 C 组（2026-09-28，指标）：`hiddenOutputs`（含 `hiddenOutputs/<指标>` 这种拍平路径）
  /// 与 `rsiRange` 退役。老版本推上来只丢字段；老 body 里一条倒挂的 `rsiRange` 也不再让合并 400；
- /// `indicatorLayouts/<组>` 里嵌着的 `hiddenOutputs` 仍放行（新客户端读时忽略）。
+ /// `indicatorLayouts/<组>`（嵌着 `hiddenOutputs` 的老分组布局）2026-10-10 起整条退役。
  #[test] fn trimmed_settings_group_c_are_dropped_and_stripped() {
   for name in ["hiddenOutputs","rsiRange"] {
    assert!(RETIRED_SETTINGS_FIELDS.contains(&name)&&!SETTINGS_FIELDS.contains(&name),"{name} 应已退役");
@@ -1174,8 +1216,8 @@ mod tests {
   for path in ["hiddenOutputs/MACD","hiddenOutputs/MA","rsiRange"] {
    assert!(!merged.body.contains_key(path)&&!merged.fields.contains_key(path),"{path} 没被清掉");
   }
-  assert!(crate::sync_validation::field("settings","indicatorLayouts/hour",&json!({"hiddenOutputs":{"MA":[2]}})),
-   "老客户端分组布局里嵌着的 hiddenOutputs 仍要放行");
+  // `indicatorLayouts/<组>`（连同里面嵌着的 hiddenOutputs）2026-10-10 整条退役，老客户端发上来只丢不拒。
+  assert!(retired_settings_field("indicatorLayouts/hour"),"分组布局整条退役");
  }
  /// 收设置项 D 组（2026-09-28，主力订单流四个显示开关）：老版本推上来只丢字段，门槛表照常合并；老 body 下次合并洗掉。
  #[test] fn trimmed_settings_group_d_are_dropped_and_stripped() {

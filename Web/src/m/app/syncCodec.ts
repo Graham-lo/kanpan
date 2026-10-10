@@ -5,16 +5,16 @@
  *
  * ## settings（id "chart"）
  * 手机网页版的 Prefs 与 iOS 同名同义，进同步的就是 prefs.ts 的 SYNCED_FIELDS 那 31 个「根」。
- * body 是拍平的：`params` / `indicatorColors` / `subHeightOverrides` / `indicatorLayouts` 这四个嵌套根
+ * body 是拍平的：`params` / `indicatorColors` / `subHeightOverrides` 这三个嵌套根
  * 拍成 `根/子`（颜色再深一层 `indicatorColors/<指标>/<序号>` = `{value:"#rrggbb"}`），其余一根一键。
  * 指标布局只有一份、跟人走（2026-10-03 起不再按周期分组）：顶层 overlays / subs / params / subHeightOverrides /
- * candleKind / priceMode 就是全部。`indicatorLayouts/<minute|hour|day>` 只为读老客户端写的分叉：装进来时取当前周期
- * 所在组那份、收拢成一份，下一次记账给这些分叉发 null，把云端也清干净。
+ * candleKind / priceMode 就是全部。老客户端写的 `indicatorLayouts/<minute|hour|day>` 2026-10-10 三端退役：
+ * 不再是根、不收不发（不替它发 null），云端残留由服务端 strip_retired 洗掉；`portraitHeight` 同日退役。
  *
  * 按根记一份 `seen`（存在账本 a.seen 里）：「这个根上一次和云端对上时，本机归一化之后的线上样子」。
  *   - 记账：本机这个根 ≠ seen → 本机改了，从上一份 body 出发只换这个根的那几条路径；
  *     本机删掉的路径（清掉一个指标颜色）经 owned 的前缀集合发 null。
- *   - 应用：云端这个根 ≠ seen → 云端改了，装进来。指标布局那七个根是一个整体：按云端（含老分叉）取当前那份，再收拢。
+ *   - 应用：云端这个根 ≠ seen → 云端改了，装进来。指标布局那六个根是一个整体，一起装。
  *   - 云端没有的标量根不记 seen：下一次记账会把本机的值推上去（老客户端、网页 PC 写的对象只带几个键）。
  *   - 云端的值本机表达不了（未知枚举）：seen 记成本机现值，不推也不装，免得一碰就把 iOS 的值冲掉。
  *
@@ -37,8 +37,8 @@ import { isDefaultVenue, keyOf, wireSymbol } from '../../market/identity'
 import { DRAW_OWNED } from './drawCodec'
 import type { Alert } from '../../alerts/shape'
 import {
-  LAYOUT_GROUPS, SYNCED_FIELDS, adoptBook, cleanColors, collapseLayouts, currentLayout, defaultPrefs, layoutBook, normalizePrefs, sanitizeLayout,
-  type IndicatorLayout, type LayoutBook, type Prefs,
+  SYNCED_FIELDS, cleanColors, currentLayout, defaultPrefs, normalizePrefs, sanitizeLayout, setCurrentLayout,
+  type IndicatorLayout, type Prefs,
 } from './prefs'
 import type { FavoriteGroup, SymbolPrefs } from './store'
 
@@ -47,11 +47,11 @@ import type { FavoriteGroup, SymbolPrefs } from './store'
 export const SETTINGS_ID = 'chart'
 export type Root = typeof SYNCED_FIELDS[number]
 export const ROOTS: readonly Root[] = SYNCED_FIELDS
-const NESTED = new Set<string>(['params', 'indicatorColors', 'subHeightOverrides', 'indicatorLayouts'])
-/** 指标布局的六个键（顶层写共用那份） */
+const NESTED = new Set<string>(['params', 'indicatorColors', 'subHeightOverrides'])
+/** 指标布局的六个键（就是这个人的那一份） */
 const LAYOUT_KEYS = ['overlays', 'subs', 'params', 'subHeightOverrides', 'candleKind', 'priceMode'] as const
-/** 指标布局作为一个整体应用的七个根 */
-export const LAYOUT_ROOTS: readonly Root[] = [...LAYOUT_KEYS, 'indicatorLayouts']
+/** 指标布局作为一个整体应用的六个根 */
+export const LAYOUT_ROOTS: readonly Root[] = [...LAYOUT_KEYS]
 const isLayoutRoot = (r: string): boolean => (LAYOUT_ROOTS as readonly string[]).includes(r)
 const IND_IDS = new Set(['MA', 'EMA', 'BOLL', 'VWAP', 'ST', 'SAR', 'ORDERFLOW', 'VOL', 'MACD', 'RSI', 'KDJ', 'SRSI', 'ATR', 'OI', 'LSR', 'TAKER', 'BASIS', 'DMI', 'CVD'])
 
@@ -80,14 +80,9 @@ function layoutWire(l: IndicatorLayout): Record<string, Json> {
   return clone({ priceMode: s.priceMode, candleKind: s.candleKind, overlays: s.overlays, subs: s.subs, params: s.params, subHeightOverrides: s.subHeightOverrides }) as Record<string, Json>
 }
 
-/** 一个根的线上值（没拍平）。book 由调用方算一次传进来 */
-function wireValue(p: Prefs, root: Root, book: LayoutBook): Json {
-  if ((LAYOUT_KEYS as readonly string[]).includes(root)) return layoutWire(book.shared)[root]
-  if (root === 'indicatorLayouts') {
-    const out: Record<string, Json> = {}
-    for (const g of LAYOUT_GROUPS) { const f = book.forks[g]; if (f) out[g] = layoutWire(f) }
-    return out
-  }
+/** 一个根的线上值（没拍平）。layout 由调用方算一次传进来 */
+function wireValue(p: Prefs, root: Root, layout: Record<string, Json>): Json {
+  if ((LAYOUT_KEYS as readonly string[]).includes(root)) return layout[root]
   if (root === 'indicatorColors') {
     const out: Record<string, Json> = {}
     for (const [id, m] of Object.entries(p.indicatorColors)) {
@@ -135,7 +130,6 @@ function expandRoot(body: Body, root: string): Json | undefined {
 function knownPath(path: string): boolean {
   const k = path.split('/')
   if (k.length === 1) return true
-  if (k[0] === 'indicatorLayouts') return k.length === 2 && (LAYOUT_GROUPS as readonly string[]).includes(k[1])
   if (!IND_IDS.has(k[1])) return false
   if (k[0] === 'indicatorColors') return k.length === 3 && /^(?:[0-9]|1[0-9]|20)$/.test(k[2])
   return k.length === 2
@@ -143,9 +137,9 @@ function knownPath(path: string): boolean {
 
 /** 本机每个根拍平之后的样子（记账、比对、改动时刻都用它） */
 export function settingsSubs(p: Prefs, roots: readonly Root[] = ROOTS): Record<string, Body> {
-  const book = layoutBook(p)
+  const layout = layoutWire(currentLayout(p))
   const out: Record<string, Body> = {}
-  for (const r of roots) out[r] = flattenRoot(r, wireValue(p, r, book))
+  for (const r of roots) out[r] = flattenRoot(r, wireValue(p, r, layout))
   return out
 }
 
@@ -195,14 +189,11 @@ function decodeRoot(root: Root, raw: Json): unknown {
   return v
 }
 
-/** 按云端 body 重建指标布局（缺的键取本机现在共用的那份；分叉的组从新的共用那份起步） */
-function layoutFromCloud(cur: LayoutBook, body: Body): LayoutBook {
+/** 按云端 body 重建指标布局（缺的键取本机现在那份） */
+function layoutFromCloud(cur: IndicatorLayout, body: Body): IndicatorLayout {
   const raw: Record<string, unknown> = {}
   for (const k of LAYOUT_KEYS) { const v = expandRoot(body, k); if (v !== undefined) raw[k] = v }
-  const shared = sanitizeLayout(raw, cur.shared)
-  const forks: LayoutBook['forks'] = {}
-  for (const g of LAYOUT_GROUPS) { const v = body['indicatorLayouts/' + g]; if (isRecord(v)) forks[g] = sanitizeLayout(v, shared) }
-  return { shared, forks }
+  return sanitizeLayout(raw, cur)
 }
 
 /** 应用：云端值和 seen 不同的根写回 p。`only`：只看这些根（第一次对上时按根比新旧）。返回改了哪些根 */
@@ -211,8 +202,6 @@ export function applySettings(p: Prefs, cloud: SyncObject | undefined, seen: Rec
   const changed: Root[] = []
   const want = (r: string): boolean => !only || only.has(r)
   const mine = settingsSubs(p)
-  // 三组全貌按装之前的周期读（下面可能先装了云端的 interval，跨组时顶层那份就对不上了）
-  const book0 = layoutBook(p)
   for (const r of ROOTS) {
     if (isLayoutRoot(r) || !want(r)) continue
     const raw = expandRoot(cloud.body, r)
@@ -227,27 +216,19 @@ export function applySettings(p: Prefs, cloud: SyncObject | undefined, seen: Rec
     ;(p as unknown as Record<string, unknown>)[r] = v
     changed.push(r)
   }
-  let layoutDone = false
   if (LAYOUT_ROOTS.some(want)) {
     const cand = clone(p)
-    adoptBook(cand, layoutFromCloud(book0, cloud.body))
-    // seen 记云端原样（含老客户端的分叉），本机收拢成一份：下一次记账顶层推那一份、分叉发 null 删掉
+    setCurrentLayout(cand, layoutFromCloud(currentLayout(p), cloud.body))
     const subs = settingsSubs(cand, LAYOUT_ROOTS)
-    collapseLayouts(cand)
     if (!LAYOUT_ROOTS.every(r => r in seen && same(subs[r], seen[r]))) {
       for (const r of LAYOUT_ROOTS) seen[r] = subs[r]
-      const after = settingsSubs(cand, LAYOUT_ROOTS)
-      const diff = LAYOUT_ROOTS.filter(r => !same(after[r], mine[r]))
-      if (diff.length || !same(currentLayout(cand), currentLayout(p))) {
+      const diff = LAYOUT_ROOTS.filter(r => !same(subs[r], mine[r]))
+      if (diff.length) {
         for (const k of LAYOUT_KEYS) (p as unknown as Record<string, unknown>)[k] = cand[k]
-        p.indicatorLayouts = cand.indicatorLayouts
-        changed.push(...(diff.length ? diff : LAYOUT_ROOTS))
-        layoutDone = true
+        changed.push(...diff)
       }
     }
   }
-  // 只换了周期：本机若还留着老档的分叉，按新周期取那一份再收拢
-  if (!layoutDone && changed.includes('interval')) { adoptBook(p, book0); collapseLayouts(p) }
   return changed
 }
 
@@ -264,7 +245,7 @@ export function rootTouched(o: SyncObject | undefined, root: string): number {
 }
 
 /** 第一次对上时设置的合并（iOS SettingsStamp：按根比「本机最后一次改」和「云端这个根最后一次改」，谁新用谁）。
- *  指标布局七个根一起比、一起装。override：上一次在这台设备同步的是另一个账号，云端整体覆盖。
+ *  指标布局六个根一起比、一起装。override：上一次在这台设备同步的是另一个账号，云端整体覆盖。
  *  seen 由调用方先清空；本机新的根不记 seen，记账时推上去。返回改了哪些根 */
 export function mergeSettings(p: Prefs, cloud: SyncObject | undefined, seen: Record<string, Json>, edited: Record<string, number>, override: boolean): Root[] {
   if (override) {

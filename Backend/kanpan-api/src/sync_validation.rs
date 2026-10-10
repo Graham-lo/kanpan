@@ -55,21 +55,6 @@ const ANALYSIS_SECTIONS:[&str;4]=["draw","orderFlow","indicators","compare"];
 fn analysis_usage(v:&Value)->bool {
  v.as_object().is_some_and(|o|o.len()<=ANALYSIS_SECTIONS.len()&&o.iter().all(|(k,n)|ANALYSIS_SECTIONS.contains(&k.as_str())&&n.as_i64().is_some_and(|n|(0..=100_000).contains(&n))))
 }
-/// 一组的指标布局（客户端 `IndicatorLayout`，Kanpan/Kanpan/Settings/Model/IndicatorLayouts.swift）：
-/// 键是顶层那七个同名字段的子集，值的规则也和顶层逐项相同——顶层那份是三组共用的，
-/// 这里是某一组分了叉之后自己的那份。缺的键在客户端跟共用那份走，所以不要求七个都在。
-fn indicator_layout(v:&Value)->bool {
- v.as_object().is_some_and(|o|o.iter().all(|(k,v)|match k.as_str() {
-  "overlays"=>names(v,OVERLAY_INDICATORS.len(),OVERLAY_INDICATORS),
-  "subs"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
-  "params"=>v.as_object().is_some_and(|m|m.iter().all(|(id,v)|indicator(id)&&integers(v,20,1,400))),
-  // 2026-09-28 收设置项 C 组起客户端不再发、读时忽略；老客户端还会带着，照老规则放行。
-  "hiddenOutputs"=>v.as_object().is_some_and(|m|m.iter().all(|(id,v)|indicator(id)&&integers(v,21,0,20))),
-  "subHeightOverrides"=>v.as_object().is_some_and(|m|m.iter().all(|(id,v)|indicator(id)&&number(v,0.25,5.0))),
-  "candleKind"|"priceMode"=>string(v,64),
-  _=>false,
- }))
-}
 /// 提醒的 Webhook 地址：≤ 1024 字节、`http://` 或 `https://` 开头、不含空白。
 fn webhook(v:&Value)->bool {
  v.as_str().is_some_and(|s|s.len()<=1024&&(s.starts_with("http://")||s.starts_with("https://"))&&!s.chars().any(char::is_whitespace))
@@ -253,9 +238,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   || collection==SETTINGS&&p.len()>=2 || collection==DRAWING_PREFERENCES&&p.len()==2}
  if collection==SETTINGS {
   if p.len()>1 {
-   // 指标按周期分组记忆（2026-09-27）：`indicatorLayouts/<minute|hour|day>` 是分了叉的那一组的
-   // 整份布局，第二段是组名不是指标名，所以要排在下面那道「第二段必须是指标」之前。
-   if p[0]=="indicatorLayouts" {return p.len()==2&&matches!(p[1],"minute"|"hour"|"day")&&indicator_layout(v)}
+   // `indicatorLayouts/<minute|hour|day>`（09-27~10-02 的周期分组）2026-10-10 退役，规则随名字一起删了
+   // （`sync::RETIRED_SETTINGS_FIELDS`）：老客户端发上来先被当成未知字段丢掉，走不到这里。
    if !indicator(p[1]) {return false}
    return match p[0] {
     "params"=>p.len()==2&&integers(v,20,1,400),
@@ -270,15 +254,17 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // 自动分析层（2026-10-10）：白名单里的名字、每个最多一次（条数上限 = 白名单长度，重复的放不下）。
    "autoLayers"=>names(v,AUTO_LAYERS.len(),AUTO_LAYERS)&&v.as_array().is_some_and(|a|a.iter().enumerate().all(|(i,x)|!a[..i].contains(x))),
    "quickIntervals"=>intervals(v,10),"interval"=>v.as_str().is_some_and(is_synced_interval),
-   "portraitHeight"=>number(v,0.1,1.0),
    // `Prefs.clampSpacing` never stores anything outside AICoinBehavior's 1.6…40pt.
    "barSpacing"|"landscapeBarSpacing"=>number(v,1.6,40.0),
    "compareSymbols"=>v.as_array().is_some_and(|a|a.len()<=3 && a.iter().all(compare_key) && a.iter().enumerate().all(|(i,v)| !a[..i].contains(v))),
    "skin"=>one_of(v,&["sage","terra","classic"]),
-   "routePolicy"=>one_of(v,&["direct","gateway"]),
    "sectorMarket"=>one_of(v,&["crypto","us"]),
    "sectorWindow"=>one_of(v,&["today","d5","d20"]),
    "reviewSearchScope"=>one_of(v,&["history","private"]),
+   // 复盘本「观点 / 交易」停在哪一面（2026-10-10）。
+   "reviewSegment"=>one_of(v,&["views","trades"]),
+   // 复盘本筛选「全部 / 待判定 / 已判定」（2026-10-10）。
+   "reviewBookFilter"=>one_of(v,&["all","todo","decided"]),
    "alertSound"=>one_of(v,&["default","crisp","electronic","glass"]),
    "orderFlowOverrides"=>order_flow_overrides(v),
    "learnedDefaults"=>learned_defaults(v),
@@ -287,16 +273,13 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "lastDrawTool"=>v.as_str().is_some_and(|s|s.is_empty()||KINDS.contains(&s)),
    "drawToolUsage"=>draw_tool_usage(v),
    "analysisUsage"=>analysis_usage(v),
-   // A tab label on the drawing panel, not an enum with any server meaning; the client
-   // falls back when the saved one is gone, so the length is the only real rule.
-   "drawToolGroup"=>string(v,128),
    // The favorites category the person is parked on: a client-side UUID, and the client falls
-   // back to the first category when the saved one is gone. Same tier as `drawToolGroup`:
-   // length is the only rule the server can honestly enforce. Empty means "has not picked one".
+   // back to the first category when the saved one is gone, so length is the only rule the
+   // server can honestly enforce. Empty means "has not picked one".
    // Being on the allowlist without a rule here would make the field a poison pill — the
    // `_=>false` fallthrough rejects the whole operation with a 400.
    "favoritesGroup"=>string(v,128),
-   "redUp"|"depth"|"orderFlow"|"orderFlowHistory"|"compactValues"
+   "redUp"|"depth"|"orderFlow"|"orderFlowHistory"
     |"mainInverted"|"watchMoveAlert"
     // 设置 › 通知「品种上新与下架」（条件提醒协议第 6 节），服务端 `listing_watch` 读它。
     |"notifyListingChanges"
@@ -310,13 +293,14 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
     |"favoritesTrend"
     // 主力订单流「图上大单签」（2026-10-08）。
     |"bigTradeSigns"=>v.is_boolean(),
-   "theme"|"styleID"|"priceMode"|"candleKind"=>string(v,64),
+   "theme"|"priceMode"|"candleKind"=>string(v,64),
    // 网页图表设置（crate::sync::WEB_SETTINGS_FIELDS）：一个对象，序列化 ≤ 8 KB；里面的键由网页自己清洗
    "webChart"=>p.len()==1&&v.is_object()&&serde_json::to_string(v).is_ok_and(|s|s.len()<=8192),
    "webPrefs"=>p.len()==1&&v.is_object()&&serde_json::to_string(v).is_ok_and(|s|s.len()<=WEB_PREFS_MAX_BYTES),_=>false
   }
  }
- if collection==DRAWING_PREFERENCES {return match path {"favorites"=>names(v,KINDS.len(),KINDS),"magnet"|"continuous"=>v.is_boolean(),
+ // `favorites`（收藏的画线工具）2026-10-10 退役（`sync::RETIRED_DRAWING_PREFERENCE_FIELDS`），规则一起删了。
+ if collection==DRAWING_PREFERENCES {return match path {"magnet"|"continuous"=>v.is_boolean(),
   _=>p.len()==2&&KINDS.contains(&p[1])&&match p[0] {"styles"=>style(v),"variants"=>v.as_str().is_some_and(|s|KINDS.contains(&s)),_=>false}}}
  if p.len()!=1 {return false}
  match (collection,path) {
@@ -750,7 +734,8 @@ mod tests {
  #[test] fn every_tool_on_the_panel_can_be_stored() {
   for &kind in KINDS {assert!(field("drawings","kind",&json!(kind)),"{kind} should be a known tool")}
   assert!(!field("drawings","kind",&json!("telekinesis")));
-  assert!(field("drawingPreferences","favorites",&json!(KINDS.to_vec())));
+  // 收藏的画线工具 2026-10-10 退役：规则随名字删掉（老客户端发上来先被当成未知字段丢掉）。
+  assert!(!field("drawingPreferences","favorites",&json!(KINDS.to_vec())));
  }
  /// 「趋势线我要两端延伸」这一族的画法记忆跟着账号走：`variants/<面板那一格>` = 同族里的一种。
  /// 进了白名单却没有值规则就是毒丸（整条操作 400），所以名字与值两头都要认。
@@ -845,7 +830,17 @@ mod tests {
   assert!(field("settings","interval",&json!("1M"))&&!field("settings","interval",&json!("1x")));
   assert!(field("settings","subInverted",&json!(["VOL","MACD"]))&&!field("settings","subInverted",&json!(["MA"])));
   assert!(field("settings","quickIntervals",&json!(["1m","3m","5m","15m","30m","1h","2h","4h","6h","12h"])));
-  assert!(field("settings","skin",&json!("classic"))&&field("settings","routePolicy",&json!("gateway")));
+  assert!(field("settings","skin",&json!("classic")));
+  // 2026-10-10 退役的六个键：值规则一起删了，任何值都不认（`sync::RETIRED_SETTINGS_FIELDS`）。
+  for (name,value) in [("routePolicy",json!("gateway")),("portraitHeight",json!(0.5)),("styleID",json!("aicoin")),
+   ("compactValues",json!(true)),("drawToolGroup",json!("斐波那契")),("indicatorLayouts/hour",json!({"subs":["RSI"]}))] {
+   assert!(!field("settings",name,&value),"{name} 已退役");
+  }
+  // 复盘本停在哪一面 / 哪一档筛选（2026-10-10）。
+  for good in ["views","trades"] {assert!(field("settings","reviewSegment",&json!(good)),"reviewSegment {good}")}
+  for bad in [json!("stats"),json!(""),json!(null),json!(1),json!(true)] {assert!(!field("settings","reviewSegment",&bad),"reviewSegment {bad}")}
+  for good in ["all","todo","decided"] {assert!(field("settings","reviewBookFilter",&json!(good)),"reviewBookFilter {good}")}
+  for bad in [json!("records"),json!(""),json!(null),json!(0),json!(false)] {assert!(!field("settings","reviewBookFilter",&bad),"reviewBookFilter {bad}")}
   assert!(field("settings","sectorWindow",&json!("d20"))&&field("settings","sectorMarket",&json!("us")));
   for name in ["favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline","sectorSort"] {
    assert!(!field("settings",name,&json!("volume"))&&!field("settings",name,&json!(true)),"{name} 已退役（收设置项 G 组）");
@@ -876,7 +871,6 @@ mod tests {
    assert!(!field("settings","landscapeBarSpacing",&bad),"landscapeBarSpacing {bad}");
   }
   assert!(crate::sync::SETTINGS_FIELDS.contains(&"landscapeBarSpacing"));
-  assert!(field("settings","drawToolGroup",&json!("斐波那契"))&&!field("settings","drawToolGroup",&json!("x".repeat(129))));
   assert!(field("settings","favoritesGroup",&json!("F1E0A6C2-0000-4000-8000-000000000001"))&&!field("settings","favoritesGroup",&json!("x".repeat(129))));
   assert!(!field("settings","favoritesExpanded",&json!(["BTCUSDT"])),"favoritesExpanded 已退役（审查 U9）");
   // 网页版多套图表布局（2026-10-07）

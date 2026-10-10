@@ -2,9 +2,11 @@
  *
  * 三份清单必须一致（tests/m-prefs.test.ts 守着）：
  *   1. iOS 契约 Backend/kanpan-api/contract/settings-fields.json 里 fieldClasses 为 synced 的字段；
- *   2. 服务端 Backend/kanpan-api/src/sync.rs 的 SETTINGS_FIELDS 减去契约的 wireOnlyKeys
- *      （compactValues / drawToolGroup / routePolicy / styleID：服务端还认、客户端早已不收不发）；
+ *   2. 服务端 Backend/kanpan-api/src/sync.rs 的 SETTINGS_FIELDS（减去契约的 wireOnlyKeys——2026-10-10 起是空表：
+ *      原来的 compactValues / drawToolGroup / routePolicy / styleID 进了服务端 RETIRED_SETTINGS_FIELDS）；
  *   3. 这里的 SYNCED_FIELDS。
+ * 2026-10-10 三端退役 portraitHeight（竖屏主图占比，永远 0.5，图上用常量）与 indicatorLayouts（周期分组那阵子的分叉）：
+ * 老档里的这两个键读时忽略，删除前的代码在 tag sync-fields-before-retire-2026-10-10。
  * 服务端对含未知字段的操作整条拒绝，多发一个键就会把整条队列堵死，所以宁可少不可多。
  */
 
@@ -47,6 +49,12 @@ export type SectorMarket = 'crypto' | 'us'
 export type SectorWindow = 'today' | 'd5' | 'd20'
 export type RoutePolicy = 'direct' | 'gateway'
 export type ReviewSearchScope = 'history' | 'private'
+/** 复盘本「观点 / 交易」两面（与 iOS `Prefs.reviewSegments`、服务端 sync_validation 逐字相同） */
+export const REVIEW_SEGMENTS = ['views', 'trades'] as const
+export type ReviewSegment = typeof REVIEW_SEGMENTS[number]
+/** 复盘本筛选三档：全部 / 待判定 / 已判定（与 iOS `Prefs.reviewBookFilters`、服务端逐字相同） */
+export const REVIEW_BOOK_FILTERS = ['all', 'todo', 'decided'] as const
+export type ReviewBookFilter = typeof REVIEW_BOOK_FILTERS[number]
 
 /** OrderFlowOverride：门槛（美元）与步长（价格），缺省走默认表 */
 export interface OrderFlowOverride { spot?: number; usdtPerp?: number; coinPerp?: number; delivery?: number; step?: number }
@@ -64,7 +72,6 @@ export interface IndicatorLayout {
   overlays: IndicatorId[]; subs: IndicatorId[]; params: Partial<Record<IndicatorId, number[]>>
   subHeightOverrides: Partial<Record<IndicatorId, number>>; candleKind: CandleKind; priceMode: PriceMode
 }
-export interface IndicatorLayoutMemory { shared?: IndicatorLayout; others: Record<string, IndicatorLayout> }
 
 /** 与 iOS Prefs 同名同义的那些字段（体验类状态，跟着人走） */
 export interface Prefs {
@@ -86,8 +93,6 @@ export interface Prefs {
   landscapeBarSpacing: number
   mainInverted: boolean
   subInverted: IndicatorId[]
-  /** 竖屏时主图占图区的比例 */
-  portraitHeight: number
   /** 指标 → 线序号 → 颜色（#RRGGBB） */
   indicatorColors: Partial<Record<IndicatorId, Record<string, string>>>
   alertSound: AlertSound
@@ -106,7 +111,6 @@ export interface Prefs {
   subs: IndicatorId[]
   params: Partial<Record<IndicatorId, number[]>>
   subHeightOverrides: Partial<Record<IndicatorId, number>>
-  indicatorLayouts: IndicatorLayoutMemory
   /** 本机字段（deviceOnly）：不同步 */
   routePolicy: RoutePolicy
   favoritesGroup: string
@@ -124,14 +128,19 @@ export interface Prefs {
    *  提醒照常判、图上改画提醒线；横屏画线台不管它、一律显示 */
   drawingsHidden: boolean
   reviewSearchScope: ReviewSearchScope
+  /** 复盘本停在「观点 / 交易」哪一面（2026-10-10，跟人走）。只记**手点**的那面：观点空、交易有时自动翻到交易
+   *  只改这次显示、不回写（与 iOS `Prefs.reviewSegment` 同义） */
+  reviewSegment: ReviewSegment
+  /** 复盘本筛选停在哪一档（2026-10-10，跟人走，出厂「待判定」；与 iOS `Prefs.reviewBookFilter` 同义） */
+  reviewBookFilter: ReviewBookFilter
 }
 
 /** 进账号同步的字段（settings 集合）。顺序无意义，集合必须与 iOS 契约、服务端对齐 */
 export const SYNCED_FIELDS = [
   'alertSound', 'analysisUsage', 'autoLayers', 'barSpacing', 'bigTradeSigns', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'drawingsHidden', 'favoritesGroup', 'favoritesTrend', 'habitLearning',
-  'indicatorColors', 'indicatorLayouts', 'interval', 'landscapeBarSpacing', 'lastDrawTool', 'learnedDefaults', 'mainInverted',
-  'notifyListingChanges', 'orderFlow', 'orderFlowHistory', 'orderFlowOverrides', 'overlays', 'params', 'portraitHeight', 'priceMode',
-  'quickIntervals', 'redUp', 'reviewSearchScope', 'sectorMarket', 'sectorWindow', 'skin', 'subHeightOverrides',
+  'indicatorColors', 'interval', 'landscapeBarSpacing', 'lastDrawTool', 'learnedDefaults', 'mainInverted',
+  'notifyListingChanges', 'orderFlow', 'orderFlowHistory', 'orderFlowOverrides', 'overlays', 'params', 'priceMode',
+  'quickIntervals', 'redUp', 'reviewBookFilter', 'reviewSearchScope', 'reviewSegment', 'sectorMarket', 'sectorWindow', 'skin', 'subHeightOverrides',
   'subInverted', 'subs', 'theme', 'watchMoveAlert',
 ] as const satisfies readonly (keyof Prefs)[]
 /** 只在这台设备上的字段 */
@@ -146,11 +155,12 @@ export function defaultPrefs(): Prefs {
   return {
     interval: '1h', quickIntervals: [...QUICK_INTERVALS], theme: 'auto', skin: 'sage', redUp: false,
     compareSymbols: [], priceMode: 'log', depth: false, orderFlow: false, orderFlowHistory: false, orderFlowOverrides: {},
-    candleKind: 'candle', barSpacing: 4, landscapeBarSpacing: 4, mainInverted: false, subInverted: [], portraitHeight: 0.5,
+    candleKind: 'candle', barSpacing: 4, landscapeBarSpacing: 4, mainInverted: false, subInverted: [],
     indicatorColors: {}, alertSound: 'default', watchMoveAlert: false, favoritesTrend: true, bigTradeSigns: true, autoLayers: [], notifyListingChanges: false,
     habitLearning: true, learnedDefaults: emptyLearned(), overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],
-    params, subHeightOverrides: {}, indicatorLayouts: { others: {} }, routePolicy: 'gateway',
+    params, subHeightOverrides: {}, routePolicy: 'gateway',
     favoritesGroup: '', sectorMarket: 'crypto', sectorWindow: 'today', lastDrawTool: '', drawToolUsage: {}, analysisUsage: {}, reviewSearchScope: 'history',
+    reviewSegment: 'views', reviewBookFilter: 'todo',
     drawingOverlaysShown: true, drawingsHidden: false,
   }
 }
@@ -169,8 +179,6 @@ const isSub = (x: unknown): x is IndicatorId => (SUB_IDS as readonly unknown[]).
 
 /** Prefs.clampSpacing：AICoinBehavior 的 1.6…40 pt */
 export const BAR_SPACING = [1.6, 40] as const
-/** Prefs.clampPortraitHeight */
-export const PORTRAIT_HEIGHT = [0.1, 1] as const
 /** IndicatorLayout.sanitized：副图高度倍数 */
 export const SUB_HEIGHT = [0.5, 2] as const
 /** 对比品种最多三个（compareSymbols） */
@@ -308,18 +316,12 @@ const idList = (v: unknown, pool: readonly IndicatorId[]): IndicatorId[] => [...
 // 发现不是自己要的指标这样就很怪」。所以现在指标布局（开了哪些指标、参数、副图顺序与高度、K 线画法、价格轴）
 // 只有顶层这一份，任何周期都一样，并经云端在 iOS、手机网页、电脑网页之间互通。
 //
-// `indicatorLayouts` 这个根留着只为认老档、老客户端：读进来带着分叉时，以**当前周期所在组**那份为准
-// （那是用户眼下看着的那份）并成一份，然后清空；清空经同步发 `indicatorLayouts/<组>: null`，把云端的分叉一起删掉。
-// 改法：直接改顶层那几项再 save()，store 在落盘前调 settleIndicatorLayouts 收拢。
+// 当时还留着 `indicatorLayouts` 这个根认老档、老客户端的分叉（取当前周期所在组那份收拢、经同步发 null 清掉云端）。
+// 2026-10-10 三端退役：10-03 之前的老客户端已经没了，这段迁移连同那个根一起删掉；老档里的这个键读时忽略，
+// 云端残留由服务端 strip_retired 洗掉。删除前的代码在 tag sync-fields-before-retire-2026-10-10。
+// 改法：直接改顶层那几项再 save()。
 
-export type LayoutGroup = 'minute' | 'hour' | 'day'
-export const LAYOUT_GROUPS: readonly LayoutGroup[] = ['minute', 'hour', 'day']
-export function layoutGroup(iv: IntervalId): LayoutGroup {
-  return iv.endsWith('m') && iv !== '1M' ? 'minute' : iv.endsWith('h') ? 'hour' : 'day'
-}
-export interface LayoutBook { shared: IndicatorLayout; forks: Partial<Record<LayoutGroup, IndicatorLayout>> }
-
-const LAYOUT_KEYS = ['overlays', 'subs', 'params', 'subHeightOverrides', 'candleKind', 'priceMode'] as const
+export const LAYOUT_KEYS = ['overlays', 'subs', 'params', 'subHeightOverrides', 'candleKind', 'priceMode'] as const
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 /** 键序无关的相等 */
 export function sameValue(a: unknown, b: unknown): boolean { return canon(a) === canon(b) }
@@ -343,50 +345,15 @@ export function sanitizeLayout(raw: unknown, base: IndicatorLayout = factoryLayo
 }
 export function factoryLayout(): IndicatorLayout { return currentLayout(defaultPrefs()) }
 
-/** 当前周期所在组的布局（顶层那六项，拷贝） */
+/** 这个人的布局（顶层那六项，拷贝） */
 export function currentLayout(p: Pick<Prefs, typeof LAYOUT_KEYS[number]>): IndicatorLayout {
   return clone({ overlays: p.overlays, subs: p.subs, params: p.params, subHeightOverrides: p.subHeightOverrides, candleKind: p.candleKind, priceMode: p.priceMode })
 }
-function setCurrentLayout(p: Prefs, l: IndicatorLayout): void {
+/** 把一份布局装到顶层那六项上（拷贝） */
+export function setCurrentLayout(p: Prefs, l: IndicatorLayout): void {
   const c = clone(l)
   p.overlays = c.overlays; p.subs = c.subs; p.params = c.params; p.subHeightOverrides = c.subHeightOverrides
   p.candleKind = c.candleKind; p.priceMode = c.priceMode
-}
-/** 三组全貌；`group`：把顶层那份当成哪一组来读（换周期那一下顶层还是旧组的） */
-export function layoutBook(p: Prefs, group: LayoutGroup = layoutGroup(p.interval)): LayoutBook {
-  const forks: Partial<Record<LayoutGroup, IndicatorLayout>> = clone(p.indicatorLayouts.others) as Partial<Record<LayoutGroup, IndicatorLayout>>
-  delete forks[group]
-  if (!p.indicatorLayouts.shared) return { shared: currentLayout(p), forks }
-  forks[group] = currentLayout(p)
-  return { shared: clone(p.indicatorLayouts.shared), forks }
-}
-/** 按当前周期把三组全貌装回来：顶层换成当前组那份，其余进记忆 */
-export function adoptBook(p: Prefs, book: LayoutBook): void {
-  const g = layoutGroup(p.interval)
-  const own = book.forks[g]
-  setCurrentLayout(p, own ?? book.shared)
-  const others = clone(book.forks) as Record<string, IndicatorLayout>
-  delete others[g]
-  p.indicatorLayouts = { ...(own ? { shared: clone(book.shared) } : {}), others }
-}
-
-/** settleIndicatorLayouts 要看的「改动之前」 */
-export type LayoutSnapshot = Pick<Prefs, 'interval' | 'indicatorLayouts' | typeof LAYOUT_KEYS[number]>
-export function layoutSnapshot(p: Prefs): LayoutSnapshot {
-  return clone({ interval: p.interval, indicatorLayouts: p.indicatorLayouts, overlays: p.overlays, subs: p.subs, params: p.params, subHeightOverrides: p.subHeightOverrides, candleKind: p.candleKind, priceMode: p.priceMode })
-}
-
-/** Prefs.settleIndicatorLayouts(after:)：一次改动之后把指标布局收拢成一份。
- *  调用方连 indicatorLayouts 一起换了（云端装进来、老客户端写了分叉）：先按现在的周期投影（当前组的分叉就是那一份），
- *  然后不管怎样都清掉分叉记忆——顶层那份就是全部周期的布局。 */
-export function settleIndicatorLayouts(p: Prefs, before: LayoutSnapshot): void {
-  if (!sameValue(p.indicatorLayouts, before.indicatorLayouts)) adoptBook(p, layoutBook(p))
-  collapseLayouts(p)
-}
-
-/** 清掉分叉记忆（顶层已是要留的那份） */
-export function collapseLayouts(p: Prefs): void {
-  if (p.indicatorLayouts.shared || Object.keys(p.indicatorLayouts.others).length) p.indicatorLayouts = { others: {} }
 }
 
 /** 把任意来源（本机旧档、云端）的值理成合法的 Prefs；缺的、坏的用出厂值 */
@@ -399,9 +366,6 @@ export function normalizePrefs(raw: unknown): Prefs {
     overlays: r.overlays, subs: r.subs, params: isRecord(r.params) ? r.params : undefined,
     subHeightOverrides: r.subHeightOverrides, candleKind: r.candleKind, priceMode: r.priceMode,
   }, currentLayout(d))
-  const mem = obj<Record<string, unknown>>(r.indicatorLayouts, {})
-  const others: Record<string, IndicatorLayout> = {}
-  for (const [g, l] of Object.entries(obj<Record<string, unknown>>(mem.others, {}))) if ((LAYOUT_GROUPS as readonly string[]).includes(g) && isRecord(l)) others[g] = sanitizeLayout(l, top)
   const out: Prefs = {
     interval: oneOf(r.interval, INTERVALS, d.interval),
     quickIntervals: quick.length ? quick : d.quickIntervals,
@@ -419,7 +383,6 @@ export function normalizePrefs(raw: unknown): Prefs {
     landscapeBarSpacing: num(r.landscapeBarSpacing, num(r.barSpacing, d.barSpacing, BAR_SPACING[0], BAR_SPACING[1]), BAR_SPACING[0], BAR_SPACING[1]),
     mainInverted: bool(r.mainInverted, d.mainInverted),
     subInverted: idList(r.subInverted, SUB_IDS),
-    portraitHeight: num(r.portraitHeight, d.portraitHeight, PORTRAIT_HEIGHT[0], PORTRAIT_HEIGHT[1]),
     indicatorColors: cleanColors(r.indicatorColors),
     alertSound: oneOf(r.alertSound, ['default', 'crisp', 'electronic', 'glass'] as const, d.alertSound),
     watchMoveAlert: bool(r.watchMoveAlert, d.watchMoveAlert),
@@ -433,20 +396,21 @@ export function normalizePrefs(raw: unknown): Prefs {
     subs: top.subs,
     params: top.params,
     subHeightOverrides: top.subHeightOverrides,
-    indicatorLayouts: { ...(isRecord(mem.shared) ? { shared: sanitizeLayout(mem.shared, top) } : {}), others },
     routePolicy: oneOf(r.routePolicy, ['direct', 'gateway'] as const, d.routePolicy),
     favoritesGroup: typeof r.favoritesGroup === 'string' ? r.favoritesGroup.slice(0, 128) : d.favoritesGroup,
     sectorMarket: oneOf(r.sectorMarket, ['crypto', 'us'] as const, d.sectorMarket),
     sectorWindow: oneOf(r.sectorWindow, ['today', 'd5', 'd20'] as const, d.sectorWindow),
-    lastDrawTool: typeof r.lastDrawTool === 'string' ? r.lastDrawTool : d.lastDrawTool,
+    // 只认画线工具词表里的名字（iOS PrefsCodec / 服务端 settings.lastDrawTool 同一把尺子）：认不出的退回空，
+    // 不然手改的档、更高版本写下的新工具名会被原样推上去、整条 settings 被拒收。
+    lastDrawTool: typeof r.lastDrawTool === 'string' && isDrawingKind(r.lastDrawTool) ? r.lastDrawTool : d.lastDrawTool,
     drawToolUsage: cleanDrawToolUsage(r.drawToolUsage),
     analysisUsage: cleanAnalysisUsage(r.analysisUsage),
     drawingOverlaysShown: bool(r.drawingOverlaysShown, d.drawingOverlaysShown),
     drawingsHidden: bool(r.drawingsHidden, d.drawingsHidden),
     reviewSearchScope: oneOf(r.reviewSearchScope, ['history', 'private'] as const, d.reviewSearchScope),
+    reviewSegment: oneOf(r.reviewSegment, REVIEW_SEGMENTS, d.reviewSegment),
+    reviewBookFilter: oneOf(r.reviewBookFilter, REVIEW_BOOK_FILTERS, d.reviewBookFilter),
   }
-  // 老档的分叉记忆：顶层本来就是当前周期所在组那份，以它为准收成一份
-  collapseLayouts(out)
   return out
 }
 

@@ -43,6 +43,9 @@ struct MainScreenObservers: ViewModifier {
   let chartOnScreen: Bool
   let syncGate: Bool
   let reviewScope: String
+  /// 复盘本手点的那一面（`TradeReviewFeature.chosenSegment`）与筛选那一档（`ReviewFeature.tab`）。
+  let reviewSegment: String
+  let reviewBookFilter: String
   let routePolicy: MarketRoutePolicy
   /// 逐笔推送带出来的两条（成交、费率）不在这儿求值，交给 `LiveTickRelay`（审查 21）。
   let session: ChartSession
@@ -73,6 +76,10 @@ struct MainScreenObservers: ViewModifier {
   let onSyncGate: () -> Void
   let onReviewScope: (String) -> Void
   let onPrefsReviewScope: (String) -> Void
+  let onReviewSegment: (String) -> Void
+  let onPrefsReviewSegment: (String) -> Void
+  let onReviewBookFilter: (String) -> Void
+  let onPrefsReviewBookFilter: (String) -> Void
   let onInterval: (Interval) -> Void
   let onRoutePolicy: (MarketRoutePolicy) -> Void
   let onFundingRate: (Double?) -> Void
@@ -129,6 +136,11 @@ struct MainScreenObservers: ViewModifier {
     // 「没真改动就不写」挡住回环，不会你来我往。
     .onChange(of: reviewScope) { _, value in onReviewScope(value) }
     .onChange(of: prefs.reviewSearchScope) { _, value in onPrefsReviewScope(value) }
+    // 复盘本停在哪一面、哪一档（2026-10-10）：同样两头对接，改了当场进内存、落盘、记脏推送。
+    .onChange(of: reviewSegment) { _, value in onReviewSegment(value) }
+    .onChange(of: prefs.reviewSegment) { _, value in onPrefsReviewSegment(value) }
+    .onChange(of: reviewBookFilter) { _, value in onReviewBookFilter(value) }
+    .onChange(of: prefs.reviewBookFilter) { _, value in onPrefsReviewBookFilter(value) }
   }
 
   // 原 `marketContent`：线路、口径、行情源、品种表、自选、报价、停留。

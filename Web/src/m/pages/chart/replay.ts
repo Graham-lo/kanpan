@@ -369,7 +369,8 @@ export function startReplay(intent: R.ReplayIntent, host: ReplayHost): ReplaySes
     const options = {
       ...appChartOptions(),
       grid: document.documentElement.dataset.skin === 'classic' ? 'off' as const : 'on' as const,
-      kind: st.candleKind, portraitHeight: st.portraitHeight,
+      // 竖屏主图占比（portraitHeight）跟 appChartOptions 的常量 0.5 走，2026-10-10 起不是偏好
+      kind: st.candleKind,
       // 回放用 readingInside（iOS）：十字线读数写在图里，页头留给游标那根
       dataDisplay: 'inside' as const, countdown: false, drawings: false,
       allowMainInversion: false, allowSubInversion: false,
