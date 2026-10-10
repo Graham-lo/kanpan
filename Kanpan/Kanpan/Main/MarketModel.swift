@@ -238,6 +238,9 @@ final class MarketModel {
     RouteResolver(policy: MarketRoutePolicyStore.current, endpoints: endpoints, log: MarketModel.log)
   }
 
+  /// 「盘口要点」/ 首页异动与榜单问 kanpan-api 用的客户端：跟着当前线路走（直连也走同一个后端）。
+  var highlightsCatalog: OrderFlowCatalog { OrderFlowCatalog(route: resolver.route) }
+
   /// 历史持仓量 / 衍生统计的客户端：按当前品种所在的那一家、当前线路建。
   private func rebuildOISource() {
     let provider = resolver.provider(forSymbol: symbol)

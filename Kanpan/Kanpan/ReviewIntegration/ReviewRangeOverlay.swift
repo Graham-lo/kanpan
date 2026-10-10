@@ -17,6 +17,8 @@ struct ReviewRangeOverlay: UIViewRepresentable {
   /// 画线、横屏、回放时不接手指——那时候图上的手势都是别人的。
   var tappable = false
   var onOpenRecord: (UUID) -> Void = { _ in }
+  /// 「盘口要点」那条带子（价区横带 / 时段竖带）。也画在这张画布上：图表的重画回调只有一个槽位，归这一层。
+  var highlightBand: HighlightBand?
   /// 这一层是 UIKit 手绘的，取不到 SwiftUI 那套 `foregroundStyle`，所以配色得自己端进去。
   ///
   /// 原来它把橙色（`UIColor.systemOrange`）钉死在自己那边：SwiftUI 那几页早就跟着
@@ -42,6 +44,7 @@ struct ReviewRangeOverlay: UIViewRepresentable {
     view.flash(suppressed ? nil : flash)
     view.tappable = tappable && bridge.mode == .live && !suppressed
     view.onOpenRecord = onOpenRecord
+    view.highlightBand = bridge.mode == .live && !suppressed ? highlightBand : nil
     view.isUserInteractionEnabled = bridge.mode == .capture || view.tappable
     view.attach()
     view.setNeedsDisplay()
@@ -53,6 +56,7 @@ final class RangeOverlayView: UIView {
   weak var proxy: ChartProxy?
   var draft: ReviewDraft?
   var records: [ReviewRecord] = []
+  var highlightBand: HighlightBand?
   /// 交易回放的成交三角与均价虚线（`TradeReplayOverlay.swift`）。画在这同一张画布上，
   /// 原因见那边的说明：图表的两个回调槽位只有一个，已经归这一层。
   lazy var tradePainter: TradeReplayPainter = {
@@ -278,6 +282,7 @@ final class RangeOverlayView: UIView {
         }
       }
       report(marks: mine.count, state: state)
+      if let highlightBand { paint(highlightBand, state: state, layout: layout, ctx: ctx) }
     } else if let trade = bridge?.trade, bridge?.mode == .replay {
       tradePainter.paint(trade, state: state, chart: chart, layout: layout, ctx: ctx)
       reportTrade(trade.plan, state: state)
@@ -332,6 +337,42 @@ final class RangeOverlayView: UIView {
       if let outcome, Self.rangeVisible(start: a, end: b, plotW: layout.plotW) {
         outcome.title.draw(at: CGPoint(x: max(3, a), y: layout.mainH - 20), withAttributes: styles.outcome)
       }
+    }
+  }
+  /// 「盘口要点」带子：价区刷一层 16% 强调色、上下沿细线，右上角一枚实底小签；
+  /// 时段刷 14% 竖带，签在上沿居中。整条在视野外就不画。
+  private func paint(_ band: HighlightBand, state: ChartState, layout: KanpanCore.Layout, ctx: CGContext) {
+    let font = UIFont.systemFont(ofSize: 11, weight: .semibold)
+    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.white]
+    let text = band.label as NSString
+    let size = text.size(withAttributes: attrs)
+    func tag(at origin: CGPoint) {
+      let rect = CGRect(x: origin.x, y: origin.y, width: ceil(size.width) + 12, height: 16)
+      ctx.setFillColor(accent.cgColor)
+      ctx.addPath(UIBezierPath(roundedRect: rect, cornerRadius: 8).cgPath); ctx.fillPath()
+      text.draw(at: CGPoint(x: rect.minX + 6, y: rect.midY - size.height / 2), withAttributes: attrs)
+    }
+    switch band.kind {
+    case .price(let low, let high):
+      guard let range = chart?.chartPriceRange else { return }
+      let y1 = yOf(max(low, high), pane: layout.main, range: range, mode: state.price.mode)
+      let y2 = yOf(min(low, high), pane: layout.main, range: range, mode: state.price.mode)
+      guard y2 >= 0, y1 <= layout.mainH else { return }
+      let top = min(y1, y2 - 2), bottom = max(y2, y1 + 2)   // 单价线也给 2pt 厚
+      ctx.setFillColor(accent.withAlphaComponent(0.16).cgColor)
+      ctx.fill(CGRect(x: 0, y: top, width: layout.plotW, height: bottom - top))
+      ctx.setStrokeColor(accent.withAlphaComponent(0.7).cgColor); ctx.setLineWidth(0.8)
+      for y in [top, bottom] { ctx.move(to: CGPoint(x: 0, y: y)); ctx.addLine(to: CGPoint(x: layout.plotW, y: y)); ctx.strokePath() }
+      let w = ceil(size.width) + 12
+      tag(at: CGPoint(x: max(4, layout.plotW - w - 8), y: max(2, min(layout.mainH - 18, top - 18))))
+    case .span(let from, let to):
+      let a = state.view.x(Double(min(from, to)), plotW: layout.plotW)
+      let b = max(a + 3, state.view.x(Double(max(from, to)), plotW: layout.plotW))
+      guard Self.rangeVisible(start: a, end: b, plotW: layout.plotW) else { return }
+      ctx.setFillColor(accent.withAlphaComponent(0.14).cgColor)
+      ctx.fill(CGRect(x: a, y: 0, width: b - a, height: layout.mainH))
+      let w = ceil(size.width) + 12
+      tag(at: CGPoint(x: max(4, min(layout.plotW - w - 4, (a + b) / 2 - w / 2)), y: 6))
     }
   }
   /// 区间 `[a, b]`（屏幕横坐标）和图区有没有交集。

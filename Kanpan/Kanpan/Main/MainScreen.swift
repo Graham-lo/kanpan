@@ -95,6 +95,8 @@ struct MainScreen: View {
   @State private var teardown = RootTeardown()
   @State private var grace = BackgroundGrace()
   @State private var proxy = ChartProxy()
+  /// 「盘口要点」（PROJECT.md §79）：行情页入口条、半页、图上带子共用这一份；首页点一行也往这儿记。
+  @State private var highlights = HighlightsModel()
   @State private var review = ReviewFeature()
   /// 复盘待办到点叫人的唯一一处（本机日历通知；没有通知权限时前台自己补叫）。
   @State private var reviewDue = ReviewDueReminders.live()
@@ -319,6 +321,11 @@ struct MainScreen: View {
     // 「大单与爆仓」弹层（点图上大单与爆仓气泡、或分析面板那一行开）。半屏时图还能摸，十字线落哪根弹层就读哪根。
     .bigTradeSheet(market: market, store: store, proxy: proxy, theme: theme, scheme: effectiveTheme.forced,
                    enabled: tab == .chart && !landscape && !reviewChart.active && !draw.active && !drawingCanvasOnly)
+    // 「盘口要点」半页（入口条点按 / 上滑开）。和「大单与爆仓」不同时开：那张一升起这张就收。
+    .highlightsSheet(model: highlights, market: market, proxy: proxy, theme: theme, scheme: effectiveTheme.forced,
+                     zone: prefs.timeZone.offsetMinutes,
+                     enabled: tab == .chart && !landscape && !reviewChart.active && !draw.active && !drawingCanvasOnly
+                       && market.capabilities.hasOrderFlow && !market.orderFlow.sheet.presented)
     .fullScreenCover(isPresented: $symbolSearch.allShown, onDismiss: { symbolSearch.allDismissed() }) {
       // 关掉品种页顺手把查询词清了：搜索页和它共用一个 `SymbolPickerModel`，
       // 词留着的话，下次点放大镜进来看到的是上一轮的结果，而不是「历史搜索 / 最近看过」。
@@ -777,7 +784,7 @@ struct MainScreen: View {
   /// 行情页那一整页：顶栏 → 价格行 → 周期条 → 图。
   private var chartPage: some View {
     VStack(spacing: 0) {
-      if reviewChart.mode == .replay { reviewHeader } else { header }
+      if reviewChart.mode == .replay { reviewHeader } else { HighlightsHeaderGuard(header: header, model: highlights) }
       hairline
       // 十字线活着时这一行换成「创建提醒」那一颗（`IntervalRow` / `CrosshairActionBar`）。
       if !reviewChart.active { IntervalRow(
@@ -805,7 +812,9 @@ struct MainScreen: View {
       } }
       replayControls
       if !reviewChart.active && !draw.active && !landscape && !drawingCanvasOnly && market.capabilities.hasOrderFlow {
-        OrderFlowInsightEntryStrip { dismissPanel(); market.orderFlow.sheet.open(at: nil) }
+        HighlightsEntryHost(model: highlights, market: market) {
+          dismissPanel(); market.orderFlow.sheet.close(); highlights.open = true
+        }
       }
       hairline
       if draw.active {
@@ -1346,7 +1355,8 @@ struct MainScreen: View {
       onTapped: { dismissPanel() },
       onOpenRecord: { openReview(id: $0.uuidString) },
       // 点图上的大单与爆仓气泡：第一次开「大单与爆仓」整页，开着时只换到那一根。
-      onBigTradeTap: { market.orderFlow.sheet.open(at: $0.t) })
+      onBigTradeTap: { market.orderFlow.sheet.open(at: $0.t) },
+      highlightBand: HighlightsEntryHost.band(highlights, market: market))
   }
 
   /// 这次重温是从哪儿开的。复盘本会在开图之前把自己关掉，退出时照这个把它开回来——
