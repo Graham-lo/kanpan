@@ -270,7 +270,7 @@ private struct HomeMoveRow: View {
         }
         highlightText(HighlightsText.homeFact(row, zone: zone), strong: t.ink)
           .font(TypeScale.caption).monospacedDigit().foregroundStyle(t.ink2)
-          .lineLimit(1).minimumScaleFactor(0.8)
+          .lineLimit(1)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       VStack(alignment: .trailing, spacing: 3) {

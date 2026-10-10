@@ -368,7 +368,8 @@ struct HighlightsEventsBlock: View {
       Text(HT.eventsCaption.text).font(TypeScale.caption2).foregroundStyle(t.ink3)
     } content: {
       VStack(spacing: 0) {
-        ForEach(Array(page.events.prefix(4).enumerated()), id: \.element.id) { i, e in
+        // 服务端同一分钟可能报两条同 id 的事（如两侧同时破位），行身份带上序号免得撞。
+        ForEach(Array(page.events.prefix(4).enumerated()), id: \.offset) { i, e in
           if i > 0 { Rectangle().fill(LiuliMaterial(t).rule).frame(height: 0.5) }
           row(e)
         }

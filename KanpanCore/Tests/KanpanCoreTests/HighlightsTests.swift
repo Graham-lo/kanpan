@@ -78,7 +78,7 @@ struct HighlightsTests {
     let ev = #"{"generatedAtMs":1,"rows":[{"atMs":1,"base":"ETH","cat":"book","changePct":0.6,"count":1,"favorite":true,"price":3812.4,"tier":1,"top":{"kind":"event","id":"E:wallCancel:1","t":"wallCancel","atMs":1791606780000,"price":3820,"usd":19600000,"side":"sell","distPct":0.05}},{"base":"BAD","cat":"book","top":{"kind":"mystery"}}]}"#
     let b2 = try JSONDecoder().decode(HighlightsBoard.self, from: Data(ev.utf8))
     #expect(b2.rows.count == 1)
-    #expect(HighlightsText.homeFact(b2.rows[0], zone: Self.utc8).plain == "12:33 卖墙撤单 19.6M · 距价 0.05%")
+    #expect(HighlightsText.homeFact(b2.rows[0], zone: Self.utc8).plain == "卖墙撤单 19.6M · 距价 0.05%")
     #expect(HighlightsText.focusID(b2.rows[0]) == "E:wallCancel:1")
   }
 

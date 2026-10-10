@@ -371,8 +371,8 @@ public enum HighlightsText {
       let amount = l.wallUsd > 0 ? usd(l.wallUsd) : T.fillMeta.fill(["v": usd(l.fillUsd)])
       return levelHead(l, price: row.price, decimals: nil, scale: 1) + [HighlightRun(" " + zoneName(l.side) + " · " + amount)]
     case .event(let e):
-      let t = eventTime(e, zone: zone, compact: false)
-      return (t.isEmpty ? [] : [HighlightRun(t + " ")]) + eventSentence(e, decimals: nil, withPrice: false)
+      // 时间在行尾「刚才 / N 分前」里已经有了，这里只写事（和手机网页 boardFact 同口径）。
+      return eventSentence(e, decimals: nil, withPrice: false)
     case .position(let p):
       if row.cat == .oi, let v = p.oi?.pct1h {
         var runs = [HighlightRun(T.oi1h.text + " "), HighlightRun(signedPct(v, decimals: 1), strong: true)]
