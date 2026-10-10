@@ -228,7 +228,9 @@ pub(super) fn rank(kind:Kind,window:usize,latest:&HashMap<String,Cur>,then:&[&Sn
     }
    },
   };
-  change.is_finite().then_some((change,b,c))
+   // 持仓榜看「钱往哪建仓」、涨幅榜只放涨的、跌幅榜只放跌的：方向不对的不拿来凑满 100 行。
+  let right_way=if kind==Kind::Losers {change<0.0} else {change>0.0};
+  (change.is_finite()&&right_way).then_some((change,b,c))
  }).collect();
  rows.sort_by(|a,b|{let o=b.0.total_cmp(&a.0);(if kind==Kind::Losers {o.reverse()} else {o}).then_with(||a.1.cmp(b.1))});
  let rows:Vec<Value>=rows.into_iter().take(MAX_ROWS).map(|(change,b,c)|{
@@ -499,12 +501,12 @@ mod tests {
   let then=Snapshot{at:0,cells};
   let bases=|v:&Value|v["rows"].as_array().unwrap().iter().map(|r|r["base"].as_str().unwrap().to_string()).collect::<Vec<_>>();
   let oi=rank(Kind::Oi,0,&latest,&[&then],5);
-  assert_eq!(bases(&oi),vec!["D","A","B"],"C below the OI floor");
+  assert_eq!(bases(&oi),vec!["D","A"],"C below the OI floor; B lost open interest");
   assert_eq!(oi["rows"][1]["changePct"],100.0);
   assert_eq!(oi["rows"][1]["oiUsd"],2e6);
-  assert_eq!(bases(&rank(Kind::Gainers,1,&latest,&[&then],5)),vec!["C","A","B"],"D below turnover floor");
-  assert_eq!(bases(&rank(Kind::Losers,1,&latest,&[&then],5)),vec!["B","A","C"]);
-  assert_eq!(bases(&rank(Kind::Gainers,2,&latest,&[],5)),vec!["A","C","B"],"24h uses the venue's own change");
+  assert_eq!(bases(&rank(Kind::Gainers,1,&latest,&[&then],5)),vec!["C","A"],"D below turnover floor; B fell");
+  assert_eq!(bases(&rank(Kind::Losers,1,&latest,&[&then],5)),vec!["B"],"only fallers");
+  assert_eq!(bases(&rank(Kind::Gainers,2,&latest,&[],5)),vec!["A","C"],"24h uses the venue's own change");
   assert!(rank(Kind::Gainers,0,&latest,&[],5)["rows"].as_array().unwrap().is_empty());
   let r=&rank(Kind::Gainers,2,&latest,&[],5)["rows"][0];
   for k in ["base","oiUsd","changePct","price"] {assert!(r.get(k).is_some(),"{k}");}
