@@ -91,6 +91,15 @@ public enum BigTradeTerm: String, CaseIterable, Sendable {
   }
 }
 
+/// 「分析」里自动画的那几样的用词，同在 `terms.json`（`analysis` 组；网页那边是 `AN`）。
+public enum AnalysisTerm: String, CaseIterable, Sendable {
+  /// 公允价值缺口。
+  case fvg
+
+  /// 这一项的字。
+  public var text: String { Terms.table["analysis"]?[rawValue] ?? rawValue }
+}
+
 /// 包里那份 `terms.json`，解一次、常驻。
 public enum Terms {
   static var url: URL? { Bundle.module.url(forResource: "terms", withExtension: "json") }

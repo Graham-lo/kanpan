@@ -76,5 +76,8 @@
     "signA11y": "{t} {side} {v}",
     "barsA11y": "逐根大单，近 {n} 根",
     "liqDayA11y": "24 小时爆仓"
+  },
+  "analysis": {
+    "fvg": "公允价值缺口"
   }
 }

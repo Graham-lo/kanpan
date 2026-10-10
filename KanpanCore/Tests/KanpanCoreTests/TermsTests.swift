@@ -16,6 +16,14 @@ struct TermsTests {
     #expect(Set(table.keys) == Set(BigTradeTerm.allCases.map(\.rawValue)))
   }
 
+  @Test("「分析」组：每个 AnalysisTerm 都有一项，没有多出来的键，也没有多出来的组")
+  func analysisGroup() throws {
+    let table = try #require(Terms.table["analysis"])
+    #expect(Set(table.keys) == Set(AnalysisTerm.allCases.map(\.rawValue)))
+    #expect(AnalysisTerm.fvg.text == "公允价值缺口")
+    #expect(Set(Terms.table.keys) == ["bigTrade", "analysis"])
+  }
+
   @Test("模板填空")
   func fill() {
     #expect(BigTradeTerm.buyCount.fill(["n": "12"]) == "买 12 笔")
