@@ -156,13 +156,42 @@ struct OrderFlowEditor: View {
   /// 框里打进来的字：过滤后和原样一样就直接收；不一样就先收原样、下一轮主循环再换成过滤后的。
   /// 在同一次编辑里改写绑定值，TextField 不刷新显示（压测 2026-09-28：打「1..5」存的是 1.5，框里却一直是「1..5」）。
   /// 下一轮换之前又打了字就不换，交给那一次。
+  ///
+  /// 只改绑定值还不够稳：编辑中的 TextField 对绑定值的改写时灵时不灵（2026-10-10 两台空机各撞一次——
+  /// 粘「300万」框里留着「300万」、粘全角「１２０００００」框里留着全角，`typing` 里明明已经是归一化后的数）。
+  /// 所以换值的同时直接把正在编辑的那个 UITextField 的文字换掉，再发一次 `editingChanged` 让 SwiftUI
+  /// 走正常的「用户改了字」那条路把绑定值对齐（归一化是幂等的，再过一遍 `sanitize` 不会变）。
+  /// 和 `selectAll` 一样走第一响应者，不碰别的框：只认文字还是原样的那一个。
   private func accept(_ raw: String, _ field: OrderFlowField) {
     let clean = Self.sanitize(raw)
     typing[field] = raw
     guard clean != raw else { return }
     DispatchQueue.main.async {
-      if typing[field] == raw { typing[field] = clean }
+      guard typing[field] == raw else { return }
+      typing[field] = clean
+      if let editing = Self.editingTextField(), editing.text == raw {
+        editing.text = clean
+        editing.sendActions(for: .editingChanged)
+      }
     }
+  }
+
+  /// 此刻正在编辑（第一响应者）的那个系统输入框：SwiftUI 的 `TextField` 底下就是一个 `UITextField`。
+  @MainActor private static func editingTextField() -> UITextField? {
+    for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+      for window in scene.windows {
+        if let field = firstResponderTextField(in: window) { return field }
+      }
+    }
+    return nil
+  }
+
+  private static func firstResponderTextField(in view: UIView) -> UITextField? {
+    if let field = view as? UITextField, field.isFirstResponder { return field }
+    for sub in view.subviews {
+      if let field = firstResponderTextField(in: sub) { return field }
+    }
+    return nil
   }
 
   /// 一格打完：空的、不是数的当没改；越界的夹回边上（框里显示什么就存什么）。
