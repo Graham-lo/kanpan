@@ -4,6 +4,7 @@
     python3 -I ops/sync-field-smoke.py reviewSegment --good '"views"' --bad '"stats"' --with skin='"terra"'
     python3 -I ops/sync-field-smoke.py --retired portraitHeight=0.5 --retired routePolicy='"direct"'
     python3 -I ops/sync-field-smoke.py --inline-device
+    python3 -I ops/sync-field-smoke.py params/MA --good '[5,10,20]' --bad '[0]'   # 拍平路径：读回按 `/` 下钻嵌套对象
 
 流程：注册一个随机用户名的测试账号 → 逐个推 `--good` 的值（期望 200，并从 bootstrap 读回同一个值）
 → 逐个推 `--bad` 的值（期望被拒：设置 / 画线偏好 2026-10-10 起只丢这个字段——200、回执 `invalidFields`
@@ -82,16 +83,36 @@ def push(value, token, field=None, extra=None):
     return push_ops([operation({**(extra or {}), (field or args.field): value})], token)
 
 
+_MISSING = object()
+
+
+def lookup(body, field):
+    """取字段值：先按整串键找，找不到再按 `/` 逐层下钻（`params/MA` 这类拍平路径存成嵌套对象）。"""
+    if field in body:
+        return body[field]
+    node = body
+    for part in field.split("/"):
+        if not isinstance(node, dict) or part not in node:
+            return _MISSING
+        node = node[part]
+    return node
+
+
+def value_of(body, field):
+    v = lookup(body, field)
+    return None if v is _MISSING else v
+
+
 def stored_now(token, field):
     st, b = call("GET", f"/v1/sync/bootstrap?collection={args.collection}", None, token)
     objs = b.get("data", {}).get("objects", []) if st == 200 else []
     body = next((o.get("body", {}) for o in objs if o.get("id") == args.object), {})
-    return st, (field in body), body.get(field)
+    return st, lookup(body, field) is not _MISSING, value_of(body, field)
 
 
 def companions_landed(r, fields=None):
     body = r.get("object", {}).get("body", {})
-    return all(body.get(k) == v for k, v in (companions if fields is None else fields).items())
+    return all(value_of(body, k) == v for k, v in (companions if fields is None else fields).items())
 
 
 results = []
@@ -117,7 +138,7 @@ try:
               + ("" if st == 200 else " " + json.dumps(b, ensure_ascii=False)[:160]))
         st, b = call("GET", f"/v1/sync/bootstrap?collection={args.collection}", None, token)
         objs = b.get("data", {}).get("objects", []) if st == 200 else []
-        stored = next((o.get("body", {}).get(args.field) for o in objs if o.get("id") == args.object), None)
+        stored = next((value_of(o.get("body", {}), args.field) for o in objs if o.get("id") == args.object), None)
         check(f"bootstrap 读回 {args.field}={raw}", stored == value, f"status={st} stored={json.dumps(stored, ensure_ascii=False)}")
     for raw in args.bad:
         value = json.loads(raw)
@@ -125,12 +146,12 @@ try:
         if st == 200:
             # 宽容集合：操作照常落地，但这个字段被丢掉、回执里点名，读回的不是这个值。
             r = (b.get("data", {}).get("results") or [{}])[0]
-            stored = r.get("object", {}).get("body", {}).get(args.field)
+            stored = value_of(r.get("object", {}).get("body", {}), args.field)
             ok = args.field in (r.get("invalidFields") or []) and args.field in (r.get("droppedFields") or []) \
                 and stored != value and companions_landed(r)
             check(f"推 {args.field}={raw} 应只丢字段", ok,
                   f"droppedFields={r.get('droppedFields')} invalidFields={r.get('invalidFields')} stored={json.dumps(stored, ensure_ascii=False)}"
-                  + (f" 捎带={json.dumps({k: r.get('object', {}).get('body', {}).get(k) for k in companions}, ensure_ascii=False)}" if companions else ""))
+                  + (f" 捎带={json.dumps({k: value_of(r.get('object', {}).get('body', {}), k) for k in companions}, ensure_ascii=False)}" if companions else ""))
         else:
             check(f"推 {args.field}={raw} 应 400", st == 400, f"status={st} {json.dumps(b, ensure_ascii=False)[:120]}")
     for raw in args.retired:
@@ -138,7 +159,7 @@ try:
         st, b = push(value, token, field=name, extra=companions)
         r = (b.get("data", {}).get("results") or [{}])[0] if st == 200 else {}
         ok = st == 200 and name in (r.get("droppedFields") or []) and name not in (r.get("invalidFields") or []) \
-            and name not in r.get("object", {}).get("body", {}) and companions_landed(r)
+            and lookup(r.get("object", {}).get("body", {}), name) is _MISSING and companions_landed(r)
         check(f"推退役键 {raw} 应被丢", ok, f"status={st} droppedFields={r.get('droppedFields')} invalidFields={r.get('invalidFields')}")
         st, present, _ = stored_now(token, name)
         check(f"bootstrap 读回没有 {name}", st == 200 and not present, f"status={st}")
