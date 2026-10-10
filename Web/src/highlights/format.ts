@@ -4,7 +4,7 @@
  * 数值要加粗的地方返回带 <b> 的 HTML 片段（数值已转义），其余是纯文字。
  */
 import { HL, fill } from '../terms'
-import type { BoardRow, FlowRow, HlEvent, Level, LevelRef, Position, RangeBox, WallState } from './api'
+import type { BoardRow, FlowRow, HlEvent, Level, LevelRef, Move, Position, RangeBox, WallState } from './api'
 
 export const MINUS = '−'
 const M = 60_000, H = 3_600_000, D = 86_400_000
@@ -207,10 +207,17 @@ export function rangeHead(r: RangeBox, now: number): { band: string; hours: numb
 }
 
 /** 首页行第二行的事实（HTML） */
+/** 波动一行的事实：「1 分 <b>+2.4%</b> · 额 3.2M」；没有成交额就只写前半 */
+export function moveFact(m: Move): string {
+  const w = fill(HL.minutes, { n: m.window === '1m' ? 1 : 5 })
+  return `${esc(w)} ${b(signedPct(m.pct))}${m.volUsd != null ? ' · ' + esc(fill(HL.moveVol, { v: usd(m.volUsd) })) : ''}`
+}
+
 export function boardFact(r: BoardRow): string {
   const t = r.top
   if (t.kind === 'level') return levelSentence(t, { held: false, tests: false, price: r.price })
   if (t.kind === 'event') return eventSentence(t)
+  if (t.kind === 'move') return moveFact(t)
   if (r.cat === 'funding') {
     const n = t.funding.pctile
     return `${HL.funding} ${b(fundingText(t.funding.rate))}${n != null ? ' · ' + esc(fill(HL.pctile, { n: Math.round(n) })) : ''}`

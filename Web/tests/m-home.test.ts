@@ -4,7 +4,7 @@ import type { BoardRow } from '../src/highlights/api'
 import { chipCounts, favoriteBases, filterRows, focusOf, mergeBoard, symbolFor } from '../src/highlights/home'
 
 const row = (base: string, cat: BoardRow['cat'], atMs: number, top: BoardRow['top'] = { kind: 'event', id: 'E:' + base, t: 'oiJump', atMs, pct: 3 }): BoardRow =>
-  ({ atMs, base, cat, changePct: 1, count: 1, favorite: false, price: 1, tier: 2, top })
+  ({ key: cat === 'move' ? 'move:' + base : base, atMs, base, cat, changePct: 1, count: 1, favorite: false, price: 1, tier: 2, top })
 
 describe('首页异动 · 合并', () => {
   it('已有的行换数不换位，新来的只计数', () => {
@@ -30,7 +30,7 @@ describe('首页异动 · 合并', () => {
 
 describe('首页异动 · 胶囊与筛选', () => {
   const rows = [row('A', 'book', 1), row('B', 'oi', 1), row('C', 'funding', 1), row('D', 'book', 1)]
-  it('计数', () => expect(chipCounts(rows)).toEqual({ all: 4, book: 2, oi: 1, funding: 1 }))
+  it('计数', () => expect(chipCounts(rows)).toEqual({ all: 4, book: 2, oi: 1, funding: 1, move: 0 }))
   it('筛选保序', () => expect(filterRows(rows, 'book').map(r => r.base)).toEqual(['A', 'D']))
 })
 

@@ -39,12 +39,15 @@ export interface Highlights {
   flow: FlowRow[] | null; range: RangeBox | null; levels: Level[]; position: Position | null; events: HlEvent[]
 }
 
-export type BoardCat = 'book' | 'oi' | 'funding'
-export type BoardTop = ({ kind: 'level' } & Level) | ({ kind: 'event' } & HlEvent) | ({ kind: 'position' } & Position)
-export interface BoardRow { atMs: number; base: string; cat: BoardCat; changePct: number | null; count: number; favorite: boolean; price: number | null; tier: 1 | 2 | 3; top: BoardTop }
+export type BoardCat = 'book' | 'oi' | 'funding' | 'move'
+/** 波动（急涨 / 急跌）：1 分或 5 分窗里的涨跌幅与成交额；服务端行上没有 top，字段平铺在行上 */
+export interface Move { dir: 'up' | 'down'; window: '1m' | '5m'; pct: number; volUsd: number | null }
+export type BoardTop = ({ kind: 'level' } & Level) | ({ kind: 'event' } & HlEvent) | ({ kind: 'position' } & Position) | ({ kind: 'move' } & Move)
+/** key：列表里认行的键——盘口 / 持仓 / 费率按币名（同一只换了类也在原位），波动单独一份（同一只可以既有盘口又有波动） */
+export interface BoardRow { key: string; atMs: number; base: string; cat: BoardCat; changePct: number | null; count: number; favorite: boolean; price: number | null; tier: 1 | 2 | 3; top: BoardTop }
 export interface Board { generatedAtMs: number; rows: BoardRow[] }
 
-export type MarketKind = 'oi' | 'gainers' | 'losers'
+export type MarketKind = 'oi' | 'oidown' | 'gainers' | 'losers'
 export type MarketWindow = '1h' | '4h' | '24h'
 export interface MarketRow { base: string; changePct: number; oiUsd: number | null; price: number | null }
 export interface MarketBoard { generatedAtMs: number; rows: MarketRow[] }
@@ -149,19 +152,29 @@ function parseTop(v: unknown): BoardTop | null {
   return null
 }
 
+/** 波动行：{ kind:"moveUp"|"moveDown", window:"1m"|"5m", pct, volUsd }；缺一样认不出就整行不要 */
+export function parseMove(r: Record<string, unknown>): ({ kind: 'move' } & Move) | null {
+  const dir = r.kind === 'moveUp' ? 'up' : r.kind === 'moveDown' ? 'down' : null
+  const window = r.window === '1m' || r.window === '5m' ? r.window : null
+  if (!dir || !window || !num(r.pct)) return null
+  return { kind: 'move', dir, window, pct: r.pct, volUsd: num(r.volUsd) && r.volUsd > 0 ? r.volUsd : null }
+}
+
 export function parseBoard(raw: unknown): Board | null {
   if (!obj(raw) || !num(raw.generatedAtMs) || !Array.isArray(raw.rows)) return null
   const rows: BoardRow[] = []
   const seen = new Set<string>()
   for (const r of raw.rows) {
-    if (!obj(r) || !str(r.base) || seen.has(r.base)) continue
-    if (r.cat !== 'book' && r.cat !== 'oi' && r.cat !== 'funding') continue
-    const top = parseTop(r.top)
+    if (!obj(r) || !str(r.base)) continue
+    if (r.cat !== 'book' && r.cat !== 'oi' && r.cat !== 'funding' && r.cat !== 'move') continue
+    const key = r.cat === 'move' ? `move:${r.base}` : r.base
+    if (seen.has(key)) continue
+    const top = r.cat === 'move' ? parseMove(r) : parseTop(r.top)
     if (!top) continue
-    seen.add(r.base)
+    seen.add(key)
     const tier = num(r.tier) ? Math.max(1, Math.min(3, Math.round(r.tier))) as 1 | 2 | 3 : 1
     rows.push({
-      atMs: num(r.atMs) ? r.atMs : raw.generatedAtMs, base: r.base, cat: r.cat, changePct: numOr(r.changePct),
+      key, atMs: num(r.atMs) ? r.atMs : raw.generatedAtMs, base: r.base, cat: r.cat, changePct: numOr(r.changePct),
       count: Math.max(1, Math.round(amt(r.count))), favorite: r.favorite === true, price: num(r.price) && r.price > 0 ? r.price : null, tier, top,
     })
   }

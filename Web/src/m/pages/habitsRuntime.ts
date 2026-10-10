@@ -14,7 +14,8 @@
  * 所以订阅回调里先记下变化、放到微任务里再判，onSync 报过的键就不算本机改的。
  */
 import { st, save, subscribe } from '../app/store'
-import { hooks, refreshPage } from '../app/shell'
+import { hooks } from '../app/shell'
+import { homeSeg, onHomeSeg, refreshSectors } from '../app/homeSeg'
 import { sameValue, emptyLearned, type PriceMode } from '../app/prefs'
 import { session, onSession } from '../../account/session'
 import { S, on } from '../../market'
@@ -118,6 +119,9 @@ function noteOpened(symbol: string): void {
   if (hit) record([{ t, kind: 'moveOpened', key }])
 }
 
+/** 板块（首页第四段）此刻站着、看得见 */
+const sectorsVisible = (): boolean => st.page === 'home' && homeSeg() === 'sectors'
+
 /** 板块页这个市场这次启动还没摆过：按学到的那档摆一次 */
 function applySectorWindow(): void {
   const market = st.sectorMarket
@@ -127,7 +131,7 @@ function applySectorWindow(): void {
   if (!w || !SECTOR_VALUES.includes(w) || w === st.sectorWindow) return
   selfEditing = true
   try { st.sectorWindow = w as typeof st.sectorWindow; save() } finally { selfEditing = false }
-  refreshPage(['sectors'])
+  refreshSectors()
 }
 
 function clearLog(): void {
@@ -207,7 +211,7 @@ export function startHabits(): void {
       sectorApplied.add(cur.sectorMarket)
       record([{ t: nowSec(), kind: 'sectorWindow', key: cur.sectorMarket, value: cur.sectorWindow }])
     }
-    if (cur.sectorMarket !== p.prev.sectorMarket && st.page === 'sectors') applySectorWindow()
+    if (cur.sectorMarket !== p.prev.sectorMarket && sectorsVisible()) applySectorWindow()
   }
 
   subscribe(() => {
@@ -220,7 +224,8 @@ export function startHabits(): void {
     else if (selfEditing) pending.selfMade = true
   })
   hooks.onSync.push(ch => { for (const k of ch.settings) remote.add(k) })
-  hooks.onPage.push(p => { setFocus(currentFocus()); if (p === 'sectors') applySectorWindow() })
+  hooks.onPage.push(() => { setFocus(currentFocus()); if (sectorsVisible()) applySectorWindow() })
+  onHomeSeg(() => { if (sectorsVisible()) applySectorWindow() })
   hooks.onBackground.push(() => setFocus(currentFocus()))
   hooks.onForeground.push(() => setFocus(currentFocus()))
   document.addEventListener('visibilitychange', () => setFocus(currentFocus()))

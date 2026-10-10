@@ -1,6 +1,7 @@
 /* Hkline 手机网页版 · 壳（照 iOS Main/MainScreen.swift 的 tab 切换与 Main/TabBar.swift）
  *
- * - 五个整页 <section class="page" id="page-xxx">，hash 路由 #home #chart #favorites #sectors #me，与底栏五格一一对应。
+ * - 四个整页 <section class="page" id="page-xxx">，hash 路由 #home #chart #favorites #me，与底栏四格一一对应；
+ *   #sectors（板块分类 2026-10-10 并进首页）落到首页的「板块」段，见 ./homeSeg。
  * - 页面合同见 ./README.md：每页 initXxx(root) → { show(); hide(); reselect?() }，由 main.ts 懒加载后 registerPage。
  * - 主题：data-theme（auto 跟系统，系统切深浅时跟着换）/ data-skin / data-updown，外加 meta theme-color。
  * - 现场：当前页、品种、滚动位置随时落盘，冷启动回到原地。
@@ -19,6 +20,7 @@ import { installBack, onBack, syncBack } from '../ui/backStack'
 import { installNativeFeel } from '../ui/native'
 import { session, onSession } from '../../account/session'
 import { normKey } from '../chart/symbolKey'
+import { segOfRoute, setHomeSeg } from './homeSeg'
 
 /** 一页对壳的承诺 */
 export interface PageHandle {
@@ -30,8 +32,8 @@ export interface PageHandle {
   reselect?(): void
 }
 
-const TAB_TITLE: Record<PageId, string> = { home: '首页', chart: '图表', favorites: '自选', sectors: '板块分类', me: '我的' }
-const TAB_GLYPH: Record<PageId, GlyphName> = { home: 'home', chart: 'chart', favorites: 'favorites', sectors: 'sectors', me: 'me' }
+const TAB_TITLE: Record<PageId, string> = { home: '首页', chart: '图表', favorites: '自选', me: '我的' }
+const TAB_GLYPH: Record<PageId, GlyphName> = { home: 'home', chart: 'chart', favorites: 'favorites', me: 'me' }
 
 /** 各处挂进来的回调（数组，谁都可以 push；返回值不用） */
 export const hooks = {
@@ -146,6 +148,8 @@ export function closeOverlays(): void {
 
 /** 切到某一页。从底栏点的（fromTab）会把图表页的来路作废 */
 export function go(page: string, opts: { fromTab?: boolean; replace?: boolean } = {}): void {
+  const seg = segOfRoute(page)
+  if (seg) { setHomeSeg(seg); page = 'home' }
   const p = (PAGES as readonly string[]).includes(page) ? page as PageId : 'chart'
   const prev = st.page
   if (opts.fromTab) { nav.origin = null; scanList = null }
@@ -282,7 +286,9 @@ export function installShell(mount: HTMLElement = document.body): HTMLElement {
   mount.appendChild(appRoot)
 
   // 路由：地址里带了页就用它（刷新、深链）；不带（从主屏图标冷启动）落在首页（照 iOS：启动默认首页，不回上次那格）
-  const fromHash = location.hash.slice(1)
+  let fromHash = location.hash.slice(1)
+  const seg = segOfRoute(fromHash)
+  if (seg) { setHomeSeg(seg); fromHash = 'home' }
   st.page = (PAGES as readonly string[]).includes(fromHash) ? fromHash as PageId : 'home'
   PAGES.forEach(x => pageRoot(x).classList.toggle('show', x === st.page))
   paintTabbar()

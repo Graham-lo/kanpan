@@ -149,7 +149,8 @@ async function leakM() {
       rows.push(row); console.log(JSON.stringify({ ...row, gl: undefined }))
       return row
     }
-    const tab = async id => { await page.evaluate(i => document.querySelector(`.m-tab[data-page="${i}"]`)?.click(), id); await sleep(250) }
+    // 板块分类 2026-10-10 并进首页第四段：点「首页」再点「板块」胶囊
+    const tab = async id => { await page.evaluate(i => { if (i === 'sectors') { document.querySelector('.m-tab[data-page="home"]')?.click(); document.querySelector('.hm-caps [data-seg="sectors"]')?.click() } else document.querySelector(`.m-tab[data-page="${i}"]`)?.click() }, id); await sleep(250) }
     for (const id of ['chart', 'sectors', 'me', 'favorites']) await tab(id)
     const base = await snap('起点')
     for (let i = 1; i <= 50; i++) { for (const id of ['chart', 'favorites', 'sectors', 'me']) await tab(id); if (i % 10 === 0) await snap(`四页轮流 ${i}`) }
@@ -499,7 +500,7 @@ async function tabsM() {
     const REQ = reqCounter(page)
     await page.goto(url + 'm/#favorites'); await page.waitForSelector('.lr[data-sym]'); await sleep(2000)
     const ws0 = await page.evaluate(() => window.__f.ws.opened)
-    for (let i = 0; i < 50; i++) for (const id of ['chart', 'favorites', 'sectors', 'me']) { await page.evaluate(i => document.querySelector(`.m-tab[data-page="${i}"]`)?.click(), id); await sleep(250) }
+    for (let i = 0; i < 50; i++) for (const id of ['chart', 'favorites', 'sectors', 'me']) { await page.evaluate(i => { if (i === 'sectors') { document.querySelector('.m-tab[data-page="home"]')?.click(); document.querySelector('.hm-caps [data-seg="sectors"]')?.click() } else document.querySelector(`.m-tab[data-page="${i}"]`)?.click() }, id); await sleep(250) }
     await sleep(1500)
     const m = await metrics(cdp, page)
     console.log(JSON.stringify({ 请求: REQ, K线mock: count.n, 推送握手: m.ws.opened - ws0, 挂着的timeout: m.to, 限流: await page.evaluate(() => globalThis.__limit?.()) }))

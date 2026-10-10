@@ -1,7 +1,6 @@
-/* 手机网页版 · 板块页（照 iOS Sectors/SectorListView.swift、SectorSegment、SectorSkin）
- * 底是全 app 共用的琉璃底（tokens.css「琉璃材质」+ ui.css .lg-bg，2026-10-08 起和自选页同一份，不再自带一套光斑取色）。 */
-#page-sectors.liuli { display: flex; flex-direction: column }
-#page-sectors > :not(.lg-bg) { position: relative; z-index: 1 }
+/* 手机网页版 · 板块（照 iOS Sectors/SectorListView.swift、SectorSegment、SectorSkin）
+ * 2026-10-10 起挂在首页第四段里（.sec-embed），琉璃底是首页那份；页头不再让安全区（首页头部已经让过）。 */
+.sec-embed { flex: 1; min-height: 0; display: flex; flex-direction: column }
 .sec-layer { flex: 1; min-height: 0; display: flex; flex-direction: column }
 .sec-layer[hidden] { display: none }
 .sec-drill { animation: sec-push var(--dur) var(--ease-out) }
@@ -11,15 +10,15 @@
 @keyframes sec-pop { from { opacity: 0; translate: -24px 0 } }
 @media (prefers-reduced-motion: reduce) { .sec-drill, .sec-boards.popped { animation: none } }
 
-/* 页头：「板块」17 semibold，同基线接规模；右侧市场分段；整行最矮 44 */
+/* 标题行：「板块」13 semibold 次墨（和首页涨幅榜 / 增仓榜同一行规格），同基线接规模；行尾小胶囊：今日 / 5 日、加密 / 美股 */
 .sec-head {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--s-m); min-height: 44px; flex: none;
-  padding: calc(var(--safe-top) + var(--s-xs)) calc(var(--inset-page) + var(--safe-right)) var(--s-xs) calc(var(--inset-page) + var(--safe-left));
+  display: flex; align-items: center; gap: var(--s-s); min-height: 40px; flex: none;
+  padding: var(--s-xs) calc(var(--inset-page) + var(--safe-right)) var(--s-xs) calc(var(--inset-page) + var(--safe-left));
 }
-.sec-title { display: flex; align-items: baseline; gap: var(--s-s); min-width: 0 }
-.sec-title h1 { margin: 0; font: var(--t-title); color: var(--ink); white-space: nowrap }
-.sec-scale { font: var(--t-caption2); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.sec-win { display: flex; padding: 0 calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left)); flex: none }
+.sec-title { flex: 1; display: flex; align-items: baseline; gap: var(--s-s); min-width: 0 }
+.sec-title h5 { margin: 0; font: 600 13px/1.2 var(--font-ui); color: var(--ink2); white-space: nowrap; letter-spacing: normal }
+.sec-scale { font: var(--t-caption2); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0 }
+.sec-win, .sec-market { display: flex; flex: none }
 .sec-win[hidden] { display: none }
 
 /* 分段：raised2 槽，圆角 8，高 32；档高 28、左右 12；选中 seg-on 底 + 一丝阴影 */
@@ -64,7 +63,7 @@
 /* 下钻头：返回圆片 32、板块图标 38、名字 title + 副文案 caption2、右侧涨跌 title 字号 */
 .sec-dhead {
   display: flex; align-items: center; gap: var(--s-m); flex: none; min-height: 44px;
-  padding: calc(var(--safe-top) + var(--s-xs)) calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left));
+  padding: var(--s-xs) calc(var(--inset-page) + var(--safe-right)) var(--s-s) calc(var(--inset-page) + var(--safe-left));
 }
 .sec-back {
   width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--ink2);

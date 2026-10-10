@@ -5,20 +5,36 @@
 #page-home > :not(.lg-bg) { position: relative; z-index: 1 }
 #page-home [hidden] { display: none !important }
 
-/* ───────── 头部：分段 + 放大镜 ───────── */
+/* ───────── 头部：分段胶囊 + 放大镜 ─────────
+ * 照自选页分类胶囊（2026-10-10 用户：原来的方框分段「太方了，不美观」）：一颗颗全圆胶囊左对齐，没有外框槽；
+ * 选中 = 强调色釉面渐变 + 顶缘高光，没选 = 透明 + 0.5 描边。四颗在 393 宽里一行放下，字不缩。 */
 .hm-head { justify-content: space-between }
-.hm-seg { display: inline-flex; height: 30px; padding: 3px; border-radius: 999px; background: var(--lg-well) }
-.hm-seg button {
-  padding: 0 12px; border-radius: 999px; font: 600 12px/1 var(--font-ui); color: var(--ink2); white-space: nowrap;
-  position: relative; transition: background 200ms ease, color 200ms ease;
+.hm-caps { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px }
+.hm-cap {
+  position: relative; height: 30px; padding: 0 14px; border-radius: 999px; flex: none; white-space: nowrap;
+  font: var(--t-control); color: var(--ink2); background: transparent; box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--ink) 16%, transparent);
+  transition: color 200ms ease;
 }
-.hm-seg button::after { content: ''; position: absolute; left: 0; right: 0; top: -7px; bottom: -7px } /* 命中 44 */
-.hm-seg button.on { background: var(--raised); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .1), 0 0 0 .5px var(--lg-card-edge) }
-.hm-seg.sm { height: 24px; padding: 2px }
-.hm-seg.sm button { padding: 0 8px; font-size: 10.5px; min-width: 32px }
+.hm-cap::after { content: ''; position: absolute; left: -3px; right: -3px; top: -7px; bottom: -7px } /* 命中 44 */
+.hm-cap:active { opacity: .7 }
+.hm-cap.on {
+  font: var(--t-control-on); color: var(--badge-ink); background: var(--lg-accent-grad);
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+html[data-theme="dark"] .hm-cap.on { box-shadow: 0 3px 12px color-mix(in srgb, var(--accent) 50%, transparent) }
+.hm-cap.on::before { content: ''; position: absolute; left: 8px; right: 8px; top: 0; height: 1px; border-radius: 1px; background: var(--lg-highlight) }
+
+/* 标题行尾的小胶囊（涨跌 / 持仓的 1 时 · 4 时 · 24 时，板块的今日 / 5 日、加密 / 美股）：高 24、11.5 字 */
+.hm-wins { display: inline-flex; align-items: center; gap: 4px; flex: none }
+.hm-wins button {
+  position: relative; height: 24px; min-width: 0; padding: 0 9px; border-radius: 999px; white-space: nowrap;
+  font: 500 11.5px/1 var(--font-ui); color: var(--ink2); background: transparent; box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--ink) 16%, transparent);
+}
+.hm-wins button::after { content: ''; position: absolute; left: -2px; right: -2px; top: -10px; bottom: -10px } /* 命中 44 */
+.hm-wins button.on { font: 600 11.5px/1 var(--font-ui); color: var(--badge-ink); background: var(--lg-accent-grad); box-shadow: none }
 
 /* ───────── 异动 ───────── */
-.hm-moves, .hm-board { flex: 1; min-height: 0; display: flex; flex-direction: column }
+.hm-moves, .hm-rank, .hm-sectors { flex: 1; min-height: 0; display: flex; flex-direction: column }
 .hm-chips {
   display: flex; align-items: center; gap: 6px; height: 36px; flex: none; overflow-x: auto; scrollbar-width: none;
   padding: 0 calc(var(--inset-page) + var(--safe-right)) 0 calc(var(--inset-page) + var(--safe-left));
@@ -32,6 +48,7 @@
 .hm-chips button.on { background: var(--accent); color: var(--badge-ink); font-weight: 600; box-shadow: none }
 .hm-chips b { font-size: 10px; font-weight: 600; opacity: .8; font-variant-numeric: tabular-nums }
 .hm-chips i { width: 5px; height: 5px; border-radius: 50%; background: var(--c) }
+.hm-chips button[data-chip="move"].on i { box-shadow: 0 0 0 1px var(--badge-ink) }
 .hm-chips button.on i { background: var(--badge-ink) }
 .hm-sub {
   display: flex; justify-content: space-between; gap: 8px; flex: none; padding: 2px calc(var(--inset-page) + var(--safe-right)) 6px calc(var(--inset-page) + var(--safe-left));
@@ -93,7 +110,7 @@ html[data-theme="dark"] .hm-pill { background: color-mix(in srgb, var(--pc) 20%,
 .hm-row .ago { flex: none; color: var(--ink3) }
 
 /* 数据停了：数退灰，药丸与强度条去饱和 */
-.stale .hm-row .p, .stale .hm-row .tx b, .hm-card.stale .n, .hm-card.stale .c { color: var(--ink3) }
+.stale .hm-row .p, .stale .hm-row .tx b, .hm-sect.stale .n, .hm-sect.stale .v { color: var(--ink3) }
 .stale .hm-pill, .stale .hm-row .mt i.on, .stale .hm-row .kind { filter: saturate(.15) opacity(.6) }
 
 /* 骨架 */
@@ -120,22 +137,29 @@ html[data-theme="dark"] .hm-pill { background: color-mix(in srgb, var(--pc) 20%,
 .hm-newpill svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
 @keyframes hm-drop { from { transform: translate(-50%, -40px); opacity: 0 } to { transform: translate(-50%, 0); opacity: 1 } }
 
-/* ───────── 榜单 ───────── */
-.hm-cards { display: flex; flex-direction: column; gap: 8px; padding-top: 6px }
-.hm-card { flex: none; background: var(--lg-glass); border-radius: 16px; padding: 11px 14px 4px; box-shadow: inset 0 0 0 .5px var(--lg-card-edge) }
-.hm-card .bh { display: flex; align-items: center; gap: 8px; margin-bottom: 6px }
-.hm-card h5 { margin: 0; flex: 1; font: 600 14px/1.2 var(--font-ui); color: var(--ink); letter-spacing: normal }
-.hm-card .br {
-  width: 100%; display: grid; grid-template-columns: 18px 22px 1fr auto auto; gap: 0 8px; align-items: center; height: 34px; text-align: left;
-  font: 400 12.5px/1 var(--font-ui); font-variant-numeric: tabular-nums; color: var(--ink); box-shadow: inset 0 -.5px 0 var(--lg-rule);
-  -webkit-tap-highlight-color: transparent;
+/* ───────── 涨跌 / 持仓 ─────────
+ * 不再是大方框卡（用户 2026-10-10）：标题行（13 semibold 次墨，行尾窗口小胶囊 /「全部 · 收起」纯文字链）
+ * + 照自选页的行（名次小字 · 徽章 28 · 名字 13 semibold · 等宽数 · 涨跌药丸，行高 58，发丝分隔）；
+ * 一组行底下垫页面那层软凹槽（墨色 6%，不描边，圆角 20），两组之间留呼吸。 */
+.hm-ranks { padding-top: 2px; padding-left: calc(var(--inset-page) - 4px + var(--safe-left)); padding-right: calc(var(--inset-page) - 4px + var(--safe-right)) }
+.hm-sect + .hm-sect { margin-top: 18px }
+.hm-sh { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 4px 4px }
+.hm-sh h5 { margin: 0; flex: 1; min-width: 0; font: 600 13px/1.2 var(--font-ui); color: var(--ink2); letter-spacing: normal; white-space: nowrap }
+.hm-more { position: relative; flex: none; height: 24px; font: 500 12px/24px var(--font-ui); color: var(--accent); white-space: nowrap }
+.hm-more::after { content: ''; position: absolute; left: -8px; right: -8px; top: -10px; bottom: -10px }
+.hm-more:active { opacity: .6 }
+.hm-group { border-radius: 20px; background: var(--lg-well); padding: 0 12px; overflow: hidden }
+.hm-rr {
+  position: relative; width: 100%; height: 58px; display: flex; align-items: center; gap: 10px; text-align: left;
+  font-variant-numeric: tabular-nums; -webkit-tap-highlight-color: transparent;
 }
-.hm-card .br:active { opacity: .6 }
-.hm-card .br .i { font-size: 10px; font-weight: 600; color: var(--ink3); text-align: center }
-.hm-card .br .n { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-.hm-card .br .v { font-size: 11.5px; color: var(--ink2) }
-.hm-card .br .c { font-weight: 600; min-width: 62px; text-align: right }
-.hm-card .br .c.up { color: var(--up) } .hm-card .br .c.down { color: var(--down) }
-.hm-card .br.skel { display: flex }
-.hm-card .more { width: 100%; height: 34px; display: flex; justify-content: center; align-items: center; font: 600 11.5px/1 var(--font-ui); color: var(--accent) }
-.hm-card .bempty { display: flex; align-items: center; justify-content: center; gap: 10px; height: 64px; color: var(--ink3); font: 400 12px/1 var(--font-ui) }
+.hm-rr + .hm-rr::before { content: ''; position: absolute; top: 0; left: 52px; right: 0; height: .5px; background: var(--lg-rule) }
+.hm-rr:active { opacity: .6 }
+.hm-rr .i { width: 14px; flex: none; text-align: center; font: 500 11px/1 var(--font-ui); color: var(--ink3) }
+.hm-rr .m-badge { flex: none }
+.hm-rr .n { flex: 1; min-width: 0; font: 600 13px/1.2 var(--font-ui); letter-spacing: -.01em; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.hm-rr .v { flex: none; font: 500 13px/1.2 var(--font-ui); color: var(--ink); text-align: right }
+.hm-rr .m-pill { width: 68px }
+.hm-rr.skel { pointer-events: none }
+.hm-gempty { display: flex; align-items: center; justify-content: center; gap: 10px; height: 72px; color: var(--ink3); font: 400 12px/1 var(--font-ui) }
+.hm-sect.stale .m-pill { filter: saturate(.15) opacity(.6) }

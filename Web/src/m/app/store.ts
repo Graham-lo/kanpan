@@ -23,8 +23,9 @@ export const KEY = 'hkline-m-v1'
 /** 提醒表并进 st 之前单独存的键（m/model/alerts.ts 早先用的）：第一次读档时搬进来，之后不再写 */
 export const LEGACY_ALERTS_KEY = 'hkline-m-alerts-v1'
 
-export type PageId = 'home' | 'chart' | 'favorites' | 'sectors' | 'me'
-export const PAGES: readonly PageId[] = ['home', 'chart', 'favorites', 'sectors', 'me']
+/** 底栏四格（2026-10-10 起板块分类并进首页第四段，见 ./homeSeg） */
+export type PageId = 'home' | 'chart' | 'favorites' | 'me'
+export const PAGES: readonly PageId[] = ['home', 'chart', 'favorites', 'me']
 
 export interface FavoriteGroup { id: string; name: string }
 /** iOS SymbolPrefs */

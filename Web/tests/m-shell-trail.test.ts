@@ -58,7 +58,7 @@ describe('C1 来路与扫图名单跟着档案主人走', () => {
     expect(shell.nav.scan).toEqual(['BTCUSDT', 'ETHUSDT'])
     expect(shell.nav.origin).toBe('favorites')
     account.endSession(null)
-    st.page = 'sectors'
+    st.page = 'home'
     shell.openSymbol('SOLUSDT', ['SOLUSDT', 'ADAUSDT'])
     account.setSession(user('A', 's10'))
     expect(shell.nav.scan).toBeNull()

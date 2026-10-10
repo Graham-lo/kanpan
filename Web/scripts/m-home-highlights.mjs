@@ -1,7 +1,8 @@
-// 手机网页 · 首页（异动 / 榜单）与「盘口要点」验收截图：三套皮肤 × 深浅，393×852 @3x，真接口
+// 手机网页 · 首页（异动 · 涨跌 · 持仓 · 板块）与「盘口要点」验收截图：三套皮肤 × 深浅，393×852 @3x，真接口
 // 用法：先起 `npx vite --port 5178 --strictPort`，再 `node scripts/m-home-highlights.mjs [输出目录] [base URL]`
-// 每套：首页异动、有新异动药丸、首页榜单（涨幅卡展开）、点异动行进行情页（半页自动升起并展开那张卡）、
-// 入口条、点入口条升半页、展开价位、回图（图上带子 + 十字线）
+// 每套：首页异动、有新异动药丸；SEGS=1 时加涨跌（跌幅榜「全部」展开）、持仓、板块与下钻（新页一套皮肤就够）；
+// CHART=0 时跳过行情页那几张：点异动行进行情页（半页自动升起并展开那张卡）、入口条、点入口条升半页、展开价位、回图
+// 只跑一部分：SKINS=sage THEMES=light SEGS=1 CHART=0
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
 import { CHROME, sleep, corsShim } from './f-lib.mjs'
@@ -27,10 +28,12 @@ for (const [skin, skinCn] of SKINS) for (const [theme, themeCn] of THEMES) {
   // 第一次拉异动时少给两行，第二次照实给 → 截到「有 N 条新异动」药丸
   let boardHits = 0
   await ctx.route(/\/v1\/market\/orderflow\/highlights\/board/, async route => {
-    const res = await route.fetch()
-    const body = await res.json()
-    if (boardHits++ === 0) body.rows = body.rows.slice(2)
-    await route.fulfill({ response: res, json: body })
+    try {
+      const res = await route.fetch()
+      const body = await res.json()
+      if (boardHits++ === 0) body.rows = body.rows.slice(2)
+      await route.fulfill({ response: res, json: body })
+    } catch { /* 这一套截完、上下文已关时还在路上的那次 */ }
   })
   const p = await ctx.newPage()
   p.on('pageerror', e => problems.push(`${tag} pageerror ${e.message}`))
@@ -40,7 +43,10 @@ for (const [skin, skinCn] of SKINS) for (const [theme, themeCn] of THEMES) {
   await p.waitForSelector('.hm-row:not(.skel), .hm-calm', { timeout: 30000 })
   await sleep(900)
   if (await p.evaluate(() => location.hash) !== '#home') problems.push(`${tag} 冷启动没落在首页`)
-  if (await p.$$eval('.m-tab', a => a.length) !== 5) problems.push(`${tag} 底栏不是五格`)
+  if (await p.$$eval('.m-tab', a => a.length) !== 4) problems.push(`${tag} 底栏不是四格`)
+  if (await p.$$eval('.hm-caps .hm-cap', a => a.map(b => b.textContent).join(' ')) !== '异动 涨跌 持仓 板块') problems.push(`${tag} 分段胶囊不对`)
+  const capsRow = await p.$$eval('.hm-caps .hm-cap', a => new Set(a.map(b => Math.round(b.getBoundingClientRect().top))).size)
+  if (capsRow !== 1) problems.push(`${tag} 分段胶囊没在一行`)
   await shot('1-首页异动')
   // 回前台触发一次轮询 → 药丸
   await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
@@ -50,21 +56,51 @@ for (const [skin, skinCn] of SKINS) for (const [theme, themeCn] of THEMES) {
   await p.click('.hm-newpill').catch(() => {})
   await sleep(600)
 
-  await p.click('.hm-seg [data-seg=board]')
-  await p.waitForSelector('.hm-card .br[data-base]', { timeout: 20000 }).catch(() => problems.push(`${tag} 榜单没出行`))
-  await sleep(700)
-  await shot('3-首页榜单')
-  await p.click('.hm-card[data-kind=gainers] [data-more]').catch(() => {})
-  await sleep(300)
-  await p.evaluate(() => document.querySelector('.hm-card[data-kind=gainers]')?.scrollIntoView({ block: 'start' }))
-  await sleep(300)
-  await shot('4-榜单展开')
-  await p.click('.hm-seg [data-seg=moves]')
-  await sleep(400)
+  if (process.env.SEGS === '1') {
+    await p.click('.hm-caps [data-seg=change]')
+    await p.waitForSelector('.hm-rank[data-page=change] .hm-rr[data-base]', { timeout: 20000 }).catch(() => problems.push(`${tag} 涨跌没出行`))
+    await sleep(900)
+    await shot('3-涨跌')
+    await p.click('.hm-sect[data-kind=losers] [data-more]').catch(() => problems.push(`${tag} 跌幅榜没有「全部」`))
+    await sleep(300)
+    await p.evaluate(() => document.querySelector('.hm-sect[data-kind=losers]')?.scrollIntoView({ block: 'start' }))
+    await sleep(400)
+    await shot('3b-涨跌全部')
+    await p.click('.hm-caps [data-seg=oi]')
+    await p.waitForSelector('.hm-rank[data-page=oi] .hm-sect[data-kind=oi] .hm-rr[data-base]', { timeout: 20000 }).catch(() => problems.push(`${tag} 增仓榜没出行`))
+    await p.waitForSelector('.hm-rank[data-page=oi] .hm-sect[data-kind=oidown] :is(.hm-rr[data-base], .hm-gempty)', { timeout: 20000 }).catch(() => problems.push(`${tag} 减仓榜没落定`))
+    await sleep(900)
+    await shot('4-持仓')
+    // 两页窗口各自记：持仓换 24 时，涨跌仍是 4 时
+    await p.click('.hm-rank[data-page=oi] [data-win="24h"]')
+    await sleep(1500)
+    const wins = await p.evaluate(() => [...document.querySelectorAll('.hm-rank')].map(r => r.querySelector('[data-win].on')?.getAttribute('data-win')).join(','))
+    if (wins !== '4h,24h') problems.push(`${tag} 两页窗口没各自记：${wins}`)
+    await p.click('.hm-rank[data-page=oi] [data-win="4h"]')
+    await p.click('.hm-caps [data-seg=sectors]')
+    await p.waitForSelector('.hm-sectors .sec-row[data-sec]', { timeout: 30000 }).catch(() => problems.push(`${tag} 板块没出行`))
+    await sleep(1200)
+    await shot('4b-板块')
+    await p.click('.hm-sectors .sec-row[data-sec]')
+    await p.waitForSelector('.hm-sectors .sec-drill .lr[data-sym]', { timeout: 20000 }).catch(() => problems.push(`${tag} 板块下钻没出品种`))
+    await sleep(1500)
+    await shot('4c-板块下钻')
+    await p.click('.hm-sectors .sec-drill .lr[data-sym]')
+    await p.waitForFunction(() => location.hash === '#chart', null, { timeout: 10000 }).catch(() => problems.push(`${tag} 点板块品种没进图`))
+    await sleep(800)
+    // 深链 #sectors：落首页「板块」段（下钻那层还在）
+    await p.evaluate(() => { location.hash = '#sectors' })
+    await sleep(800)
+    const deep = await p.evaluate(() => [location.hash, document.querySelector('.hm-cap.on')?.getAttribute('data-seg'), !document.querySelector('.hm-sectors').hidden].join(','))
+    if (deep !== '#home,sectors,true') problems.push(`${tag} 深链 #sectors 没落到板块段：${deep}`)
+    await p.click('.hm-caps [data-seg=moves]')
+    await sleep(400)
+  }
+  if (process.env.CHART === '0') { await ctx.close(); console.log('完成', tag); continue }
 
   // 点第一条盘口类异动（有价位就展开价位），没有就点第一行
-  const target = await p.evaluate(() => (document.querySelector('.hm-row[style*="accent"][data-base]') || document.querySelector('.hm-row[data-base]'))?.dataset.base)
-  await p.click(`.hm-row[data-base="${target}"]`)
+  const target = await p.evaluate(() => (document.querySelector('.hm-row[style*="accent"][data-key]') || document.querySelector('.hm-row[data-key]:not([data-key^="move:"])'))?.dataset.key)
+  await p.click(`.hm-row[data-key="${target}"]`)
   await p.waitForSelector('.hl-wrap.in', { timeout: 15000 }).catch(() => problems.push(`${tag} 从首页进图半页没升`))
   await sleep(1800)
   await shot('5-从首页进图半页展开')

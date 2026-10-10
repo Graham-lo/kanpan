@@ -1,7 +1,9 @@
-/* 手机网页版 · 板块页（照 iOS Sector/SectorPage.swift、SectorBoardList.swift、SectorSymbolList.swift）
+/* 手机网页版 · 板块（照 iOS Sector/SectorPage.swift、SectorBoardList.swift、SectorSymbolList.swift）
  *
- * 第一层：页头「板块」+ 规模一行（N 个板块 · M 个品种）+ 右侧市场分段（加密 / 美股）；
- *         有 5 日数据时下面一排「今日 / 5 日」分段；然后是普通板块列表（图标 32 · 名字 · x/n 跑赢大盘 · 涨跌）。
+ * 2026-10-10 起不再是底栏一格，挂在首页第四段「板块」里（m/pages/home.ts 调 initSectors(容器)，show / hide 由首页转），
+ * 琉璃底与页头胶囊用首页那份；系统返回的作用域是首页。
+ * 第一层：标题行「板块」+ 规模（N 个板块 · M 个品种），行尾小胶囊：市场（加密 / 美股）、有 5 日数据时再加「今日 / 5 日」
+ *         （和首页涨跌 / 持仓的窗口胶囊同一款）；然后是普通板块列表（图标 32 · 名字 · x/n 跑赢大盘 · 涨跌）。
  * 第二层：点一个板块压上来它的品种列表——视觉照抄自选页的琉璃行；头部是返回圆片、板块图标 38、
  *         名字 + 「x/n 跑赢大盘」、右侧板块涨跌。口径全部在 src/sectors/aggregate.ts（和 iOS 一致），不给选。
  * 两层铺同一张琉璃底，换层只是一层淡入淡出；退回第一层时回到原来那一行（隐藏的层会丢滚动位置，按记下的接回来）。
@@ -29,7 +31,6 @@ import { sectorIconHTML } from '../model/badge'
 import { changePercentText, esc, MISSING, textIsUp } from '../model/rowText'
 import { factsOf, liuliRowHTML, patchLiuli, type LiuliData } from '../model/rowHTML'
 import { boardsWaiting, coveredCount, drillDecision, drillWaiting, leaderLabel, skeletonRowsHTML } from '../model/sectorView'
-import { backdropHTML } from './favorites'
 import { ensureUniverse, wantStreams } from './_streams'
 import { openPreviewMenu } from './symbolPreview'
 
@@ -43,17 +44,16 @@ const MARKETS: { id: SectorMarket; title: string }[] = [{ id: 'crypto', title: '
 const WINDOWS: { id: SectorWindow; title: string }[] = [{ id: 'today', title: '今日' }, { id: 'd5', title: '5 日' }]
 
 function segHTML(kind: string, opts: { id: string; title: string }[], sel: string): string {
-  return `<div class="m-seg" role="group" data-seg="${kind}">${opts.map(o =>
+  return `<div class="hm-wins" role="group" data-seg="${kind}">${opts.map(o =>
     `<button type="button" class="m-seg-opt${o.id === sel ? ' on' : ''}" data-v="${o.id}" aria-pressed="${o.id === sel}" data-id="sector.${kind}.${o.id}">${esc(o.title)}</button>`).join('')}</div>`
 }
 const dirOf = (pct: number): string => { const t = changePercentText(pct); return t === MISSING ? '' : textIsUp(t) ? 'up' : 'down' }
 
 export function initSectors(root: HTMLElement): PageHandle {
-  root.classList.add('page-fixed', 'liuli')
-  root.innerHTML = backdropHTML() + `
+  root.classList.add('sec-embed')
+  root.innerHTML = `
     <div class="sec-layer sec-boards">
-      <header class="sec-head"><div class="sec-title"><h1>板块</h1><span class="sec-scale num"></span></div><div class="sec-market"></div></header>
-      <div class="sec-win"></div>
+      <header class="sec-head"><div class="sec-title"><h5>板块</h5><span class="sec-scale num"></span></div><div class="sec-win"></div><div class="sec-market"></div></header>
       <div class="sec-scroll sec-board-scroll"><div class="sec-board-list" role="list"></div><div class="sec-empty" hidden><b>板块行情还没取到</b><button type="button" class="liuli-pill" data-id="sector.empty">${icon('refresh', 14)}重新获取</button></div></div>
     </div>
     <div class="sec-layer sec-drill" hidden>
@@ -266,7 +266,7 @@ export function initSectors(root: HTMLElement): PageHandle {
     if (route != null && drillDecision(route, boards, feed.buckets[market()]) === 'pop') route = null
     const drilling = route != null
     // 钻进去的这一层登记给系统返回（鸿蒙 / 安卓侧边返回、Safari 左沿右划）：退回板块列表，而不是退出 app
-    if (drilling && !unback) unback = onBack(pop, 'sectors')
+    if (drilling && !unback) unback = onBack(pop, 'home')
     else if (!drilling && unback) { unback(); unback = null }
     boardsLayer.hidden = drilling
     drillLayer.hidden = !drilling

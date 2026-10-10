@@ -131,7 +131,7 @@ describe('盘口要点 · 拼字', () => {
     expect(nearestLevel([far, at], 63.5)!.id).toBe('L:at')
     expect(stripSentence([far, at], [], null, 63.5)).toMatch(/^现价内 /)
     // 首页行（服务端带 price）
-    expect(boardFact({ atMs: 1, base: 'LTC', cat: 'book', changePct: -1, count: 1, favorite: false, price: 63.5, tier: 3, top: { kind: 'level', ...at } })).toMatch(/^现价内 <b>63.405–63.659<\/b> 卖区/)
+    expect(boardFact({ key: 'LTC', atMs: 1, base: 'LTC', cat: 'book', changePct: -1, count: 1, favorite: false, price: 63.5, tier: 3, top: { kind: 'level', ...at } })).toMatch(/^现价内 <b>63.405–63.659<\/b> 卖区/)
   })
   it('关键价位：包住现价的那条紧贴现价线下面，距那格写「现价内」', () => {
     const d = parseHighlights(SAMPLE, 'BTC')!
