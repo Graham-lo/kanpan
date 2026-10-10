@@ -26,7 +26,7 @@ pub const TOTAL_GIB:u64=30;
 /// 订单流的大单（历史表 + 挂着的）分到总闸剩下的那 4 GiB（原来单独一条 20 GB 的闸门）。
 pub const BUDGETS:[Budget;5]=[HEAT,FOOTPRINT,SECONDS,FEATURES,ORDERS];
 pub const HEAT:Budget=Budget{name:"orderflow_heat",tables:&["orderflow_heat","orderflow_heat_rollup_30s","orderflow_heat_rollup_150s","orderflow_heat_rollup_900s"],gib:20};
-pub const FOOTPRINT:Budget=Budget{name:"orderflow_footprint",tables:&["orderflow_footprint","orderflow_insights"],gib:2};
+pub const FOOTPRINT:Budget=Budget{name:"orderflow_footprint",tables:&["orderflow_footprint","orderflow_insights","orderflow_highlights"],gib:2};
 pub const SECONDS:Budget=Budget{name:"klines_seconds",tables:&["klines_seconds"],gib:1};
 pub const FEATURES:Budget=Budget{name:"market_features",tables:&["market_features"],gib:3};
 pub const ORDERS:Budget=Budget{name:"orderflow_orders",tables:&["orderflow_orders","orderflow_live"],gib:4};

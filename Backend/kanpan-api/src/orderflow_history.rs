@@ -51,6 +51,7 @@ mod flow;
 mod footprint;
 mod insights;
 mod heat;
+mod highlights;
 mod hub;
 mod layers;
 mod liq;
@@ -479,6 +480,8 @@ struct Tracker {
  footprint:footprint::Acc,
  insights:insights::Acc,
  seconds:seconds::Acc,
+ /// 要点引擎的带子：参考永续每分钟的开高低收、现货最新价、每分钟一份挂着的墙（见 `highlights`）。
+ tape:highlights::Tape,
  /// 挂着的单上次写库时的量、成交、门槛与时刻（见 `changed_live`）。
  written:HashMap<LiveKey,(f64,f64,f64,i64)>,
  priority:Arc<AtomicU8>,
@@ -596,6 +599,7 @@ impl Tracker {
     flow::submit(&self.base,self.flow.add(usd,buy,flow::big_cut(&self.model.thresholds),now));
     // 足迹与秒线按交易所给的成交时刻分分钟、分秒（交割合约有基差，不进足迹）。
     let at=minutes::trade_time(at,now);
+    self.tape.trade(&self.base,&venue,trade.price,at);
     self.insights.add(&venue,trade.price,usd,buy,token.as_deref(),at,now,flow::big_cut(&self.model.thresholds));
     if !venue.contains(":delivery:") {self.footprint.add(trade.price,usd,buy,at);}
     if venue.starts_with(seconds::VENUE_PREFIX) {self.seconds.add(&venue,trade.price,trade.quantity,buy,at);}
@@ -679,6 +683,7 @@ impl Tracker {
  async fn write_ended(&mut self) {
   let ended=self.model.take_ended();
   if ended.is_empty() {return}
+  highlights::ended(&self.base,&ended);
   let rows=ended.into_iter().map(|o|{let at=o.end_ms.unwrap_or(o.first_seen_ms);(o,at)}).collect();
   let _=self.writes.send(Write{step:self.step(),rows}).await;
  }
@@ -695,7 +700,9 @@ impl Tracker {
  async fn hand_over(&mut self)->Final {
   self.write_ended().await;
   flow::submit(&self.base,self.flow.take());
-  footprint::submit(&self.base,self.footprint.take());
+  let fp=self.footprint.take();
+  highlights::footprint(&self.base,&fp);
+  footprint::submit(&self.base,fp);
   insights::submit(&self.base,self.insights.take(now_ms()));
   seconds::submit(&self.base,self.seconds.take());
   let live=self.model.live();
@@ -790,7 +797,11 @@ where F:FnMut(bool)->Fut+Send+'static,Fut:std::future::Future<Output=Refreshed>+
     }
     t.due_retries(now);
     flow::submit(&t.base,t.flow.roll(now));
-    footprint::submit(&t.base,t.footprint.roll(now));
+    let fp=t.footprint.roll(now);
+    highlights::footprint(&t.base,&fp);
+    footprint::submit(&t.base,fp);
+    t.tape.roll(&t.base,now);
+    if !t.calibrating() {t.tape.walls(&t.base,now,||t.model.live());}
     insights::submit(&t.base,t.insights.roll(now,flow::big_cut(&t.model.thresholds)));
     seconds::submit(&t.base,t.seconds.roll(now));
     t.write_ended().await;
@@ -840,7 +851,7 @@ async fn track(pool:PgPool,base:String,shared:watch::Sender<Thresholds>,mut stop
  let (writes,rx)=mpsc::channel::<Write>(WRITES_QUEUE);
  let writer=tokio::spawn(writer(pool.clone(),base.clone(),rx));
  let mut t=Tracker{base:base.clone(),model:Model::new(&base,published),events,control,open:HashSet::new(),inflight:HashMap::new(),retry:HashMap::new(),failures:HashMap::new(),
-  epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::new(&base,now_ms()),seconds:seconds::Acc::default(),written:HashMap::new(),priority,writes,
+  epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::new(&base,now_ms()),seconds:seconds::Acc::default(),tape:highlights::Tape::default(),written:HashMap::new(),priority,writes,
   calibration:Calibration{needed,value:None,day:None,partial:false,since:now_ms(),subscribed:now_ms(),restored:None},planned:thresholds,shared};
  match store::live(&pool,&base).await {
   Ok(rows) if needed=>t.calibration.restored=Some((rows,now_ms())),
@@ -1373,6 +1384,7 @@ pub fn spawn(pool:PgPool)->JoinHandle<()> {
  footprint::start(pool.clone());
  insights::start(pool.clone());
  seconds::start(pool.clone());
+ highlights::start(pool.clone());
  tokio::spawn(async move {
   let registry=REGISTRY.get_or_init(||Arc::new(Registry::new(pool.clone()))).clone();
   let enabled=Enabled::from_env();
@@ -1715,6 +1727,7 @@ async fn reply(pool:&PgPool,base:&str,from:i64,to:i64,min_life:i64,limit:i64,thr
 pub fn routes()->Router<AppState> {
  Router::new().route(PATH,get(history)).route(heat::PATH,get(heat::heat)).route(flow::PATH,get(flow::flow))
   .route(liq::PATH,get(liq::liq))
+  .route(highlights::PATH,get(highlights::highlights))
   .route(insights::PATH,get(insights::insights))
   .route(footprint::PATH,get(footprint::footprint)).route(seconds::PATH,get(seconds::seconds))
   .route_layer(axum::middleware::from_fn(per_client))
@@ -1848,7 +1861,7 @@ mod tests {
   let (shared,_)=watch::channel(Thresholds::default());
   let thresholds=Thresholds{step:Some(1.0),..Default::default()};
   let t=Tracker{base:"ZZSLOW".into(),model:Model::new("ZZSLOW",thresholds),events:events.clone(),control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::default(),seconds:seconds::Acc::default(),tape:highlights::Tape::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None},planned:thresholds,shared};
   let (stop_tx,stop)=watch::channel(false);
   let slow=|_due:bool|async {tokio::time::sleep(Duration::from_secs(100)).await;Refreshed{venues:vec![],thresholds:None}};
@@ -1875,7 +1888,7 @@ mod tests {
   let (shared,_)=watch::channel(Thresholds::default());
   let thresholds=Thresholds{step:Some(100.0),usdt_perp:Some(5e6),..Default::default()};
   let t=Tracker{base:base.into(),model:Model::new(base,thresholds),events,control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::default(),seconds:seconds::Acc::default(),tape:highlights::Tape::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:false,value:None,day:None,partial:false,since:0,subscribed:0,restored:None},planned:thresholds,shared};
   (t,inbox,control_rx,writes_rx)
  }
@@ -2048,7 +2061,7 @@ mod tests {
    Restored{order:order(90),step:1.0,seen_ms:read_at-130_000},
   ];
   let mut t=Tracker{base:"ZZSTOCK".into(),model:Model::new("ZZSTOCK",thresholds),events,control,open:HashSet::new(),inflight:HashMap::new(),
-   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::default(),seconds:seconds::Acc::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
+   retry:HashMap::new(),failures:HashMap::new(),epochs:HashMap::new(),last_trade:HashMap::new(),flow:flow::Acc::default(),footprint:footprint::Acc::default(),insights:insights::Acc::default(),seconds:seconds::Acc::default(),tape:highlights::Tape::default(),written:HashMap::new(),priority:Arc::new(AtomicU8::new(0)),
    writes,calibration:Calibration{needed:true,value:None,day:None,partial:false,since:read_at,subscribed:read_at,restored:Some((rows,read_at))},planned:thresholds,shared};
   t.calibrate(read_at+237_000);
   assert!(t.calibration.value.is_some(),"标定了");

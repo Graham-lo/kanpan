@@ -374,6 +374,9 @@ fn handle(src:Source,text:&str,now:i64) {
  }
  let mut acc=acc();
  for h in &hits {acc.add(h);}
+ drop(acc);
+ // 要点引擎（爆仓序列、账本的爆仓）：带着价一起交。
+ super::highlights::liq(&hits);
 }
 
 /// 一路连接的一生：连上就收，断了抖动退避重连（和 `hub::run` 同一套节奏）。
