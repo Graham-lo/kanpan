@@ -72,9 +72,6 @@ export function nearestInsightOrders(orders: readonly BigOrder[], symbol: string
   return (['ask', 'bid'] as const).flatMap(side => own.filter(o => o.side === side && (side === 'ask' ? o.price >= mid : o.price <= mid))
     .sort((a, b) => Math.abs(a.price - mid) - Math.abs(b.price - mid) || b.notional - a.notional).slice(0, 1))
 }
-export function shouldOpenInsightSwipe(dx: number, dy: number, ms: number, startX: number, width: number): boolean {
-  return startX >= 24 && startX <= width - 24 && dy <= -48 && Math.abs(dy) > Math.abs(dx) * 1.8 && ms <= 900
-}
 
 export interface InsightInput {
   symbol: string; now: number; mid: number; dec: number; orders: readonly BigOrder[]; snapshotReady: boolean

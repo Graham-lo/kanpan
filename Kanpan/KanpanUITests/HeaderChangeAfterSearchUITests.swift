@@ -14,7 +14,7 @@ final class HeaderChangeAfterSearchUITests: KanpanUICase {
      "KANPAN_TEST_FAVORITES": "BTCUSDT,ETHUSDT,SOLUSDT,NVDAUSDT,XAUUSDT"]
   }
 
-  func testChangeLineAndTurnoverFillRightAfterSearch() throws {
+  func testChangeAmountAndPercentFillRightAfterSearch() throws {
     XCTAssertTrue(waitForLiveChart(), "图没起来")
     app.tapIntervalChip("1h")
     for code in ["1000SHIBUSDT", "BTCUSDT", "1000PEPEUSDT"] {
@@ -32,20 +32,20 @@ final class HeaderChangeAfterSearchUITests: KanpanUICase {
       }, "没换到 \(code)")
 
       let change = app.descendants(matching: .any)["top.changePercent"]
-      let turnover = app.descendants(matching: .any)["top.turnover"]
+      let amount = app.descendants(matching: .any)["top.priceChange"]
       func complete() -> Bool {
         // 「载入中」是数还在路上时的骨架条（2026-10-07），也不算有数。
-        [change.label, turnover.label].allSatisfy { !$0.isEmpty && !$0.contains("—") && $0 != "载入中" }
+        [change.label, amount.label].allSatisfy { !$0.isEmpty && !$0.contains("—") && $0 != "载入中" }
       }
       XCTAssertTrue(waitUntil(timeout: 6) { complete() },
-                    "\(code) 点进来 6 秒顶栏还缺统计：涨跌「\(change.label)」额「\(turnover.label)」")
+                    "\(code) 点进来 6 秒顶栏还缺统计：涨跌「\(change.label)」涨跌额「\(amount.label)」")
       // 毛病的样子是「先有、后丢」：刚点进来顶栏读的是图表行情流那份（有统计），头一笔逐笔成交
       // 一到就换成只有价的那格，涨跌和「额」变回「—」，直到 20 秒后补价请求放行。
       // 所以有了之后还得盯一阵，中途丢一次就算红。
       var lost: String?
       let watchUntil = Date().addingTimeInterval(12)
       while Date() < watchUntil, lost == nil {
-        if !complete() { lost = "涨跌「\(change.label)」额「\(turnover.label)」" }
+        if !complete() { lost = "涨跌「\(change.label)」涨跌额「\(amount.label)」" }
         _ = waitUntil(timeout: 0.4) { false }
       }
       let shot = XCTAttachment(screenshot: app.screenshot())

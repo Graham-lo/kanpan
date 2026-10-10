@@ -172,11 +172,11 @@ final class DollarIndexUITests: KanpanUICase {
     assertNoStatsNoVolume("1h")
     shot("图-1h-MA")
 
-    // 5b. 切到 BTC：头部那块、成交量副图立刻回来（指标布局跟人走，一个字没动）；再切回来。
+    // 5b. 切到 BTC：涨跌列保留、成交量副图立刻回来（指标布局跟人走，一个字没动）；再切回来。
     switchTo("BTC", "binance/usd_m/BTCUSDT")
     XCTAssertTrue(waitUntil(timeout: 30) { (self.chartInfo()["subs"] as? [String])?.contains("VOL") == true },
                   "切回 BTC 成交量副图没回来：\(chartInfo()["subs"] ?? "")")
-    XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "top.stats").firstMatch
+    XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "top.change").firstMatch
                     .waitForExistence(timeout: Self.short), "切回 BTC 头部右侧那块没回来")
     switchTo("DXY", key)
     XCTAssertTrue(waitChart(key, "1h"), "切回美元指数 1h 没出图：\(chartInfo())")

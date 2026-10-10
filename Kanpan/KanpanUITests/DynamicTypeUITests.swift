@@ -6,7 +6,7 @@ import XCTest
 // 行情页头部那一行单独封顶默认档 `.large`。这条用例在辅助大字 AX3
 // （`UICTContentSizeCategoryAccessibilityXL`）下走五页：
 //
-// - 行情页头部：六格仍在价格右边，价格、六格、周期条的位置和默认档一个 pt 都不差；
+// - 行情页头部：涨跌列仍在价格右边，价格、涨跌列、周期条的位置和默认档一个 pt 都不差；
 // - 自选页、板块页（板块列表 + 板块品种表）、设置整页、提醒总表：各留一张图，
 //   截字和重叠靠人看图判（验收报告里逐张写结论），用例只守「控件都还在窗口里」。
 //
@@ -35,7 +35,7 @@ final class DynamicTypeUITests: KanpanUICase {
     guard let ax3 = measureHeader("AX3-头部") else { return }
     print("HEADER default \(base)\nHEADER ax3 \(ax3)")
     XCTAssertEqual(ax3.price.height, base.price.height, accuracy: 0.5, "AX3 下价格字号变了")
-    XCTAssertEqual(ax3.stats.height, base.stats.height, accuracy: 0.5, "AX3 下六格变高了")
+    XCTAssertEqual(ax3.stats.height, base.stats.height, accuracy: 0.5, "AX3 下涨跌列变高了")
     XCTAssertEqual(ax3.intervalY, base.intervalY, accuracy: 0.5, "AX3 下头部挤高了周期条")
 
     // 自选页
@@ -89,26 +89,26 @@ final class DynamicTypeUITests: KanpanUICase {
     XCTAssertTrue(app.symbolLabel.waitForExistence(timeout: Self.long), "\(size) 下没回到行情页")
   }
 
-  /// 等价格与六格的实值到齐，量位置并留图。六格必须整块在价格与涨跌行右边、在屏幕以内。
+  /// 等价格与涨跌列的实值到齐，量位置并留图。涨跌列必须整块在价格与涨跌行右边、在屏幕以内。
   private func measureHeader(_ name: String) -> Header? {
     let price = app.staticTexts["top.lastPrice"]
     let change = app.descendants(matching: .any)["top.changePercent"].firstMatch
-    let stats = app.otherElements["top.stats"]
+    let stats = app.otherElements["top.change"]
     guard expectExists(price, Self.long), expectExists(stats, Self.long) else { return nil }
     XCTAssertTrue(waitUntil(timeout: Self.long) {
-      [price.label, self.app.staticTexts["top.turnover"].label, self.app.staticTexts["top.funding"].label]
+      [price.label, change.label, self.app.staticTexts["top.priceChange"].label]
         .allSatisfy { !["", "—", "--"].contains($0) }
-    }, "\(name)：价格与六格实值没有到齐")
+    }, "\(name)：价格与涨跌列实值没有到齐")
     let header = Header(price: price.frame, change: change.frame, stats: stats.frame,
                         intervalY: app.buttons[Ids.intervalMore].frame.minY)
     shot(name)
-    XCTAssertGreaterThanOrEqual(header.stats.minX, header.price.maxX, "\(name)：六格掉到价格下面")
-    // 页面外边距 `Inset.page`（宽 ≥ 428 为 20，否则 16）；价格列与六格之间至少 16（UI 审查 2026-09-24）。
+    XCTAssertGreaterThanOrEqual(header.stats.minX, header.price.maxX, "\(name)：涨跌列掉到价格下面")
+    // 页面外边距 `Inset.page`（宽 ≥ 428 为 20，否则 16）；价格列与涨跌列之间至少 16（UI 审查 2026-09-24）。
     let inset: CGFloat = windowFrame.width >= 428 ? 20 : 16
-    XCTAssertGreaterThanOrEqual(header.stats.minX, header.change.maxX + 15.5, "\(name)：涨跌行挤进六格")
-    XCTAssertLessThanOrEqual(header.stats.maxX, windowFrame.maxX - inset + 0.5, "\(name)：六格超出屏幕右缘")
+    XCTAssertGreaterThanOrEqual(header.stats.minX, header.price.maxX + 15.5, "\(name)：涨跌行挤进涨跌列")
+    XCTAssertLessThanOrEqual(header.stats.maxX, windowFrame.maxX - inset + 0.5, "\(name)：涨跌列超出屏幕右缘")
     XCTAssertTrue(header.stats.minY < header.change.maxY && header.stats.maxY > header.price.minY,
-                  "\(name)：六格和价格不在同一行")
+                  "\(name)：涨跌列和价格不在同一行")
     return header
   }
 

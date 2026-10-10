@@ -1,22 +1,20 @@
 /* Hkline 手机网页 · 「盘口要点」入口条 + 半页（照 docs/原型-手机首页异动与盘口要点-2026-10-10.html §10 尺寸表）
  * 颜色只用皮肤令牌：up / down / accent / amber / ink 三级 / raised / line，琉璃 pane / well / rule。 */
 
-/* ───────────── 入口条：有要点 44，没有 16 的抓手；高度 200 ms ───────────── */
+/* ───────────── 报价下方的一行要点：44；没有内容时收起 ───────────── */
 .cp-insight-entry.hl-strip {
-  min-height: 0; height: 44px; justify-content: flex-start; gap: 8px; padding: 0 16px; overflow: hidden;
-  border-top: 0; box-shadow: inset 0 var(--hairline) 0 var(--lg-rule);
+  min-height: 0; height: 44px; justify-content: flex-start; gap: 8px; padding: 0 var(--inset-page); overflow: hidden;
+  border-top: 0; box-shadow: none;
   font: 400 13px/1.2 var(--font-ui); font-variant-numeric: tabular-nums; color: var(--ink2);
   transition: height 200ms ease-in-out; position: relative;
 }
-.hl-strip .ch { width: 12px; height: 12px; flex: none; fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+.hl-strip .ch { width: 12px; height: 12px; flex: none; fill: none; stroke: var(--ink3); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
 .hl-strip .k { font-weight: 600; color: var(--accent); white-space: nowrap; flex: none }
 .hl-strip .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left }
 .hl-strip .t b { color: var(--ink); font-weight: 600 }
 .hl-strip .hd { display: none }
 .hl-strip.stale .t b { color: var(--ink3) }
-.cp-insight-entry.hl-strip.thin { height: 16px; justify-content: center; box-shadow: none }
-.hl-strip.thin .ch, .hl-strip.thin .k, .hl-strip.thin .t { display: none }
-.hl-strip.thin .hd { display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--ink3); opacity: .35 }
+.cp-insight-entry.hl-strip.thin { display: none }
 .hl-strip:active:not(.thin) { background: color-mix(in srgb, var(--ink) 4%, transparent) }
 @media (prefers-reduced-motion: reduce) { .cp-insight-entry.hl-strip { transition: none } }
 
@@ -104,7 +102,7 @@
 .hl-lv .lev b { color: var(--ink); font-weight: 600 }
 .hl-lv .lev .go { grid-column: 2; justify-self: end; color: var(--accent); font: 600 12px/1 var(--font-ui); display: flex; align-items: center; gap: 3px; margin-top: 2px;
   border: 0; background: none; padding: 8px 0 8px 12px; margin-bottom: -6px }
-.hl-sheet svg.loc { width: 12px; height: 12px; stroke: var(--accent); stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; display: block }
+.hl-sheet svg.loc { width: 12px; height: 12px; stroke: var(--ink3); stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; display: block }
 
 /* ③ 持仓 · 费率 · 现货溢价 */
 .hl-tri { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px }

@@ -236,18 +236,7 @@ struct MainHeaderView<Card: View>: View {
       ZStack {
         PriceRow(theme: theme, instrument: market.symbol, ticker: session.rollingTicker, lastPrice: session.readoutPrice,
           decimals: market.info.priceDecimals,
-          volumeUnit: market.volumeUnit,
-          openInterest: market.openInterestDisplay,
-          openInterestUnit: market.openInterestUnit,
-          totalSupply: market.totalSupply,
-          fundingRate: market.displayedFundingRate,
-          asset: market.asset,
-          forwardEarnings: market.forwardEarnings,
-          revenue: market.revenue,
-          nextFundingTimeMs: market.displayedNextFundingTime,
-          fundingPeriod: market.capabilities.fundingPeriod,
-          stale: !market.priceFresh,
-          showsStats: InstrumentSurfaces.showsHeaderStats(capabilities: market.capabilities, asset: market.asset))
+          stale: !market.priceFresh)
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
           .accessibilityValue(session.quoteDiagnostics)
@@ -255,12 +244,12 @@ struct MainHeaderView<Card: View>: View {
           // 和十字线那套让位一模一样，行高一个 pt 都不变。
           .opacity(cardVisible ? 0 : 1)
         // 十字线的读数和那颗「创建提醒」都不在头部：它们在周期条那一行（`CrosshairActionBar`，
-        // 2026-10-08 起读数也挪过去了），所以按住图找位置的时候，价格、涨跌、六格一直是实时的。
+        // 2026-10-08 起读数也挪过去了），所以按住图找位置的时候，价格与涨跌一直是实时的。
       }
       // 画完一条线问的那一句，摆在**价格行的位置上**，而且是 `overlay`——
       // overlay 不参与父视图定尺寸，所以它在与不在，头部和图表的高度一个 pt 都不会变
       // （从前它在图外面自成一行，画完线图当场矮一截、六秒后又弹回来）。
-      // 它盖着的只有价格与那六格，画布一个点都没碰着（`kanpan-no-floating-controls-over-chart`）。
+      // 它盖着的只有价格与涨跌，画布一个点都没碰着（`kanpan-no-floating-controls-over-chart`）。
       .overlay { card }
       // 连续扫图（§10.1）：横滑**只挂在价格这一块**上。
       //
@@ -280,23 +269,17 @@ struct MainHeaderView<Card: View>: View {
     .pageHorizontalInset()
     .padding(.vertical, Space.s)
     .background(theme.app)
-    // 头部整块（顶栏品种名、价格 + 六格、十字线读数、「要不要加提醒」那一句）只跟到
+    // 头部整块（顶栏品种名、价格 + 涨跌、十字线读数、「要不要加提醒」那一句）只跟到
     // `MarketChrome.typeCap` 为止，比全局的 .xxxLarge 低得多（P2.13 / P0 D.13）：
-    // 价格 + 六格要并排装下，而且头部多高、图表就少多高——
-    // 辅助大字下六格照旧在价格右边、头部一个 pt 都不长；调小字号时照常跟着变小。
+    // 价格 + 涨跌要并排装下，而且头部多高、图表就少多高——
+    // 辅助大字下涨跌照旧在价格右边、头部一个 pt 都不长；调小字号时照常跟着变小。
     .dynamicTypeSize(...MarketChrome.typeCap)
   }
 }
 
 /// 行情页顶上那几条常驻 chrome（头部、周期条、十字线动作条、「更多」弹层）共用的口径。
 enum MarketChrome {
-  /// 字号跟随系统到哪一档为止。
-  ///
-  /// 仍是 `.large`。09-22 在 390pt 的机器上实测 `.xLarge` 下价格 + 六格超宽 16pt；
-  /// 2026-09-24 兼容机型收到 16 Pro（402pt）/ 17 Pro Max（440pt）、字号换成令牌之后在 16 Pro 上
-  /// 重量了一次（`MainScreenUITests.testHeaderStatsAtLargestDynamicType` 临时开到 `.xLarge`）：
-  /// BTC、SNDK、MU 装得下（BTC 涨跌行到六格只剩 17.7pt），1000SATS 的价格八位小数 139pt 宽，
-  /// 整行超出约 30pt——价格左缘顶出屏幕 15pt、六格右缘顶出 15pt。所以不放宽。改档先重量。
+  /// 行情头保持现有 `.large` 上限，长小数报价与右侧涨跌仍能并排。
   static let typeCap: DynamicTypeSize = .large
 }
 

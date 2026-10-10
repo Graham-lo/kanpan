@@ -143,7 +143,7 @@ final class WalkthroughChartUITests: WalkthroughCase {
     _ = waitForLiveChart()
     settle(1.5)
     shot("首屏")
-    fact("头部统计", any("top.stats").label)
+    fact("涨跌额", any("top.priceChange").label)
     fact("最新价", any("top.lastPrice").label)
     fact("涨跌", any("top.changePercent").label)
 
@@ -903,7 +903,7 @@ final class WalkthroughMeUITests: WalkthroughCase {
       settle(6.0)
       let p2 = any("top.lastPrice").label
       shot("行情页-网关")
-      fact("网关下价格", "\(p1) → \(p2)；头部统计 \(any("top.stats").label)")
+      fact("网关下价格", "\(p1) → \(p2)；涨跌额 \(any("top.priceChange").label)")
       _ = app.openSettingsFromMe()
       let direct = app.buttons["settings.routePolicy.直连"]
       _ = scrollUntilHittable(direct)
@@ -1022,7 +1022,7 @@ final class WalkthroughTickerProbeUITests: WalkthroughCase {
       }
       fact("\(code) 涨跌有数用时", filled.map { String(format: "%.1fs", $0) } ?? "30s 内一直是破折号")
       fact("\(code) 涨跌", any("top.changePercent").label)
-      fact("\(code) 六格", any("top.stats").label)
+      fact("\(code) 涨跌额", any("top.priceChange").label)
       shot(code)
     }
   }

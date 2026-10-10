@@ -8,8 +8,8 @@
   position: absolute; inset: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  grid-template-areas: "top" "head" "iv" "chart" "insight";
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  grid-template-areas: "top" "head" "insight" "iv" "chart";
   padding: var(--safe-top) var(--safe-right) calc(var(--tabbar-h) + var(--safe-bottom)) var(--safe-left);
   background: var(--chart); color: var(--ink);
 }
@@ -102,7 +102,7 @@
 .cp-id.nobadge .cp-badge { visibility: hidden; width: 0; overflow: hidden; margin-right: -6px }
 .cp-id.noquote .cp-quote { display: none }
 
-/* ───────────── 头部：价格 + 六格 ───────────── */
+/* ───────────── 头部：左侧最新价 + 右侧涨跌 ───────────── */
 .cp-head {
   position: relative;
   display: flex; align-items: center; gap: var(--s-l);
@@ -116,12 +116,11 @@
 .cp-head.busy .cp-busy { opacity: .9; transition-delay: .15s }
 .cp-head.busy .cp-busy i { animation-play-state: running }
 @keyframes cp-busy-run { from { transform: translateX(-10%) } to { transform: translateX(267%) } }
-.cp-quotebox { flex: 1; min-width: 0 }
-.cp-quoteinner { display: flex; flex-direction: column; gap: var(--s-xxs) }
+.cp-quotebox { flex: 1; min-width: 0; min-height: calc(var(--hit) - var(--s-l)); display: flex; align-items: center; justify-content: space-between; gap: var(--s-l) }
 .cp-price { font: var(--t-price); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.cp-chg { font: var(--t-footnote-emph); font-variant-numeric: tabular-nums; white-space: nowrap }
+.cp-chg { flex: none; display: flex; flex-direction: row; align-items: baseline; gap: var(--s-s); font: var(--t-footnote-emph); font-variant-numeric: tabular-nums; white-space: nowrap }
 /* 朋友的线 / 顺便建提醒那一格（照 ShareCard、ShareReplyBar、AlertPromptBar）：36 高、盖在价格行上，行高不变 */
-.cp-head.carding .cp-quoteinner, .cp-head.carding .cp-stats { visibility: hidden }
+.cp-head.carding .cp-quotebox { visibility: hidden }
 .cp-card {
   position: absolute; left: var(--inset-page); right: var(--inset-page); top: 50%; transform: translateY(-50%);
   height: calc(var(--hit) - var(--s-s)); z-index: 2;
@@ -171,18 +170,6 @@
   border: 2px solid var(--accent-line); border-top-color: var(--accent); animation: cp-card-spin 0.8s linear infinite;
 }
 @keyframes cp-card-spin { to { transform: rotate(360deg) } }
-.cp-stats { flex: none; display: flex; gap: var(--s-l) }
-/* 美元指数：六格不摆，但留着高度，扫图划过去时 K 线区不跳 */
-.cp-stats[hidden] { visibility: hidden }
-.cp-col { display: grid; gap: var(--s-xxs); min-width: 92px }
-.cp-cell { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-s); white-space: nowrap }
-.cp-cell[hidden] { display: none }
-.cp-lab { display: inline-flex; align-items: center; gap: 2px; font: var(--t-caption2); color: var(--ink3) }
-.cp-cell b { font: var(--t-caption-emph); font-variant-numeric: tabular-nums; color: var(--ink) }
-.cp-cell b.up { color: var(--up) }
-.cp-cell b.down { color: var(--down) }
-.cp-cell b.miss { color: var(--ink3) }
-
 /* ───────────── 周期条 ───────────── */
 .cp-ivrow { position: relative; height: var(--hit); border-bottom: 1px solid var(--line); container: ivrow / inline-size }
 /* 和原生一致：六个周期槽与三个入口固定九格，按容器宽度等分，文字不参与格宽计算。 */

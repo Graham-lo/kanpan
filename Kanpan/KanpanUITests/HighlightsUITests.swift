@@ -10,18 +10,24 @@ final class HighlightsUITests: KanpanUICase {
   }
   private func el(_ id: String) -> XCUIElement { app.descendants(matching: .any)[id].firstMatch }
 
-  /// 横拖不开；上滑开半页；点行情头收起。
-  func testUpwardEntryOpensAndHorizontalEntryDoesNot() {
+  /// 要点在报价下方、周期条上方；仅点击打开，横拖和上滑都不开。
+  func testTopEntryOpensOnlyOnTap() {
     let entry = el("highlights.entry")
-    expectExists(entry, Self.long)
+    guard expectExists(entry, Self.long) else { return }
+    XCTAssertTrue(waitUntil(timeout: Self.long) { entry.isHittable && entry.frame.height >= 43 })
+    let quote = el("market.quote"), intervals = app.buttons[Ids.intervalMore]
+    XCTAssertGreaterThanOrEqual(entry.frame.minY, quote.frame.maxY)
+    XCTAssertLessThanOrEqual(entry.frame.maxY, intervals.frame.minY + 1)
     let start = entry.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
     start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 120, dy: -10)))
     XCTAssertFalse(el("highlights.sheet").exists)
     let up = entry.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
     up.press(forDuration: 0.05, thenDragTo: up.withOffset(CGVector(dx: 0, dy: -90)))
+    XCTAssertFalse(el("highlights.sheet").exists, "上滑不应打开要点")
+    entry.tap()
     expectExists(el("highlights.sheet"), Self.short)
     // 半页顶在行情头下沿：头部还露着，点它收起。
-    app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.12)).tap()
+    app.staticTexts["top.lastPrice"].tap()
     expectGone(el("highlights.sheet"), Self.short)
   }
   func testHomeFocusCanBeHiddenFromAnalysis() throws {

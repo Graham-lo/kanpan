@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - 挂到主界面
 
 extension View {
-  /// 「盘口要点」半页：系统 sheet，一档高度 = 屏高 − 行情头下沿（价格、涨跌、六格一直露着、照常跳），
+  /// 「盘口要点」半页：系统 sheet，一档高度 = 屏高 − 行情头下沿（价格与涨跌一直露着、照常跳），
   /// 头部那一截照常可点（点它收起半页由宿主接）。`enabled == false`（横屏、复盘、画线、不在行情页）时收掉。
   func highlightsSheet(model: HighlightsModel, market: MarketModel, proxy: ChartProxy, theme: PanelTheme,
                        scheme: ColorScheme?, zone: TZOffset, enabled: Bool) -> some View {

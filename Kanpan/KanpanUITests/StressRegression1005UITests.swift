@@ -677,14 +677,10 @@ final class StressRegression1005UITests: KanpanUICase {
   func testWalk4BTCHeaderOrderFlowVolume() {
     executionTimeAllowance = 600
     XCTAssertTrue(waitChart(Self.btc, "15m", minBars: 64), "BTC 15m 没起来：\(chartInfo())")
-    let stats = app.descendants(matching: .any).matching(identifier: "top.stats").firstMatch
-    XCTAssertTrue(stats.waitForExistence(timeout: Self.short), "BTC 头部右侧那块不在")
-    let cells = ["top.openInterest", "top.marketCap", "top.turnover", "top.funding", "top.valuation"]
-    XCTAssertTrue(waitUntil(timeout: 20) {
-      cells.allSatisfy { self.app.descendants(matching: .any).matching(identifier: $0).firstMatch.exists }
-    }, "BTC 头部格子不全：\(cells.filter { !app.descendants(matching: .any).matching(identifier: $0).firstMatch.exists })")
-    let valuation = app.descendants(matching: .any).matching(identifier: "top.valuation").firstMatch
-    note("BTC 估值格「\(valuation.label)」 额「\(app.descendants(matching: .any).matching(identifier: "top.turnover").firstMatch.label)」")
+    for id in ["top.lastPrice", "top.priceChange", "top.changePercent"] {
+      XCTAssertTrue(app.descendants(matching: .any).matching(identifier: id).firstMatch.waitForExistence(timeout: Self.short))
+    }
+    XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "top.stats").firstMatch.exists)
     XCTAssertTrue(subs.contains("VOL"), "BTC 出厂该有成交量副图：\(subs)")
     XCTAssertTrue(app.openIndicatorPage())
     setSwitch("ORDERFLOW", on: true)
@@ -693,7 +689,7 @@ final class StressRegression1005UITests: KanpanUICase {
                   "主力订单流没就绪：\(chartInfo()["orderFlowPhase"] ?? "?")")
     note("BTC 主力订单流 orders=\(chartInfo()["orderFlowOrders"] ?? 0)")
     dwell(2)
-    shot("走查26-BTC头部六格-订单流-成交量")
+    shot("走查26-BTC精简报价-订单流-成交量")
     // 切到美元指数：订单流不画、成交量不画；切回 BTC 都回来。
     open("DXY", Self.dxy)
     XCTAssertTrue(waitChart(Self.dxy), "切到美元指数没起来")

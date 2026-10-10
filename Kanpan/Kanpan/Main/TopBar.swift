@@ -339,53 +339,18 @@ enum TopBarGlyph {
   }
 }
 
-/// 行情页价格行：左侧价格与涨跌小字，右侧两列三行数据。
-/// 六格始终在价格右侧；字号跟随系统，但密集数据行有独立封顶。
-///
-/// 字号全取 `TypeScale`（UI 审查 2026-09-24 §4.3 #13–#21），五档都在 HIG 阶梯上：
-/// 最新价 22 medium（`.title2`）> 涨跌行 13 medium（`.footnote`）> 六格的值 12 medium
-/// 等宽数字（`.caption`）> 六格标签 11 regular 次墨色（`.caption2`）。原来涨跌行和六格的值
-/// 都是 13 semibold，右边六个墨色粗数压过了浅色的价格，眼睛先落到右边。
+/// 行情页报价：最新价居左，涨跌额与涨跌幅在右侧并排。
+/// 涨跌共用现有 13pt 字阶，不加底色；报价收为一行，确认卡在外围留白内显示。
 struct PriceRow: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var theme: PanelTheme
-  /// 这口价属于哪只：完整品种键（`venue/market/symbol`，即 `MarketModel.symbol`）。
-  /// 价格的逐位滚动只在同一个键下做，换了键就直接换字（见 `body`）。
+  /// 完整品种键：换品种直接换字，同一品种才做逐位滚动。
   var instrument: String
   var ticker: Ticker?
   var lastPrice: Double?
   var decimals: Int
-  /// 成交额的单位由外面按品种钉住（见 `MarketModel.volumeUnit`），这儿不自己挑。
-  var volumeUnit: VolUnit?
-  /// 持仓量（**只认美元名义**，见 `HeaderStats.openInterestText`）和它钉住的单位。
-  var openInterest: Double?
-  var openInterestUnit: VolUnit?
-  /// 总供应量（后端给）。市值在这儿乘出来，乘的就是上面那口正在显示的价，
-  /// 不会出现「价已经跳了、市值还是上一口算的」。
-  var totalSupply: Double?
-  /// 资金费率，已经是小数（`0.0001` = 0.01%）。超过展示寿命的帧由外面先判成 `nil`
-  /// （`MarketModel.displayedFundingRate`），这儿看到的就是「现在还算数」的值。
-  var fundingRate: Double?
-  /// 第六格（估值）要的：这只是什么，以及股票的两项估值底数（美元）。
-  /// 规则在 `HeaderStats.valuationCell`。
-  var asset: SymbolClassification.Asset = .other
-  var forwardEarnings: Double?
-  var revenue: Double?
-  /// 下一次资金费率结算的时刻（`MarkPriceTick.nextFundingTime`）。「结算」那一格
-  /// 读它；没有就显示破折号（见 `HeaderStats.fundingCountdownText`）。
-  var nextFundingTimeMs: Int64?
-  /// 这家一期费率多长（`ProviderCapabilities.fundingPeriod`）：结算刚过、下一帧没到那几秒，倒计时按它往后滚。
-  var fundingPeriod: TimeInterval = HeaderStats.fundingPeriod
-  /// 这口价不能当「现在的价」看：上一条线路留下的、断流超过宽限，或者这个品种已经不在交易了。
-  /// 最新价和涨跌小字换成 `staleInk`（比 `ink3` 再淡一档，2026-09-28），不改字号也不加任何说明文字——「为什么是灰的」不需要解释，新数据到了
-  /// 它自己就亮回来（§2B #54）。
-  ///
-  /// 除了灰显，它还会把「额 / 市值 / 费率」几格压成 `—`（审查 B.8）：那几个数
-  /// 和价来自同一帧，价已经判定为旧的，它们摆在那儿只会让人当成现在的数。
+  /// 断流或旧报价统一退灰，恢复后沿用正常涨跌色。
   var stale = false
-  /// 右侧那块摆不摆。一格都给不出数的品种（美元指数）整块不摆，规则在
-  /// `InstrumentSurfaces.showsHeaderStats`；左边价格区照常，图表把这块高度收回去。
-  var showsStats = true
 
   private var pct: Double? {
     guard let value = ticker?.changePercent, value.isFinite else { return nil }
@@ -397,30 +362,34 @@ struct PriceRow: View {
   }
 
   var body: some View {
-    HStack(alignment: .center, spacing: 0) {
-      VStack(alignment: .leading, spacing: Space.xxs) {
-        if skeleton(.price, hasValue: lastPrice != nil) {
-          headlineSkeleton(width: 120, height: 18, font: TypeScale.price, id: "top.lastPrice")
-        } else {
-          lastPriceText
-        }
+    HStack(alignment: .center, spacing: Space.l) {
+      if skeleton(.price, hasValue: lastPrice != nil) {
+        headlineSkeleton(width: 120, height: 18, font: TypeScale.price, id: "top.lastPrice")
+      } else {
+        lastPriceText
+      }
+      Spacer(minLength: 0)
+      HStack(alignment: .firstTextBaseline, spacing: Space.s) {
         if skeleton(.change, hasValue: ticker?.priceChange != nil && pct != nil) {
-          headlineSkeleton(width: 96, height: 11, font: TypeScale.footnoteEmph, id: "top.changePercent")
+          headlineSkeleton(width: 80, height: 11, font: TypeScale.footnoteEmph, id: "top.priceChange")
+          headlineSkeleton(width: 64, height: 11, font: TypeScale.footnoteEmph, id: "top.changePercent")
         } else {
-          changeText
+          let parts = HeaderStats.priceChangeText(change: ticker?.priceChange, percent: pct, decimals: decimals)
+            .components(separatedBy: "  ")
+          changeText(parts.first ?? "—", id: "top.priceChange")
+          changeText(parts.count > 1 ? parts[1] : "—", id: "top.changePercent")
         }
       }
-      .lineLimit(1)
       .fixedSize(horizontal: true, vertical: false)
-      Spacer(minLength: Space.l)
-      if showsStats { stats }
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("top.change")
     }
-    // 换品种这一下整行不带任何动画（哪怕外面的事务带着）：旧那只的价当场拿掉，
-    // 不留一帧淡出，涨跌与六格也直接换成新那只的数。
+    .lineLimit(1)
+    .frame(minHeight: Hit.min - Space.l)
     .transaction(value: instrument) { $0.animation = nil }
   }
 
-  /// 价与涨跌还在路上时的骨架条：行高由隐藏的同字号字符撑着，数到了整行高度不跳。
+  /// 用同字号隐藏字符固定行高，报价到达时头部不跳。
   private func headlineSkeleton(width: CGFloat, height: CGFloat, font: ScaledFont, id: String) -> some View {
     Text(verbatim: "0").font(font).hidden()
       .frame(width: width, alignment: .leading)
@@ -434,173 +403,29 @@ struct PriceRow: View {
       .font(TypeScale.price)
       .monospacedDigit()
       .foregroundStyle(lastPrice == nil ? theme.ink3 : stale ? theme.staleInk : tint)
-      // 跳价时逐位滚过去（P2.8），只动变了的那几位；「减少动效」下直接换字。
       .contentTransition(reduceMotion ? .identity : .numericText(value: lastPrice ?? 0))
       .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: lastText)
-      // 逐位滚动只在**同一只**里做。换品种（横滑扫图、搜索、自选 / 板块点进）时
-      // 视图身份跟着完整品种键换掉：新的那只的价直接落（有种子就是种子，没有就是「—」），
-      // 不从上一只的数滚过来——否则标题已经是 ETH，底下还闪过一串 BTC 量级的数。
       .id(instrument)
       .transition(.identity)
       .accessibilityIdentifier("top.lastPrice")
   }
 
-  private var changeText: some View {
-    Text(HeaderStats.priceChangeText(change: ticker?.priceChange, percent: pct, decimals: decimals))
+  private func changeText(_ text: String, id: String) -> some View {
+    Text(text)
       .font(TypeScale.footnoteEmph)
       .monospacedDigit()
       .foregroundStyle(ticker?.priceChange == nil || pct == nil ? theme.ink3 : stale ? theme.staleInk : tint)
-      .accessibilityIdentifier("top.changePercent")
+      .accessibilityIdentifier(id)
   }
 
-  /// 价格的小数位由品种自己说（`priceDecimals`，按 `tickSize` 推），极小的正价会自动多给几位，
-  /// 绝不四舍五入成 `0.00`（审查 B-07，规则在 `fmtPrice`）。
+  /// 按报价步长展示；极小正价沿用 fmtPrice 的精度保护。
   private var lastText: String {
     guard let p = lastPrice else { return "—" }
     return grouped(fmtPrice(p, decimals: decimals))
   }
 
-  // ---------------------------------------------------------------- 右侧六格
-  // 六格取什么值全在 `HeaderStats` 里（纯函数，用例守着）；这儿只管画。
-  // 单位由外面按品种钉住（§2B #53），`HeaderStats` 只在还没钉上时按眼前这个数认一次。
-
-  private var turnoverText: String? {
-    HeaderStats.turnoverText(quoteVolume: ticker?.quoteVolume, unit: volumeUnit, fresh: !stale)
-  }
-
-  private var openInterestText: String? {
-    HeaderStats.openInterestText(value: openInterest, unit: openInterestUnit)
-  }
-
-  private var marketCapText: String? {
-    HeaderStats.marketCapText(totalSupply: totalSupply, price: lastPrice, fresh: !stale)
-  }
-
-  private var fundingText: String? {
-    HeaderStats.fundingText(rate: fundingRate, fresh: !stale)
-  }
-
-  private var valuationCell: (label: String, value: String?)? {
-    HeaderStats.valuationCell(asset: asset, openInterest: openInterest, totalSupply: totalSupply,
-                              price: lastPrice, forwardEarnings: forwardEarnings,
-                              revenue: revenue, fresh: !stale)
-  }
-
-  /// 每列按最宽的实值分配；间距固定，不缩字、不截字、不换行。
-  /// 列距 16、标签↔值 8、行距 2：三行总高约 47pt（原来 53），不向图表借高度。
-  /// 六格：左列仓 / 市值 / 结算，右列额 / 费率 / 估值（振幅 2026-09-25 去掉，
-  /// 同日用户要把第六格补成估值：币 O/M，股票 FPE 或 P/S，别的类别没有这一格）。
-  private var stats: some View {
-    HStack(alignment: .top, spacing: Space.l) {
-      statColumn {
-        statRow("仓", openInterestText, cell: .openInterest, id: "top.openInterest", term: .openInterest)
-        statRow("市值", marketCapText, cell: .marketCap, id: "top.marketCap")
-        settlementRow
-      }
-      statColumn {
-        statRow("额", turnoverText, cell: .turnover, id: "top.turnover", term: .turnover)
-        statRow("费率", fundingText, cell: .funding, id: "top.funding", tint: frTint)
-        if let cell = valuationCell {
-          statRow(cell.label, cell.value, cell: .valuation, id: "top.valuation", term: Self.valuationTerm(cell.label))
-        }
-      }
-    }
-    .lineLimit(1)
-    .fixedSize(horizontal: true, vertical: false)
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("top.stats")
-  }
-
-  private func statColumn<Rows: View>(@ViewBuilder _ rows: () -> Rows) -> some View {
-    Grid(alignment: .leading, horizontalSpacing: Space.s, verticalSpacing: Space.xxs) { rows() }
-  }
-
-  private func statRow(_ label: String, _ value: String?, cell: ArrivalBoard.HeaderCell, id: String,
-                       tint: Color? = nil, term: GlossaryTerm? = nil) -> some View {
-    GridRow {
-      statLabel(label, term: term)
-      if skeleton(cell, hasValue: value != nil) {
-        skeletonBar(id: id)
-      } else {
-        statValue(value ?? "—", missing: value == nil, id: id, tint: tint)
-      }
-    }
-  }
-
-  /// 冷切过来、这一格的数还在路上：画自选行那种骨架条，不画「—」。
-  /// 「—」只留给真没有的（这家没有持仓量、后端说没有供应量、等过了 `ArrivalBoard.deadline`）。
-  private var pending: ArrivalBoard.HeaderPending { ArrivalBoard.live.header(for: instrument) }
-
   private func skeleton(_ cell: ArrivalBoard.HeaderCell, hasValue: Bool) -> Bool {
-    ArrivalBoard.showsSkeleton(cell, hasValue: hasValue, pending: pending, hasPrice: lastPrice != nil)
-  }
-
-  private func skeletonBar(id: String) -> some View {
-    // 高度借一个隐藏的同字号字符撑出来：骨架换成数的那一下，行高一点不变。
-    Text(verbatim: "0").font(TypeScale.captionEmph).hidden()
-      .frame(width: 40)
-      .overlay(RoundedRectangle(cornerRadius: Radius.xs).fill(SymbolRowInk.rule(theme)).frame(height: 11))
-      .gridColumnAlignment(.trailing)
-      .accessibilityIdentifier(id)
-      .accessibilityLabel("载入中")
-  }
-
-  /// 倒计时独立刷新，缺数与其它格一样显示破折号。
-  private var settlementRow: some View {
-    GridRow {
-      statLabel("结算")
-      TimelineView(.periodic(from: .now, by: 30)) { context in
-        let text = countdownText(now: context.date)
-        if skeleton(.settlement, hasValue: text != nil) {
-          skeletonBar(id: "top.settlement")
-        } else {
-          statValue(text ?? "—", missing: text == nil, id: "top.settlement")
-        }
-      }
-      .gridColumnAlignment(.trailing)
-    }
-  }
-
-  private func countdownText(now: Date) -> String? {
-    guard !stale, fundingRate != nil else { return nil }
-    return HeaderStats.fundingCountdownText(nextFundingTimeMs: nextFundingTimeMs, period: fundingPeriod, now: now)
-  }
-
-  /// 费率的正负是它唯一要读的信息，按涨跌色给，与价格和涨跌小字使用同两支色。
-  private var frTint: Color? {
-    guard !stale, let r = fundingRate, r.isFinite, r != 0 else { return nil }
-    return r > 0 ? theme.up : theme.down
-  }
-
-  /// 标签后面可以挂一颗术语问号（`TermMark`）：颜色跟着标签、命中区 32 但不撑大这一行。
-  /// 「市值」一看就懂，不挂。
-  private func statLabel(_ text: String, term: GlossaryTerm? = nil) -> some View {
-    HStack(spacing: 0) {
-      Text(text)
-      if let term { TermMark(term, theme: theme) }
-    }
-    .font(TypeScale.caption2)
-    .foregroundStyle(theme.ink3)
-    .gridColumnAlignment(.leading)
-  }
-
-  /// 第六格的标签是哪一种估值，就挂哪一条解释。
-  static func valuationTerm(_ label: String) -> GlossaryTerm? {
-    switch label {
-    case "O/M": .oiToMarketCap
-    case "FPE": .forwardPE
-    case "P/S": .priceToSales
-    default: nil
-    }
-  }
-
-  private func statValue(_ text: String, missing: Bool, id: String,
-                         tint: Color? = nil) -> some View {
-    Text(text)
-      .font(TypeScale.captionEmph)
-      .monospacedDigit()
-      .foregroundStyle(missing || stale ? theme.ink3 : (tint ?? theme.ink))
-      .gridColumnAlignment(.trailing)
-      .accessibilityIdentifier(id)
+    ArrivalBoard.showsSkeleton(cell, hasValue: hasValue, pending: ArrivalBoard.live.header(for: instrument),
+                              hasPrice: lastPrice != nil)
   }
 }

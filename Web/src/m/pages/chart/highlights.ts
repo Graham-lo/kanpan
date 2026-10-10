@@ -1,8 +1,8 @@
 /* Hkline 手机网页 · 行情页的「盘口要点」：入口条 + 半页 + 图上带子
  *
- * 入口条（图下方那一行）：有价位或事件时 44 高，「⌃ 要点  下方 86,120 买区 35M · 挂 48 分」；
- *   没有要点（或还没取到、服务端还没跟这只）缩成 16 高的抓手。高度变化 200 ms，图跟着伸缩。
- *   点它或在它上面往上滑开半页。宏观品种、横屏画线台、复盘回放里整条不出现。
+ * 入口条（报价下方、周期条上方那一行）：有价位或事件时 44 高，「要点  下方 86,120 买区 35M · 挂 48 分  ›」；
+ *   没有要点（或还没取到、服务端还没跟这只）收起。高度变化 200 ms，图跟着伸缩。
+ *   点击打开盘口洞察。宏观品种、横屏画线台、复盘回放里整条不出现。
  * 取数：页面开着时每 60 秒一次，半页开着时 30 秒一次；换品种立刻重取并收半页。
  * 带子：点开一条价位画价区带（半页盖着看不见，「回图」时露出来）；事件「回图」画时段带。
  *   用「回图」关的半页带子留着，其他方式关的撤掉；换品种或再开半页时撤掉。
@@ -15,7 +15,6 @@ import { fetchHighlights, type Highlights, type Level, type HlEvent } from '../.
 import { HL } from '../../../terms'
 import { bandPx, eventAt, eventSpan, eventTime, stripSentence } from '../../../highlights/format'
 import { HighlightsSheet, type Focus, type SheetState } from './highlightsSheet'
-import { shouldOpenInsightSwipe } from './insights'
 import { takeHighlightIntent } from './highlightIntent'
 
 export const STRIP_POLL_MS = 60_000
@@ -27,7 +26,7 @@ export interface HighlightsDeps {
   page: HTMLElement
   chart: ChartHandle
   symbol(): string
-  /** 行情头（价格 + 六格）：半页顶边贴它的下沿 */
+  /** 行情头（价格 + 涨跌）：半页顶边贴它的下沿 */
   head(): HTMLElement
   /** 这会儿不出入口条（宏观品种 / 横屏 / 回放） */
   hidden(): boolean
@@ -56,9 +55,9 @@ export class HighlightsController {
     const s = this.strip = el('button', 'cp-insight-entry hl-strip thin')
     s.type = 'button'
     s.setAttribute('aria-label', HL.open)
-    s.innerHTML = `<svg class="ch" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg><span class="k">${HL.entry}</span><span class="t"></span><i class="hd" aria-hidden="true"></i>`
+    s.innerHTML = `<span class="k">${HL.entry}</span><span class="t"></span><svg class="ch" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`
     this.textEl = s.querySelector<HTMLElement>('.t')!
-    d.page.append(s)
+    d.page.insertBefore(s, d.page.querySelector('.cp-ivrow'))
     this.band = new HighlightBand(d.chart)
     this.wireStrip()
   }
@@ -167,20 +166,19 @@ export class HighlightsController {
 
   private wireStrip(): void {
     const s = this.strip
-    let swipe: { x: number; y: number; at: number } | null = null, suppress = 0
+    let swipe: { x: number; y: number } | null = null, suppress = 0
     s.addEventListener('click', () => { if (performance.now() >= suppress) this.open() })
     s.addEventListener('pointerdown', e => {
       if (!e.isPrimary) return
-      swipe = { x: e.clientX, y: e.clientY, at: performance.now() }
+      swipe = { x: e.clientX, y: e.clientY }
       try { s.setPointerCapture(e.pointerId) } catch { /* 指针已经结束 */ }
     })
     s.addEventListener('pointerup', e => {
       const start = swipe; swipe = null
       if (!start) return
       const dx = e.clientX - start.x, dy = e.clientY - start.y, now = performance.now()
-      // 拖动结束后浏览器可能补发 click：明显拖过就吞掉，只有合格上滑才开
+      // 拖动结束后浏览器可能补发 click：明显拖过就吞掉，入口只响应点击。
       if (Math.hypot(dx, dy) > 10) suppress = now + 500
-      if (shouldOpenInsightSwipe(dx, dy, now - start.at, start.x, innerWidth)) this.open()
     })
     s.addEventListener('pointercancel', () => { swipe = null; suppress = performance.now() + 500 })
   }

@@ -9,9 +9,8 @@ func highlightText(_ runs: [HighlightRun], strong: Color) -> Text {
   }
 }
 
-/// 行情画布下沿的「要点」入口条（原型 §7 / §8）：有价位或事件时 44 pt 一句话（离现价最近的价位，
-/// 没价位写 1 时净主动）；什么都没有时缩成 16 pt 的抓手，高度还给图。点按或上滑 ≥ 48 pt
-/// （纵向超过横向 1.8 倍）打开半页，横拖不算。
+/// 报价下方、周期条上方的一行要点；没有内容时收起。
+/// 点击打开盘口洞察。
 struct HighlightsEntryStrip: View {
   let model: HighlightsModel
   /// 现价（每枚币）：价区包住它时那句写「现价内 a–b」，并优先取那条。
@@ -29,41 +28,33 @@ struct HighlightsEntryStrip: View {
 
   var body: some View {
     let runs = sentence
-    Group {
+    // 保留零高度宿主，没内容时外层 task 仍会启动轮询。
+    VStack(spacing: 0) {
       if let runs {
         HStack(spacing: Space.s) {
-          Image(systemName: "chevron.up").font(TypeScale.caption2Emph).foregroundStyle(t.amber)
           Text(HighlightTerm.entry.text).font(TypeScale.controlOn).foregroundStyle(t.amber)
           highlightText(runs, strong: t.ink)
             .font(TypeScale.footnote).foregroundStyle(t.ink2)
             .monospacedDigit().lineLimit(1).minimumScaleFactor(0.85)
             .contentTransition(.numericText())
           Spacer(minLength: 0)
+          Image(systemName: "chevron.right").font(TypeScale.caption2Emph).foregroundStyle(t.ink3)
         }
-        .padding(.horizontal, Space.l)
+        .pageHorizontalInset()
         .frame(height: Hit.min)
-      } else {
-        Capsule().fill(t.ink3.opacity(0.45)).frame(width: 36, height: 4)
-          .frame(maxWidth: .infinity).frame(height: 16)
       }
     }
+    .frame(maxWidth: .infinity)
     .contentShape(Rectangle())
     .opacity(model.stale ? 0.6 : 1)
     .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.2), value: runs == nil)
-    .gesture(TapGesture().exclusively(before: DragGesture(minimumDistance: 12)).onEnded { value in
-      switch value {
-      case .first: Haptics.press(); open()
-      case .second(let drag):
-        if drag.translation.height < -48, abs(drag.translation.height) > abs(drag.translation.width) * 1.8 {
-          Haptics.press(); open()
-        }
-      }
-    })
+    .onTapGesture { Haptics.press(); open() }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(HighlightTerm.title.text)
     .accessibilityValue(runs?.plain ?? "")
     .accessibilityAddTraits(.isButton)
     .accessibilityAction { open() }
     .accessibilityIdentifier("highlights.entry")
+    .accessibilityHidden(runs == nil)
   }
 }

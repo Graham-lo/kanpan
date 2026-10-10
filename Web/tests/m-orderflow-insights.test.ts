@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { beijingDayStart, buildInsights, flowObservation, InsightPoller, matchesChart, nearestInsightOrders, parseInsights, priceReaction, shouldOpenInsightSwipe, type InsightBody, type InsightInput } from '../src/m/pages/chart/insights'
+import { beijingDayStart, buildInsights, flowObservation, InsightPoller, matchesChart, nearestInsightOrders, parseInsights, priceReaction, type InsightBody, type InsightInput } from '../src/m/pages/chart/insights'
 import type { BigOrder } from '../src/orderflow/types'
 import type { Bar } from '../src/chart/calc'
 const M = 60_000, NOW = Date.UTC(2026, 9, 9, 9, 20, 10), END = Math.floor((NOW - 3000) / M) * M
@@ -95,14 +95,7 @@ describe('盘口洞察 · 真实数据与覆盖', () => {
     const margin = buildInsights(input({ now: END + 1000, body: null, state: 'error', liq: marginLiq }))
     expect(margin.sections.find(s => s.id === 'liquidation')!.rows[0].note).toBe('该时段未观测到爆仓')
   })
-  it('系统边缘、横滑、缓慢移动与图表外非入口不会触发上滑', () => {
-    expect(shouldOpenInsightSwipe(5, -80, 300, 180, 393)).toBe(true)
-    expect(shouldOpenInsightSwipe(5, -48, 300, 180, 393)).toBe(true)
-    expect(shouldOpenInsightSwipe(5, -80, 300, 10, 393)).toBe(false)
-    expect(shouldOpenInsightSwipe(80, -80, 300, 180, 393)).toBe(false)
-    expect(shouldOpenInsightSwipe(5, -80, 1300, 180, 393)).toBe(false)
-    expect(shouldOpenInsightSwipe(0, 80, 300, 180, 393)).toBe(false)
-  })
+
 })
 
 describe('盘口洞察 · 请求生命周期', () => {

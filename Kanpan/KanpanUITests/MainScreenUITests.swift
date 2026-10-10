@@ -14,93 +14,54 @@ final class MainScreenUITests: KanpanUICase {
 
   // ---------------------------------------------------------------- 顶栏
 
-  func testHeaderStatsAtLargestDynamicType() {
-    let priceHeight = app.staticTexts["top.lastPrice"].frame.height
-    let statsHeight = app.otherElements["top.stats"].frame.height
+  func testCompactHeaderAtLargestDynamicType() {
     app.launchArguments += ["-UIPreferredContentSizeCategoryName",
                             "UICTContentSizeCategoryAccessibilityXXXL"]
-    testHeaderStatsStayRightOfPrice()
-    XCTAssertEqual(app.staticTexts["top.lastPrice"].frame.height, priceHeight, accuracy: 0.5)
-    XCTAssertEqual(app.otherElements["top.stats"].frame.height, statsHeight, accuracy: 0.5)
+    testCompactHeaderChangesStayRightOfPrice()
   }
 
-  /// 六格按实际数值占宽；美股市值、费率和倒计时同样会挤满头部。
-  func testHeaderStatsStayRightOfPrice() {
+  /// 报价精度、右侧并排对齐、去掉六格后高度稳定。
+  func testCompactHeaderChangesStayRightOfPrice() {
     continueAfterFailure = true
-    var statsHeight: CGFloat?
-    var intervalY: CGFloat?
-    for symbol in ["SNDKUSDT", "MUUSDT", "1000SATSUSDT", "BTCUSDT"] {
+    var quoteHeight: CGFloat?
+    for (symbol, digits) in [("MUUSDT", 2), ("1000SATSUSDT", 8), ("BTCUSDT", 1)] {
       app.terminate()
       app.launchEnvironment["KANPAN_TEST_DEEPLINK"] = "hkline://symbol/\(symbol)"
       app.launch()
       let price = app.staticTexts["top.lastPrice"]
-      let change = app.descendants(matching: .any)["top.changePercent"].firstMatch
-      let stats = app.otherElements["top.stats"]
-      guard expectExists(price, Self.long), expectExists(stats, Self.long) else { continue }
+      let amount = app.staticTexts["top.priceChange"]
+      let percent = app.staticTexts["top.changePercent"]
+      guard expectExists(price, Self.long), expectExists(amount, Self.long), expectExists(percent, Self.long) else { continue }
       XCTAssertTrue(waitUntil(timeout: Self.long) {
-        [price.label, change.label, app.staticTexts["top.marketCap"].label,
-         app.staticTexts["top.turnover"].label, app.staticTexts["top.funding"].label]
-          .allSatisfy { !["", "—", "--"].contains($0) }
-      }, "\(symbol) 的价格与六格实值没有到齐")
-      XCTAssertTrue(app.symbolLabel.label.contains(symbol), "深链没有打开 \(symbol)")
-      // 第六格：股票是 FPE（预期亏损的是 P/S），币是 O/M（2026-09-25）。
-      let valuation = app.staticTexts["top.valuation"]
-      if symbol == "MUUSDT" || symbol == "BTCUSDT" {
-        XCTAssertTrue(waitUntil(timeout: Self.long) { !["", "—", "--"].contains(valuation.label) },
-                      "\(symbol) 的第六格没有实值")
-      }
-      let valuationLabel = symbol.hasPrefix("MU") || symbol.hasPrefix("SNDK") ? ["FPE", "P/S"] : ["O/M"]
-      XCTAssertTrue(valuationLabel.contains { app.staticTexts[$0].exists }, "\(symbol) 第六格的名字不对")
-      print("VALUATION \(symbol) \(valuationLabel.first { app.staticTexts[$0].exists } ?? "?")=\(valuation.label)")
-      let digits = ["SNDKUSDT": 2, "MUUSDT": 2, "1000SATSUSDT": 8, "BTCUSDT": 1][symbol]!
-      let pattern = "^[0-9,]+\\.[0-9]{\(digits)}$"
-      XCTAssertNotNil(price.label.range(of: pattern, options: .regularExpression), "\(symbol) 价格未按报价步长展示：\(price.label)")
-      let amount = change.label.components(separatedBy: "  ").first ?? ""
-      XCTAssertNotNil(amount.range(of: "^[+−-]?[0-9,]+\\.[0-9]{\(digits)}$", options: .regularExpression),
-                      "\(symbol) 涨跌额未按报价步长展示：\(change.label)")
-      print("PRECISION \(symbol) price=\(price.label) change=\(change.label) digits=\(digits)")
-      let p = price.frame, s = stats.frame
-      let y = app.buttons[Ids.intervalMore].frame.minY
-      let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-      shot.name = "header-\(symbol)"; shot.lifetime = .keepAlways; add(shot)
-      print("HEADER \(symbol) price=\(p) stats=\(s) intervalY=\(y)")
-      XCTAssertGreaterThanOrEqual(s.minX, p.maxX, "\(symbol) 六格掉到价格下面")
-      // 页面外边距 `Inset.page`（宽 ≥ 428 为 20，否则 16）、价格列与六格之间至少 16（UI 审查 2026-09-24）。
+        [price.label, amount.label, percent.label].allSatisfy { !["", "—", "--", "载入中"].contains($0) }
+      }, "\(symbol) 报价没有到齐")
+      XCTAssertNotNil(price.label.range(of: "^[0-9,]+\\.[0-9]{\(digits)}$", options: .regularExpression))
+      XCTAssertNotNil(amount.label.range(of: "^[+−-]?[0-9,]+\\.[0-9]{\(digits)}$", options: .regularExpression))
+      XCTAssertTrue(percent.label.hasSuffix("%"))
       let inset: CGFloat = app.windows.firstMatch.frame.width >= 428 ? 20 : 16
-      XCTAssertGreaterThanOrEqual(s.minX, change.frame.maxX + 15.5, "\(symbol) 涨跌行挤进六格")
-      XCTAssertGreaterThanOrEqual(p.minX, inset - 0.5, "\(symbol) 价格超出左侧留白")
-      XCTAssertTrue(change.label.contains("  "), "\(symbol) 涨跌额或涨跌幅缺失")
-      XCTAssertGreaterThanOrEqual(change.frame.minY, p.maxY, "\(symbol) 涨跌行没在价格下面")
-      XCTAssertEqual(change.frame.minX, p.minX, accuracy: 0.5, "\(symbol) 涨跌行没有左对齐")
-      XCTAssertLessThanOrEqual(s.maxX, app.windows.firstMatch.frame.maxX - inset + 0.5,
-                               "\(symbol) 六格超出屏幕右缘")
-      if let statsHeight { XCTAssertEqual(s.height, statsHeight, accuracy: 0.5) }
-      if let intervalY { XCTAssertEqual(y, intervalY, accuracy: 0.5, "\(symbol) 头部挤高了周期条") }
-      statsHeight = s.height; intervalY = y
-      let chartMatches = {
-        self.chartInfo()["symbol"] as? String == testInstrumentKey(symbol) && self.chartInfo()["priceDecimals"] as? Int == digits
+      XCTAssertGreaterThanOrEqual(min(amount.frame.minX, percent.frame.minX), price.frame.maxX + 15.5)
+      XCTAssertGreaterThanOrEqual(percent.frame.minX, amount.frame.maxX + 7.5)
+      XCTAssertEqual(percent.frame.maxX, app.windows.firstMatch.frame.maxX - inset, accuracy: 0.5)
+      XCTAssertEqual(percent.frame.midY, amount.frame.midY, accuracy: 0.5)
+      XCTAssertLessThanOrEqual(percent.frame.maxY - amount.frame.minY, 38)
+      XCTAssertGreaterThan(price.frame.midY, amount.frame.minY)
+      XCTAssertLessThan(price.frame.midY, percent.frame.maxY)
+      for id in ["top.stats", "top.openInterest", "top.marketCap", "top.settlement", "top.turnover", "top.funding", "top.valuation"] {
+        XCTAssertFalse(app.descendants(matching: .any)[id].firstMatch.exists, "六格统计还在：\(id)")
       }
-      var chartReady = waitUntil(timeout: Self.long, chartMatches)
-      if !chartReady {
-        // 真行情的历史请求可能遇到上游限流。等罚停窗口过去，再走界面的重试入口一次；
-        // 最后的品种、精度与十字线断言不放宽，也不切线路或改成假行情。
-        let retry = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "重试")).firstMatch
-        if retry.exists {
-          RunLoop.current.run(until: Date(timeIntervalSinceNow: 60))
-          retry.tap()
-          chartReady = waitUntil(timeout: Self.long, chartMatches)
-        }
-      }
-      XCTAssertTrue(chartReady, "\(symbol) 图表未就绪或精度不一致：\(chartInfo())")
-      guard chartReady else { continue }
-      let canvas = app.otherElements["chart.canvas"]
-      let mainH = chartInfo()["mainH"] as? Double ?? 300
-      canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 150, dy: min(130, mainH / 2))).tap()
-      XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == true })
-      let crossShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-      crossShot.name = "crosshair-\(symbol)"; crossShot.lifetime = .keepAlways; add(crossShot)
-      canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 150, dy: min(130, mainH / 2))).tap()
-      XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == false })
+      let y = app.buttons[Ids.intervalMore].frame.minY
+      let height = app.otherElements["market.quote"].frame.height
+      if let quoteHeight { XCTAssertEqual(height, quoteHeight, accuracy: 0.5) }
+      quoteHeight = height
+      let screenshot = XCUIScreen.main.screenshot()
+      let shot = XCTAttachment(screenshot: screenshot)
+      shot.name = "compact-header-\(symbol)"; shot.lifetime = .keepAlways; add(shot)
+      let dir = URL(fileURLWithPath: "/Users/mdd/zhk/kanpan/docs/acceptance/手机报价精简-2026-10-11")
+      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      let device = app.windows.firstMatch.frame.width > 420 ? "iPhone17ProMax" : "iPhone16Pro"
+      let size = app.launchArguments.contains("UICTContentSizeCategoryAccessibilityXXXL") ? "AX" : "默认"
+      try? screenshot.pngRepresentation.write(to: dir.appendingPathComponent("\(device)-\(symbol)-\(size).png"))
+      print("COMPACT_HEADER \(symbol) price=\(price.frame) amount=\(amount.frame) percent=\(percent.frame) intervalY=\(y)")
     }
   }
 

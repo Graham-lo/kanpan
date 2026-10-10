@@ -5,9 +5,8 @@ import XCTest
 // 这一轮五件事人眼能看见的那一半：
 // 1. 顶栏右侧三颗圆片（2026-10-08 起是「提醒铃 · ⋯ · 搜索」，记一笔 / 分享 / 添加对比收进「⋯」菜单），
 //    图表设置里「这张图」整节没了；
-// 2. 六格里「仓 / 额 / 估值」后面各一颗问号（费率、结算、市值一看就懂，不挂），点开屏幕正中一张解释卡，
-//    「知道了」和点遮罩都能关；从半屏面板（系统 sheet）里点开时卡片照样落在最上层；
-//    从问号上起手横滑仍然换品种（不吞扫图）；
+// 2. 10-11 六格统计撤掉，只保留单行价格与右侧涨跌；半屏面板里的术语卡仍在最上层；
+//    从涨跌额上起手横滑仍然换品种。
 // 3. 断网之后价格与涨跌变灰，网回来恢复（`market.quote` 诊断串里的 `fresh=`）；
 // 4. 板块品种列表拉到底，最后一行整行落在底栏上沿以上；
 // 5. 板块副文案只有「a/n 跑赢大盘」。
@@ -127,43 +126,12 @@ final class TermMarkTopBarUITests: KanpanUICase {
                    "「记一笔 / 分享 / 添加对比」还摆在顶栏上，没收进「⋯」")
     XCTAssertLessThan(app.symbolLabel.frame.maxX, alerts.frame.minX, "品种名压到了「提醒」上")
 
-    // 六格：仓 · 额 · 估值（BTC 是 O/M）各一颗问号；市值、费率、结算一看就懂，不挂。
-    for term in ["openInterest", "turnover", "oiToMarketCap"] {
-      XCTAssertTrue(any("term." + term).waitForExistence(timeout: Self.long), "六格里没有 term.\(term)")
+    // 10-11 六格统计已撤，价格右侧只保留涨跌额与涨跌幅。
+    for id in ["top.stats", "term.openInterest", "term.turnover", "term.oiToMarketCap"] {
+      XCTAssertFalse(any(id).exists, "已撤的头部统计仍在：\(id)")
     }
-    for term in ["marketCap", "fundingRate", "settlement"] {
-      XCTAssertFalse(any("term." + term).exists, "term.\(term) 不该挂问号")
-    }
-    // 不换行：量的是值文字本身（`top.stats` 这个容器的无障碍框会被问号 32pt 的命中框撑出去，
-    // 那不是排版）。每格一行（< 20pt），首行「仓」顶到末行「结算」底三行不超过 50pt（原排版约 47）。
-    let rows = ["top.openInterest", "top.turnover", "top.marketCap", "top.funding", "top.settlement", "top.valuation"]
-    for id in rows {
-      let el = any(id)
-      XCTAssertTrue(el.waitForExistence(timeout: Self.short), "六格里没有 \(id)")
-      XCTAssertLessThan(el.frame.height, 20, "\(id) 折行了：\(el.frame)")
-    }
-    let band = any("top.settlement").frame.maxY - any("top.openInterest").frame.minY
-    XCTAssertLessThan(band, 50, "六格三行撑高了：\(band)")
-    // 问号不撑宽标签：「仓」标签那一格和「市值」同一列左对齐，值列也还是对齐的。
-    XCTAssertEqual(any("top.openInterest").frame.maxX, any("top.marketCap").frame.maxX, accuracy: 1,
-                   "左列值没对齐（问号撑宽了标签列？）")
-    shot("青苔浅-顶栏三圆片与六格问号")
-
-    // 问号 → 卡片 → 「知道了」关。
-    openCard("openInterest", titleContains: "持仓")
-    XCTAssertEqual(card.frame.width, 280, accuracy: 1, "卡片宽不是 280：\(card.frame)")
-    XCTAssertEqual(card.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 1, "卡片没有水平居中")
-    shot("青苔浅-术语卡-仓")
-    closeCardWithOK()
-
-    // 点遮罩也能关（卡片外的上方空处）。
-    openCard("oiToMarketCap", titleContains: "持仓÷市值")
-    app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
-    XCTAssertTrue(card.waitForNonExistence(timeout: Self.short), "点遮罩卡片没关")
-
-    // 「额」那颗也开得出来、关得掉。
-    openCard("turnover", titleContains: "成交额")
-    closeCardWithOK()
+    XCTAssertTrue(any("top.priceChange").exists && any("top.changePercent").exists)
+    shot("青苔浅-精简报价与顶栏三圆片")
 
     // 图表设置里「这张图」整节没了，只剩 K 线 · 显示 · 价格轴。
     app.buttons[Ids.intervalChart].tap()
@@ -204,12 +172,9 @@ final class TermMarkTopBarUITests: KanpanUICase {
     let fold = app.buttons["收起"]
     if fold.exists { fold.tap() }
 
-    // 陶土、经典各看一眼卡片。
     for (skin, label) in [("terra", "陶土浅"), ("classic", "经典浅")] {
       setSkin(skin)
-      openCard("turnover", titleContains: "成交额")
-      shot("\(label)-术语卡-额")
-      closeCardWithOK()
+      shot("\(label)-精简报价")
     }
   }
 
@@ -249,7 +214,7 @@ final class TermMarkTopBarUITests: KanpanUICase {
 
   // ------------------------------------------------------------ 2：有返回键时品种名不截断；问号上起手横滑照样换品种
 
-  func testScanSwipeFromTermMarkAndLongSymbolWithBack() throws {
+  func testScanSwipeFromChangeAndLongSymbolWithBack() throws {
     XCTAssertTrue(app.openFavorites(), "进不了自选页")
     let row = app.buttons["favorites.open." + testInstrumentKey("PUMPBTCUSDT")]
     expectExists(row, Self.long, "自选页上没有 PUMPBTCUSDT")
@@ -270,13 +235,13 @@ final class TermMarkTopBarUITests: KanpanUICase {
                          "返回键与右侧圆片之间给品种块留的不到 200pt")
     shot("青苔浅-有返回键-PUMPBTC不截断")
 
-    // 从「仓」那颗问号上起手往左划：换到名单里的下一只（BTC），不弹卡片。
-    let mark = any("term.openInterest")
+    // 从右侧涨跌额上起手往左划：换到名单里的下一只（BTC），不弹卡片。
+    let mark = any("top.priceChange")
     XCTAssertTrue(mark.waitForExistence(timeout: Self.long))
     let start = mark.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
     start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -220, dy: 0)))
     XCTAssertTrue(waitUntil(timeout: Self.long) { self.symbolOnChart() == "BTCUSDT" },
-                  "从问号上起手横滑没换到下一只（现在是 \(symbolOnChart())）")
+                  "从涨跌额上起手横滑没换到下一只（现在是 \(symbolOnChart())）")
     XCTAssertFalse(card.exists, "横滑弹出了术语卡")
     // 扫到 BTC 返回键还在：「徽章 BTC/USDT 永续」约 143pt，194pt 的品种块整行放得下（10-08 起右侧三颗）。
     XCTAssertTrue(app.buttons[Ids.topBack].exists, "横滑扫图后返回键没了")

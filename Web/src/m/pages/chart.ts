@@ -1,6 +1,6 @@
 /* 手机网页版 · 行情页（照 iOS Main/MainScreen.swift、ChartHost.swift、LandscapeChrome.swift）
  *
- * 竖屏：顶栏 · 头部（价格 + 六格）· 周期条 · 图（主图 + 副图，同一屏）；图下沿让出底栏。
+ * 竖屏：顶栏 · 头部（价格 + 涨跌）· 要点 · 周期条 · 图（主图 + 副图，同一屏）；图下沿让出底栏。
  * 横屏（手机横过来，高 ≤ 500）：画线工作台——左周期栏 · 中间 [品种胶囊、选中栏、图、画线条] · 右「画线 / 竖屏」；
  *   底栏让位（#m-app.landscape-free），图上不画副图与主力订单流；主图指标由品种胶囊行右端的眼睛管（drawingOverlaysShown），
  *   开着照画但价格轴只按 K 线定，「主图˅」就地换主图指标；横竖各记一份根宽（barSpacing / landscapeBarSpacing）。浏览器转不了屏：竖屏点「开始画线」出一层引导，
@@ -324,7 +324,7 @@ export function initChart(root: HTMLElement): PageHandle {
   chart.on('notice', t => toast(t))
   chart.on('crosshair', e => {
     const x = e.crosshair, b = e.bar
-    // 照 iOS：十字线落在任何一格（主图或副图）上，周期条那一行让位给这一根的读数（头部价格、六格照旧实时）；「创建提醒」只在主图上出
+    // 照 iOS：十字线落在任何一格（主图或副图）上，周期条那一行让位给这一根的读数（头部价格与涨跌照旧实时）；「创建提醒」只在主图上出
     const alive = !!x && !!b
     const onMain = alive && x!.pane == null
     const s = S.symbols.get(sym())
@@ -396,7 +396,7 @@ export function initChart(root: HTMLElement): PageHandle {
     // 别家的品种看那一家的表（S.venues），币安 / 美元指数看全市场表
     const stale = isStale({ flag: st.stale, live: liveOf(sym()), lastTick: s?.lastTick ?? null, now }) || s?.closed === true
     topBar.render(sym(), nav.origin != null && nav.origin !== 'chart', st.compareSymbols.length >= MAX_COMPARE, pendingCount(sym()))
-    header.render(sym(), stale, now)
+    header.render(sym(), stale)
     ivBar.render({ quick: st.quickIntervals, current: iv() })
     bench.renderRail()
     bench.renderQuote()

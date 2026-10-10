@@ -37,7 +37,7 @@ import KanpanAccount
 
 /// 主界面（§9.1）。
 ///
-/// 从上到下：顶栏 → 价格行 → 周期条 → 图（占满剩下的）→ 常驻标签栏。
+/// 从上到下：顶栏 → 单行报价 → 要点 → 周期条 → 图（占满剩下的）→ 常驻标签栏。
 ///
 /// 2026-09-18 底栏改成了常驻标签栏（`TabBar`）：画线 · 图表 · 自选 · 设置，
 /// 四格各是一张整页，底栏永远在，换页就是换一格（用户的话是「大部分 app 把常用的
@@ -815,10 +815,15 @@ struct MainScreen: View {
     if next == .chart, atLatest { proxy.scrollToLatest(animated: false) }
   }
 
-  /// 行情页那一整页：顶栏 → 价格行 → 周期条 → 图。
+  /// 行情页那一整页：顶栏 → 单行报价 → 要点 → 周期条 → 图。
   private var chartPage: some View {
     VStack(spacing: 0) {
       if reviewChart.mode == .replay { reviewHeader } else { HighlightsHeaderGuard(header: header, model: highlights) }
+      if !reviewChart.active && !draw.active && !landscape && !drawingCanvasOnly && market.capabilities.hasOrderFlow {
+        HighlightsEntryHost(model: highlights, market: market) {
+          dismissPanel(); market.orderFlow.sheet.close(); highlights.open = true
+        }
+      }
       hairline
       // 十字线活着时这一行换成「创建提醒」那一颗（`IntervalRow` / `CrosshairActionBar`）。
       if !reviewChart.active { IntervalRow(
@@ -845,11 +850,7 @@ struct MainScreen: View {
         captureCard
       } }
       replayControls
-      if !reviewChart.active && !draw.active && !landscape && !drawingCanvasOnly && market.capabilities.hasOrderFlow {
-        HighlightsEntryHost(model: highlights, market: market) {
-          dismissPanel(); market.orderFlow.sheet.close(); highlights.open = true
-        }
-      }
+
       hairline
       if draw.active {
         DrawingBar(controller: draw, lineAlert: lineAlert)

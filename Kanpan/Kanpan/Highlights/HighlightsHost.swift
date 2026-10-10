@@ -6,7 +6,7 @@ import UIKit
 // 「盘口要点」挂到行情页上的两块接线。都是非泛型 struct：`MainScreen` 那条 body 链有类型嵌套上限
 // （见 `MainScreen.swift` 文件头），观察者和测量不许接回 `chartPage` 上。
 
-/// 行情画布下沿的入口条 + 轮询。入口条在才拉（行情页、竖屏、非复盘非画线、这只有订单流）。
+/// 报价下方的点击入口条 + 轮询。入口条在才拉（行情页、竖屏、非复盘非画线、这只有订单流）。
 struct HighlightsEntryHost: View {
   let model: HighlightsModel
   let market: MarketModel
@@ -31,7 +31,7 @@ struct HighlightsEntryHost: View {
   }
 }
 
-/// 行情头：量它的下沿（泛型只多套一层 `HighlightsHeaderGuard<…>`，修饰符在它自己的 body 里，不进主链）定半页高度（屏高 − 头部下沿，价格、涨跌、六格一直露着）；半页开着时点头部只收半页
+/// 行情头：量它的下沿（泛型只多套一层 `HighlightsHeaderGuard<…>`，修饰符在它自己的 body 里，不进主链）定半页高度（屏高 − 头部下沿，价格与涨跌一直露着）；半页开着时点头部只收半页
 /// （头部上的按钮此刻不接，免得在半页上面再叠一层）。
 struct HighlightsHeaderGuard<Header: View>: View {
   let header: Header
