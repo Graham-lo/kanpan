@@ -290,13 +290,16 @@ public struct HighlightsBoard: Sendable, Equatable, Decodable {
   public var generatedAtMs: Int64
   public var rows: [Row]
 
-  public enum Category: String, Sendable, Equatable, Decodable { case book, oi, funding }
+  /// 分类。认不出的 `cat`（服务端以后加的）整行丢掉，不连累整列（见 `Lossy`）。
+  public enum Category: String, Sendable, Equatable, Decodable { case book, oi, funding, move }
 
   /// 每只取它此刻权重最高的那一条要点。
   public enum Top: Sendable, Equatable {
     case level(HighlightLevel)
     case event(HighlightEvent)
     case position(HighlightPosition)
+    /// 「波动」：1 / 5 分钟里的急涨急跌。
+    case move(HighlightMove)
   }
 
   public struct Row: Sendable, Equatable, Decodable, Identifiable {
@@ -328,6 +331,14 @@ public struct HighlightsBoard: Sendable, Equatable, Decodable {
       price = try? c.decodeIfPresent(Double.self, forKey: .price)
       changePct = try? c.decodeIfPresent(Double.self, forKey: .changePct)
       atMs = (try? c.decode(Int64.self, forKey: .atMs)) ?? 0
+      if cat == .move {
+        // 波动行的字段可能包在 `top` 里，也可能平铺在行上：两种都收。
+        let m = try (try? c.decode(HighlightMove.self, forKey: .top)) ?? HighlightMove(from: decoder)
+        top = .move(m)
+        if price == nil { price = m.price }
+        if atMs == 0 { atMs = m.atMs }
+        return
+      }
       let kind = try c.nestedContainer(keyedBy: KindKey.self, forKey: .top).decode(String.self, forKey: .kind)
       switch kind {
       case "level": top = .level(try c.decode(HighlightLevel.self, forKey: .top))
@@ -351,9 +362,41 @@ public struct HighlightsBoard: Sendable, Equatable, Decodable {
   enum CodingKeys: String, CodingKey { case generatedAtMs, rows }
 }
 
+/// 首页「波动」一行：`{ kind: "moveUp"|"moveDown", window: "1m"|"5m", pct, price, volUsd, atMs }`（`pct` 是百分数）。
+public struct HighlightMove: Sendable, Equatable, Decodable {
+  public enum Window: String, Sendable, Equatable, Decodable { case m1 = "1m", m5 = "5m" }
+  public var up: Bool
+  public var window: Window
+  public var pct: Double
+  public var volUsd: Double?
+  public var price: Double?
+  public var atMs: Int64
+
+  public init(up: Bool, window: Window, pct: Double, volUsd: Double? = nil, price: Double? = nil, atMs: Int64 = 0) {
+    self.up = up; self.window = window; self.pct = pct; self.volUsd = volUsd; self.price = price; self.atMs = atMs
+  }
+
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    switch try c.decode(String.self, forKey: .kind) {
+    case "moveUp": up = true
+    case "moveDown": up = false
+    case let other: throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown move \(other)")
+    }
+    window = try c.decode(Window.self, forKey: .window)
+    pct = try c.decode(Double.self, forKey: .pct)
+    volUsd = try? c.decodeIfPresent(Double.self, forKey: .volUsd)
+    price = try? c.decodeIfPresent(Double.self, forKey: .price)
+    atMs = (try? c.decode(Int64.self, forKey: .atMs)) ?? 0
+  }
+
+  enum CodingKeys: String, CodingKey { case kind, window, pct, volUsd, price, atMs }
+}
+
 /// `/v1/market/board?kind=&window=` 的一份答复：榜单一张卡。
 public struct MarketBoard: Sendable, Equatable, Decodable {
-  public enum Kind: String, Sendable, CaseIterable { case oi, gainers, losers }
+  /// `oi` 增仓、`oidown` 减仓（changePct 为负）、`gainers` 涨幅、`losers` 跌幅。
+  public enum Kind: String, Sendable, CaseIterable { case oi, oidown, gainers, losers }
   public enum Window: String, Sendable, CaseIterable { case h1 = "1h", h4 = "4h", h24 = "24h" }
   public struct Row: Sendable, Equatable, Decodable, Identifiable {
     public var base: String

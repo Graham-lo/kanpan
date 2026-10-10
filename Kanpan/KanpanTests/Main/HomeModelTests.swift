@@ -75,10 +75,56 @@ import KanpanCore
   @Test func boardWindowIsLocalAndDefaultsTo4h() {
     let defaults = UserDefaults(suiteName: "home.tests.\(UUID())")!
     let model = HomeModel(defaults: defaults)
-    #expect(model.window == .h4)
-    model.window = .h24
+    #expect(model.window(for: .change) == .h4)
+    model.setWindow(.h24, for: .change)
     // 只记在本机：写进本机 UserDefaults，下次打开照旧。
     #expect(defaults.string(forKey: HomeModel.windowKey) == MarketBoard.Window.h24.rawValue)
-    #expect(HomeModel(defaults: defaults).window == .h24)
+    #expect(HomeModel(defaults: defaults).window(for: .change) == .h24)
+  }
+
+  @Test func changeAndOiWindowsAreIndependent() {
+    let defaults = UserDefaults(suiteName: "home.tests.\(UUID())")!
+    let model = HomeModel(defaults: defaults)
+    model.setWindow(.h1, for: .change)
+    model.setWindow(.h24, for: .oi)
+    #expect(model.window(for: .change) == .h1)
+    #expect(model.window(for: .oi) == .h24)
+    let reopened = HomeModel(defaults: defaults)
+    #expect(reopened.window(for: .change) == .h1)
+    #expect(reopened.window(for: .oi) == .h24)
+    #expect(HomeModel.Segment.change.windowKey != HomeModel.Segment.oi.windowKey)
+    #expect(HomeModel.Segment.moves.windowKey == nil)
+  }
+
+  @Test func segmentsRouteToTheirOwnBoards() async {
+    #expect(HomeModel.Segment.allCases == [.moves, .change, .oi])
+    #expect(HomeModel.Segment.change.kinds == [.gainers, .losers])
+    #expect(HomeModel.Segment.oi.kinds == [.oi, .oidown])
+    #expect(HomeModel.Segment.moves.kinds.isEmpty)
+    let model = HomeModel(defaults: UserDefaults(suiteName: "home.tests.\(UUID())")!)
+    model.setWindow(.h1, for: .oi)
+    let asked = Asked()
+    await model.loadBoards(segment: .oi) { kind, window in
+      asked.list.append("\(kind.rawValue)@\(window.rawValue)")
+      // 服务端还没上 oidown：那一张失败，另一张照常。
+      guard kind == .oi else { return nil }
+      return MarketBoard(generatedAtMs: 1, rows: [MarketBoard.Row(base: "BTC", changePct: 3, oiUsd: 1e9, price: 1)])
+    }
+    #expect(asked.list.sorted() == ["oi@1h", "oidown@1h"])
+    #expect(model.boards[.oi]?.rows.map(\.base) == ["BTC"])
+    #expect(model.boards[.oidown] == nil)
+    #expect(model.boardFailed.contains(.oidown))
+    #expect(model.boards[.gainers] == nil)
+  }
+
+  @Test func moveRowsOpenTheChartWithoutTheSheet() {
+    var move = row("WIF", at: 1, cat: .move)
+    move.top = .move(HighlightMove(up: true, window: .m1, pct: 2.4, volUsd: 3_200_000, price: 1, atMs: 1))
+    #expect(!HomeModel.opensSheet(move))
+    #expect(HomeModel.opensSheet(row("BTC", at: 1, cat: .book)))
+    #expect(HomeModel.opensSheet(row("ETH", at: 1, cat: .oi)))
+    #expect(HomeModel.opensSheet(row("SOL", at: 1, cat: .funding)))
   }
 }
+
+@MainActor private final class Asked { var list: [String] = [] }

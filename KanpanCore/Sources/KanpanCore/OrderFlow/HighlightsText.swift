@@ -380,6 +380,11 @@ public enum HighlightsText {
     case .level(let l):
       let amount = l.wallUsd > 0 ? usd(l.wallUsd) : T.fillMeta.fill(["v": usd(l.fillUsd)])
       return levelHead(l, price: row.price, decimals: nil, scale: 1) + [HighlightRun(" " + zoneName(l.side) + " · " + amount)]
+    case .move(let m):
+      // `1 分 +2.4% · 额 3.2M`（额为 0 / 没有时不写）。
+      var runs = [HighlightRun(moveWindowName(m.window) + " "), HighlightRun(signedPct(m.pct, decimals: 1), strong: true)]
+      if let v = m.volUsd, v > 0 { runs.append(HighlightRun(" · " + T.moveVol.fill(["v": usd(v)]))) }
+      return runs
     case .event(let e):
       // 时间在行尾「刚才 / N 分前」里已经有了，这里只写事（和手机网页 boardFact 同口径）。
       return eventSentence(e, decimals: nil, withPrice: false)
@@ -409,12 +414,20 @@ public enum HighlightsText {
     }
   }
 
+  /// 波动窗口：`1 分` / `5 分`。
+  public static func moveWindowName(_ w: HighlightMove.Window) -> String {
+    T.minutes.fill(["n": w == .m1 ? "1" : "5"])
+  }
+
+  /// 波动行的标签：`急涨` / `急跌`。
+  public static func moveTag(_ m: HighlightMove) -> String { (m.up ? T.moveUp : T.moveDown).text }
+
   /// 首页那一行点进行情页时要展开哪一条：价位 id 或事件 id。
   public static func focusID(_ row: HighlightsBoard.Row) -> String? {
     switch row.top {
     case .level(let l): return l.id
     case .event(let e): return e.id
-    case .position: return nil
+    case .position, .move: return nil
     }
   }
 }

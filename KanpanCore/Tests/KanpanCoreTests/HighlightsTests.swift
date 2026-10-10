@@ -315,4 +315,45 @@ struct HighlightsTests {
     let r = HighlightRange(low: 80, high: 90, sinceMs: 0, lowFillUsd: 47_200_000, lowTests: 2, highFillUsd: 94_300_000, highTests: 0)
     #expect(HighlightsText.rangeLine(r, nowMs: 7_200_000, decimals: 0).edges == "下沿累计吃单 47.2M · 测 2 次 ｜ 上沿 94.3M")
   }
+
+  @Test("波动行：包在 top 里或平铺都收；认不出的 cat 只丢那一行")
+  func moveRowsAndUnknownCategory() throws {
+    let json = """
+    {"generatedAtMs": 1, "rows": [
+      {"base": "WIF", "cat": "move", "tier": 3, "price": 2.31, "changePct": 8.1, "atMs": 50,
+       "top": {"kind": "moveUp", "window": "1m", "pct": 2.4, "volUsd": 3200000}},
+      {"base": "PEPE", "cat": "move", "kind": "moveDown", "window": "5m", "pct": -3.06, "price": 0.0000123,
+       "volUsd": 0, "atMs": 70, "tier": 2},
+      {"base": "BTC", "cat": "whale", "tier": 1, "top": {"kind": "whale"}},
+      {"base": "ETH", "cat": "move", "kind": "moveSideways", "window": "1m", "pct": 1},
+      {"base": "SOL", "cat": "book", "tier": 2, "atMs": 9,
+       "top": {"kind": "level", "id": "L:1", "low": 100, "high": 101, "side": "bid", "distPct": -0.4, "wallUsd": 1000000}}
+    ]}
+    """
+    let b = try JSONDecoder().decode(HighlightsBoard.self, from: Data(json.utf8))
+    #expect(b.rows.map(\.base) == ["WIF", "PEPE", "SOL"])
+
+    let wif = b.rows[0]
+    #expect(wif.cat == .move)
+    guard case .move(let up) = wif.top else { Issue.record("WIF 不是波动行"); return }
+    #expect(up.up && up.window == .m1)
+    #expect(HighlightsText.moveTag(up) == "急涨")
+    #expect(HighlightsText.homeFact(wif, zone: Self.utc8).plain == "1 分 +2.4% · 额 3.2M")
+    #expect(HighlightsText.focusID(wif) == nil)
+
+    let pepe = b.rows[1]
+    guard case .move(let down) = pepe.top else { Issue.record("PEPE 不是波动行"); return }
+    #expect(!down.up && down.window == .m5)
+    #expect(HighlightsText.moveTag(down) == "急跌")
+    // 平铺的那一行：价格与时刻从行上拿；额为 0 不写。
+    #expect(pepe.price == 0.0000123)
+    #expect(pepe.atMs == 70)
+    #expect(HighlightsText.homeFact(pepe, zone: Self.utc8).plain == "5 分 \u{2212}3.1%")
+  }
+
+  @Test("榜单：减仓榜的 kind 是 oidown")
+  func marketBoardKinds() {
+    #expect(MarketBoard.Kind.oidown.rawValue == "oidown")
+    #expect(MarketBoard.Kind.allCases.map(\.rawValue) == ["oi", "oidown", "gainers", "losers"])
+  }
 }

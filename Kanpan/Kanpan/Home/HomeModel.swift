@@ -2,7 +2,7 @@ import Foundation
 import KanpanCore
 import KanpanNetwork
 
-/// 首页（PROJECT.md §79）：「异动」一列 + 「榜单」三张卡。挂在 `MainScreen` 的 `@State` 上——
+/// 首页（PROJECT.md §79）：「异动」一列 +「涨跌」「持仓」两段榜单（各两张、各自记窗口）。挂在 `MainScreen` 的 `@State` 上——
 /// 首页每切走一次整页拆掉重建，列表的顺序、拉到的数、选的窗口都得活在页外面。
 ///
 /// 「异动」打开时定序，之后每 60 秒拉一次：已在列表里的行就地换数、不换位；新出现的、或同一只又有了更新的
@@ -10,7 +10,27 @@ import KanpanNetwork
 @MainActor
 @Observable
 final class HomeModel {
-  enum Segment: String, CaseIterable { case moves, board }
+  enum Segment: String, CaseIterable {
+    case moves, change, oi
+
+    /// 这一段摆哪两张榜（异动段没有）。
+    var kinds: [MarketBoard.Kind] {
+      switch self {
+      case .moves: []
+      case .change: [.gainers, .losers]
+      case .oi: [.oi, .oidown]
+      }
+    }
+
+    /// 窗口记在本机的键。涨跌沿用旧「榜单」的键，升级上来的人选过的窗口不丢。
+    var windowKey: String? {
+      switch self {
+      case .moves: nil
+      case .change: "kanpan.home.boardWindow"
+      case .oi: "kanpan.home.oiWindow"
+      }
+    }
+  }
   enum Chip: Hashable { case all, cat(HighlightsBoard.Category) }
 
   typealias BoardFetch = @MainActor ([String]) async -> HighlightsBoard?
@@ -79,6 +99,9 @@ final class HomeModel {
     return out
   }
 
+  /// 点异动行要不要自动升「盘口要点」半页：波动行只开图（它说的是价格本身，半页里没有对应的那条）。
+  static func opensSheet(_ row: HighlightsBoard.Row) -> Bool { row.cat != .move }
+
   /// 拉一份。`reorder` = 按服务端顺序重排（首次、点药丸、下拉刷新、换了自选）。
   func load(bases: [String], reorder: Bool, fetch: BoardFetch) async {
     let changed = lastBases != nil && lastBases != bases
@@ -112,40 +135,53 @@ final class HomeModel {
 
   // MARK: 榜单
 
-  /// 榜单窗口：只记在本机（不进同步字段），出厂 4 时。
-  var window: MarketBoard.Window {
-    didSet { if window != oldValue { defaults.set(window.rawValue, forKey: Self.windowKey) } }
-  }
+  /// 涨跌、持仓两段各记各的窗口：只记在本机（不进同步字段），出厂 4 时。
+  private(set) var windows: [Segment: MarketBoard.Window] = [:]
   private(set) var boards: [MarketBoard.Kind: MarketBoard] = [:]
-  /// 每张卡最近一次是不是没取到。
+  /// 每张榜最近一次是不是没取到。
   private(set) var boardFailed: Set<MarketBoard.Kind> = []
-  /// 哪几张卡点了「全部」。
+  /// 哪几张榜点了「全部」。
   var expanded: Set<MarketBoard.Kind> = []
-  @ObservationIgnored private var boardsWindow: MarketBoard.Window?
+  /// 每张榜手里那份是按哪个窗口拉的（换窗口先清掉，免得新窗口下摆旧数）。
+  @ObservationIgnored private var boardsWindow: [MarketBoard.Kind: MarketBoard.Window] = [:]
   @ObservationIgnored private let defaults: UserDefaults
 
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
-    window = defaults.string(forKey: Self.windowKey).flatMap(MarketBoard.Window.init(rawValue:)) ?? .h4
+    for seg in Segment.allCases {
+      guard let key = seg.windowKey else { continue }
+      windows[seg] = defaults.string(forKey: key).flatMap(MarketBoard.Window.init(rawValue:)) ?? .h4
+    }
   }
 
-  func loadBoards(fetch: @escaping MarketFetch) async {
-    let w = window
-    if boardsWindow != w { boards = [:]; boardFailed = []; boardsWindow = w }
-    // 三张卡一起问（各自独立成败）。
-    async let oi = fetch(.oi, w)
-    async let gainers = fetch(.gainers, w)
-    async let losers = fetch(.losers, w)
-    let answers: [(MarketBoard.Kind, MarketBoard?)] = [(.oi, await oi), (.gainers, await gainers), (.losers, await losers)]
-    guard window == w else { return }
+  func window(for segment: Segment) -> MarketBoard.Window { windows[segment] ?? .h4 }
+
+  func setWindow(_ w: MarketBoard.Window, for segment: Segment) {
+    guard let key = segment.windowKey, windows[segment] != w else { return }
+    windows[segment] = w
+    defaults.set(w.rawValue, forKey: key)
+  }
+
+  /// 拉这一段的两张榜（一起问、各自成败）。
+  func loadBoards(segment: Segment, fetch: @escaping MarketFetch) async {
+    let kinds = segment.kinds
+    guard kinds.count == 2 else { return }
+    let w = window(for: segment)
+    for kind in kinds where boardsWindow[kind] != w {
+      boards[kind] = nil; boardFailed.remove(kind); boardsWindow[kind] = w
+    }
+    async let first = fetch(kinds[0], w)
+    async let second = fetch(kinds[1], w)
+    let answers: [(MarketBoard.Kind, MarketBoard?)] = [(kinds[0], await first), (kinds[1], await second)]
+    guard window(for: segment) == w else { return }
     for (kind, board) in answers {
       if let board { boards[kind] = board; boardFailed.remove(kind) } else { boardFailed.insert(kind) }
     }
   }
 
-  func pollBoards(fetch: @escaping MarketFetch) async {
+  func pollBoards(segment: Segment, fetch: @escaping MarketFetch) async {
     while !Task.isCancelled {
-      await loadBoards(fetch: fetch)
+      await loadBoards(segment: segment, fetch: fetch)
       try? await Task.sleep(for: .seconds(Self.pollSeconds))
     }
   }

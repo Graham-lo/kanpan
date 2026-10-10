@@ -110,6 +110,16 @@ public enum HighlightTerm: String, CaseIterable, Sendable {
   case catBook
   case catOi
   case catFunding
+  case catMove
+  case moveUp
+  case moveDown
+  case moveVol
+  case segChange
+  case segOi
+  case rankGainers
+  case rankLosers
+  case rankOiUp
+  case rankOiDown
   case favScope
   case hotScope
   case guestHint

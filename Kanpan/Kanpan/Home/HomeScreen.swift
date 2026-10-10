@@ -2,12 +2,12 @@ import KanpanCore
 import KanpanNetwork
 import SwiftUI
 
-/// 首页（底栏最左一格，PROJECT.md §79）：「异动 · 榜单」两段。
+/// 首页（底栏最左一格，PROJECT.md §79）：「异动 · 涨跌 · 持仓」三段，顶上一排胶囊（照自选页分类条）。
 ///
 /// - 异动：自选（登录后带上）∪ 服务端热点层里此刻值得看一眼的品种，每只一行、按服务端权重排，打开时定序。
 ///   点一行 → 去行情页、换到这只、自动升起「盘口要点」半页并展开那一条、图上画带子。
-/// - 榜单：持仓变化 / 涨幅 / 跌幅三张卡，各 6 行，「全部」展开；窗口 1 时 / 4 时 / 24 时（只记本机）。
-///   点一行只开图，不自动升半页。
+/// - 涨跌：涨幅榜 / 跌幅榜；持仓：增仓榜 / 减仓榜。各 6 行，「全部」展开；两段各有自己的
+///   1 时 / 4 时 / 24 时小胶囊（只记本机）。点一行只开图，不自动升半页。波动行同样只开图。
 struct HomeScreen: View {
   let model: HomeModel
   let catalog: OrderFlowCatalog
@@ -31,36 +31,100 @@ struct HomeScreen: View {
       header
       switch model.segment {
       case .moves: HomeMovesView(model: model, bases: bases, signedIn: signedIn, zone: zone, bottomInset: bottomInset,
-                                 isFavorite: isFavorite, onStar: onStar, onOpen: onOpenMove,
+                                 isFavorite: isFavorite, onStar: onStar, onOpen: open(row:),
                                  reload: { await model.load(bases: bases, reorder: true) { await catalog.highlightsBoard(bases: $0) } })
-      case .board: HomeBoardView(model: model, bottomInset: bottomInset, onOpen: onOpenBoard,
-                                 reload: { await model.loadBoards { await catalog.marketBoard(kind: $0, window: $1) } })
+      case .change, .oi:
+        let segment = model.segment
+        HomeBoardView(model: model, segment: segment, bottomInset: bottomInset, onOpen: onOpenBoard,
+                      reload: { await model.loadBoards(segment: segment) { await catalog.marketBoard(kind: $0, window: $1) } })
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .background { LiuliBackdrop(material: LiuliMaterial(t)) }
     .tint(t.amber)
-    .task(id: "\(model.segment.rawValue)|\(bases.joined(separator: ","))|\(model.window.rawValue)") {
-      switch model.segment {
+    .task(id: "\(model.segment.rawValue)|\(bases.joined(separator: ","))|\(model.window(for: model.segment).rawValue)") {
+      let segment = model.segment
+      switch segment {
       case .moves: await model.pollMoves(bases: bases) { await catalog.highlightsBoard(bases: $0) }
-      case .board: await model.pollBoards { await catalog.marketBoard(kind: $0, window: $1) }
+      case .change, .oi: await model.pollBoards(segment: segment) { await catalog.marketBoard(kind: $0, window: $1) }
       }
     }
   }
 
+  /// 异动行：盘口 / 持仓 / 费率开图并升半页展开那条；波动行只开图。
+  private func open(row: HighlightsBoard.Row) {
+    if HomeModel.opensSheet(row) { onOpenMove(row) } else { onOpenBoard(row.base) }
+  }
+
+  static func segmentName(_ s: HomeModel.Segment) -> String {
+    switch s {
+    case .moves: HighlightTerm.moves.text
+    case .change: HighlightTerm.segChange.text
+    case .oi: HighlightTerm.segOi.text
+    }
+  }
+
+  /// 顶上一排胶囊（照自选页分类条：选中 = 釉面强调色胶囊，没选 = 透明 + 0.5 描边），靠左一行。
   private var header: some View {
     HStack(spacing: Space.s) {
-      SectorSegment(options: HomeModel.Segment.allCases.map {
-        .init(title: ($0 == .moves ? HighlightTerm.moves : HighlightTerm.board).text, value: $0, id: "home.segment.\($0.rawValue)")
-      }, selection: model.segment) { next in
-        guard next != model.segment else { return }
-        Haptics.tap()
-        model.segment = next
+      ForEach(HomeModel.Segment.allCases, id: \.self) { seg in
+        HomeCapsule(title: Self.segmentName(seg), on: model.segment == seg, size: .regular, id: "home.segment.\(seg.rawValue)") {
+          guard seg != model.segment else { return }
+          Haptics.tap()
+          model.segment = seg
+        }
       }
       Spacer(minLength: 0)
     }
     .pageHorizontalInset()
     .padding(.top, Space.xs)
+  }
+}
+
+/// 首页的胶囊：段（高 30、13 号）与窗口（高 24、11 号）两档。
+/// 选中 = 强调色渐变 + 顶上一线高光 + 同色投影，字走 `badgeInk`；没选 = 透明底 + 0.5 描边。
+struct HomeCapsule: View {
+  enum Size { case regular, small }
+  let title: String
+  let on: Bool
+  let size: Size
+  let id: String
+  let action: () -> Void
+  @Environment(\.panelTheme) private var t
+
+  /// 小胶囊走字阶下限 11 medium（字阶里没有 11.5，也没有 11 semibold，选中只靠底色区分）。
+  private static let small = TypeScale.caption2Emph
+  private static let smallOn = TypeScale.caption2Emph
+
+  var body: some View {
+    let m = LiuliMaterial(t)
+    let regular = size == .regular
+    Button(action: action) {
+      ZStack {
+        // 选中换 semibold 会宽一点：底下垫一份看不见的 semibold，选中与否一样宽，切换不抖。
+        Text(title).font(regular ? TypeScale.controlOn : Self.smallOn).hidden()
+        Text(title).font(regular ? (on ? TypeScale.controlOn : TypeScale.control) : (on ? Self.smallOn : Self.small))
+          .foregroundStyle(on ? t.badgeInk : t.ink2)
+      }
+      .lineLimit(1)
+      .fixedSize()
+      .padding(.horizontal, regular ? Space.l : Space.s + 1)
+      .frame(height: regular ? 30 : 24)
+      .background {
+        if on {
+          Capsule().fill(m.accentGradient)
+            .overlay(alignment: .top) { m.topHighlight(inset: Space.s) }
+            .shadow(color: m.accent.opacity(m.dark ? 0.5 : 0.35), radius: regular ? 6 : 4, x: 0, y: regular ? 3 : 2)
+        } else {
+          Capsule().strokeBorder(t.ink3.opacity(m.dark ? 0.4 : 0.32), lineWidth: 0.5)
+        }
+      }
+      .frame(minHeight: Hit.min)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(on ? .isSelected : [])
+    .accessibilityIdentifier(id)
   }
 }
 
@@ -96,6 +160,7 @@ private struct HomeMovesView: View {
     let items: [(HomeModel.Chip, String, String)] = [
       (.all, HighlightTerm.all.text, "all"), (.cat(.book), HighlightTerm.catBook.text, "book"),
       (.cat(.oi), HighlightTerm.catOi.text, "oi"), (.cat(.funding), HighlightTerm.catFunding.text, "funding"),
+      (.cat(.move), HighlightTerm.catMove.text, "move"),
     ]
     return HStack(spacing: Space.s) {
       ForEach(items, id: \.2) { chip, title, id in
@@ -223,6 +288,7 @@ enum HomeCategory {
     case .book: t.amber
     case .oi: Color(hex: t.seed.amber)
     case .funding: t.ink2
+    case .move: t.up
     }
   }
 
@@ -231,6 +297,7 @@ enum HomeCategory {
     case .book: HighlightTerm.catBook.text
     case .oi: HighlightTerm.catOi.text
     case .funding: HighlightTerm.catFunding.text
+    case .move: HighlightTerm.catMove.text
     }
   }
 }
@@ -294,8 +361,11 @@ private struct HomeMoveRow: View {
   }
 
   private var tag: some View {
-    let tint = HomeCategory.tint(row.cat, t)
-    return Text(HomeCategory.name(row.cat)).font(TypeScale.caption2Emph).foregroundStyle(tint)
+    var tint = HomeCategory.tint(row.cat, t)
+    var name = HomeCategory.name(row.cat)
+    // 波动行写「急涨 / 急跌」，按方向着色。
+    if case .move(let m) = row.top { tint = m.up ? t.up : t.down; name = HighlightsText.moveTag(m) }
+    return Text(name).font(TypeScale.caption2Emph).foregroundStyle(tint)
       .padding(.horizontal, 5).frame(height: 16)
       .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: Radius.xs, style: .continuous))
   }
@@ -360,34 +430,32 @@ private struct HomeSkeleton: View {
   }
 }
 
-// MARK: - 榜单
+// MARK: - 涨跌 / 持仓
 
+/// 一段两张榜，不再是大方卡：每张 = 一行小标题（13 semibold `ink2`，右边纯文字「全部 / 收起」）+ 照自选页的行
+/// （名次 · 徽章 28 · 名 · 数 · 涨跌药丸，行高 58，发丝线）。第一张标题行右端是这一段的 1 时 / 4 时 / 24 时小胶囊。
 private struct HomeBoardView: View {
   let model: HomeModel
+  let segment: HomeModel.Segment
   let bottomInset: CGFloat
   let onOpen: (String) -> Void
   let reload: () async -> Void
   @Environment(\.panelTheme) private var t
 
   var body: some View {
+    let kinds = segment.kinds
     ScrollView {
-      VStack(spacing: Space.m) {
-        HStack {
-          SectorSegment(options: MarketBoard.Window.allCases.map {
-            .init(title: Self.windowName($0), value: $0, id: "home.window.\($0.rawValue)")
-          }, selection: model.window) { next in
-            guard next != model.window else { return }
-            Haptics.tap(); model.window = next
-          }
-          Spacer(minLength: 0)
+      VStack(spacing: Space.xl) {
+        ForEach(Array(kinds.enumerated()), id: \.element) { i, kind in
+          section(kind, windows: i == 0)
         }
-        ForEach(MarketBoard.Kind.allCases, id: \.self) { card($0) }
       }
-      .pageHorizontalInset()
+      .padding(.top, Space.s)
       .padding(.bottom, bottomInset)
     }
     .scrollIndicators(.hidden)
     .refreshable { await reload() }
+    .accessibilityIdentifier("home.page.\(segment.rawValue)")
   }
 
   static func windowName(_ w: MarketBoard.Window) -> String {
@@ -398,44 +466,60 @@ private struct HomeBoardView: View {
     }
   }
 
-  private static func title(_ k: MarketBoard.Kind) -> String {
+  static func title(_ k: MarketBoard.Kind) -> String {
     switch k {
-    case .oi: HighlightTerm.boardOi.text
-    case .gainers: HighlightTerm.boardGainers.text
-    case .losers: HighlightTerm.boardLosers.text
+    case .oi: HighlightTerm.rankOiUp.text
+    case .oidown: HighlightTerm.rankOiDown.text
+    case .gainers: HighlightTerm.rankGainers.text
+    case .losers: HighlightTerm.rankLosers.text
     }
   }
 
-  private func card(_ kind: MarketBoard.Kind) -> some View {
+  private func section(_ kind: MarketBoard.Kind, windows: Bool) -> some View {
     let rows = model.boards[kind]?.rows ?? []
     let open = model.expanded.contains(kind)
     let shown = open ? rows : Array(rows.prefix(6))
-    return HighlightsBlock(title: Self.title(kind)) {
-      if rows.count > 6 {
-        Button {
-          Haptics.tap()
-          withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            if open { model.expanded.remove(kind) } else { model.expanded.insert(kind) }
+    return VStack(spacing: 0) {
+      HStack(spacing: Space.s) {
+        Text(Self.title(kind)).font(TypeScale.controlOn).foregroundStyle(t.ink2)
+        Spacer(minLength: Space.s)
+        if windows { windowPicker }
+        if rows.count > 6 {
+          Button {
+            Haptics.tap()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+              if open { model.expanded.remove(kind) } else { model.expanded.insert(kind) }
+            }
+          } label: {
+            Text((open ? HighlightTerm.collapse : HighlightTerm.all).text).font(TypeScale.captionEmph).foregroundStyle(t.amber)
+              .frame(minWidth: 32, minHeight: Hit.min).contentShape(Rectangle())
           }
-        } label: {
-          Text((open ? HighlightTerm.collapse : HighlightTerm.all).text).font(TypeScale.captionEmph).foregroundStyle(t.amber)
-            .frame(minHeight: 28).contentShape(Rectangle())
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("home.board.\(kind.rawValue).more")
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("home.board.\(kind.rawValue).more")
       }
-    } content: {
+      .frame(minHeight: Hit.min)
+      .pageHorizontalInset()
       if model.boards[kind] == nil {
         if model.boardFailed.contains(kind) {
-          Text(HighlightTerm.failed.text).font(TypeScale.caption).foregroundStyle(t.ink3).frame(maxWidth: .infinity, minHeight: 60)
+          note(HighlightTerm.failed.text)
         } else {
-          VStack(spacing: Space.s) {
-            ForEach(0..<6, id: \.self) { _ in SkeletonBlock(height: 22, fill: LiuliMaterial(t).well, radius: Radius.xs) }
+          VStack(spacing: Space.l) {
+            ForEach(0..<6, id: \.self) { _ in
+              HStack(spacing: Space.m) {
+                SkeletonBlock(width: 28, height: 28, fill: LiuliMaterial(t).well, radius: 10)
+                SkeletonBlock(width: 90, height: 12, fill: LiuliMaterial(t).well, radius: Radius.xs)
+                Spacer(minLength: 0)
+                SkeletonBlock(width: 72, height: ControlMetrics.pillHeight, fill: LiuliMaterial(t).well, radius: Radius.s)
+              }
+            }
           }
           .skeletonPulse()
+          .padding(.vertical, Space.m)
+          .pageHorizontalInset()
         }
       } else if rows.isEmpty {
-        Text(HighlightTerm.noRows.text).font(TypeScale.caption).foregroundStyle(t.ink3).frame(maxWidth: .infinity, minHeight: 60)
+        note(HighlightTerm.noRows.text)
       } else {
         VStack(spacing: 0) {
           ForEach(Array(shown.enumerated()), id: \.element.base) { i, row in
@@ -444,28 +528,52 @@ private struct HomeBoardView: View {
         }
       }
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("home.board.\(kind.rawValue)")
   }
 
-  private func boardRow(_ kind: MarketBoard.Kind, index: Int, row: MarketBoard.Row) -> some View {
-    let up = row.changePct >= 0
-    return HStack(spacing: Space.s) {
-      Text("\(index)").font(TypeScale.caption2).monospacedDigit().foregroundStyle(t.ink3).frame(width: 16, alignment: .leading)
-      CoinBadge(base: row.base, size: 22)
-      Text(row.base).font(TypeScale.footnoteEmph).foregroundStyle(t.ink).lineLimit(1)
-      Spacer(minLength: Space.s)
-      if kind == .oi, let oi = row.oiUsd {
-        Text(HighlightsText.usd(oi)).font(TypeScale.caption2).monospacedDigit().foregroundStyle(t.ink3)
-      } else if let p = row.price {
-        Text(HighlightsText.price(p, decimals: nil)).font(TypeScale.caption2).monospacedDigit().foregroundStyle(t.ink3)
+  private var windowPicker: some View {
+    HStack(spacing: Space.xs) {
+      ForEach(MarketBoard.Window.allCases, id: \.self) { w in
+        HomeCapsule(title: Self.windowName(w), on: model.window(for: segment) == w, size: .small,
+                    id: "home.window.\(segment.rawValue).\(w.rawValue)") {
+          guard w != model.window(for: segment) else { return }
+          Haptics.tap(); model.setWindow(w, for: segment)
+        }
       }
-      Text(HighlightsText.signedPct(row.changePct, decimals: 2))
-        .font(TypeScale.footnoteEmph).monospacedDigit().foregroundStyle(up ? t.up : t.down)
-        .frame(minWidth: 64, alignment: .trailing)
-        .contentTransition(.numericText(value: row.changePct))
     }
-    .frame(minHeight: 36)
+  }
+
+  private func note(_ text: String) -> some View {
+    Text(text).font(TypeScale.caption).foregroundStyle(t.ink3).frame(maxWidth: .infinity, minHeight: 72)
+  }
+
+  /// 照自选页那一行：名次（小号 `ink3`）· 徽章 28 · 名 13 semibold ｜ 价（涨跌榜）或持仓额（持仓榜）· 涨跌药丸。
+  private func boardRow(_ kind: MarketBoard.Kind, index: Int, row: MarketBoard.Row) -> some View {
+    let oi = kind == .oi || kind == .oidown
+    let value: String? = oi ? row.oiUsd.map(HighlightsText.usd) : row.price.map { HighlightsText.price($0, decimals: nil) }
+    return HStack(spacing: Space.m) {
+      Text("\(index)").font(TypeScale.caption2).monospacedDigit().foregroundStyle(t.ink3)
+        .frame(width: 16, alignment: .trailing)
+      CoinBadge(base: row.base, size: 28)
+      Text(row.base).font(TypeScale.controlOn).foregroundStyle(t.ink).lineLimit(1)
+      Spacer(minLength: Space.s)
+      if let value {
+        Text(value).font(SymbolRowFont.liuliPrice).monospacedDigit().foregroundStyle(oi ? t.ink2 : t.ink).lineLimit(1)
+      }
+      ChangePill(value: row.changePct, text: HighlightsText.signedPct(row.changePct, decimals: 2))
+    }
+    .pageHorizontalInset()
+    .frame(minHeight: 58)
     .contentShape(Rectangle())
+    .overlay(alignment: .top) {
+      if index > 1 {
+        LinearGradient(colors: [.clear, SymbolRowInk.rule(t), SymbolRowInk.rule(t), .clear], startPoint: .leading, endPoint: .trailing)
+          .frame(height: 0.5)
+          .pageHorizontalInset()
+          .accessibilityHidden(true)
+      }
+    }
     .onTapGesture { Haptics.tap(); onOpen(row.base) }
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isButton)
