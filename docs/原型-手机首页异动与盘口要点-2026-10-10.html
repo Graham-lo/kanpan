@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>手机 · 首页异动 与 盘口要点 · 原型与施工方案 · 2026-10-10</title>
+<style>
+:root{--pg:#0B0F0D;--pgInk:#EAF0EC;--pgInk2:#9AA8A0;--pgLine:rgba(255,255,255,.08);--pgCard:rgba(255,255,255,.045);--acc:#4FB69C}
+@media(prefers-color-scheme:light){:root{--pg:#F2F5F3;--pgInk:#14211B;--pgInk2:#5E6E66;--pgLine:rgba(20,33,27,.1);--pgCard:#fff;--acc:#2E7D6B}}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--pg)}
+body{color:var(--pgInk);font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;padding:40px 24px 120px;max-width:2400px;margin:0 auto}
+h1{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+h1 small{display:block;font-size:14px;font-weight:400;color:var(--pgInk2);letter-spacing:0;margin-top:8px;max-width:1100px}
+h2{font-size:21px;font-weight:700;letter-spacing:-.01em;margin:64px 0 6px;padding-top:24px;border-top:1px solid var(--pgLine)}
+h2 .n{font:700 11px/1 ui-monospace,Menlo,monospace;color:var(--acc);letter-spacing:.2em;margin-right:12px;vertical-align:middle}
+h3{font-size:16px;font-weight:600;margin:28px 0 8px}
+p.l{color:var(--pgInk2);font-size:14px;max-width:960px}
+.ctl{display:flex;flex-wrap:wrap;gap:10px;margin:22px 0 8px;align-items:center}
+.ctl b{font-size:13px;color:var(--pgInk2);font-weight:500;margin-right:2px}
+.seg{display:inline-flex;background:var(--pgCard);border:1px solid var(--pgLine);border-radius:999px;padding:3px}
+.seg button{border:0;background:transparent;color:var(--pgInk2);font:600 13px/1 inherit;padding:8px 14px;border-radius:999px;cursor:pointer}
+.seg button.on{background:var(--acc);color:#fff}
+.row{display:flex;flex-wrap:wrap;gap:28px 22px;margin-top:22px;align-items:flex-start}
+.fig{width:413px}
+.fig .cap{font-size:13px;color:var(--pgInk2);margin-top:12px;line-height:1.55}
+.fig .cap b{color:var(--pgInk);font-weight:600}
+.doc{max-width:1120px}
+.doc p,.doc li{font-size:14.5px;color:var(--pgInk);line-height:1.75}
+.doc p{margin:10px 0}
+.doc ul,.doc ol{padding-left:22px;margin:8px 0}
+.doc li{margin:4px 0}
+.doc code{font:12.5px ui-monospace,Menlo,monospace;background:var(--pgCard);border:1px solid var(--pgLine);border-radius:5px;padding:1px 6px}
+.doc pre{font:12.5px/1.6 ui-monospace,Menlo,monospace;background:var(--pgCard);border:1px solid var(--pgLine);border-radius:10px;padding:14px 16px;overflow:auto;margin:10px 0}
+table{border-collapse:collapse;width:100%;max-width:1200px;font-size:13.5px;margin:12px 0 4px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--pgLine);vertical-align:top;line-height:1.55}
+th{color:var(--pgInk2);font-weight:600;font-size:12.5px}
+td:first-child{font-weight:600;white-space:nowrap}
+.tag{display:inline-block;font:600 11px/1 inherit;padding:4px 8px;border-radius:999px;background:var(--pgCard);border:1px solid var(--pgLine);color:var(--pgInk2);margin-right:6px}
+.tag.y{color:var(--acc);border-color:var(--acc)}
+.tag.n{color:#D46A5E;border-color:#D46A5E}
+
+/* ---------------- 手机机身 ---------------- */
+.ph{position:relative;width:413px;height:872px;border-radius:54px;overflow:hidden;background:var(--app);color:var(--ink);
+  box-shadow:0 0 0 1px rgba(0,0,0,.35),0 30px 70px -30px rgba(0,0,0,.6),inset 0 0 0 10px #111,inset 0 0 0 11px #2a2a2a;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;isolation:isolate}
+.ph *{box-sizing:border-box}
+.ph .scr{position:absolute;inset:10px;border-radius:44px;overflow:hidden;background:var(--app)}
+.ph .sb{position:absolute;top:0;left:0;right:0;height:54px;display:flex;justify-content:space-between;align-items:flex-end;padding:0 36px 6px;font:600 15px/1 inherit;z-index:5}
+.ph .sb .r{display:flex;gap:6px;align-items:center}
+.ph .sb .r i{display:inline-block;width:24px;height:11px;border:1.5px solid var(--ink);border-radius:4px;position:relative}
+.ph .sb .r i:after{content:"";position:absolute;inset:2px;background:var(--ink);border-radius:2px}
+.ph .island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:120px;height:35px;border-radius:20px;background:#000;z-index:6}
+.ph .home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--ink);opacity:.55;z-index:9}
+.ph .ground{position:absolute;inset:0;background:var(--app)}
+.ph .ground i{position:absolute;border-radius:50%;filter:blur(46px);opacity:.55}
+.noanim *{animation:none!important}
+
+/* 底栏五格 */
+.tab{position:absolute;bottom:0;left:0;right:0;height:78px;display:flex;justify-content:space-around;align-items:flex-start;padding:14px 14px 0;z-index:8}
+.tab span{display:block;width:27px;height:27px;opacity:.64;filter:drop-shadow(0 2px 5px rgba(0,0,0,.12));transition:opacity .2s,transform .3s cubic-bezier(.2,.9,.3,1.2)}
+.ph.dark .tab span{filter:drop-shadow(0 2px 5px rgba(0,0,0,.26))}
+.tab span.on{opacity:1;transform:scale(1.06)}
+.tab svg{width:27px;height:27px;display:block}
+
+/* 行情页 */
+.top{position:absolute;top:58px;left:0;right:0;padding:0 16px;display:flex;align-items:center;gap:10px;z-index:3}
+.top .coin{width:34px;height:34px;border-radius:10px;background:linear-gradient(145deg,#F7B733,#E8872B);display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px}
+.top .nm{font-size:20px;font-weight:700;letter-spacing:-.01em;line-height:1}
+.top .nm em{font-style:normal;font-size:11px;font-weight:600;color:var(--ink2);background:var(--raised2);padding:3px 6px;border-radius:6px;margin-left:6px;vertical-align:2px}
+.top .disc{margin-left:auto;display:flex;gap:8px}
+.top .disc i{width:34px;height:34px;border-radius:50%;background:var(--raised);box-shadow:0 1px 3px rgba(0,0,0,.08),0 0 0 .5px var(--line);display:grid;place-items:center}
+.top .disc svg{width:16px;height:16px;stroke:var(--ink);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hd{position:absolute;top:104px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-end;z-index:3}
+.hd .px{font-size:22px;font-weight:500;letter-spacing:-.02em;line-height:1.05;font-variant-numeric:tabular-nums}
+.hd .chg{font-size:12px;font-weight:500;margin-top:3px;font-variant-numeric:tabular-nums}
+.hd .six{display:grid;grid-template-columns:auto auto auto auto;gap:3px 10px;font-size:12px;font-variant-numeric:tabular-nums}
+.hd .six b{font-weight:500;color:var(--ink)} .hd .six s{text-decoration:none;color:var(--ink3)}
+.per{position:absolute;top:162px;left:0;right:0;height:40px;display:flex;align-items:center;padding:0 10px;font-size:13px;color:var(--ink2);font-weight:500;white-space:nowrap}
+.per span{padding:6px 7px;border-radius:9px;white-space:nowrap}
+.per span.on{background:var(--raised2);color:var(--accent);font-weight:600}
+.per .sp{flex:1}
+.per .v{width:1px;height:16px;background:var(--line);margin:0 4px}
+.per .an{color:var(--accent);font-weight:600}
+.chart{position:absolute;top:206px;left:0;right:0;height:520px}
+.chart svg{display:block}
+/* 入口条：有要点 44，没有要点 16 */
+.strip{position:absolute;left:0;right:0;top:726px;height:44px;display:flex;align-items:center;gap:8px;padding:0 16px;z-index:7;font-size:13px;font-variant-numeric:tabular-nums;box-shadow:inset 0 .5px 0 var(--rule)}
+.strip .ch{width:12px;height:12px;stroke:var(--accent);stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.strip .k{font-weight:600;color:var(--accent);white-space:nowrap}
+.strip .k small{font-weight:600;color:#fff;background:var(--accent);border-radius:999px;padding:1px 6px;font-size:11px;margin-left:4px;vertical-align:1px}
+.strip .t{color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.strip .t b{color:var(--ink);font-weight:600}
+.strip.thin{height:16px;top:754px;justify-content:center}
+.strip.thin i{width:36px;height:4px;border-radius:2px;background:var(--ink3);opacity:.35}
+
+/* ---------------- 半页「盘口要点」 ---------------- */
+.half{position:absolute;left:0;right:0;top:177px;bottom:0;border-radius:28px 28px 0 0;overflow:hidden;z-index:9;background:var(--sheetBg);box-shadow:0 -1px 0 var(--edge),0 -18px 50px -20px rgba(0,0,0,.35)}
+.half .lobes{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.half .lobes i{position:absolute;border-radius:50%;filter:blur(38px);opacity:.75}
+.half .grab{position:absolute;top:7px;left:50%;transform:translateX(-50%);width:36px;height:5px;border-radius:3px;background:var(--ink3);opacity:.45}
+.half .hh{position:relative;display:flex;align-items:center;gap:8px;padding:20px 16px 8px}
+.half .hh h4{font-size:17px;font-weight:600;line-height:1}
+.half .hh .cnt{font-size:11px;font-weight:600;color:#fff;background:var(--accent);border-radius:999px;padding:2px 7px}
+.half .hh .up{margin-left:auto;font-size:12px;color:var(--ink3);display:flex;align-items:center;gap:6px}
+.half .hh .live{width:6px;height:6px;border-radius:50%;background:var(--up);animation:pulse 1.6s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--up) 55%,transparent)}100%{box-shadow:0 0 0 8px transparent}}
+.half .body{position:relative;padding:0 16px 40px;display:flex;flex-direction:column;gap:8px}
+.pt{background:var(--pane);border-radius:16px;padding:12px 14px 12px 16px;box-shadow:0 0 0 .5px var(--edge),0 10px 30px -22px rgba(0,0,0,.35);position:relative;overflow:hidden}
+.pt:before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 3px 3px 0;background:var(--c,var(--accent))}
+.pt .h{display:flex;align-items:center;gap:8px}
+.pt .h .kind{font-size:11px;font-weight:600;color:var(--c,var(--accent));background:color-mix(in srgb,var(--c,var(--accent)) 13%,transparent);padding:3px 7px;border-radius:6px;flex:none}
+.pt .h .ttl{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pt .h .ago{font-size:11px;color:var(--ink3);flex:none}
+.pt .f{font-size:13px;color:var(--ink2);margin-top:6px;font-variant-numeric:tabular-nums;line-height:1.5}
+.pt .f b{color:var(--ink);font-weight:600}
+.pt .f .up{color:var(--up);font-weight:600} .pt .f .dn{color:var(--down);font-weight:600}
+.pt .m{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--ink3)}
+.pt .m .mt{display:inline-flex;gap:2px;align-items:flex-end;height:10px}
+.pt .m .mt i{width:3px;border-radius:1px;background:var(--ink3);opacity:.35}
+.pt .m .mt i.on{background:var(--c,var(--accent));opacity:1}
+.pt .m .go{margin-left:auto;color:var(--accent);font-weight:600;font-size:12px;display:flex;align-items:center;gap:3px}
+.pt .m .go svg{width:12px;height:12px;stroke:var(--accent);stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.pt.open{box-shadow:0 0 0 1px var(--accent),0 10px 30px -22px rgba(0,0,0,.35)}
+.pt .ev{margin-top:10px;padding-top:10px;box-shadow:inset 0 .5px 0 var(--rule);display:grid;grid-template-columns:auto 1fr auto;gap:5px 10px;font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink2)}
+.pt .ev s{text-decoration:none;color:var(--ink3)} .pt .ev b{color:var(--ink);font-weight:600;text-align:right}
+.pt .ev .bar{position:relative;height:8px;border-radius:4px;background:var(--well);align-self:center}
+.pt .ev .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--c,var(--accent));opacity:.75}
+.pt.skel .h .ttl,.pt.skel .f{color:transparent}
+.skel{border-radius:8px;background:linear-gradient(90deg,var(--well),color-mix(in srgb,var(--well) 40%,transparent),var(--well));background-size:200% 100%;animation:sk 1.4s linear infinite}
+@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.calm{display:flex;flex-direction:column;align-items:center;gap:6px;padding:28px 0 14px;color:var(--ink3);font-size:13px;text-align:center}
+.calm b{color:var(--ink);font-weight:600;font-size:15px}
+.calm svg{width:36px;height:36px;stroke:var(--ink3);stroke-width:1.4;fill:none;stroke-linecap:round;opacity:.7;margin-bottom:4px}
+.toast{position:absolute;left:16px;right:16px;top:214px;z-index:12;background:var(--pane);backdrop-filter:blur(18px);border-radius:16px;padding:10px 14px;font-size:13px;font-weight:600;display:flex;gap:10px;align-items:center;box-shadow:0 0 0 .5px var(--edge),0 12px 30px -16px rgba(0,0,0,.4)}
+.toast i{width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none}
+.toast small{font-weight:500;color:var(--ink3);margin-left:auto}
+.note{font-size:12px;color:var(--ink3,#606F67);margin:8px 0 0}
+.ann{position:absolute;z-index:14;font:600 11px/1.3 inherit;color:#fff;background:#1E6FD9;padding:5px 8px;border-radius:8px;box-shadow:0 4px 14px -4px rgba(30,111,217,.7);max-width:196px;pointer-events:none;opacity:.94}
+.ann:before{content:"";position:absolute;width:8px;height:8px;background:#1E6FD9;transform:rotate(45deg);left:-3px;top:50%;margin-top:-4px}
+.ann.r:before{left:auto;right:-3px}
+.ann.d:before{left:50%;margin-left:-4px;top:auto;bottom:-3px}
+.finger{position:absolute;z-index:13;width:40px;height:40px;border-radius:50%;background:rgba(30,111,217,.22);border:2px solid rgba(30,111,217,.7);pointer-events:none}
+.finger:after{content:"";position:absolute;left:50%;top:-34px;width:2px;height:34px;background:linear-gradient(to top,rgba(30,111,217,.7),transparent);margin-left:-1px}
+
+/* ---------------- 首页 ---------------- */
+.hp{position:absolute;inset:0}
+.hp .bar{position:absolute;top:58px;left:16px;right:16px;display:flex;align-items:center;gap:10px;z-index:3}
+.segc{display:inline-flex;background:var(--well);border-radius:999px;padding:3px;height:30px}
+.segc span{padding:0 12px;border-radius:999px;font-size:12px;font-weight:600;color:var(--ink2);display:flex;align-items:center}
+.segc span.on{background:var(--raised);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.1),0 0 0 .5px var(--edge)}
+.hp .bar .disc{margin-left:auto;display:flex;gap:8px}
+.hp .bar .disc i{width:34px;height:34px;border-radius:50%;background:var(--raised);box-shadow:0 1px 3px rgba(0,0,0,.08),0 0 0 .5px var(--line);display:grid;place-items:center}
+.hp .bar .disc svg{width:16px;height:16px;stroke:var(--ink);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.chips{position:absolute;top:98px;left:0;right:0;height:32px;display:flex;align-items:center;gap:6px;padding:0 16px;white-space:nowrap;overflow:hidden;z-index:3}
+.chips span{height:24px;display:inline-flex;align-items:center;gap:4px;padding:0 9px;border-radius:999px;font-size:11.5px;font-weight:500;color:var(--ink2);background:var(--raised);box-shadow:0 0 0 .5px var(--line)}
+.chips span.on{background:var(--accent);color:#fff;font-weight:600;box-shadow:none}
+.chips span b{font-size:10px;font-weight:600;opacity:.8}
+.chips span i{width:5px;height:5px;border-radius:50%;background:var(--c)}
+.hp .sub{position:absolute;top:136px;left:16px;right:16px;font-size:11px;color:var(--ink3);display:flex;justify-content:space-between;font-variant-numeric:tabular-nums;z-index:3}
+.hp .list{position:absolute;top:158px;left:12px;right:12px;bottom:80px;overflow:hidden;z-index:2}
+.fr{display:flex;align-items:center;gap:10px;min-height:58px;padding:9px 12px 9px 10px;border-radius:14px;background:var(--pane);box-shadow:0 0 0 .5px var(--edge);margin-bottom:6px;position:relative}
+.fr .bg{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:11px;flex:none}
+.fr .mid{flex:1;min-width:0}
+.fr .l1{display:flex;align-items:center;gap:8px}
+.fr .nm{flex:1;min-width:0;font-size:13px;font-weight:600;letter-spacing:-.01em;line-height:1.15;display:flex;align-items:center;gap:6px}
+.fr .nm .st{width:12px;height:12px;stroke:var(--ink3);stroke-width:1.6;fill:none;stroke-linejoin:round;opacity:.6;flex:none}
+.fr .p{font-size:14px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.01em;line-height:1.1;flex:none}
+.fr .pill{font-size:12px;font-weight:600;color:var(--pc);background:color-mix(in srgb,var(--pc) 14%,transparent);box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--pc) 30%,transparent);padding:2px 6px;border-radius:8px;font-variant-numeric:tabular-nums;min-width:56px;text-align:center;flex:none;line-height:1.35}
+.ph.dark .fr .pill{background:color-mix(in srgb,var(--pc) 20%,transparent)}
+.fr .pt1{margin-top:5px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+.fr .pt1 .kind{font-size:10px;font-weight:600;color:var(--c);background:color-mix(in srgb,var(--c) 13%,transparent);padding:1.5px 5px;border-radius:4px;flex:none}
+.fr .pt1 .mt{display:inline-flex;gap:2px;align-items:flex-end;height:8px;flex:none}
+.fr .pt1 .mt i{width:3px;border-radius:1px;background:var(--ink3);opacity:.3}
+.fr .pt1 .mt i.on{background:var(--c);opacity:1}
+.fr .pt1 .tx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.fr .pt1 .tx b{color:var(--ink);font-weight:600}
+.fr .pt1 .plus{font-size:9.5px;font-weight:600;color:var(--ink3);background:var(--well);padding:2px 5px;border-radius:5px;flex:none}
+.fr .pt1 .ago{font-size:11px;color:var(--ink3);flex:none}
+.fr.skel .nm,.fr.skel .pt1,.fr.skel .p,.fr.skel .pill{color:transparent}
+.newpill{position:absolute;top:164px;left:50%;transform:translateX(-50%);z-index:6;font-size:12px;font-weight:600;color:#fff;background:var(--accent);padding:7px 14px;border-radius:999px;box-shadow:0 8px 24px -8px color-mix(in srgb,var(--accent) 70%,transparent);display:flex;align-items:center;gap:6px}
+.newpill svg{width:12px;height:12px;stroke:#fff;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+/* 榜单 */
+.bd{position:absolute;top:104px;left:12px;right:12px;bottom:80px;overflow:hidden;z-index:2;display:flex;flex-direction:column;gap:8px}
+.bc{background:var(--pane);border-radius:16px;padding:11px 14px 4px;box-shadow:0 0 0 .5px var(--edge)}
+.bc .bh{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.bc .bh h5{font-size:14px;font-weight:600;flex:1}
+.bc .bh .segc{height:24px;padding:2px}.bc .bh .segc span{padding:0 8px;font-size:10.5px}
+.bc .br{display:grid;grid-template-columns:18px 26px 1fr auto auto;gap:0 8px;align-items:center;height:34px;font-size:12.5px;font-variant-numeric:tabular-nums;box-shadow:inset 0 -.5px 0 var(--rule)}
+.bc .br:last-child{box-shadow:none}
+.bc .br .i{font-size:10px;color:var(--ink3);font-weight:600;text-align:center}
+.bc .br .bg{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:10px}
+.bc .br .n{font-weight:600}
+.bc .br .v{color:var(--ink2);font-size:11.5px}
+.bc .br .c{font-weight:600;min-width:62px;text-align:right}
+.bc .more{display:flex;justify-content:center;align-items:center;gap:4px;height:32px;font-size:11.5px;font-weight:600;color:var(--accent)}
+.empty-home{position:absolute;top:170px;left:16px;right:16px;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:120px;color:var(--ink3);font-size:13px;text-align:center}
+.empty-home b{font-size:16px;font-weight:600;color:var(--ink)}
+.empty-home svg{width:44px;height:44px;stroke:var(--ink3);stroke-width:1.3;fill:none;stroke-linecap:round;opacity:.6}
+.stale .fr,.stale .pt{color:var(--ink3)} .stale .fr .p,.stale .pt .f b,.stale .fr .pt1 .tx b{color:var(--ink3)!important} .stale .fr .pill,.stale .pt .m .mt i.on,.stale .fr .pt1 .mt i.on{filter:saturate(.15) opacity(.6)}
+</style>
+</head>
+<body>
+
+<h1>手机 · 首页异动 与 盘口要点<small>iOS app 与手机网页版共用的一套原型与施工方案 · 2026-10-10 · 两件事：① 底栏新增第五格「首页」，放跨品种的异动流与榜单；② 行情页上滑半页「盘口要点」，只列这只品种此刻值得看的价区与时段。两者吃服务端同一份「要点引擎」的结果。三套皮肤 × 深浅可切，右上有「动效」开关。</small></h1>
+
+<div class="ctl">
+  <b>皮肤</b><div class="seg" id="skinSeg"><button class="on" data-k="sage">青苔 · 冷</button><button data-k="terra">陶土 · 暖</button><button data-k="classic">经典</button></div>
+  <b>深色</b><div class="seg" id="darkSeg"><button class="on" data-k="0">浅</button><button data-k="1">深</button></div>
+  <b>动效</b><div class="seg" id="animSeg"><button class="on" data-k="1">开</button><button data-k="0">关（减少动效）</button></div>
+  <b>注释</b><div class="seg" id="annSeg"><button class="on" data-k="1">显示</button><button data-k="0">隐藏（看干净的）</button></div>
+</div>
+<p class="l">每一屏都是 iPhone 17 Pro（393 × 852 pt）等比。K 线、均线与行情头照 AICoin 复刻不动；要设计的是首页、入口条、半页与图上的高亮带。字号 / 间距 / 热区全部取自 app 现有 <code>DesignTokens</code>（TypeScale 22 / 17 / 16 / 15 / 13 / 12 / 11，Space 4 / 8 / 12 / 16 / 20 / 24，热区 44，圆角 16 卡 / 28 弹层）。</p>
+
+<h2><span class="n">01</span>首页「异动」：谁在动、动了什么、点进去看</h2>
+<p class="l">底栏最左一格。顶部一个分段「异动 · 榜单」，下面是分类胶囊（全部 / 盘口 / 持仓 / 费率）。列表按权重排，每行 = 品种 + 价格与涨跌 + 一行事实。不打分数、不说多空、没有「驾驶舱」之类的第二入口——点一行就进行情页。</p>
+<div class="row" id="rowHome"></div>
+
+<h2><span class="n">02</span>首页「榜单」：持仓变化 · 涨幅 · 跌幅</h2>
+<p class="l">三张卡，各带 1H / 4H / 24H，默认 4H。先显示 6 行，点「全部」展开整榜。扫的是全部永续（币安 / OKX / Bybit 合并同一基础币），不只跟踪集合。</p>
+<div class="row" id="rowBoard"></div>
+
+<h2><span class="n">03</span>行情页上滑：半页「盘口要点」</h2>
+<p class="l">入口条在图下方，有要点时 44 pt 一行写着排第一的那条；没有要点时收成 16 pt 一道抓手，把高度还给图。上滑或点按，半页升到行情头下沿停——现价与六格一直露着、实时跳。每条要点点开看证据，图上同时画出它的价区带或时段带。</p>
+<div class="row" id="rowHalf"></div>
+
+<h2><span class="n">04</span>全部状态</h2>
+<p class="l">首页：首次加载、盘面平静、有新异动、未登录（只有热门）、断网。半页：加载、暂无要点、未跟踪品种、数据停了。每个状态有自己的样子，不弹窗、不讲解。</p>
+<div class="row" id="rowStates"></div>
+
+<h2><span class="n">05</span>三套皮肤 × 深浅</h2>
+<div class="row" id="rowSkins"></div>
+
+<div class="doc">
+<h2><span class="n">06</span>为什么这样设计（给交易员的价值，按优先级）</h2>
+<ol>
+<li><b>先回答「现在哪里有事」，再回答「这只币怎么了」。</b> 首页异动流是跨品种的；上滑半页是单品种的。两者是同一份要点的两个视角，所以从首页点进去，半页里展开的就是让它上榜的那条，图上也画着它。</li>
+<li><b>只出要点，不出总账。</b> 上滑页不再堆「今日买卖总额」这种大表——头部六格、气泡页的本根 / 逐根 / 价位梯已经把总量说完了。半页每条都要过门槛：该品种自己近 3 天同类数据的前 5%、至少持续 10 分钟、离现价够近。一条都没有时写一行「盘面平静」，这本身就是信息。</li>
+<li><b>只写事实，不写判断。</b> 标题是「位置 · 事实」：「下方 82,500 买区 · 35M 3 所」「09:40–10:05 · 净买入 +46M · 价格 +1.4%」。涨跌幅、持仓变化写在同一行，交易员自己能读出「买了很多但价格没动」；界面上不出现「吸收」「骗单」「偏多」「强度 100」。</li>
+<li><b>我们有别人没有的一类。</b> 持仓急增、费率极端是行业通用信号；<b>盘口异动</b>（堆积的墙、密集的大单成交、爆仓潮、靠近就撤的墙）来自自家订单流服务端，这是首页区别于 CoinAnk 一类产品的地方，所以它排在胶囊第一位。</li>
+<li><b>少点。</b> 首页一下到行情页且半页已展开；入口条不打开也能看到排第一的要点；榜单每张卡 6 行、一次「全部」。没有任何新设置项。</li>
+</ol>
+
+<h2><span class="n">07</span>功能分层表</h2>
+<table>
+<tr><th>功能</th><th>使用频次</th><th>从启动几步</th><th>放在哪一层</th><th>为什么</th></tr>
+<tr><td>首页 · 异动流</td><td>每次打开 app</td><td>0（启动落首页）</td><td>底栏第一格，默认段</td><td>「现在哪里有事」是打开 app 的第一个问题</td></tr>
+<tr><td>分类胶囊（盘口 / 持仓 / 费率）</td><td>高</td><td>1</td><td>异动段顶部</td><td>后续加「价格」「成交额」只是多一个胶囊，结构不变</td></tr>
+<tr><td>首页 · 榜单（持仓变化 / 涨幅 / 跌幅）</td><td>高</td><td>1</td><td>分段第二项</td><td>找「钱在往哪建仓」「谁在涨」的基础榜，默认 4H</td></tr>
+<tr><td>行情页入口条（排第一的要点）</td><td>每次看图都在</td><td>0</td><td>图下方 44 / 16 pt</td><td>不打开也有信息；没要点就缩成抓手</td></tr>
+<tr><td>半页「盘口要点」</td><td>高</td><td>1（上滑 / 点入口条 / 从首页进）</td><td>半页，行情头保持可见</td><td>看要点时现价要一直在眼前</td></tr>
+<tr><td>要点证据 + 图上高亮</td><td>中</td><td>2（点一条）</td><td>卡内展开</td><td>证据按需展开，图上带子跟着画</td></tr>
+<tr><td>气泡页「大单与爆仓」</td><td>中</td><td>1（点气泡 / 分析面板）</td><td>整页，10-08 定版不变</td><td>回答「这一根发生了什么」，与半页分工明确</td></tr>
+<tr><td>加自选（热门品种行尾空心星）</td><td>低</td><td>1</td><td>行内</td><td>沿用「加自选只在品种行的星上做」</td></tr>
+<tr><td>异动推送提醒</td><td>—</td><td>—</td><td><b>这轮不做</b></td><td>首页跑一两周确认真用，再做成一种条件提醒</td></tr>
+</table>
+
+<h2><span class="n">08</span>导航与返回规则</h2>
+<table>
+<tr><th>页面</th><th>怎么进</th><th>怎么退</th><th>左上</th><th>右上</th><th>底栏</th></tr>
+<tr><td>首页</td><td>启动默认；底栏第一格</td><td>切底栏</td><td>分段「异动 · 榜单」</td><td>搜索圆片</td><td>五格，首页点亮</td></tr>
+<tr><td>行情页（从首页进）</td><td>点任意一行</td><td>底栏「首页」回去，列表位置与胶囊保留；横滑扫图名单 = 当时榜单顺序</td><td>品种</td><td>铃 · ⋯ · 搜索</td><td>切到「图表」</td></tr>
+<tr><td>半页「盘口要点」</td><td>上滑入口条 ≥ 48 pt 且纵向 &gt; 横向 1.8 倍；点入口条；从首页进时自动展开</td><td>下拉过 80 pt 关；点行情头 / 周期条区域关；换品种关并重取</td><td>—</td><td>更新时刻</td><td>被半页盖住</td></tr>
+<tr><td>要点展开</td><td>点卡</td><td>再点收起；点别的卡切换；图上带子随之切换，关半页时带子消失</td><td colspan="3">—</td></tr>
+<tr><td>气泡页</td><td>点图上气泡 / 分析 › 大单与爆仓</td><td>下拉关 / 返回（10-08 规则）</td><td>返回</td><td>门槛</td><td>盖住</td></tr>
+</table>
+
+<h2><span class="n">09</span>交互细节清单（施工项）</h2>
+<ul>
+<li><b>启动落首页。</b> 冷启动与从后台回来都停在上次所在格（新增记忆上次格，替换现在「自选非空落自选」的判断）。首页数据 ≤ 1 s 出骨架，服务端答复到了就替换，不闪。</li>
+<li><b>首页列表不中途重排。</b> 打开时定序；之后每 60 s 拉一次，有变化只在顶部浮一枚「有新异动 ↑」药丸，点它才重排并滚到顶。下拉刷新立即重排。</li>
+<li><b>行的命中区整行 66 pt。</b> 点行：触感 <code>.selection</code>，底栏切到图表，行情页切品种后 240 ms 半页升起（弹簧 damping 0.86），对应卡展开并高亮 1.2 s；图上带子同时出现。</li>
+<li><b>入口条</b>：有要点 44 pt，文案「要点 N · 排第一那条」；没有要点 16 pt 抓手。切换高度 200 ms ease-in-out，图随之伸缩，不闪帧。</li>
+<li><b>半页档位</b>：只有一档——顶边 = 行情头下沿（含周期条以下全部盖住），内容可滚；滚到顶再下拉过 80 pt 关。不盖行情头，所以不用 presentationBackground 压暗头部。</li>
+<li><b>图上带子</b>：价区带 = 横向半透明带（accent 16%）+ 上下 0.8 pt 边线 + 右上角标签；时段带 = 竖向带 + 顶部标签。带子不参与命中，不挡十字线。减少动效时直接出现，否则 200 ms 淡入。</li>
+<li><b>回图</b>：点要点卡右下「回图」把图平移到带子居中（价区带：纵向对中；时段带：横向对中），沿用 <code>proxy.placeCrosshair(atTime:price:)</code> 的视野逻辑。</li>
+<li><b>半页刷新</b>：开着时每 30 s 拉一次；卡的顺序与展开状态保持，只更新数字；新出现的卡插在最后并有 600 ms 的边框亮一下。</li>
+<li><b>榜单</b>：1H / 4H / 24H 分段切换 150 ms 淡入淡出；默认 4H，选择跟人走（随账号同步，三端同一个字段）。</li>
+<li><b>可达性</b>：字 ≥ 11 pt；类别靠文字标签（盘口 / 持仓 / 费率）而非只靠色；强度条之外还有排序位置；VoiceOver 朗读「BTC，盘口，下方 82,500 买区 35M，12 分钟前」。</li>
+<li><b>横屏画线台</b>：入口条不出现、半页不可开（横屏保留给画线）。</li>
+</ul>
+
+<h2><span class="n">10</span>尺寸与令牌（只用现有 DesignTokens）</h2>
+<table>
+<tr><th>元素</th><th>规格</th></tr>
+<tr><td>底栏</td><td>五格，记号 27 pt（<code>TabBar.glyph</code>），只有记号没有文字；釉面实心（主色釉 / 金釉 / 浅主色釉，和 <code>TabGlyph</code> 同一副），未选中 64%、选中 100% 并放大 6%，不加圆点不加底；新增「首页」记号 = 雷达：主色釉环（外 9.5 / 内 6.8）+ 金色扫描扇（右上 0–70°）+ 浅主色中心点 r 1.9</td></tr>
+<tr><td>首页分段</td><td>高 30，<code>well</code> 底，选中项 <code>raised</code> 底 + 0.5 pt edge；字 12/semibold（同自选页分类胶囊条那一档）</td></tr>
+<tr><td>分类胶囊</td><td>视觉高 24、命中高 36；字 11.5/medium，计数 10；选中 accent 底白字；胶囊前 5 pt 类别色点（盘口 accent / 持仓 amber / 费率 ink2）</td></tr>
+<tr><td>异动行</td><td>最小高 58，圆角 14，内边距 9 / 12 / 9 / 10，行距 6；两行：第一行 徽章 28（圆角 8）· 名 13/semibold（= 自选行 <code>liuliName</code>）· 空心星 12 · 价 14/medium tabular · 涨跌药丸；第二行 类别签 10/semibold · 强度三格 · 事实 <code>caption2</code> 11 ink2（数值 ink/semibold）· 「+N」· 多久前 11 ink3。涨跌药丸照自选行：字 12/semibold，底 = 涨跌色 14%（深色 20%）+ 0.5 pt 30% 描边，圆角 8，最小宽 56，<b>不用实心色块</b></td></tr>
+<tr><td>强度条</td><td>3 根 3×(4/7/10) pt，按权重点亮 1–3 根；类别色</td></tr>
+<tr><td>榜单卡</td><td>圆角 16，内边距 11 / 14 / 4；标题 14/semibold；窗口分段高 24 字 10.5；行高 34 字 12.5；排名列 18（字 10）、徽章 22；金额 11.5 ink2；变化列 12.5/semibold 最小宽 62</td></tr>
+<tr><td>入口条</td><td>44 pt（有要点）/ 16 pt（抓手 36×4）；字 13；「要点」accent + 计数药丸 11 白字</td></tr>
+<tr><td>半页</td><td>圆角 28（continuous），琉璃底 + 光斑；抓手 36×5；顶边 = 行情头下沿（价格 + 涨跌行 + 两列六格全露着，周期条以下全盖住；iPhone 17 Pro 上约 y=177）；标题 <code>title</code> 17</td></tr>
+<tr><td>要点卡</td><td>圆角 16，内边距 12 / 14 / 12 / 16；左侧 3 pt 类别色条；标题 <code>bodyEmph</code> 15 tabular；事实 <code>footnote</code> 13；元信息 11；展开后证据表 12，证据条高 8 圆角 4</td></tr>
+<tr><td>图上带子</td><td>accent 16% 填充 + 0.8 pt 70% 边线；标签胶囊高 16 字 11/semibold 白字</td></tr>
+<tr><td>颜色</td><td>只用皮肤 seed：up / down / accent / amber / ink / ink2 / ink3 / raised / raised2 / line；琉璃 pane 0.64 / well ink 6%（深色 12%）。类别色：盘口 = accent，持仓 = amber，费率 = ink2；不新增色板</td></tr>
+</table>
+
+<h2><span class="n">11</span>数据口径与降噪规则（要点引擎）</h2>
+<p>引擎跑在 kanpan-api 的 serve 进程里，每分钟（分钟结束 + 3 s 宽限后）对每个跟踪品种算一遍，结果只放内存，接口加 20 s 缓存。输入全部是已有数据：挂单墙生命周期（live / 已成交 / 已撤 / 失联）、大单分钟桶、价位分桶成交、爆仓分钟、持仓（币安 / OKX / Bybit 透传）、费率、服务端自攒的 1 分钟中间价环（每品种 1440 根）。</p>
+<h3>候选怎么生成</h3>
+<ul>
+<li><b>价区型</b>（盘口）：以 8 bps 桶把现价上下 3 × ATR(1h) 范围切开；每桶累加 ① 当前挂着的墙金额 × 持续分钟权重 ② 近 24 h 该桶大单成交额 ③ 近 24 h 该桶爆仓额。相邻高桶合并（最多 5 桶宽）。</li>
+<li><b>时段型</b>（盘口）：按 5 分钟滑窗找 ① 大单净额 ② 爆仓额 的局部峰；峰两侧回落到 40% 以内为边界；时段至少 5 分钟、最长 60 分钟。附带同时段涨跌幅与持仓变化。</li>
+<li><b>事件型</b>（盘口）：近 30 分钟内结束的墙，初始金额过门槛且 ① 已成交 ≥ 60%（被吃）或 ② 已撤 ≥ 80% 且撤单时价格距墙 ≤ 0.1%（靠近即撤）。失联不算事件。</li>
+<li><b>持仓</b>：1h / 4h 持仓变化 ≥ 该品种近 3 天同窗口分布的 P95，附同窗口涨跌幅。</li>
+<li><b>费率</b>：当前费率绝对值 ≥ 近 3 天 P95 且 ≥ 0.05%，附持仓 4h 变化。</li>
+</ul>
+<h3>怎么压噪音</h3>
+<ol>
+<li><b>按品种自己的历史定门槛</b>：每类候选的规模要 ≥ 该品种近 3 天同类的 P95；BTC 与山寨各用各的尺子。</li>
+<li><b>持续性</b>：墙 ≥ 10 分钟；时段 ≥ 5 分钟；单笔不算。</li>
+<li><b>与现在有关</b>：价区只看 3 × ATR 内；时段权重按 <code>exp(−age / 4h)</code> 衰减；事件按 <code>exp(−age / 30min)</code>。</li>
+<li><b>合并</b>：相邻价区并一条；重叠时段并一段；同一堵墙只出一次（挂着时在价区里，结束后变事件）。</li>
+<li><b>限量</b>：每品种 ≤ 5 条；图上已经画着的普通墙要过更高门槛（P98）才进列表。</li>
+<li><b>权重</b> = 规模分位 × 近度 × 新鲜度 × 叠加系数（墙 + 成交 + 爆仓同在一个价区时 ×1.5）。只用于排序，界面不显示数值；强度条按三分位点亮 1–3 根。</li>
+</ol>
+<h3>跨品种排行</h3>
+<ul>
+<li>范围 = 用户自选 ∪ 服务端热点层（30 只）。登录用户的自选由服务端自动补进跟踪集合（新增「自选层」，每用户 ≤ 30 只，7 天没登录就释放；总上限在 220 之外单独 +120）。未登录只给热点层。</li>
+<li>每品种取最高权重那条代表它；榜 ≤ 30 行；打开时定序。</li>
+<li>榜单（持仓变化 / 涨幅 / 跌幅）另走全市场扫描：24 h 行情一次拉全；1H / 4H 用服务端已有的小时收盘与持仓透传，5 分钟算一次，缓存 60 s。</li>
+</ul>
+<h3>不做</h3>
+<p>多空比、山寨指数、BTC 市值占比、贪婪恐惧指数、全市场爆仓总额、爆仓排行 / 热力、异常强度分数、偏多 / 偏空标签、异动推送（这轮）。</p>
+
+<h2><span class="n">12</span>接口</h2>
+<pre>GET /v1/market/orderflow/highlights?base=BTC
+{ "base":"BTC", "generatedAtMs":0, "tracked":true, "items":[
+  { "id":"z:82500", "kind":"zone", "cat":"book", "weight":0.92, "tier":3,
+    "low":82500, "high":82560, "sideHint":"below", "distPct":-0.2,
+    "facts":[ {"t":"wall","usd":35e6,"venues":3,"heldMs":2880000,"side":"buy"},
+              {"t":"trades","usd":21e6,"sinceMs":0}, {"t":"touches","n":2} ],
+    "rank3d":1, "firstMs":0, "lastMs":0 },
+  { "id":"s:0940", "kind":"span", "cat":"book", "weight":0.81, "tier":3,
+    "fromMs":0, "toMs":0,
+    "facts":[ {"t":"net","usd":46e6,"side":"buy"}, {"t":"px","pct":1.4}, {"t":"oi","pct":3.1} ],
+    "rank3d":2 },
+  { "id":"e:82880", "kind":"event", "cat":"book", "weight":0.63, "tier":2,
+    "atMs":0, "price":82880, "facts":[ {"t":"wallCancel","usd":19.6e6,"side":"sell","heldMs":1320000,"distPct":0.05} ] } ] }
+
+GET /v1/market/orderflow/highlights/board?bases=BTC,ETH,SOL,AXS   // 自选由客户端带上；服务端并入热点层
+{ "generatedAtMs":0, "rows":[ { "base":"AXS", "favorite":true, "count":2, "top":{ …同上一条 item… },
+                               "price":0.62, "changePct":5.2 }, … ] }
+
+GET /v1/market/board?kind=oi|gainers|losers&window=1h|4h|24h
+{ "generatedAtMs":0, "rows":[ { "base":"HO", "oiUsd":2.3e6, "changePct":640.9, "price":0.0 }, … ] }</pre>
+<p>上面的数字是字段示意，不是有效行情。要点的文案三端各自按 <code>terms.json</code> 新增的 <code>highlights</code> 一节拼，服务端只给结构化事实。</p>
+
+<h2><span class="n">13</span>三视角审查（2026-10-10 第二轮，对照真机自选页 / 大单页截图）</h2>
+<h3>视觉设计师</h3>
+<ul>
+<li><b>底栏记号改成釉面实心。</b>初版五颗都是线描，和 app 的 <code>TabGlyph</code>（主色釉 / 金釉实心、不加底不加点）不是一套；现在四颗照 <code>TabBar.swift</code> 的 24 框坐标原样画，第五颗「首页」是新画的雷达——同一副釉、同一个坐标系，金只给扫描扇，和星、人头那一点金同分量。</li>
+<li><b>涨跌药丸改成淡底色字。</b>实心绿红块在一列八行里太重、和自选页的淡色药丸打架；改成自选行同款：涨跌色 14% 底 + 0.5 pt 30% 描边 + 色字，深色 20%。</li>
+<li><b>字阶收一档并对齐 DesignTokens。</b>名 16→13/semibold（自选行同档）、价 15→14、事实 12→11、药丸 12、分段 13→12、胶囊 13→11.5、徽章 32→28。整行从 66 收到 58，一屏多出一行，看着也精致。</li>
+<li><b>层级靠粗细和墨色，不靠字号。</b>一行里只有「数值」用 ink/semibold，其余 ink2；类别签用类别色淡底；强度三格用类别色。没有第二种强调色。</li>
+<li><b>首页头部与自选页同构。</b>左边分段在 well 里、右边圆片，高度与自选页的分类胶囊条一致；用户从自选切到首页头部不跳。</li>
+<li><b>深浅两套。</b>深色不画光斑、卡 6.5% 白（同大单页）；经典皮肤白底无光斑。</li>
+</ul>
+<h3>交易员</h3>
+<ul>
+<li><b>一眼三件事。</b>谁（名）· 什么（类别签 + 一行事实）· 多强（三格 + 排位）；价格和涨跌只是语境放右上，不和事实抢。</li>
+<li><b>事实句式固定、可扫读。</b>价区 = 位置 · 规模 · 持续；时段 = 时间 · 净额 · 价格反应；事件 = 时刻 · 动作 · 距价。数值加粗，不写判断（没有「偏多 / 偏空」）。</li>
+<li><b>列表不在看的时候跳。</b>打开定序，新异动只浮药丸；交易员手指在滑的时候行不能换位。</li>
+<li><b>点一行就到位置。</b>进行情页 + 半页展开那条 + 图上带子，省掉「进去再找」那两步；「回图」把那段摆到视野中央。</li>
+<li><b>时效随时可见。</b>每行「多久前」、顶部更新时刻；断流置灰并写「停于 12:08」，不让人拿旧数据当新的。</li>
+<li><b>榜单只留三张</b>（持仓变化 / 涨幅 / 跌幅），默认 4H，三所合并到基础币——这是开仓前最常扫的三件；多空比、山寨指数、恐惧贪婪不做。</li>
+</ul>
+<h3>产品设计师</h3>
+<ul>
+<li><b>首页是第五格、最左、启动落地。</b>后续「价格 / 成交额」异动只是多一枚胶囊，不加页、不加入口。</li>
+<li><b>零新增设置。</b>窗口选择跟人走（4H 出厂），门槛由服务端按品种自身 P95 定，没有「灵敏度」这种给用户调的东西。</li>
+<li><b>未登录可用。</b>只扫热门 30 只，副标题一句话，不弹登录框；登录后自选自动补跟，不用用户操作。</li>
+<li><b>三端一份口径。</b>要点引擎只在服务端算，iOS / 手机网页只展示；用词走 terms.json。</li>
+<li><b>不做的清单固定</b>（§06 末尾），避免这一页长成第二个 CoinAnk 首页。</li>
+</ul>
+
+<h2><span class="n">14</span>动效与触觉（施工表）</h2>
+<table>
+<tr><th>场景</th><th>动效</th><th>触觉</th></tr>
+<tr><td>底栏切到首页</td><td>记号 opacity .64→1、scale 1→1.06，spring(response .3, damping .8)；页面无转场（标签切换）</td><td>—</td></tr>
+<tr><td>首页首次进入</td><td>骨架 ≤ 1 s；行到了后 fade + 上移 8 pt，每行错 30 ms，整列 ≤ 300 ms；强度三格从 0 长到位 240 ms</td><td>—</td></tr>
+<tr><td>胶囊切换</td><td>选中底色 morph 200 ms easeOut（matchedGeometry）；列表 crossfade 180 ms，不做位移</td><td><code>Haptics.step</code></td></tr>
+<tr><td>新异动药丸</td><td>从顶部落下 spring(response .35, damping .8)；点它：列表滚到顶 320 ms，再按 matchedGeometry 位移重排 350 ms；药丸淡出 150 ms</td><td>点药丸 <code>Haptics.press</code></td></tr>
+<tr><td>下拉刷新</td><td>沿用系统 refreshable；完成后重排同上</td><td>完成 <code>Haptics.tap</code></td></tr>
+<tr><td>行按下 / 松开</td><td>按下卡片 scale .98 + 底加深 120 ms；松开切到图表格，行情页切品种后 240 ms 半页升起 spring(response .42, damping .86) 到行情头下沿，对应卡展开并描边 1.2 s 淡出</td><td>松开 <code>Haptics.press</code></td></tr>
+<tr><td>点空心星</td><td>星填充 + scale 1.25→1 弹一下 260 ms</td><td><code>Haptics.tap</code></td></tr>
+<tr><td>入口条上滑</td><td>手指跟随（interactive）；松手位移 ≥ 48 pt 则 spring 到位，否则回弹 200 ms；入口条 44↔16 高度切换 200 ms ease-in-out，图随之伸缩不闪帧</td><td>到位 <code>Haptics.press</code></td></tr>
+<tr><td>半页卡展开 / 收起</td><td>高度 spring(response .35, damping .85)；证据表 fade 150 ms；图上带子 fade-in 180 ms（收起时 120 ms 淡出）</td><td><code>Haptics.step</code></td></tr>
+<tr><td>回图</td><td>图平移到带子居中 300 ms ease-in-out，十字线落在价区中线 / 时段中点</td><td><code>Haptics.step</code></td></tr>
+<tr><td>半页刷新</td><td>只换数字（<code>contentTransition(.numericText)</code> 250 ms）；新卡插尾、描边亮 600 ms</td><td>—</td></tr>
+<tr><td>榜单窗口切换</td><td>段选 morph 200 ms；数值 numericText 250 ms；行不位移</td><td><code>Haptics.step</code></td></tr>
+<tr><td>价格 / 涨跌</td><td>不做跳价闪动（自选页同规矩）</td><td>—</td></tr>
+<tr><td>断流 / 恢复</td><td>提示条沿用全 app；列表置灰 200 ms；恢复后无感回色</td><td>—</td></tr>
+<tr><td>减少动态效果</td><td>所有位移 / 弹簧改为 120 ms 交叉淡入；强度格直接出现</td><td>触觉不变</td></tr>
+</table>
+<p class="note">命中区：行整行 ≥ 58 pt；胶囊视觉 24 / 命中 36；空心星 44×44；「回图」44 高；窗口分段每段 ≥ 32×44。</p>
+
+<h2><span class="n">15</span>施工说明</h2>
+<ul>
+<li><b>服务端</b>：新模块 <code>orderflow_history/highlights.rs</code>（环形缓冲从 flow / liq / insights 的 submit 旁分流；每分钟任务照 <code>run_layers</code> 的写法起；两个 handler 照 <code>insights.rs</code> 的 <code>Answers</code> 缓存）。新增 <code>Layer::Favorite</code>（<code>orderflow_history.rs</code> 的 Entry / apply / status 一起改），自选名单照 <code>alerts.rs load()</code> 遍历用户读 <code>sync::live_objects</code>。榜单新模块 <code>board.rs</code>。</li>
+<li><b>iOS</b>：<code>Tab</code> 枚举加 <code>home</code>（TabBar.swift / MainScreen 两处 switch / UITestSupport）；新页 <code>Home/HomeScreen.swift</code> 复用 <code>LiuliSymbolRow</code> 的徽章与药丸；半页用 <code>PanelHost</code> 的自定义 <code>.height</code> 档位算「屏高 − 行情头下沿」；入口条替换现有 <code>OrderFlowInsightEntryStrip</code>；图上带子作为一支画笔挂进 <code>RangeOverlayView.draw</code>（先把 <code>ChartBox.onOverlayUpdate</code> 改成可挂多个）。</li>
+<li><b>手机网页</b>：<code>PAGES</code> 加 <code>home</code>（store.ts / shell.ts / main.ts / icons.ts），新建 <code>pages/home.ts</code>；半页复用 <code>.bt-wrap</code> 的拖拽与高度逻辑改成固定顶边；带子在 canvas 叠层里画。</li>
+<li><b>气泡页</b>保持 10-08 定版；<code>/v1/market/orderflow/insights</code> 接口保留给引擎复用价位分桶数据，手机端不再直接调它。</li>
+<li>做完先推能用的增量（首页异动 + 半页），榜单与自选层可以第二批；整批做完后做一轮全面回归并带画线交叉验证。</li>
+</ul>
+</div>
+
+<script>
+const SKINS={
+ sage:{l:{app:'#F3F7F4',raised:'#FFFFFF',raised2:'#E7EFE9',line:'#D6E3DA',ink:'#14211B',ink2:'#4E6158',ink3:'#606F67',up:'#36B257',down:'#E64552',accent:'#2E7D6B',amber:'#B57C28',ground:'#E9F3F1',lobes:['#A9DDF3','#9FE6C8','#DCEFF6']},
+       d:{app:'#0B120F',raised:'#131C18',raised2:'#1A241F',line:'#25332C',ink:'#E9F2EC',ink2:'#A5B8AE',ink3:'#7B8D85',up:'#4FB69C',down:'#E36159',accent:'#4FB69C',amber:'#E0A544',ground:'#0B120F',lobes:[]}},
+ terra:{l:{app:'#FBF6F0',raised:'#FFFFFF',raised2:'#F2E8DE',line:'#E7DACB',ink:'#241A13',ink2:'#6E5C4D',ink3:'#756659',up:'#36B257',down:'#E64552',accent:'#B25735',amber:'#B37B25',ground:'#F4EFEA',lobes:['#B5D9F1','#F5D8C3','#D3EDE0']},
+        d:{app:'#16100C',raised:'#211812',raised2:'#2A1F17',line:'#37281D',ink:'#F7EFE6',ink2:'#C2AC98',ink3:'#958576',up:'#3FA783',down:'#E0584A',accent:'#E2874F',amber:'#E0A544',ground:'#16100C',lobes:[]}},
+ classic:{l:{app:'#FFFFFF',raised:'#FFFFFF',raised2:'#F3F5F7',line:'#EAEAEA',ink:'#14211B',ink2:'#4E6158',ink3:'#606F67',up:'#36B257',down:'#E64552',accent:'#2E7D6B',amber:'#B57C28',ground:'#FFFFFF',lobes:[]},
+          d:{app:'#0D111C',raised:'#202126',raised2:'#303442',line:'#20232E',ink:'#E9F2EC',ink2:'#A5B8AE',ink3:'#7B8D85',up:'#2F9347',down:'#CC3333',accent:'#4FB69C',amber:'#E0A544',ground:'#0D111C',lobes:[]}}
+};
+const MA=['#F5A623','#E040A0','#7CB342','#E64552'];
+let G={skin:'sage',dark:0,anim:1,ann:1};
+
+/* ============================================================ 数据 */
+function rng(seed){let s=seed>>>0;return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296}}
+function genBars(seed,n,base){const r=rng(seed);const out=[];let p=base;for(let i=0;i<n;i++){const o=p;const drift=(r()-0.5)*base*0.012;const c=o+drift;const h=Math.max(o,c)+r()*base*0.006;const l=Math.min(o,c)-r()*base*0.006;let vol=0.4+r()*1.2+(r()<0.08?r()*3:0);
+ const big=r();let buy=0,sell=0;const scale=1e5*vol;if(big>0.35){const amt=Math.exp(r()*2)*scale;const dir=r();buy=dir<0.5?amt:amt*r()*0.3;sell=dir<0.5?amt*r()*0.3:amt}
+ if(i===n-1){buy=4.2e6;sell=0.9e6;vol=1.6}else if(i===n-10){buy=0.4e6;sell=3.6e6;vol=1.9}else if(i===n-23){buy=1.9e6;sell=0.3e6;vol=1.3}else if(i===n-7){buy=1.3e6;sell=0.5e6}
+ out.push({o,h,l,c,vol,buy,sell,t:i});p=c}return out}
+function tiers(bars){const tot=bars.map(b=>b.buy+b.sell).filter(x=>x>0).sort((a,b)=>a-b);const q=p=>tot[Math.min(tot.length-1,Math.floor(p*tot.length))]||0;const p85=q(.85),p95=q(.95),p99=Math.max(q(.99),3*q(.95));return{p85,p95,p99}}
+const fmt=v=>v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(v>=1e7?1:2)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v.toFixed(0);
+const fpx=v=>v>=1000?v.toLocaleString('en-US',{maximumFractionDigits:1,minimumFractionDigits:1}):v>=1?v.toFixed(2):v.toFixed(4);
+
+/* ============================================================ 机身与行情页 */
+function icon(n){return{search:'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',bell:'<svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/></svg>',more:'<svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18" cy="12" r="1.3" fill="currentColor"/></svg>',
+ chart:'<svg viewBox="0 0 24 24"><path d="M6 4v4M6 16v4M12 3v3M12 18v3M18 6v2M18 14v3"/><rect x="4" y="8" width="4" height="8" rx="1"/><rect x="10" y="6" width="4" height="12" rx="1"/><rect x="16" y="8" width="4" height="6" rx="1"/></svg>',
+ star:'<svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9L3.5 9.7l5.9-.8z"/></svg>',
+ sector:'<svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="5"/><circle cx="16.5" cy="15" r="4"/><circle cx="7" cy="17.5" r="2.5"/></svg>',
+ me:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="4"/><path d="M4.5 20c1.2-4 4-6 7.5-6s6.3 2 7.5 6"/></svg>',
+ back:'<svg viewBox="0 0 24 24"><path d="M14.5 5.5L8 12l6.5 6.5"/></svg>'}[n]}
+
+function chartSVG(spec,S,bars,T,sel,live){
+ const W=393,H=520,AX=52,mainH=330,volTop=372,volH=84,legend=24;
+ const n=spec.interval==='1分'?64:spec.interval==='1日'?34:46;const sp=(W-AX-8)/n;const bw=Math.max(1.5,sp*0.62);
+ const vis=bars.slice(live-n+1,live+1);const hi=Math.max(...vis.map(b=>b.h)),lo=Math.min(...vis.map(b=>b.l));const pad=(hi-lo)*0.14;
+ const y=v=>legend+10+(hi+pad-v)/(hi-lo+2*pad)*(mainH-legend-10);const x=i=>4+i*sp+sp/2;
+ const vmax=Math.max(...vis.map(b=>b.vol));const vy=v=>volTop+volH-v/vmax*(volH-14);
+ let s=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="inherit">`;
+ // grid + axis
+ for(let k=0;k<5;k++){const v=lo-pad+(hi-lo+2*pad)*k/4;const yy=y(v);s+=`<line x1="0" x2="${W-AX}" y1="${yy}" y2="${yy}" stroke="${S.line}" stroke-width=".5"/><text x="${W-AX+6}" y="${yy+4}" font-size="11" fill="${S.ink3}">${fpx(v)}</text>`}
+ s+=`<line x1="${W-AX}" x2="${W-AX}" y1="0" y2="${H}" stroke="${S.line}" stroke-width=".5"/>`;
+ // MAs
+ const ma=(k,col)=>{let d='';for(let i=0;i<n;i++){const idx=live-n+1+i;let a=0;for(let j=0;j<k;j++)a+=bars[idx-j].c;a/=k;d+=(i?'L':'M')+x(i).toFixed(1)+' '+y(a).toFixed(1)+' '}return `<path d="${d}" fill="none" stroke="${col}" stroke-width="1.1" opacity=".9"/>`};
+ s+=ma(10,MA[0])+ma(30,MA[1])+ma(120,MA[2]);
+ s+=`<text x="10" y="16" font-size="11" fill="${MA[0]}">均线 10 ${fpx(bars[live].c*1.002)}</text><text x="118" y="16" font-size="11" fill="${MA[1]}">均线 30 ${fpx(bars[live].c*0.996)}</text><text x="226" y="16" font-size="11" fill="${MA[2]}">均线 120 ${fpx(bars[live].c*1.01)}</text>`;
+ // candles + volume
+ vis.forEach((b,i)=>{const up=b.c>=b.o;const col=up?S.up:S.down;const cx=x(i);s+=`<line x1="${cx}" x2="${cx}" y1="${y(b.h)}" y2="${y(b.l)}" stroke="${col}" stroke-width="1"/><rect x="${cx-bw/2}" y="${y(Math.max(b.o,b.c))}" width="${bw}" height="${Math.max(1,Math.abs(y(b.o)-y(b.c)))}" fill="${up?S.app:col}" stroke="${col}" stroke-width="1"/>`;
+  s+=`<rect x="${cx-bw/2}" y="${vy(b.vol)}" width="${bw}" height="${volTop+volH-vy(b.vol)}" fill="${col}" opacity=".8"/>`});
+ s+=`<text x="10" y="${volTop+2}" font-size="11" fill="${S.ink3}">成交量 ${(vis[n-1].vol*1000).toFixed(0)}K</text>`;
+ // last price line
+ const lp=bars[live].c;s+=`<line x1="0" x2="${W-AX}" y1="${y(lp)}" y2="${y(lp)}" stroke="${S.ink3}" stroke-width=".7" stroke-dasharray="3 3"/><rect x="${W-AX+1}" y="${y(lp)-9}" width="${AX-3}" height="18" rx="4" fill="${bars[live].c>=bars[live].o?S.up:S.down}"/><text x="${W-AX+AX/2-1}" y="${y(lp)+4}" font-size="11" fill="#fff" text-anchor="middle" font-weight="600">${fpx(lp)}</text>`;
+ // ----- 大单签 -----
+ if(spec.signs!==false){vis.forEach((b,i)=>{const tot=b.buy+b.sell;if(tot<T.p85)return;const buy=b.buy>=b.sell;const col=buy?S.up:S.down;const cx=x(i);const tier=tot>=T.p99?3:tot>=T.p95?2:1;
+  const isLive=i===n-1;const sideUp=buy;let ty=sideUp?y(b.h)-4:y(b.l)+4;
+  if(tier===1){s+=`<circle cx="${cx}" cy="${sideUp?ty-2:ty+2}" r="2.5" fill="${col}" opacity=".75"/>`;return}
+  const tri=(yy,upward)=>upward?`M${cx-4},${yy} L${cx+4},${yy} L${cx},${yy-7}Z`:`M${cx-4},${yy} L${cx+4},${yy} L${cx},${yy+7}Z`;
+  s+=`<path d="${tri(ty,sideUp)}" fill="${col}"/>`;
+  if(isLive&&spec.anim!==0&&G.anim){s+=`<circle cx="${cx}" cy="${sideUp?ty-3.5:ty+3.5}" r="6" fill="none" stroke="${col}" stroke-width="1.2"><animate attributeName="r" values="4;12" dur="1.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".7;0" dur="1.4s" repeatCount="indefinite"/></circle>`}
+  const dense=spec.interval==='1分';
+  if(tier===3||(spec.interval==='1日'&&tier>=2)){if(dense&&tot<T.p99)return;const txt=fmt(tot);const w=txt.length*6.2+10;let py=sideUp?ty-9-16:ty+9;let flip=false;
+   if(sideUp&&py<legend)flip=true;if(!sideUp&&py+16>mainH)flip=true;
+   if(flip){py=sideUp?y(b.l)+4+9:y(b.h)-4-9-16;if(py<legend||py+16>mainH)return}
+   let pxx=Math.min(Math.max(cx,w/2+4),W-AX-w/2-2);
+   s+=`<rect x="${pxx-w/2}" y="${py}" width="${w}" height="16" rx="8" fill="${col}"/><text x="${pxx}" y="${py+11.5}" font-size="11" font-weight="600" fill="#fff" text-anchor="middle">${txt}</text>`}
+ })}
+ // ----- 要点高亮：价区带 / 时段带 -----
+ if(spec.band){const lo=y(spec.band.hi),hi=y(spec.band.lo);s+=`<rect x="0" y="${lo}" width="${W-AX}" height="${Math.max(6,hi-lo)}" fill="${S.accent}" opacity=".16"/><line x1="0" x2="${W-AX}" y1="${lo}" y2="${lo}" stroke="${S.accent}" stroke-width=".8" opacity=".7"/><line x1="0" x2="${W-AX}" y1="${hi}" y2="${hi}" stroke="${S.accent}" stroke-width=".8" opacity=".7"/>`;
+  const txt=spec.band.label;const w=txt.length*6.4+12;s+=`<rect x="${W-AX-w-6}" y="${lo-20}" width="${w}" height="16" rx="8" fill="${S.accent}"/><text x="${W-AX-6-w/2}" y="${lo-8.5}" font-size="11" font-weight="600" fill="#fff" text-anchor="middle">${txt}</text>`}
+ if(spec.span){const a=Math.max(x(n-1-spec.span.from),x(n-1-spec.span.to)),b=Math.min(x(n-1-spec.span.from),x(n-1-spec.span.to));s+=`<rect x="${b-sp/2}" y="${legend}" width="${a-b+sp}" height="${H-legend-22}" fill="${S.accent}" opacity=".14"/><line x1="${b-sp/2}" x2="${b-sp/2}" y1="${legend}" y2="${H-22}" stroke="${S.accent}" stroke-width=".8" opacity=".7"/><line x1="${a+sp/2}" x2="${a+sp/2}" y1="${legend}" y2="${H-22}" stroke="${S.accent}" stroke-width=".8" opacity=".7"/>`;
+  const txt=spec.span.label;const w=txt.length*6.4+12;const cx0=(a+b)/2;s+=`<rect x="${cx0-w/2}" y="${legend+6}" width="${w}" height="16" rx="8" fill="${S.accent}"/><text x="${cx0}" y="${legend+17.5}" font-size="11" font-weight="600" fill="#fff" text-anchor="middle">${txt}</text>`}
+ // crosshair
+ if(spec.crosshair!=null){const i=n-1-spec.crosshair;const b=vis[i];const cx=x(i);s+=`<line x1="${cx}" x2="${cx}" y1="${legend}" y2="${H}" stroke="${S.ink2}" stroke-width=".8"/><line x1="0" x2="${W-AX}" y1="${y(b.c)}" y2="${y(b.c)}" stroke="${S.ink2}" stroke-width=".8"/><rect x="${W-AX+1}" y="${y(b.c)-9}" width="${AX-3}" height="18" rx="4" fill="${S.ink}"/><text x="${W-AX+AX/2-1}" y="${y(b.c)+4}" font-size="11" fill="${S.app}" text-anchor="middle" font-weight="600">${fpx(b.c)}</text><rect x="${cx-22}" y="${H-18}" width="44" height="16" rx="4" fill="${S.ink}"/><text x="${cx}" y="${H-6.5}" font-size="10.5" fill="${S.app}" text-anchor="middle">12:${30-spec.crosshair*15<10?'0':''}${((30-spec.crosshair*15)+60)%60}</text>`}
+ // time axis
+ const ax=spec.interval==='1日'?['8月','9月','10月']:spec.interval==='1分'?['11:50','12:10','12:30']:['09:00','10:30','12:00'];s+=`<text x="40" y="${H-6}" font-size="10.5" fill="${S.ink3}">${ax[0]}</text><text x="160" y="${H-6}" font-size="10.5" fill="${S.ink3}">${ax[1]}</text><text x="280" y="${H-6}" font-size="10.5" fill="${S.ink3}">${ax[2]}</text>`;
+ return s+'</svg>'}
+
+
+/* ============================================================ 图标补充 */
+const ICON={
+ home:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5a4.5 4.5 0 0 1 4.5 4.5"/><path d="M12 12l6.4-6.4"/><circle class="dot" cx="12" cy="12" r="1.3" stroke="none"/></svg>',
+ chart:'<svg viewBox="0 0 24 24"><path d="M6 4v4M6 16v4M12 3v3M12 18v3M18 6v2M18 14v3"/><rect x="4" y="8" width="4" height="8" rx="1"/><rect x="10" y="6" width="4" height="12" rx="1"/><rect x="16" y="8" width="4" height="6" rx="1"/></svg>',
+ star:'<svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9L3.5 9.7l5.9-.8z"/></svg>',
+ sector:'<svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="5"/><circle cx="16.5" cy="15" r="4"/><circle cx="7" cy="17.5" r="2.5"/></svg>',
+ me:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="4"/><path d="M4.5 20c1.2-4 4-6 7.5-6s6.3 2 7.5 6"/></svg>',
+ up:'<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',
+ locate:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>',
+ calm:'<svg viewBox="0 0 24 24"><path d="M3 12h4l2-3 3 6 2-3h7"/></svg>',
+ wifi:'<svg viewBox="0 0 24 24"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>'};
+const COIN={BTC:['linear-gradient(145deg,#F7B733,#E8872B)','B'],ETH:['linear-gradient(145deg,#8E9BF5,#5C6BC0)','E'],SOL:['linear-gradient(145deg,#9F6BF1,#5B3FD1)','S'],AXS:['linear-gradient(145deg,#5FD3F0,#2A9DD6)','A'],XDP:['linear-gradient(145deg,#60C78A,#2E8B57)','X'],WLD:['linear-gradient(145deg,#4A4A4A,#1F1F1F)','W'],MINA:['linear-gradient(145deg,#F58A5B,#D9541E)','M'],HO:['linear-gradient(145deg,#C8CFD6,#8A939C)','H'],NVDA:['linear-gradient(145deg,#8DD36A,#5A9E2F)','N'],KAIA:['linear-gradient(145deg,#C2B280,#8E7A3D)','K'],MAGIC:['linear-gradient(145deg,#F06A6A,#B22E2E)','M'],PEPE:['linear-gradient(145deg,#6BCB77,#2F8F3A)','P'],LINK:['linear-gradient(145deg,#5B8DEF,#2F5FC8)','L'],XAU:['linear-gradient(145deg,#F5D061,#C99A1D)','金']};
+const badge=(b,sz)=>`<span class="bg" style="background:${(COIN[b]||COIN.HO)[0]}${sz?';width:'+sz+'px;height:'+sz+'px':''}">${(COIN[b]||[0,b[0]])[1]}</span>`;
+const CAT={book:{n:'盘口',c:'accent'},oi:{n:'持仓',c:'amber'},fr:{n:'费率',c:'ink2'}};
+const meter=(t,c)=>`<span class="mt"><i class="${t>=1?'on':''}" style="height:4px"></i><i class="${t>=2?'on':''}" style="height:7px"></i><i class="${t>=3?'on':''}" style="height:10px"></i></span>`;
+
+/* ============================================================ 样本数据 */
+const HOME=[
+ {b:'AXS',fav:true,p:'0.6214',chg:5.2,cat:'oi',t:3,ago:'4 分前',tx:'持仓 <b>+11.6%</b> · 价格 +5.2% · 4 小时',n:2},
+ {b:'BTC',fav:true,p:'82,713.1',chg:1.1,cat:'book',t:3,ago:'12 分前',tx:'下方 <b>82,500</b> 买区 · 35M · 3 所',n:3},
+ {b:'XDP',fav:false,p:'0.1072',chg:4.3,cat:'fr',t:2,ago:'8 分前',tx:'费率 <b>−0.26%</b> · 持仓 +25% · 4 小时',n:1},
+ {b:'SOL',fav:true,p:'114.92',chg:-2.4,cat:'book',t:2,ago:'20 分前',tx:'10:20–10:35 多单爆仓 <b>18M</b> · 价格 −1.1%',n:1},
+ {b:'WLD',fav:false,p:'1.284',chg:8.4,cat:'oi',t:2,ago:'31 分前',tx:'持仓 <b>+16.6%</b> · 价格 +8.4% · 4 小时',n:1},
+ {b:'ETH',fav:true,p:'3,812.4',chg:0.6,cat:'book',t:1,ago:'47 分前',tx:'12:33 卖墙撤单 <b>19.6M</b> · 距价 0.05%',n:1},
+ {b:'NVDA',fav:true,p:'186.42',chg:-0.8,cat:'book',t:1,ago:'1 小时前',tx:'上方 <b>188.0</b> 卖区 · 6.2M · 2 所',n:1},
+ {b:'MINA',fav:false,p:'0.2415',chg:3.1,cat:'fr',t:1,ago:'1 小时前',tx:'费率 <b>−0.21%</b> · 持仓 +9% · 4 小时',n:1},
+];
+const BOARD={
+ oi:[['HO','$2.30M','+640.9%'],['MAGIC','$6.62M','+631.3%'],['AXS','$9.79M','+442.0%'],['KAIA','$25.1M','+440.9%'],['WLD','$141M','+174.1%'],['PEPE','$7.68M','+142.9%']],
+ up:[['XDP','$0.1072','+150.6%'],['MAGIC','$0.1521','+128.1%'],['KAIA','$0.0564','+50.5%'],['WLD','$1.284','+43.3%'],['PEPE','$0.0000077','+30.9%'],['AXS','$0.6214','+22.4%']],
+ dn:[['MINA','$0.2415','−18.2%'],['LINK','$11.42','−9.6%'],['SOL','$114.92','−7.1%'],['NVDA','$186.42','−3.8%'],['ETH','$3,812','−2.2%'],['BTC','$82,713','−1.4%']]};
+const POINTS=[
+ {id:'z1',kind:'价区',cat:'book',t:3,ago:'12 分前',ttl:'下方 82,500–82,560 · 距 0.2%',f:'买墙 <b>35M</b> · 3 所 · 挂 48 分<br>近 4 小时大单成交 <b>21M</b> · 触及 2 次未破',rank:'近 3 天第 1 · 首见 10:12',
+  ev:[['币安 永续','<i style="width:58%"></i>','20.3M'],['OKX 永续','<i style="width:30%"></i>','10.4M'],['Bybit 永续','<i style="width:12%"></i>','4.3M'],['成交 · 买','<i style="width:62%;background:var(--up)"></i>','13.1M'],['成交 · 卖','<i style="width:38%;background:var(--down)"></i>','7.9M']],band:{lo:82500,hi:82560,label:'买区 35M'}},
+ {id:'s1',kind:'时段',cat:'book',t:3,ago:'09:40–10:05',ttl:'09:40–10:05 · 主动买入集中',f:'净买入 <span class="up">+46M</span> · 价格 <span class="up">+1.4%</span> · 持仓 +3.1%<br>现货 +18M · 合约 +28M',rank:'近 3 天第 2 · 25 分钟',span:{from:14,to:9,label:'净买 +46M'}},
+ {id:'e1',kind:'事件',cat:'book',t:2,ago:'12:33',ttl:'12:33 · 卖墙撤单',f:'<b>82,880</b> 卖墙 19.6M · 距价 0.05% 时撤 · 挂 22 分',rank:'币安 · OKX'},
+ {id:'l1',kind:'时段',cat:'book',t:2,ago:'10:20–10:35',ttl:'10:20–10:35 · 多单爆仓潮',f:'多单爆仓 <span class="dn">18M</span> · 空单 1.2M · 价格 −1.1%<br>最大一笔 1.24M @ 82,210 · 币安',rank:'近 3 天第 3 · 15 分钟'},
+ {id:'z2',kind:'价区',cat:'book',t:1,ago:'38 分前',ttl:'上方 83,280–83,320 · 距 0.7%',f:'卖墙 <b>12.4M</b> · 2 所 · 挂 9 分<br>今日此处成交 4.1M',rank:'近 3 天第 6 · 首见 11:52'},
+];
+
+/* ============================================================ 机身 */
+function tokens(spec){
+ const S=SKINS[spec.skin||G.skin][(spec.dark??G.dark)?'d':'l'];const dark=(spec.dark??G.dark)==1;const isClassic=(spec.skin||G.skin)==='classic';
+ const pane=dark?'rgba(255,255,255,.065)':isClassic?'rgba(243,245,247,.7)':'rgba(255,255,255,.64)';
+ const edge=dark?'rgba(255,255,255,.12)':isClassic?S.ink+'1A':'rgba(255,255,255,.62)';
+ const well=S.ink+(dark?'1F':'0F');
+ return {S,dark,isClassic,css:`--app:${S.app};--raised:${S.raised};--raised2:${S.raised2};--line:${S.line};--ink:${S.ink};--ink2:${S.ink2};--ink3:${S.ink3};--up:${S.up};--down:${S.down};--accent:${S.accent};--amber:${S.amber};--pane:${pane};--edge:${edge};--well:${well};--rule:${S.ink}${dark?'1C':'17'};--sheetBg:${S.ground}`}}
+function lobes(S,cls){return S.lobes.length?`<div class="${cls}"><i style="width:260px;height:260px;left:-80px;top:-60px;background:${S.lobes[0]}"></i><i style="width:220px;height:220px;right:-60px;top:160px;background:${S.lobes[1]}"></i><i style="width:240px;height:240px;left:90px;bottom:-80px;background:${S.lobes[2]}"></i></div>`:''}
+
+/* 底栏记号：照 app TabBar.swift 的釉面实心记号——主色釉（浅主色→主色）、金釉（浅金→金）、浅主色釉；
+   24 框坐标原样照抄，首页那颗是新画的「雷达」：主色釉环 + 金色扫描扇 + 浅主色中心点。 */
+let _gid=0;
+function glyph(k){const id='g'+(++_gid);
+ const defs=`<defs><linearGradient id="${id}a" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="color-mix(in srgb,var(--accent) 58%,#fff)"/><stop offset="1" stop-color="var(--accent)"/></linearGradient><linearGradient id="${id}g" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="color-mix(in srgb,var(--amber) 66%,#fff)"/><stop offset="1" stop-color="var(--amber)"/></linearGradient><linearGradient id="${id}l" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="color-mix(in srgb,var(--accent) 48%,#fff)"/><stop offset="1" stop-color="color-mix(in srgb,var(--accent) 84%,#fff)"/></linearGradient></defs>`;
+ const A=`url(#${id}a)`,Gd=`url(#${id}g)`,L=`url(#${id}l)`;
+ const r=(x,y,w,h,rr,f)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rr}" fill="${f}"/>`;
+ const c=(x,y,rr,f)=>`<circle cx="${x}" cy="${y}" r="${rr}" fill="${f}"/>`;
+ let b='';
+ if(k==='home'){b=`<path fill-rule="evenodd" d="M12 2.9a9.5 9.5 0 1 1 0 19 9.5 9.5 0 0 1 0-19zm0 2.7a6.8 6.8 0 1 0 0 13.6 6.8 6.8 0 0 0 0-13.6z" fill="${A}"/><path d="M12 12.4V6.2a6.2 6.2 0 0 1 5.9 4.3z" fill="${Gd}"/>${c(12,12.4,1.9,L)}`}
+ else if(k==='chart'){b=r(3.7,8.6,2.8,4.6,1.4,A)+r(3,12.4,4.2,8.4,2.1,A)+r(9.9,6.2,4.2,14.6,2.1,Gd)+r(17.5,6.4,2.8,4.4,1.4,A)+r(16.8,10.2,4.2,10.6,2.1,A)}
+ else if(k==='star'){b=`<path d="M12 3.3c.42 0 .8.24 1 .62l2.14 4.26 4.78.69c.93.13 1.3 1.28.62 1.93l-3.45 3.28.81 4.67c.16.93-.82 1.64-1.66 1.2L12 17.76l-4.24 2.19c-.84.44-1.82-.27-1.66-1.2l.81-4.67-3.45-3.28c-.68-.65-.31-1.8.62-1.93l4.78-.69L11 3.92c.2-.38.58-.62 1-.62z" fill="${Gd}"/>`}
+ else if(k==='sector'){b=c(8.1,8.6,5,A)+c(15.7,16.4,4.4,A)+c(17.4,6.6,2.9,Gd)+c(6.1,18,2.5,L)}
+ else if(k==='me'){b=`<path d="M3.6 19.4c0-4.5 3.8-7.6 8.4-7.6s8.4 3.1 8.4 7.6v.3c0 .9-.7 1.6-1.6 1.6H5.2c-.9 0-1.6-.7-1.6-1.6v-.3z" fill="${A}"/>`+c(12,6.6,3.9,Gd)}
+ return `<svg viewBox="0 0 24 24">${defs}${b}</svg>`}
+function tabbar(on){return `<div class="tab">${['home','chart','star','sector','me'].map(k=>`<span class="${k===on?'on':''}">${glyph(k)}</span>`).join('')}</div>`}
+
+function phone(spec){
+ const T=tokens(spec);const S=T.S;
+ const el=document.createElement('div');el.className='ph'+(T.dark?' dark':'')+((spec.anim??G.anim)?'':' noanim')+(spec.state==='stale'?' stale':'');
+ el.style.cssText=T.css;
+ const bars=genBars(spec.seed||7,300,spec.base||82713);const TT=tiers(bars);const live=bars.length-1;const sel=live;
+ const inner=spec.page==='home'?homePage(spec,S):spec.page==='board'?boardPage(spec,S):chartPage(spec,S,bars,TT,sel,live);
+ el.innerHTML=`<div class="scr">${spec.page==='home'||spec.page==='board'?lobes(S,'ground'):''}
+  <div class="island"></div>
+  <div class="sb"><span>12:3${spec.seed%10||1}</span><span class="r"><svg width="16" height="12" viewBox="0 0 16 12"><path d="M1 5a10 10 0 0 1 14 0M3.5 7.5a6.5 6.5 0 0 1 9 0M6 10a3 3 0 0 1 4 0" fill="none" stroke="${S.ink}" stroke-width="1.6" stroke-linecap="round"/></svg><i></i></span></div>
+  ${inner}
+  ${spec.half?halfSheet(spec,S):''}
+  ${spec.toast?`<div class="toast"><i></i>${spec.toast}<small>${spec.toastSub||''}</small></div>`:''}
+  ${spec.finger?`<div class="finger" style="left:${spec.finger[0]}px;top:${spec.finger[1]}px"></div>`:''}
+  <div class="home"></div>
+  ${(G.ann===0?[]:(spec.ann||[])).map(a=>`<div class="ann ${a.c||''}" style="left:${a.x}px;top:${a.y}px">${a.t}</div>`).join('')}
+ </div>`;
+ return el}
+
+/* ============================================================ 首页 */
+function homeBar(seg,S){return `<div class="bar"><div class="segc"><span class="${seg==='x'?'on':''}">异动</span><span class="${seg==='b'?'on':''}">榜单</span></div><div class="disc"><i>${icon('search')}</i></div></div>`}
+function homeRow(r,S){const c=CAT[r.cat];const up=r.chg>=0;
+ return `<div class="fr" style="--c:var(--${c.c})">${badge(r.b)}<div class="mid"><div class="l1"><span class="nm">${r.b}${r.fav?'':`<span class="st">${ICON.star}</span>`}</span><span class="p">${r.p}</span><span class="pill" style="--pc:${up?S.up:S.down}">${up?'+':'−'}${Math.abs(r.chg).toFixed(2)}%</span></div>
+  <div class="pt1"><span class="kind">${c.n}</span>${meter(r.t)}<span class="tx">${r.tx}</span>${r.n>1?`<span class="plus">+${r.n-1}</span>`:''}<span class="ago">${r.ago}</span></div></div></div>`}
+function homePage(spec,S){
+ const st=spec.state||'';const chip=spec.chip||'all';
+ let rows=HOME;if(chip!=='all')rows=HOME.filter(r=>r.cat===chip);if(st==='guest')rows=HOME.filter(r=>!r.fav).concat(HOME.filter(r=>['BTC','ETH'].includes(r.b)));
+ const chips=`<div class="chips"><span class="${chip==='all'?'on':''}">全部<b>${HOME.length}</b></span><span class="${chip==='book'?'on':''}" style="--c:var(--accent)"><i></i>盘口<b>4</b></span><span class="${chip==='oi'?'on':''}" style="--c:var(--amber)"><i></i>持仓<b>2</b></span><span class="${chip==='fr'?'on':''}" style="--c:var(--ink2)"><i></i>费率<b>2</b></span></div>`;
+ let list='';
+ if(st==='loading'){list=[0,1,2,3,4,5].map(()=>`<div class="fr skel"><span class="bg skel" style="background:var(--well)"></span><div class="mid"><div class="l1"><span class="nm skel" style="flex:none;width:70px;height:14px"></span><span style="flex:1"></span><span class="p skel" style="width:60px;height:14px"></span><span class="pill skel" style="width:60px;height:22px"></span></div><div class="pt1 skel" style="width:230px;height:12px;margin-top:8px"></div></div></div>`).join('')}
+ else if(st==='calm'){list=`<div class="empty-home">${ICON.calm}<b>盘面平静</b><span>自选与热门里暂无异动 · 12:31 更新</span></div>`}
+ else{list=rows.map(r=>homeRow(r,S)).join('')}
+ const sub=st==='guest'?`<span>热门 30 只 · 登录后自选也会扫</span><span>12:31</span>`:`<span>自选 24 只 + 热门 30 只</span><span>${st==='stale'?'停于 12:08':'12:31 更新'}</span>`;
+ return `<div class="hp">${homeBar('x',S)}${chips}${st==='loading'||st==='calm'?'':`<div class="sub">${sub}</div>`}<div class="list">${list}</div>
+  ${st==='new'?`<div class="newpill">${ICON.up}有 2 条新异动</div>`:''}${tabbar('home')}</div>`}
+function boardCard(title,rows,S,win){const pos=title!=='跌幅';
+ return `<div class="bc"><div class="bh"><h5>${title}</h5><div class="segc"><span class="${win==='1H'?'on':''}">1H</span><span class="${win==='4H'?'on':''}">4H</span><span class="${win==='24H'?'on':''}">24H</span></div></div>
+ ${rows.map((r,i)=>`<div class="br"><span class="i">${i+1}</span>${badge(r[0],22)}<span class="n">${r[0]}</span><span class="v">${r[1]}</span><span class="c" style="color:${pos?S.up:S.down}">${r[2]}</span></div>`).join('')}
+ <div class="more">全部 ›</div></div>`}
+function boardPage(spec,S){
+ return `<div class="hp">${homeBar('b',S)}<div class="bd">${boardCard('持仓变化',BOARD.oi,S,'4H')}${boardCard('涨幅',BOARD.up,S,'4H')}${boardCard('跌幅',BOARD.dn,S,'4H')}</div>${tabbar('home')}</div>`}
+
+/* ============================================================ 行情页 */
+function chartPage(spec,S,bars,T,sel,live){
+ const itv=spec.interval||'15分';const pers=['5分','30分','1时','4时','1日','1周'];
+ const px=bars[live].c,chg=px-bars[live-48].c,pct=chg/bars[live-48].c*100;const upc=chg>=0;
+ const sym=spec.sym||'BTC';
+ const strip=spec.strip==='none'?`<div class="strip thin"><i></i></div>`:`<div class="strip"><svg class="ch" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg><span class="k">要点<small>${spec.stripN||3}</small></span><span class="t">${spec.stripT||'下方 <b>82,500</b> 买区 · 35M · 3 所'}</span></div>`;
+ return `<div class="top">${badge(sym,34)}<div class="nm">${sym}<em>${spec.spot?'现货':'币安 USDT 永续'}</em></div>
+   <div class="disc"><i>${icon('bell')}</i><i>${icon('more')}</i><i>${icon('search')}</i></div></div>
+ <div class="hd"><div><div class="px" style="color:${upc?S.up:S.down}">${fpx(px)}</div><div class="chg" style="color:${upc?S.up:S.down}">${chg>=0?'+':'−'}${Math.abs(chg).toFixed(1)}&nbsp;&nbsp;${chg>=0?'+':'−'}${Math.abs(pct).toFixed(2)}%</div></div>
+   <div class="six"><s>仓</s><b>1.21B</b><s>额</s><b>3.84B</b><s>市值</s><b>1.64T</b><s>费率</s><b style="color:${S.up}">0.0100%</b><s>结算</s><b>3时27分</b><s>估值</s><b>1.86%</b></div></div>
+ <div class="per">${pers.map(p=>`<span class="${p===itv?'on':''}">${p}</span>`).join('')}<span class="sp"></span><span class="v"></span><span>${itv} ▾</span><span class="an">分析</span><span>⚌</span></div>
+ <div class="chart">${chartSVG(spec,S,bars,T,sel,live)}</div>
+ ${spec.landscape?'':strip}
+ ${tabbar('chart')}`}
+
+/* ============================================================ 半页 */
+function pointCard(p,open){const c=CAT[p.cat];
+ return `<div class="pt ${open?'open':''}" style="--c:var(--${c.c})"><div class="h"><span class="kind">${p.kind}</span><span class="ttl">${p.ttl}</span><span class="ago">${p.ago}</span></div>
+  <div class="f">${p.f}</div>
+  <div class="m">${meter(p.t)}<span>${p.rank}</span><span class="go">${ICON.locate}回图</span></div>
+  ${open&&p.ev?`<div class="ev">${p.ev.map(e=>`<s>${e[0]}</s><span class="bar">${e[1]}</span><b>${e[2]}</b>`).join('')}</div>`:''}</div>`}
+function halfSheet(spec,S){
+ const st=spec.state||'';let body='';
+ const hdr=(cnt,right)=>`<div class="hh"><h4>盘口要点</h4>${cnt!=null?`<span class="cnt">${cnt}</span>`:''}<span class="up">${right}</span></div>`;
+ if(st==='loading'){body=hdr(null,'')+`<div class="body">${[0,1].map(()=>`<div class="pt skel"><div class="h"><span class="kind skel" style="width:34px;height:18px;background:var(--well)"></span><span class="ttl skel" style="height:14px"></span></div><div class="f skel" style="height:30px"></div></div>`).join('')}</div>`}
+ else if(st==='calm'){body=hdr(null,'12:31 更新')+`<div class="body"><div class="calm">${ICON.calm}<b>暂无要点</b><span>近 24 小时没有值得注意的价区或时段</span></div></div>`}
+ else if(st==='untracked'){body=hdr(null,'')+`<div class="body"><div class="calm">${ICON.wifi}<b>打开后开始观察</b><span>这只品种从现在起纳入跟踪 · 10 分钟后有结果</span></div></div>`}
+ else{const open=spec.open||null;const list=(spec.points||POINTS).slice(0,spec.cut||5);
+  body=hdr(list.length,st==='stale'?'数据停于 12:08':`<span class="live"></span>12:31`)+`<div class="body">${list.map(p=>pointCard(p,p.id===open)).join('')}</div>`}
+ return `<div class="half">${lobes(S,'lobes')}<div class="grab"></div>${body}</div>`}
+
+/* ============================================================ 场景 */
+function fig(spec,cap){const w=document.createElement('div');w.className='fig';w.appendChild(phone(spec));const c=document.createElement('div');c.className='cap';c.innerHTML=cap;w.appendChild(c);return w}
+function mount(){
+ const home=document.getElementById('rowHome');home.innerHTML='';
+ home.append(
+  fig({seed:7,page:'home',ann:[{x:150,y:56,t:'分类胶囊：盘口 / 持仓 / 费率；后续加「价格」「成交额」只是多一格',c:'d'},{x:214,y:244,t:'一行事实 + 3 根强度条；不打分、不写多空',c:'d'},{x:128,y:334,t:'热门但不在自选：名字后一颗空心星，点了就加自选',c:'d'}]},'<b>1 · 首页 · 异动（默认）</b>。顶部「异动 · 榜单」分段，胶囊「全部」。按权重排，自选与热门混排；每行：徽章 · 品种 · 类别签 · 强度 · 一行事实 ｜ 价格 · 涨跌药丸 · 多久前。「+2」表示这只还有 2 条。'),
+  fig({seed:7,page:'home',chip:'book'},'<b>2 · 只看「盘口」</b>。胶囊筛类别，排序不变。盘口类四种形态都在：价区（买区 / 卖区）、时段（主动买入集中 / 爆仓潮）、事件（撤单）。'),
+  fig({seed:7,page:'home',state:'new',ann:[{x:200,y:240,t:'拉到新数据不重排，只浮一枚药丸；点它才滚到顶重排',c:'d'}]},'<b>3 · 有新异动</b>。打开时定序，看的过程中列表不跳；每 60 秒拉一次，有变化浮一枚药丸。下拉刷新立即重排。'),
+  fig({seed:7,page:'chart',half:true,open:'z1',band:{lo:82500,hi:82560,label:'买区 35M'},ann:[{x:16,y:122,t:'从首页点进来：行情头露着，半页已展开那条，图上画着带子',c:'d'}]},'<b>4 · 点一行 → 行情页 + 半页已展开</b>。底栏切到「图表」，品种切到 BTC，半页自动升起并展开让它上榜的那条（卡有 accent 描边），图上同时画出价区带。')
+ );
+ const board=document.getElementById('rowBoard');board.innerHTML='';
+ board.append(
+  fig({seed:7,page:'board',ann:[{x:200,y:166,t:'1H / 4H / 24H，默认 4H，选择跟人走',c:'r'}]},'<b>5 · 首页 · 榜单</b>。持仓变化 / 涨幅 / 跌幅三张卡，各 6 行，「全部」展开整榜。扫全部永续，三所合并到基础币。点一行进行情页（半页不自动展开——榜单行不是要点）。'),
+  fig({seed:7,page:'board',skin:'terra'},'<b>6 · 榜单 · 陶土</b>。同一结构换皮肤。榜单里不放多空比、山寨指数、情绪指数这些。')
+ );
+ const half=document.getElementById('rowHalf');half.innerHTML='';
+ half.append(
+  fig({seed:7,page:'chart',ann:[{x:150,y:672,t:'入口条：要点 3 · 排第一那条。不打开也有信息',c:'d'}],finger:[196,748]},'<b>7 · 行情页 · 入口条</b>。图下方 44 pt：「要点 3」+ 排第一的那条。上滑 ≥ 48 pt 或点按打开。'),
+  fig({seed:7,page:'chart',strip:'none',ann:[{x:150,y:712,t:'没要点：缩成 16 pt 抓手，高度还给图',c:'d'}]},'<b>8 · 没有要点时</b>。入口条缩成一道抓手，图长高 28 pt；上滑仍可打开（看到「暂无要点」）。'),
+  fig({seed:7,page:'chart',half:true,ann:[{x:16,y:138,t:'半页顶边 = 行情头下沿；价格、涨跌、六格一直露着',c:'d'}]},'<b>9 · 半页「盘口要点」</b>。标题 + 计数 + 更新时刻。≤ 5 张卡，按权重排；每卡 = 类别签 · 位置 · 事实两行 · 强度 · 排位 · 回图。'),
+  fig({seed:7,page:'chart',half:true,open:'z1',band:{lo:82500,hi:82560,label:'买区 35M'}},'<b>10 · 展开价区</b>。证据表：各所墙额、买卖成交各多少；图上横向带子 + 右上角标签。再点收起，带子消失。'),
+  fig({seed:7,page:'chart',half:true,open:'s1',span:{from:14,to:9,label:'净买 +46M'}},'<b>11 · 展开时段</b>。图上竖向带子覆盖 09:40–10:05；「回图」把那段横向居中。')
+ );
+ const states=document.getElementById('rowStates');states.innerHTML='';
+ states.append(
+  fig({seed:7,page:'home',state:'loading'},'<b>12 · 首页首次加载</b>。骨架 ≤ 1 秒，本机缓存的上一份先显示（有的话）。'),
+  fig({seed:7,page:'home',state:'calm'},'<b>13 · 盘面平静</b>。一条都没过门槛：一行空态 + 更新时间，不画假图。'),
+  fig({seed:7,page:'home',state:'guest'},'<b>14 · 未登录</b>。只有热门 30 只，副标题一句「登录后自选也会扫」；不弹登录框。'),
+  fig({seed:7,page:'home',toast:'行情断了，正在重连',toastSub:'刚才',state:'stale'},'<b>15 · 断网</b>。提示条沿用全 app 那一条；列表变灰、副标题写「停于 12:08」。'),
+  fig({seed:7,page:'chart',half:true,state:'loading'},'<b>16 · 半页加载</b>。两张骨架卡。'),
+  fig({seed:7,page:'chart',strip:'none',half:true,state:'calm'},'<b>17 · 暂无要点</b>。一行空态；入口条同时是抓手状态。'),
+  fig({seed:23,base:0.0423,sym:'MINA',page:'chart',strip:'none',half:true,state:'untracked'},'<b>18 · 未跟踪品种</b>。打开行情页即纳入按需跟踪；半页写一句「打开后开始观察」。'),
+  fig({seed:7,page:'chart',half:true,state:'stale',cut:3},'<b>19 · 数据停了</b>。卡变灰、右上写「数据停于 12:08」；恢复后无感回来。')
+ );
+ const skins=document.getElementById('rowSkins');skins.innerHTML='';
+ skins.append(
+  fig({seed:7,page:'home',skin:'terra',dark:0},'<b>20 · 陶土 · 浅 · 首页</b>。'),
+  fig({seed:7,page:'chart',half:true,open:'z1',band:{lo:82500,hi:82560,label:'买区 35M'},skin:'classic',dark:0},'<b>21 · 经典 · 浅 · 半页</b>。白底无光斑。'),
+  fig({seed:7,page:'home',skin:'sage',dark:1},'<b>22 · 青苔 · 深 · 首页</b>。深色不画光斑，卡 6.5% 白。'),
+  fig({seed:7,page:'chart',half:true,open:'s1',span:{from:14,to:9,label:'净买 +46M'},skin:'terra',dark:1},'<b>23 · 陶土 · 深 · 半页</b>。')
+ );
+}
+document.querySelectorAll('.seg').forEach(seg=>seg.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+ if(seg.id==='skinSeg')G.skin=b.dataset.k;if(seg.id==='darkSeg')G.dark=+b.dataset.k;if(seg.id==='animSeg')G.anim=+b.dataset.k;if(seg.id==='annSeg')G.ann=+b.dataset.k;mount()}));
+mount();
+</script>
+</body>
+</html>
