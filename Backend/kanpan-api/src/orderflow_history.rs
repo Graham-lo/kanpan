@@ -1295,7 +1295,27 @@ async fn recompute_favorites(registry:Arc<Registry>,running:crate::supervise::Ru
 async fn recompute_hot(registry:Arc<Registry>,running:crate::supervise::Running) {
  // 守卫握到函数结束：以前是末尾一句 `store(false)`，中途 panic 就跳过了，热点层从此再也不重算。
  let _running=running;
- let result=async {
+ // 合约表或行情没取到（多半是重启那一下撞上币安 429 闸门）就隔一分钟再试几次，不然这一小时热点层是空的、首页异动只剩自选。
+ let mut tries=0;
+ let result=loop {
+  tries+=1;
+  let got=hot_once(&registry).await;
+  if got.is_some()||tries>=HOT_TRIES {break got}
+  tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+ };
+ match result {
+  Some((hot,got,asked))=>{
+   tracing::info!("Orderflow history: hot signals ready (open interest for {got}/{asked} contracts)");
+   registry.apply(Layer::Hot,&hot,now_ms());
+  },
+  None=>tracing::warn!("Orderflow history: hot layer not recomputed after {tries} tries (contract list or tickers unavailable), keeping the last one"),
+ }
+}
+
+const HOT_TRIES:u32=5;
+
+async fn hot_once(registry:&Registry)->Option<(Vec<String>,usize,usize)> {
+ async {
   let info=crate::market_meta::exchange_info().await.ok()?;
   let tickers=layers::ticker_map(&*layers::tickers().await.ok()?);
   let exclude=registry.not_hot(now_ms());
@@ -1303,14 +1323,7 @@ async fn recompute_hot(registry:Arc<Registry>,running:crate::supervise::Running)
   let oi=layers::oi_changes(&candidates).await;
   let exclude=registry.not_hot(now_ms());
   Some((layers::pick_hot(&info,&tickers,&oi,&exclude),oi.len(),candidates.len()))
- }.await;
- match result {
-  Some((hot,got,asked))=>{
-   tracing::info!("Orderflow history: hot signals ready (open interest for {got}/{asked} contracts)");
-   registry.apply(Layer::Hot,&hot,now_ms());
-  },
-  None=>tracing::warn!("Orderflow history: hot layer not recomputed (contract list or tickers unavailable), keeping the last one"),
- }
+ }.await
 }
 
 /// 层的循环：每 15 秒采一次资源；每分钟过一遍闸门，到点重算固定（10 分钟对一次合约表）、山寨（UTC 0 点）、

@@ -257,6 +257,10 @@ fn hash(base:&str)->i64 {base.bytes().fold(0i64,|h,b|(h*31+i64::from(b)).rem_euc
 fn step(states:&mut HashMap<String,State>,booting:&mut HashSet<String>,jobs:&mpsc::UnboundedSender<Job>) {
  let now=now_ms();
  let minute=now.div_euclid(M);
+ // 费率排在这一分钟的起步补齐前面（工人是单行道）；起步那一下没取到（多半撞上 429 闸门）就每分钟再要，
+ // 不然要等一百多只补完、三五分钟里费率全空。
+ let no_funding=FUNDING.lock().unwrap_or_else(|e|e.into_inner()).is_empty();
+ if minute%5==0||no_funding {let _=jobs.send(Job::Funding);}
  let registry=REGISTRY.get();
  let mut tracked:Vec<String>=registry.map(|r|r.tracked()).unwrap_or_default();
  // 主币先起步。
@@ -299,7 +303,6 @@ fn step(states:&mut HashMap<String,State>,booting:&mut HashSet<String>,jobs:&mps
   if s.booted {snaps.insert(base.clone(),Arc::new(s.compute(now,true)));}
  }
  *SNAPS.write().unwrap_or_else(|e|e.into_inner())=snaps;
- if minute%5==0 {let _=jobs.send(Job::Funding);}
  if minute%60==7 {let _=jobs.send(Job::Purge);}
 }
 
