@@ -30,6 +30,8 @@ const RECENCY_MS:f64=2.0*3_600_000.0;
 const BOARD_LEVEL_DIST:f64=2.0;
 /// 净主动的数要盖到窗口起点前后这么近才算整窗（否则 `netUsd` 为 null）。
 const FLOW_SLACK_MS:i64=10*M;
+/// 分钟序列里连着这么多分钟没成交就算断了（永续几乎每分钟都有成交）。
+const FLOW_GAP_MINUTES:usize=10;
 /// 北京时间日界（当日高低、VWAP）。
 const DAY_OFFSET:i64=8*HOUR_MS;
 
@@ -402,12 +404,22 @@ impl State {
   out
  }
 
- /// 净主动从哪一刻起连续有数：分钟序列里成交额 > 0 的第一格，再往前接上紧挨着、净额非 0 的小时线
- /// （中间断一小时就停——库里几天前跟过一阵的足迹不能让「4 时」「区间」看起来盖住了）。
+ /// 净主动从哪一刻起连续有数：从最新一分钟往回走，连着超过 [`FLOW_GAP_MINUTES`] 分钟没成交就算断了；
+ /// 一直走到分钟序列开头没断，再往前接上紧挨着、净额非 0 的小时线（断一小时就停）。
+ /// 库里几天前跟过一阵的足迹（分钟或小时）不能让「4 时」「区间」看起来盖住了；
  /// 刚起跟、库里又没有这只近期足迹时只有这一任收的几分钟，长窗口不能拿它当整窗的净额。
  pub fn flow_start(&self)->Option<i64> {
-  let minute=self.flow.v.iter().position(|r|r[1]>0.0).map(|j|self.flow.t0+j as i64*M);
-  let mut start=minute.or_else(||self.hours.iter().rev().find(|(_,h)|h.net!=0.0).map(|(t,_)|*t+HOUR_MS))?;
+  let v=&self.flow.v;
+  let (mut first,mut zeros,mut whole)=(None,0usize,true);
+  for j in (0..v.len()).rev() {
+   if v[j][1]>0.0 {first=Some(j);zeros=0;}
+   else if first.is_some() {zeros+=1;if zeros>FLOW_GAP_MINUTES {whole=false;break}}
+  }
+  let mut start=match first {
+   Some(j) if !whole=>return Some(self.flow.t0+j as i64*M),
+   Some(_)=>self.flow.t0,
+   None=>self.hours.iter().rev().find(|(_,h)|h.net!=0.0).map(|(t,_)|*t+HOUR_MS)?,
+  };
   loop {
    let h=(start-1).div_euclid(HOUR_MS)*HOUR_MS;
    match self.hours.get(&h) {Some(x) if x.net!=0.0=>start=h,_=>break}
@@ -713,6 +725,24 @@ mod tests {
   assert_eq!(rows[0]["netUsd"],json!(15_000.0));
   assert_eq!(rows[1]["netUsd"],json!(20_000.0+5.0),"1h reaches back into the hour it mostly covers");
   assert_eq!(rows[2]["netUsd"],Value::Null,"4h starts before the gap");
+ }
+
+ #[test]
+ fn flow_coverage_stops_at_a_gap_inside_the_minutes() {
+  let mut s=flat_state(20,10.0);
+  let mut p=Pending::default();
+  for m in 100..130 {
+   let t=T0+m*M;
+   p.bars.push(Bar{t,o:10.0,h:10.0,l:10.0,c:10.0,spot:None});
+   p.flow.insert(t,(1000.0,5000.0));
+  }
+  s.fold(p,T0+130*M);
+  s.hours.insert(T0-HOUR_MS,Hour{o:10.0,h:10.0,l:10.0,c:10.0,net:5.0});
+  assert_eq!(s.flow_start(),Some(T0+100*M),"an old stretch before an 80-minute hole does not count");
+  let j=s.compute(T0+130*M+5_000,true).json;
+  let rows=j["flow"]["rows"].as_array().unwrap();
+  assert_eq!(rows[0]["netUsd"],json!(15_000.0));
+  assert_eq!(rows[1]["netUsd"],Value::Null);
  }
 
  #[test]
