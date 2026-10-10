@@ -1,0 +1,256 @@
+[
+  {
+    "device": "iPhone16Pro",
+    "btc": {
+      "price": {
+        "x": 16,
+        "y": 48.796875,
+        "width": 92.859375,
+        "height": 26.390625,
+        "right": 108.859375,
+        "bottom": 75.1875
+      },
+      "amount": {
+        "x": 282.921875,
+        "y": 53.21875,
+        "width": 45.46875,
+        "height": 17.546875,
+        "right": 328.390625,
+        "bottom": 70.765625
+      },
+      "percent": {
+        "x": 336.390625,
+        "y": 53.21875,
+        "width": 49.609375,
+        "height": 17.546875,
+        "right": 386,
+        "bottom": 70.765625
+      },
+      "entry": {
+        "x": 0,
+        "y": 85,
+        "width": 402,
+        "height": 44,
+        "right": 402,
+        "bottom": 129
+      },
+      "head": {
+        "x": 0,
+        "y": 40,
+        "width": 402,
+        "height": 45,
+        "right": 402,
+        "bottom": 85
+      },
+      "iv": {
+        "x": 0,
+        "y": 129,
+        "width": 402,
+        "height": 44,
+        "right": 402,
+        "bottom": 173
+      },
+      "chart": {
+        "x": 0,
+        "y": 173,
+        "width": 402,
+        "height": 643,
+        "right": 402,
+        "bottom": 816
+      },
+      "overflow": false,
+      "stats": 0,
+      "priceText": "83,042.9"
+    },
+    "tiny": {
+      "price": {
+        "x": 16,
+        "y": 48.796875,
+        "width": 128.09375,
+        "height": 26.390625,
+        "right": 144.09375,
+        "bottom": 75.1875
+      },
+      "amount": {
+        "x": 241.484375,
+        "y": 53.21875,
+        "width": 86.90625,
+        "height": 17.546875,
+        "right": 328.390625,
+        "bottom": 70.765625
+      },
+      "percent": {
+        "x": 336.390625,
+        "y": 53.21875,
+        "width": 49.609375,
+        "height": 17.546875,
+        "right": 386,
+        "bottom": 70.765625
+      },
+      "entry": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "head": {
+        "x": 0,
+        "y": 40,
+        "width": 402,
+        "height": 45,
+        "right": 402,
+        "bottom": 85
+      },
+      "iv": {
+        "x": 0,
+        "y": 85,
+        "width": 402,
+        "height": 44,
+        "right": 402,
+        "bottom": 129
+      },
+      "chart": {
+        "x": 0,
+        "y": 129,
+        "width": 402,
+        "height": 687,
+        "right": 402,
+        "bottom": 816
+      },
+      "overflow": false,
+      "stats": 0,
+      "priceText": "0.00001204"
+    },
+    "gestures": "click opens; horizontal/up/down drag does not",
+    "errors": []
+  },
+  {
+    "device": "iPhone17ProMax",
+    "btc": {
+      "price": {
+        "x": 20,
+        "y": 48.796875,
+        "width": 92.859375,
+        "height": 26.390625,
+        "right": 112.859375,
+        "bottom": 75.1875
+      },
+      "amount": {
+        "x": 316.921875,
+        "y": 53.21875,
+        "width": 45.46875,
+        "height": 17.546875,
+        "right": 362.390625,
+        "bottom": 70.765625
+      },
+      "percent": {
+        "x": 370.390625,
+        "y": 53.21875,
+        "width": 49.609375,
+        "height": 17.546875,
+        "right": 420,
+        "bottom": 70.765625
+      },
+      "entry": {
+        "x": 0,
+        "y": 85,
+        "width": 440,
+        "height": 44,
+        "right": 440,
+        "bottom": 129
+      },
+      "head": {
+        "x": 0,
+        "y": 40,
+        "width": 440,
+        "height": 45,
+        "right": 440,
+        "bottom": 85
+      },
+      "iv": {
+        "x": 0,
+        "y": 129,
+        "width": 440,
+        "height": 44,
+        "right": 440,
+        "bottom": 173
+      },
+      "chart": {
+        "x": 0,
+        "y": 173,
+        "width": 440,
+        "height": 725,
+        "right": 440,
+        "bottom": 898
+      },
+      "overflow": false,
+      "stats": 0,
+      "priceText": "83,043.0"
+    },
+    "tiny": {
+      "price": {
+        "x": 20,
+        "y": 48.796875,
+        "width": 128.09375,
+        "height": 26.390625,
+        "right": 148.09375,
+        "bottom": 75.1875
+      },
+      "amount": {
+        "x": 275.484375,
+        "y": 53.21875,
+        "width": 86.90625,
+        "height": 17.546875,
+        "right": 362.390625,
+        "bottom": 70.765625
+      },
+      "percent": {
+        "x": 370.390625,
+        "y": 53.21875,
+        "width": 49.609375,
+        "height": 17.546875,
+        "right": 420,
+        "bottom": 70.765625
+      },
+      "entry": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "head": {
+        "x": 0,
+        "y": 40,
+        "width": 440,
+        "height": 45,
+        "right": 440,
+        "bottom": 85
+      },
+      "iv": {
+        "x": 0,
+        "y": 85,
+        "width": 440,
+        "height": 44,
+        "right": 440,
+        "bottom": 129
+      },
+      "chart": {
+        "x": 0,
+        "y": 129,
+        "width": 440,
+        "height": 769,
+        "right": 440,
+        "bottom": 898
+      },
+      "overflow": false,
+      "stats": 0,
+      "priceText": "0.00001204"
+    },
+    "gestures": "click opens; horizontal/up/down drag does not",
+    "errors": []
+  }
+]

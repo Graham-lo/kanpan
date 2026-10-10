@@ -1,0 +1,16 @@
+{
+  "source": "a69c19a565fce29a96583843e0e816a53694331c",
+  "configuration": "Release",
+  "bundleID": "com.yj27y32.hkline",
+  "version": "1.0.0",
+  "build": "1",
+  "executableSHA256": "64b72e3ee4329d79c9dbded2a102cbbd30930f866abe65e9c5268401cdafb698",
+  "device": "iPhone 16 Pro",
+  "installedAt": "2026-10-11 04:12:04 +08:00",
+  "installationOutcome": "success",
+  "launchAt": "2026-10-11 04:12:13 +08:00",
+  "launchOutcome": "success",
+  "processIdentifier": 2484,
+  "uiAcceptance": "simulator only; no real-device visual acceptance claimed",
+  "processConfirmedRunningAfterLaunch": true
+}
