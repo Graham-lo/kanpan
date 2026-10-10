@@ -137,6 +137,7 @@ export interface Prefs {
   reviewSegment: ReviewSegment
   /** 复盘本筛选停在哪一档（2026-10-10，跟人走，出厂「待判定」；与 iOS `Prefs.reviewBookFilter` 同义） */
   reviewBookFilter: ReviewBookFilter
+  // ↑ new-sync-field:m-interface 在这一行上面插新字段（Tools/new-sync-field.py 认这一行，别删）
 }
 
 /** 进账号同步的字段（settings 集合）。顺序无意义，集合必须与 iOS 契约、服务端对齐 */
@@ -146,6 +147,7 @@ export const SYNCED_FIELDS = [
   'notifyListingChanges', 'orderFlow', 'orderFlowHistory', 'orderFlowOverrides', 'overlays', 'params', 'priceMode',
   'quickIntervals', 'redUp', 'reviewBookFilter', 'reviewSearchScope', 'reviewSegment', 'sectorMarket', 'sectorWindow', 'skin', 'subHeightOverrides',
   'subInverted', 'subs', 'theme', 'watchMoveAlert',
+  // ↑ new-sync-field:m-synced 在这一行上面插新字段（Tools/new-sync-field.py 认这一行，别删）
 ] as const satisfies readonly (keyof Prefs)[]
 /** 只在这台设备上的字段 */
 export const DEVICE_ONLY_FIELDS = ['routePolicy'] as const satisfies readonly (keyof Prefs)[]
@@ -166,6 +168,7 @@ export function defaultPrefs(): Prefs {
     favoritesGroup: '', sectorMarket: 'crypto', sectorWindow: 'today', lastDrawTool: '', drawToolUsage: {}, analysisUsage: {}, reviewSearchScope: 'history',
     reviewSegment: 'views', reviewBookFilter: 'todo',
     drawingOverlaysShown: true, drawingsHidden: false,
+    // ↑ new-sync-field:m-default 在这一行上面插新字段（Tools/new-sync-field.py 认这一行，别删）
   }
 }
 
@@ -396,6 +399,7 @@ export function normalizePrefs(raw: unknown): Prefs {
     reviewSearchScope: g('reviewSearchScope'),
     reviewSegment: g('reviewSegment'),
     reviewBookFilter: g('reviewBookFilter'),
+    // ↑ new-sync-field:m-normalize 在这一行上面插新字段（Tools/new-sync-field.py 认这一行，别删）
   }
   return out
 }

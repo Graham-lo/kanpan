@@ -27,7 +27,7 @@ DEVICE ?= iPhone 16 Pro
 
 .PHONY: help doctor venue-isolation core-test presentation-test network-test data-test chart-build chart-test \
 	symbols-test settings-test sector-test scan-test alerts-test exchange-test diag-test deeplink-test account-codec-test \
-	diag-ios-test main-ios-test app-logic-test habits-test share-test sync-contract backend-test account-test review-test test \
+	diag-ios-test main-ios-test app-logic-test habits-test share-test sync-contract new-sync-field backend-test account-test review-test test \
 	test-release core-test-release presentation-test-release network-test-release data-test-release account-test-release \
 	app-logic-test-release chart-test-release main-ios-test-release review-test-release diag-ios-test-release \
 	strict evidence fixtures feed app-test ui-test ui-test-one build device-release install-release \
@@ -54,6 +54,7 @@ help:
 	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库；配色那两份不重导）"
 	@echo "feed         编数据层取证工具 kanpan-feed（Release）"
 	@echo "sync-contract 重新生成 iOS↔Rust 契约：settings 字段（PrefsFieldPlan.table → contract/settings-fields.json）与画线字段（Drawing 编码 → contract/drawing-fields.json）"
+	@echo "new-sync-field 加一个跟人走的设置字段：name=xxx rule='bool|enum:a|b|number:lo..hi|int:lo..hi|string:N' default=… [note=…]"
 	@echo "app-test     app-logic-test + 编一遍 app"
 	@echo "build        在模拟器上编 app（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "ui-test      A8.4：两台重点机型跑同一套 XCUITest 用例，逐台记结果"
@@ -248,7 +249,8 @@ venue-isolation:
 # 这条命令把它导成下面那个 JSON，iOS 与 Rust 两边的测试都读那一份对账，谁也不再手抄
 # （手抄三份的代价见提交 a161bb0：服务端少认十九个字段，那个账号从此同步不上任何东西）。
 #
-#   加 / 删一个同步字段：改 table → make sync-contract → 两边测试自动告诉你还差什么。
+#   加一个同步字段：make new-sync-field（见下）；删一个：见 AGENTS.md「加 / 删一个同步字段」。
+#   值规则也在母表里（`PrefsFieldPlan.rules`），契约带着它，服务端与手机网页按它校验 / 清洗。
 #
 # 走的是 settings 那条测试的「写文件」模式（KANPAN_WRITE_SYNC_CONTRACT=1），
 # 不另起一个可执行：生成器和对账用的是同一段代码，不可能各说各话。
@@ -266,6 +268,13 @@ sync-contract:
 	  '-only-testing:KanpanTests/DrawingFieldContractTests/theDrawingContractFileIsWhatDrawingEncodes()'
 	@echo "→ $(SYNC_CONTRACT) 已按 PrefsFieldPlan.table、$(DRAWING_CONTRACT) 已按 Drawing 的编码重新生成；跑 make app-logic-test 与 (cd Backend/kanpan-api && cargo test --lib) 对账"
 	@$(MAKE) --no-print-directory backend-test
+
+# 加一个跟人走的设置字段（bool / enum / number / int / string 五种通用规则）：iOS 母表与 Prefs / PrefsCodec 样板、
+# 服务端白名单、手机网页 prefs.ts、电脑网页「不用」表里一条 TODO 一次写好，再跑 sync-contract。
+#   make new-sync-field name=chartHints rule=bool default=true note='图上提示条开不开'
+#   make new-sync-field name=fooMode rule='enum:a|b|c' default=a
+new-sync-field:
+	@python3 Tools/new-sync-field.py name='$(name)' rule='$(rule)' default='$(default)' note='$(note)'
 
 # ---------------------------------------------------------------- 后端单测
 # kanpan-api 的库内单测：不需要 Postgres，几秒跑完（要库的集成测试走

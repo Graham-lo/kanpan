@@ -178,6 +178,7 @@ extension Prefs: Codable {
     case notifyListingChanges
     // 「按我的习惯自动调整」（2026-09-28）：开关 + 学到的结论（整份一个对象）。
     case habitLearning, learnedDefaults
+    // ↑ new-sync-field:coding-key 在这一行上面插新字段（Tools/new-sync-field.py 认这一行，别删）
   }
 
   func encode(to encoder: Encoder) throws {
@@ -220,6 +221,7 @@ extension Prefs: Codable {
     try c.encode(notifyListingChanges, forKey: .notifyListingChanges)
     try c.encode(habitLearning, forKey: .habitLearning)
     try c.encode(learnedDefaults, forKey: .learnedDefaults)
+    // ↑ new-sync-field:encode 在这一行上面插新字段（Tools/new-sync-field.py 认这一行，别删）
   }
 
   /// 指标布局的六个键。
@@ -391,6 +393,7 @@ extension Prefs: Codable {
     if let v = bool(.habitLearning) { habitLearning = v }
     // 结论表自己宽容解码（坏的那一条丢掉、别的留着），整份读不出就当没学到。
     if let v = (try? c.decodeIfPresent(LearnedDefaults.self, forKey: .learnedDefaults)) ?? nil { learnedDefaults = v }
+    // ↑ new-sync-field:decode 在这一行上面插新字段（Tools/new-sync-field.py 认这一行，别删）
 
     if let raw = strs(.compareSymbols) { compareSymbols = Prefs.cleanCompareSymbols(raw) }
     PrefsCodec.migrate(&self, from: archived, archivedQuicks: archivedQuicks)

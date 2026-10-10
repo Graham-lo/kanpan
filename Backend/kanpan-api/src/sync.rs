@@ -222,6 +222,7 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "bigTradeSigns",
  // 「分析」面板的自动分析层（2026-10-10，跟人走）：字符串数组，白名单见契约 `rules.autoLayers`（目前只有公允价值缺口 FVG）。
  "autoLayers",
+ // ↑ new-sync-field:server-allowlist 在这一行上面插新字段（Tools/new-sync-field.py 认这一行，别删）
  // 电脑网页版的多套图表布局（2026-10-07，整份布局集一个对象，规则见 `sync_validation::chart_layouts`）。
  // 只有网页版读写，不在 iOS 的 PrefsFieldPlan 契约里，见 WEB_ONLY_SETTINGS_FIELDS。
  "chartLayouts",

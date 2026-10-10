@@ -248,6 +248,8 @@ struct Prefs: Sendable, Equatable {
   /// 出厂「待判定」：打开复盘本九成是奔着「有什么该我处理的」去的（§2G2）。
   var reviewBookFilter: String = "todo"
 
+  // ↑ new-sync-field:prefs-field 在这一行上面插新字段（Tools/new-sync-field.py 认这一行，别删）
+
   init() {}
 
   /// 全新安装就是这一份（A6.4「首次安装即如此」）。

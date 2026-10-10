@@ -189,7 +189,6 @@ export const WEB_ONLY_SETTINGS = ['webPrefs', LAYOUTS_FIELD, 'webChart'] as cons
  * 不认领的键电脑不读不写，推送时原样带回（bridge 只碰 OWNED.settings），所以不会把手机的值抹掉。
  * 新字段由 `make new-sync-field` 先在这里放一条 TODO，逼加字段的人想清楚：电脑要不要接？接就挪进 SETTINGS_FIELDS。 */
 export const PC_UNUSED_SYNCED_FIELDS: Readonly<Record<string, string>> = {
-  // ↓ new-sync-field 在这一行下面插 TODO（别删这行）
   skin: '电脑网页自己一套视觉，皮肤记在 webPrefs.skin，不和手机共用',
   theme: '深浅同上，记在 webPrefs.theme',
   interval: '电脑每个图格各有自己的周期，记在 chartLayouts 的格子里',
@@ -216,6 +215,7 @@ export const PC_UNUSED_SYNCED_FIELDS: Readonly<Record<string, string>> = {
   reviewSearchScope: '手机复盘搜索的范围，电脑复盘页签在 webPrefs.review',
   reviewSegment: '手机复盘本停在哪一面，电脑复盘页签在 webPrefs.review',
   reviewBookFilter: '手机复盘本筛选停在哪一档，电脑复盘页签在 webPrefs.review',
+  // ↑ new-sync-field:pc-unused 在这一行上面插新字段（Tools/new-sync-field.py 认这一行，别删）
 }
 /** 云端没有这个字段时本机的值要推上去（网页独有，没有别的端会写它）：seen 记成 null，下一次记账一定推 */
 const PUSH_WHEN_CLOUD_EMPTY = new Set([LAYOUTS_FIELD, 'webPrefs'])

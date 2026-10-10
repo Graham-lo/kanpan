@@ -107,6 +107,9 @@ extension PrefsFieldPlan {
       "analysisUsage": .countMap(
         keys: AnalysisSection.allCases.map(\.rawValue), maxKeys: Prefs.maxAnalysisUsageKeys, max: Prefs.maxDrawToolUsageCount),
 
+      // ↑ new-sync-field:rule 在这一行上面插新字段（Tools/new-sync-field.py 认这一行，别删）
+      // 脚手架插的条目落在这里；值得归类的话挪到上面对应的段。
+
       // ---------------------------------------------------------------- 手写规则（服务端 `custom_setting`）
       // 对比品种：完整身份键，代号段按交易所分流到注册表那一家的规则，最多三只、不重复。
       "compareSymbols": .custom("compare_symbols"),
