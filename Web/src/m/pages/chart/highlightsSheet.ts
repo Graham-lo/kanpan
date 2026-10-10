@@ -14,7 +14,7 @@ import { HL, fill } from '../../../terms'
 import type { Highlights, HlEvent, Level } from '../../../highlights/api'
 import {
   usd, signedUsd, signedPct, distText, bandPx, levelPx, hhmm, heldText, wallStateWord, refWord, levelFill, levelTotal,
-  eventTime, eventSentence, eventIcon, flowLabel, positionCells, rangeHead, straddles, type EventIcon,
+  eventTime, eventSentence, eventIcon, flowLabel, positionCells, rangeHead, rangeEdgesText, levelMeta2, straddles, type EventIcon,
 } from '../../../highlights/format'
 import '../../styles/highlights.css'
 
@@ -79,11 +79,11 @@ function levelRowHTML(l: Level, mx: number, open: boolean, price: number | null)
   const meta1 = l.wallUsd > 0
     ? `${escA(HL.wall)} <b>${usd(l.wallUsd)}</b>${l.wallHeldMs > 0 ? ` · ${escA(fill(HL.heldFor, { d: heldText(l.wallHeldMs) }))}` : ''}`
     : `${escA(HL.fill)} <b>${usd(fillUsd)}</b>`
-  const meta2 = `${l.liqUsd > 0 ? `${escA(fill(HL.liqMeta, { v: usd(l.liqUsd) }))} · ` : ''}${escA(fill(HL.tests, { n: l.tests }))}`
+  const meta2 = escA(levelMeta2(l))
   const row = `<button type="button" class="row${open ? ' open' : ''} ${l.side}" data-lv="${escA(l.id)}" aria-expanded="${open}">`
     + `<span class="px">${bandPx(l.low, l.high)}<small>${escA(straddles(l, price) ? HL.atPrice : fill(HL.dist, { v: distText(l.distPct) }))}${escA(ref)}</small></span>`
     + `<span class="bar">${seg(l.wallUsd, 'w')}${seg(fillUsd, 'f')}${seg(l.liqUsd, 'q')}</span>`
-    + `<span class="meta">${meta1}<br>${meta2}</span></button>`
+    + `<span class="meta">${meta1}${meta2 ? `<br>${meta2}` : ''}</span></button>`
   if (!open) return row
   const ev: [string, string][] = []
   if (fillUsd > 0) ev.push([HL.fill, escA(fill(HL.fillBuySell, { a: '\u0001', b: usd(l.fillSellUsd) })).replace('\u0001', `<b>${usd(l.fillBuyUsd)}</b>`)])
@@ -119,7 +119,7 @@ export function levelsBlockHTML(d: Highlights, price: number | null, open: strin
     const pos = price != null && r.high > r.low ? Math.max(0, Math.min(100, ((price - r.low) / (r.high - r.low)) * 100)) : null
     const head = `${HL.range} <b>${h.band}</b> · ${escA(fill(HL.rangeAge, { h: h.hours }))}`
     rng = `<div class="rng"><div class="l1"><span>${head}</span><span class="rt">${pos != null ? `<i style="left:${pos.toFixed(1)}%"></i>` : ''}</span></div>`
-      + `<div class="l2">${escA(fill(HL.rangeEdges, { a: usd(r.lowFillUsd), n: r.lowTests, b: usd(r.highFillUsd), m: r.highTests }))}</div></div>`
+      + `<div class="l2">${escA(rangeEdgesText(r))}</div></div>`
   }
   const nowRow = `<div class="now"><i></i>${escA(fill(HL.now, { p: price != null ? levelPx(price) : '—' }))}<i></i></div>`
   return `<div class="hl-blk" data-blk="levels"><div class="bt"><h5>${HL.levels}</h5><span class="cap"><i></i>${HL.wall}<i class="f"></i>${HL.fill}<i class="q"></i>${HL.liq}</span></div>`

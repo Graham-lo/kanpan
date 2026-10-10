@@ -191,6 +191,17 @@ export function positionCells(p: Position): TriCell[] {
   ]
 }
 
+/** 区间两沿：下沿累计吃单 47.2M · 测 2 次 ｜ 上沿 94.3M（测 0 次不写） */
+export function rangeEdgesText(r: RangeBox): string {
+  const side = (tpl: string, v: number, n: number): string => [fill(tpl, { v: usd(v) }), n > 0 ? fill(HL.tests, { n }) : ''].filter(Boolean).join(' · ')
+  return `${side(HL.rangeLowEdge, r.lowFillUsd, r.lowTests)} ｜ ${side(HL.rangeHighEdge, r.highFillUsd, r.highTests)}`
+}
+
+/** 价位行右边第二行：爆仓 120K · 测 6 次；爆仓 0 不写、测 0 次不写，都没有就是空串 */
+export function levelMeta2(l: Level): string {
+  return [l.liqUsd > 0 ? fill(HL.liqMeta, { v: usd(l.liqUsd) }) : '', l.tests > 0 ? fill(HL.tests, { n: l.tests }) : ''].filter(Boolean).join(' · ')
+}
+
 export function rangeHead(r: RangeBox, now: number): { band: string; hours: number } {
   return { band: bandPx(r.low, r.high), hours: Math.max(1, Math.round((now - r.sinceMs) / H)) }
 }

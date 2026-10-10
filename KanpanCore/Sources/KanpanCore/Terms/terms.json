@@ -132,6 +132,8 @@
     "range": "区间",
     "rangeAge": "已走 {h} 时",
     "rangeEdges": "下沿累计吃单 {a} · 测 {n} 次 ｜ 上沿 {b} · 测 {m} 次",
+    "rangeLowEdge": "下沿累计吃单 {v}",
+    "rangeHighEdge": "上沿 {v}",
     "above": "上方",
     "below": "下方",
     "atPrice": "现价内",

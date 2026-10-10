@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { parseHighlights, parseBoard, parseMarketBoard, boardUrl, highlightsUrl, marketBoardUrl } from '../src/highlights/api'
 import {
   usd, signedUsd, signedPct, levelPx, bandPx, distText, hhmm, spanText, heldText, agoText, wallStateWord,
-  levelSentence, nearestLevel, straddles, eventSentence, eventTime, stripSentence, boardFact, positionCells, fundingText, flowLabel,
+  levelSentence, nearestLevel, straddles, levelMeta2, rangeEdgesText, eventSentence, eventTime, stripSentence, boardFact, positionCells, fundingText, flowLabel,
 } from '../src/highlights/format'
 import { bodyHTML, flowBlockHTML, levelsBlockHTML, positionBlockHTML, eventsBlockHTML } from '../src/m/pages/chart/highlightsSheet'
 import { setHighlightIntent, takeHighlightIntent } from '../src/m/pages/chart/highlightIntent'
@@ -142,6 +142,25 @@ describe('盘口要点 · 拼字', () => {
     const row = h.slice(iAt, h.indexOf('</button>', iAt))
     expect(row).toContain('<small>现价内')
     expect(row).not.toContain('距 ')
+  })
+  it('测 0 次、爆仓 0、挂 0 不写，分隔符不悬空', () => {
+    const d = parseHighlights(SAMPLE, 'BTC')!
+    const near = nearestLevel(d.levels)!
+    const bare = { ...near, tests: 0, liqUsd: 0, wallHeldMs: 0 }
+    expect(levelMeta2(bare)).toBe('')
+    expect(levelMeta2({ ...bare, liqUsd: 120e3 })).toBe('爆仓 120K')
+    expect(levelMeta2({ ...bare, tests: 6 })).toBe('测 6 次')
+    expect(levelMeta2({ ...bare, liqUsd: 127e3, tests: 6 })).toBe('爆仓 127K · 测 6 次')
+    expect(levelSentence(bare)).toBe('下方 <b>82,609</b> 买区 <b>35M</b>')
+    expect(rangeEdgesText({ ...d.range!, lowTests: 0, highTests: 0, lowFillUsd: 47.2e6, highFillUsd: 94.3e6 })).toBe('下沿累计吃单 47.2M ｜ 上沿 94.3M')
+    expect(rangeEdgesText({ ...d.range!, lowTests: 2, highTests: 0, lowFillUsd: 47.2e6, highFillUsd: 94.3e6 })).toBe('下沿累计吃单 47.2M · 测 2 次 ｜ 上沿 94.3M')
+    const h = levelsBlockHTML({ ...d, levels: d.levels.map(l => ({ ...l, tests: 0, liqUsd: 0, wallHeldMs: 0 })), range: { ...d.range!, lowTests: 0, highTests: 0 } }, 82700, null, GEN)
+    expect(h).not.toContain('测 0 次')
+    const metas = h.split('class="meta">').slice(1).map(x => x.split('</span>')[0])
+    expect(metas.length).toBe(3)
+    expect(metas.some(m => m.includes('爆仓'))).toBe(false)
+    expect(h).not.toContain('挂 ')
+    expect(h).not.toMatch(/· <br>|<br><\/span>|· <\/span>|<span class="meta">[^<]*<br>\s*<\/span>/)
   })
   it('事件句与时刻列', () => {
     const d = parseHighlights(SAMPLE, 'BTC')!
