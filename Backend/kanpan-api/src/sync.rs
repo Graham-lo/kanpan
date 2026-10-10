@@ -788,6 +788,9 @@ mod tests {
  /// settings rules accept today, at the three path depths settings fields use (top level,
  /// `key/<indicator>`, `key/<indicator>/<slot>`). A new field whose rule accepts none of them
  /// fails here — add a probe for it in the same commit that adds the rule.
+ ///
+ /// 2026-10-10 起契约里每个通用规则都带着按规则造的 `accept` 样例，这里把它们也当探针：
+ /// `make new-sync-field` 加的枚举（`enum:a|b`）不用再回来手加一个探针。手写的 custom 字段仍靠上面那串。
  #[test] fn every_wire_key_has_a_value_rule() {
   let probes=[
    json!(true),json!(""),json!(0.5),json!(1),json!(4.0),json!([5]),
@@ -796,9 +799,11 @@ mod tests {
    json!("change"),json!("history"),json!("medium"),json!({"value":"#112233"}),json!("default"),json!({}),
    json!({"active":"default","sets":[{"id":"default","name":"默认","layout":"1","cells":[{"symbol":"BTCUSDT","iv":"1h"}]}]}),
   ];
+  let contract:Value=serde_json::from_str(CONTRACT).unwrap();
   let accepts=|key:&str|{
+   let samples:Vec<Value>=contract["rules"][key]["accept"].as_array().cloned().unwrap_or_default();
    [key.to_string(),format!("{key}/MA"),format!("{key}/MA/0"),format!("{key}/hour")].iter()
-    .any(|path|probes.iter().any(|v|crate::sync_validation::field("settings",path,v)))
+    .any(|path|probes.iter().chain(&samples).any(|v|crate::sync_validation::field("settings",path,v)))
   };
   // The probe sweep would be vacuous if `field` said yes to anything, so prove it discriminates.
   assert!(!accepts("telepathy"),"a name with no rule must be refused for every probe");

@@ -45,16 +45,19 @@
 
 ## 加 / 删一个同步字段
 
-「哪些设置跟着人走、服务端认哪些键」母表只有一张：`Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift` 的 `PrefsFieldPlan.table`。两边不再手抄，中间是一份生成物 `Backend/kanpan-api/contract/settings-fields.json`（**不要手改**）。
+「哪些设置跟着人走、服务端认哪些键、**每个键收什么值**」母表只有一处：`Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift` 的 `PrefsFieldPlan.table`（分类）与 `PrefsFieldRules.swift` 的 `PrefsFieldPlan.rules`（值规则：bool / enum / string / number / int / interval / intervals / stringArray / countMap，装不下的写 `.custom("函数名")`）。`make sync-contract` 把两张表连同按规则造的正反样例写进 `Backend/kanpan-api/contract/settings-fields.json`（生成物，**不要手改**）。服务端通用字段按契约校验（`src/settings_rules.rs`），手机网页按契约清洗（`Web/src/sync/settingsRules.ts`），iOS 测试拿同一批样例打出厂值与解码边界——值规则不再在三处手写。
 
-1. 改 `PrefsFieldPlan.table`（判据只有一条：用手改出来的习惯 → `.synced`；这台机器 / 这张网的属性 → `.deviceOnly`；自动累积的统计 → `.derivedLocal`）。
-2. 仓库根跑 `make sync-contract` 重新生成契约。
-3. 新增 `.synced` 字段还要去 `Backend/kanpan-api/src/sync.rs` 的 `SETTINGS_FIELDS` 加名字（长度不用改，它是切片），**并且**去 `src/sync_validation.rs` 的 `field` 加值规则——只进白名单不配值规则，`_=>false` 会让它的每一个值都被判成坏值（设置 / 画线偏好里是被丢掉、回执 `invalidFields` 点名，别的集合是整条 400），那个字段就是毒丸。
-4. 两边对账：`make app-logic-test` 与 `cd Backend/kanpan-api && cargo test --lib`。差在哪个键、该往哪边改，失败信息里写着。
-5. **先部署后端，再发客户端**（老后端收到新字段整条 400）。部署完用一次性测试账号打线上冒烟：
-   `python3 -I Backend/kanpan-api/ops/sync-field-smoke.py <字段> --good '<合法值>' --bad '<非法值>'`
-   ——注册随机账号、推合法值应 200 并能 bootstrap 读回、推非法值应被拒（设置 / 画线偏好 2026-10-10 起是 200 但回执 `invalidFields` 点名、读回没有它；别的集合 400）、最后把账号删掉。这是对项目自己后端的 QA，
-   用户 2026-10-10 明确要求自己注册测试账号去打、打完删，不许以「需要账号」为由跳过。
+**加一个**（判据：用手改出来的习惯 → `.synced`；这台机器 / 这张网的属性 → `.deviceOnly`；自动累积的统计 → `.derivedLocal`，后两种直接改 table）：
+
+1. 简单类型一条命令：`make new-sync-field name=xxx rule='bool|enum:a|b|number:lo..hi|int:lo..hi|string:N' default=… note='一句话'`。它写好 iOS 母表两张表、`Prefs` 字段、`PrefsCodec` 的键 / 编码 / 宽容解码、服务端 `SETTINGS_FIELDS`、手机网页 `prefs.ts`，在电脑网页 `PC_UNUSED_SYNCED_FIELDS` 放一条 TODO，再跑 `make sync-contract`（插入点是源码里 `↑ new-sync-field:<槽位>` 那几行注释，别删）。数组、计次表、嵌套对象照现有字段手写这几处；值规则通用描述装不下的，服务端在 `sync_validation::custom_setting` 加函数（并进 `CUSTOM_SETTINGS`），规则写 `.custom("函数名")`，手机网页的清洗也手写。
+2. 电脑网页表态：接就把字段挪进 `Web/src/sync/codec.ts` 的 `SETTINGS_FIELDS` 写换算，不接就把 TODO 换成一句为什么——不然 `tests/pc-sync-fields-contract.test.ts` 一直红。界面（设置页、`PrefsStore` 的改法）脚手架不碰。
+3. 跑测试：`make settings-test account-codec-test`、`make backend-test`、`cd Web && npx tsc --noEmit && npx vitest run`。差在哪个键、该往哪边改，失败信息里写着。
+
+**删一个**：先在删除前的最后一个提交打一个带说明的 git tag 并推到远程，删掉上面那几处（`git grep` 字段名），名字加进 `sync.rs` 的 `RETIRED_SETTINGS_FIELDS`（老客户端发上来丢掉、库里老 body 下次合并时洗掉；名字永不复用，脚手架会拦），`make sync-contract` 后跑同一组测试。
+
+**上线**：先部署后端，再发客户端（老后端收到新字段整条 400）。部署完用一次性测试账号打线上冒烟：
+`python3 -I Backend/kanpan-api/ops/sync-field-smoke.py <字段> --good '<合法值>' --bad '<非法值>'`
+——注册随机账号、推合法值应 200 并能 bootstrap 读回、推非法值应被拒（设置 / 画线偏好是 200 但回执 `invalidFields` 点名、读回没有它；别的集合 400）、最后把账号删掉。这是对项目自己后端的 QA，用户 2026-10-10 明确要求自己注册测试账号去打、打完删，不许以「需要账号」为由跳过。
 
 **加一把画线工具或一个指标也走同一条路。** 同一份契约除了字段清单还捎带两份词表——
 `drawingKinds`（`Drawing.Kind`）和 `indicatorIDs` / `overlayIndicatorIDs` / `subIndicatorIDs`
