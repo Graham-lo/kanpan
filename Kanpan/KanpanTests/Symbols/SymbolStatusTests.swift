@@ -174,7 +174,7 @@ struct SymbolStatusTests {
     // ③ 最后那口真价照旧摆着，而且不许被写成 `0.00`——占位行没有精度，按价自己猜。
     #expect(gone.priceText == fmtPrice(0.0000004, decimals: priceDecimalsFallback(0.0000004)))
     #expect((Double(gone.priceText) ?? 0) > 0)
-    #expect(gone.name == "GONE" && gone.info.quote == "USDT")
+    #expect(gone.name == "GONEUSDT" && gone.info.quote == "USDT")
     // ④ 它不属于「全部合约」，也不进页头计数。
     #expect(!(sections.first { $0.kind == .all }?.rows.map(\.id).contains("binance/usd_m/GONEUSDT") ?? true))
   }

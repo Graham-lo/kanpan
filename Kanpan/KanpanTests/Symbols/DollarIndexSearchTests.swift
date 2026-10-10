@@ -49,11 +49,13 @@ struct DollarIndexSearchTests {
     #expect(SymbolQuery.match(Self.dxy, query: "MYZS")?.tier == .pinyinInitials)
   }
 
-  @Test("行与小签：没有计价币就不写斜杠，小签写「指数」，中文名是「美元指数」")
+  @Test("行与小签：没有计价币就只写 DXY，第二行是中文名「美元指数」，产品签写「指数」")
   func rowDisplay() {
     let row = SymbolRow(match: SymbolMatch(info: Self.dxy))
+    // 搜索 / 自选行连写品种与计价币（5fec70ec）：没有计价币就只剩代号；第二行只放别名。
+    #expect(row.name == "DXY")
     #expect(row.quoteSuffix == "")
-    #expect(row.meta == "DXY 指数")
+    #expect(row.meta == "美元指数")
     #expect(Self.dxy.display == "DXY")
     #expect(SymbolAliases.names(base: "DXY").first == "美元指数")
     #expect(InstrumentID("macro/index/DXY").productLabel == "指数")
