@@ -5,7 +5,7 @@ import ReviewData
 
 @testable import Kanpan
 
-/// 访客的复盘并进账号（`AppAccountBridge.absorbGuestReview`，登录那一下在主线程上跑）。
+/// 访客的复盘并进账号（`AccountProfileSwitcher.absorbGuestReview`，登录那一下在主线程上跑）。
 ///
 /// 规矩：只收访客本机独有（没 serverId）、账号里还没有的记录；待发操作只收挂在本机独有记录上的、
 /// 账号队列里还没有的；新建那一笔 body 洗一遍。压测那条只看结构（条数、无重复、谁进谁不进），耗时只打印。
@@ -48,7 +48,7 @@ struct GuestReviewAbsorbTests {
     let onAccountSynced = ReviewOperation(recordId: accountSynced.id, kind: "review", body: Data("{}".utf8))
     guest.queue = [freshCreate, onSynced, alreadyQueued, onAccountLocal, onAccountSynced, freshCreate]
 
-    try AppAccountBridge.absorbGuestReview(guest, into: &account, sanitize: mark)
+    try AccountProfileSwitcher.absorbGuestReview(guest, into: &account, sanitize: mark)
 
     #expect(account.records.map(\.id) == [accountLocal.id, accountSynced.id, fresh.id])
     #expect(account.records.first { $0.id == accountLocal.id }?.draft.text == "", "账号里已有的那条被访客那份盖了")
@@ -69,7 +69,7 @@ struct GuestReviewAbsorbTests {
     guest.queue = try guest.records.prefix(4000).map(create) + account.queue.prefix(300)
 
     let clock = ContinuousClock()
-    let elapsed = try clock.measure { try AppAccountBridge.absorbGuestReview(guest, into: &account, sanitize: { $0 }) }
+    let elapsed = try clock.measure { try AccountProfileSwitcher.absorbGuestReview(guest, into: &account, sanitize: { $0 }) }
     #expect(account.records.count == 7000)
     #expect(Set(account.records.map(\.id)).count == 7000)
     #expect(account.queue.count == 6800)

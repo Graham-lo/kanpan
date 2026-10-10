@@ -198,7 +198,7 @@ struct AccountDeviceIdentityTests {
   }
 
   /// 服务端不认识的设置字段：存档 `local` 叠回了用户的值，可云端没有它——脏标记不许被
-  /// 「记账时没差异」那条路清掉（`AppAccountBridge.settleAgreedSettings`）。
+  /// 「记账时没差异」那条路清掉（`SyncRecorder.settleAgreedSettings`）。
   @Test("服务端没收下的字段，记账对上了也不清脏标记")
   func anUnknownFieldStaysDirty() throws {
     var archive = SyncArchive()
@@ -208,7 +208,7 @@ struct AccountDeviceIdentityTests {
     local.body["skin"] = .string("terra")
     archive.objects[cloud.key] = cloud
     archive.local[cloud.key] = local
-    let blocked = try #require(AppAccountBridge.unsettledSettingsFields(local, in: archive))
+    let blocked = try #require(SyncRecorder.unsettledSettingsFields(local, in: archive))
     #expect(!SettingsWire.fields(for: "skin").isEmpty)
     #expect(blocked.isSuperset(of: SettingsWire.fields(for: "skin")))
     #expect(blocked.isDisjoint(with: SettingsWire.fields(for: "barSpacing")))

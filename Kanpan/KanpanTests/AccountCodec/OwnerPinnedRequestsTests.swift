@@ -98,7 +98,7 @@ struct OwnerPinnedRequestsTests {
 
   @Test("没上云的条数：同步操作加复盘待传，成败两条路同一个口径（审查 D-10）")
   func pendingCountIncludesReviewUploads() {
-    #expect(AppAccountBridge.pendingCount(operations: 3, reviewUploads: 2) == 5)
-    #expect(AppAccountBridge.pendingCount(operations: 0, reviewUploads: 4) == 4)
+    #expect(SyncLifecycle.pendingCount(operations: 3, reviewUploads: 2) == 5)
+    #expect(SyncLifecycle.pendingCount(operations: 0, reviewUploads: 4) == 4)
   }
 }
