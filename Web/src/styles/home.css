@@ -2,8 +2,8 @@
  *
  * 四栏：异动 1.5 · 涨跌 1 · 持仓 1 · 板块 .95；页面宽度窄于 1800 板块栏并到持仓栏下方，窄于 1300 两栏两行（data-cols 由 pages/home.ts 按页宽写）。
  * 2026-10-10 晚按图表页同一套「精致层级」收（app.css chrome 灰阶注释）：层级靠对比与字重，颜色只给涨跌。
- *   每栏一个主角：栏头标题 16/600；行里代号 14/600 text-1，价 / 额 13/400 text-2，次要 12 text-3，组名 11/500/字距 .4 text-3。
- *   涨跌药丸是轻薄淡底（涨跌色 12% + 涨跌色字 600）；名次前三 text-1 600、其余 text-3；
+ *   每栏一个主角：栏头标题 13/600；行里代号 13/500 text-1，价 / 额 13/400 text-2，次要 12 text-3，组名 11/500/字距 .4 text-3。
+ *   涨跌药丸是轻薄淡底（涨跌色 12% + 涨跌色字 500）；名次前三 text-1 600、其余 text-3；
  *   分类胶囊与窗口分段同周期条：中性凹槽 --well + 当前段 --well-on + text-1 600；链接 / 按钮中性 text-2，悬停 text-1。
  *   分隔只用 1px --sep，悬停 --row-hover。
  */
@@ -29,12 +29,12 @@
 
 .hm-col { display: flex; flex-direction: column; overflow: hidden; }
 
-/* 栏头：标题 16 · 内容（胶囊）· 右侧次要字 */
+/* 栏头：标题 13 · 内容（胶囊）· 右侧次要字 */
 .hm-hd {
   height: var(--s12); flex: none; display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4);
   box-shadow: inset 0 -1px 0 var(--sep); min-width: 0;
 }
-.hm-hd h4 { margin: 0; font-size: var(--t16); line-height: var(--s6); font-weight: 600; color: var(--text-1); flex: none; }
+.hm-hd h4 { margin: 0; font-size: var(--type-title); line-height: var(--s5); font-weight: var(--weight-title); color: var(--text-1); flex: none; }
 .hm-hd .sub { margin-left: auto; font-size: var(--t12); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 /* 分类胶囊（全部 / 盘口 / 持仓 / 费率 / 波动）与榜单窗口分段：同周期条——中性凹槽，当前段浮起一块（--well-on + 1px --sep 描边） */
@@ -49,16 +49,16 @@
 .hm-chips button.on, .hm-wins button.on { background: var(--well-on); color: var(--text-1); font-weight: 600; box-shadow: 0 0 0 1px var(--sep); }
 .hm-chips button.on b { color: var(--text-2); }
 
-/* 涨跌药丸：轻薄淡底（涨跌色 12% 底 + 涨跌色字 600），不实心铺色 */
+/* 涨跌药丸：轻薄淡底（涨跌色 12% 底 + 涨跌色字 500），不实心铺色 */
 .hm-pill {
   display: inline-flex; align-items: center; justify-content: center; min-width: calc(var(--s12) + var(--s5)); height: calc(var(--h-xs) - 2px); padding: 0 var(--s2);
-  border-radius: var(--r-sm); font-size: var(--t13); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none;
+  border-radius: var(--r-sm); font-size: var(--type-change); font-weight: var(--weight-name); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none;
 }
 .hm-pill.up { background: color-mix(in srgb, var(--up) 12%, transparent); color: var(--up-text); }
 .hm-pill.down { background: color-mix(in srgb, var(--down) 12%, transparent); color: var(--down-text); }
 .hm-pill.none { background: var(--well); color: var(--text-3); font-weight: 500; }
 
-.hm-row .tk, .rk-row .tk, .sc-row .tk { font-weight: 600; font-size: var(--t14); color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-row .tk, .rk-row .tk, .sc-row .tk { font-weight: var(--weight-name); font-size: var(--type-name); color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ───────── 异动 ───────── */
 .hm-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -71,7 +71,7 @@
 .hm-row:hover, .hm-row:focus-visible { background: var(--row-hover); }
 .hm-row .mid { min-width: 0; }
 .hm-row .l1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.hm-row .p { margin-left: auto; padding-left: var(--s2); font-weight: 400; font-size: var(--t13); color: var(--text-2); white-space: nowrap; }
+.hm-row .p { margin-left: auto; padding-left: var(--s2); font-weight: 400; font-size: var(--type-value); color: var(--text-2); white-space: nowrap; }
 .hm-row .l2 {
   display: flex; align-items: center; gap: var(--s2); font-size: var(--t12); line-height: var(--s4); color: var(--text-3);
   margin-top: 3px; white-space: nowrap; min-width: 0;
@@ -107,7 +107,7 @@
 .hm-empty, .hm-gempty { display: flex; align-items: center; justify-content: center; gap: var(--s3); padding: var(--s8) var(--s4); color: var(--text-2); }
 .hm-calm { display: grid; justify-items: center; gap: var(--s1); padding: var(--s12) var(--s4); color: var(--text-2); text-align: center; }
 .hm-calm svg { width: 24px; height: 24px; fill: none; stroke: var(--text-3); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; margin-bottom: var(--s1); }
-.hm-calm b { color: var(--text-1); font-weight: 600; font-size: var(--t14); }
+.hm-calm b { color: var(--text-1); font-weight: 600; font-size: var(--type-title); }
 .hm-calm span { font-size: var(--t12); }
 
 /* 骨架 */
@@ -125,7 +125,7 @@
 .rk-sh .more:hover { color: var(--text-1); }
 .rk-row {
   display: grid; grid-template-columns: var(--s5) var(--h-sm) minmax(0, 1fr) auto calc(var(--s12) + var(--s5)); gap: var(--s3); align-items: center;
-  width: 100%; height: var(--h-lg); padding: 0 var(--s4); font-size: var(--t13); text-align: left;
+  width: 100%; height: var(--h-lg); padding: 0 var(--s4); font-size: var(--type-value); text-align: left;
 }
 .rk-row:hover, .rk-row:focus-visible { background: var(--row-hover); outline: none; }
 /* 名次：前三 text-1 600，其余 text-3 400，不用强调色 */
@@ -138,7 +138,7 @@
 .hm-sc-list { flex: 1; min-height: 0; padding: var(--s1) 0; }
 .sc-row {
   display: grid; grid-template-columns: minmax(0, 1fr) auto calc(var(--s12) + var(--s5)); gap: var(--s3); align-items: center;
-  width: 100%; height: var(--h-lg); padding: 0 var(--s4); font-size: var(--t13); text-align: left;
+  width: 100%; height: var(--h-lg); padding: 0 var(--s4); font-size: var(--type-value); text-align: left;
 }
 .sc-row:hover, .sc-row:focus-visible { background: var(--row-hover); outline: none; }
 .sc-row .nm { display: flex; flex-direction: column; gap: 3px; min-width: 0; }

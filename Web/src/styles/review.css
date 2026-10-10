@@ -4,7 +4,7 @@
  * 播放条照手机端 ReviewReplayControls：2 px 细线，已放过的一段用强调色、其余 20% 墨色，
  * 关键点是 1×6 的小刻度；拖动时才出现圆钮。
  * 2026-10-10 晚按图表页同一套「精致层级」收（app.css chrome 灰阶注释）：层级靠对比与字重，颜色只给涨跌。
- *   页标题一处 16/600；要点格标签 11/500 text-3、数值 20/600（只按涨跌上色）、说明 12 text-3；组名 11/500/字距 .4 text-3；
+ *   页标题一处 13/600；要点格标签 11/500 text-3、数值 16/500（只按涨跌上色）、说明 12 text-3；组名 11/500/字距 .4 text-3；
  *   分段同周期条（中性凹槽 + 浮起块）；选中行 --row-on；「持仓中 / 分数」等签中性；分隔只用 1px --sep。
  *   主按钮（去登录）与回放进度保留强调色——前者是这一页唯一的行动，后者是播放位置。
  */
@@ -13,14 +13,14 @@
 .rv-login { display: grid; place-items: center; }
 .rv-login .empty { max-width: calc(var(--s10) * 12); }
 .rv-login .empty svg.q.icon-24 { --q1: var(--text-3); }
-.rv-login-t { font-size: var(--t16); line-height: var(--s6); color: var(--text-1); font-weight: 600; margin-top: var(--s2); }
+.rv-login-t { font-size: var(--type-title); line-height: var(--s5); color: var(--text-1); font-weight: var(--weight-title); margin-top: var(--s2); }
 .rv-login-d { margin-top: var(--s1); line-height: var(--s5); font-size: var(--t13); color: var(--text-2); }
 .rv-login .btn { margin-top: var(--s4); }
 
 /* ------------------------------------------------------------ 上方一整条 */
 .rv-top { grid-column: 1 / 3; }
 .rv-top .rv-head { grid-column: auto; gap: var(--s3); }
-.rv-top .rv-head h2 { margin-right: var(--s2); font-size: var(--t16); line-height: var(--s6); font-weight: 600; }
+.rv-top .rv-head h2 { margin-right: var(--s2); font-size: var(--type-title); line-height: var(--s5); font-weight: var(--weight-title); }
 .rv-count { margin-left: var(--s1); color: var(--text-3); font-size: var(--t11); font-weight: 400; }
 .seg button[aria-pressed="true"] .rv-count { color: var(--text-2); }
 /* 页签 / 品种分段：中性凹槽 + 当前段浮起（--well-on + 1px --sep），不用面板底 + 实线框 */
@@ -28,21 +28,22 @@
 #page-review .seg button { height: var(--h-xs); padding: 0 var(--s2); border-radius: var(--r-sm); font-size: var(--t12); font-weight: 500; color: var(--text-2); }
 #page-review .seg button:hover { color: var(--text-1); }
 #page-review .seg button[aria-pressed="true"] { background: var(--well-on); color: var(--text-1); font-weight: 600; box-shadow: 0 0 0 1px var(--sep); }
-/* 要点格：标签 11/500 text-3，数值 20/600，说明 12 text-3；格间 1px --sep */
+/* 要点格：标签 11/500 text-3，数值 16/500，说明 12 text-3；格间 1px --sep */
 #page-review .kpis { border-top-color: var(--sep); }
 #page-review .kpi { border-right-color: var(--sep); }
 #page-review .kpi .k { font-size: var(--t11); font-weight: 500; color: var(--text-3); }
-#page-review .kpi .v { font-size: var(--t20); line-height: calc(var(--s6) + var(--s1)); }
+#page-review .kpi .v { font-size: var(--type-metric); line-height: var(--s6); font-weight: var(--weight-metric); }
 #page-review .kpi .d { color: var(--text-3); }
 /* 签：「持仓中」「等答案」、相似度分数一律中性（判对 / 判错的 rv-ok / rv-bad 是涨跌色，留着） */
 #page-review .tag.accent { color: var(--text-1); background: var(--well); }
 #page-review .tbl th { font-size: var(--t11); color: var(--text-3); border-bottom-color: var(--sep); }
-#page-review .tbl td { font-size: var(--t13); }
+#page-review .tbl td { font-size: var(--type-value); }
+#page-review .tbl td.up, #page-review .tbl td.down { font-size: var(--type-change); font-weight: var(--weight-name); }
 #page-review .tbl td:not(.up):not(.down) { color: var(--text-2); }
 #page-review .tbl tbody tr:hover td { background: var(--row-hover); }
 #page-review .tbl tbody tr.sel td { background: var(--row-on); }
 #page-review .rv-trade-head, #page-review .rv-trade-stats, #page-review .replay-bar { border-color: var(--sep); }
-#page-review .rv-trade-head .ttl { font-size: var(--t14); }
+#page-review .rv-trade-head .ttl { font-size: var(--type-title); font-weight: var(--weight-title); line-height: var(--s5); }
 .rv-syms { max-width: 720px; overflow-x: auto; scrollbar-width: none; }
 .rv-sp { flex: 1; }
 .rv-asof { color: var(--text-3); font-size: var(--t12); }
@@ -61,7 +62,7 @@
 .rv-list { flex: 1; min-height: 0; }
 .rv-side { border-left: 1px solid var(--sep); min-height: 0; padding-bottom: var(--s4); }
 .rv-empty { margin: auto; max-width: 480px; line-height: 20px; }
-.rv-empty .t { color: var(--text-1); font-weight: 600; font-size: var(--t14); margin-bottom: var(--s1); }
+.rv-empty .t { color: var(--text-1); font-weight: var(--weight-title); font-size: var(--type-title); margin-bottom: var(--s1); }
 .rv-none { padding: var(--s3) var(--s4); color: var(--text-3); }
 
 .rv-tbl thead th { position: sticky; top: 0; z-index: 1; }
@@ -70,8 +71,8 @@
 #page-review .rv-tbl tr.rv-day:hover td { background: var(--surface-2); }
 .rv-tbl tr.rv-day td span { margin-right: var(--s3); }
 .rv-tbl tr.rv-day td span:first-child { color: var(--text-1); font-weight: 600; }
-.rv-tbl .rv-net { font-weight: 600; }
-.rv-tbl .sym b { color: var(--text-1); }
+.rv-tbl .rv-net { font-weight: var(--weight-name); }
+.rv-tbl .sym b { font-size: var(--type-name); font-weight: var(--weight-name); color: var(--text-1); }
 .rv-tbl .rv-mark { width: 28px; color: var(--text-3); }
 .rv-tbl .rv-text { max-width: 360px; overflow: hidden; text-overflow: ellipsis; text-align: left; color: var(--text-2); }
 .rv-tbl tbody tr:focus-visible td { box-shadow: inset 0 0 0 var(--stroke-mark) var(--accent); }
@@ -83,7 +84,7 @@
 /* 累计净盈亏 */
 .rv-equity { display: flex; flex-direction: column; padding: var(--s3) 64px var(--s2) var(--s4); }
 .rv-eq-cap { display: flex; align-items: baseline; gap: var(--s3); font-size: var(--t12); color: var(--text-2); line-height: 20px; }
-.rv-eq-cap b { font-size: var(--t16); }
+.rv-eq-cap b { font-size: var(--type-metric); font-weight: var(--weight-metric); }
 .rv-eq-plot { position: relative; flex: 1; min-height: 0; margin: var(--s2) 0; }
 .rv-eq-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .rv-eq-plot .zero { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 4 4; }
@@ -105,7 +106,7 @@
 .rv-vg .chip { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--r-xs); background: var(--well); color: var(--text-2); font-size: var(--t12); white-space: nowrap; }
 .rv-vg .chip:first-child { font-weight: 600; color: var(--text-1); }
 .rv-vg .sub { margin-top: var(--s1); font-size: var(--t12); color: var(--text-3); }
-.rv-vg .rate { font-size: var(--t20); font-weight: 600; white-space: nowrap; }
+.rv-vg .rate { font-size: var(--type-metric); font-weight: var(--weight-metric); white-space: nowrap; }
 .rv-vg .rate.faint { font-size: var(--t13); font-weight: 400; }
 
 /* 相似 */
@@ -156,7 +157,7 @@
 .rv-stat.wide { grid-column: span 2; }
 .rv-stat .k { font-size: var(--t11); font-weight: 500; color: var(--text-3); line-height: var(--s4); }
 .rv-stat .k .term { color: inherit; }
-.rv-stat .v { font-size: var(--t14); line-height: var(--s5); font-weight: 600; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-stat .v { font-size: var(--type-value); line-height: var(--s5); font-weight: var(--weight-name); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rv-stat .d { font-size: var(--t12); color: var(--text-3); line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rv-after { display: flex; gap: var(--s4); }
 .rv-after i { font-style: normal; font-weight: 400; color: var(--text-2); font-size: var(--t12); margin-right: var(--s1); }

@@ -1,7 +1,7 @@
 /* Hkline Web · 板块页（只用 app.css 已有的令牌与三套皮肤变量）
  * 2026-10-10 照定稿原型 docs/prototypes/web-layout-2026-10-10.html 第 5 节：栏头 48、表头吸顶、行高 36、数字右对齐等宽。
  * 同日晚按图表页同一套「精致层级」收（app.css chrome 灰阶注释）：层级靠对比与字重，颜色只给涨跌。
- *   栏头标题 16/600 是每栏的主角；表头 11/500 text-3；数值 13/400 text-2 等宽；名字 / 代号 text-1。
+ *   栏头标题 13/600 是每栏的主角；表头 11/500 text-3；数值 13/400 text-2 等宽；名字 / 代号 text-1。
  *   选中板块行 --row-on + text-1 600（不再强调色淡底 + 强调字）；悬停 --row-hover；分隔只用 1px --sep。
  *   市场 / 窗口分段与排序胶囊同周期条：中性凹槽 --well，当前段 --well-on + text-1 600。 */
 
@@ -9,9 +9,9 @@
 #page-sectors.page { grid-template-columns: minmax(0, 38fr) minmax(0, 62fr); }
 #page-sectors .sec-preview { display: none; }
 
-/* 栏头：标题 16/600 + 次要字 12 + 右侧分段 */
+/* 栏头：标题 13/600 + 次要字 12 + 右侧分段 */
 .sec-head { display: flex; align-items: center; gap: var(--s3); height: var(--s12); padding: 0 var(--s4); flex: none; min-width: 0; box-shadow: inset 0 -1px 0 var(--sep); }
-.sec-head h2 { margin: 0; flex: none; font-size: var(--t16); line-height: var(--s6); font-weight: 600; color: var(--text-1); }
+.sec-head h2 { margin: 0; flex: none; font-size: var(--type-title); line-height: var(--s5); font-weight: var(--weight-title); color: var(--text-1); }
 .sec-head .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t12); color: var(--text-3); }
 .sec-head .sub .num { font-weight: 400; color: var(--text-2); }
 .sec-head .sub .num.up { color: var(--up-text); font-weight: 500; }
@@ -30,7 +30,7 @@
 /* 两张表同一套密度：行高 36；表头 11/500 text-3 吸顶；数值 13/400 text-2 */
 .sec-boards, .sec-syms { table-layout: fixed; }
 .sec-boards th, .sec-syms th { height: calc(var(--h-md) + var(--s1)); padding: 0 var(--s4); font-size: var(--t11); font-weight: 500; color: var(--text-3); border-bottom: 1px solid var(--sep); }
-.sec-boards td, .sec-syms td { height: calc(var(--h-md) + var(--s1)); padding: 0 var(--s4); font-size: var(--t13); font-weight: 400; color: var(--text-2); }
+.sec-boards td, .sec-syms td { height: calc(var(--h-md) + var(--s1)); padding: 0 var(--s4); font-size: var(--type-value); font-weight: 400; color: var(--text-2); }
 .sec-boards tbody tr:hover td, .sec-syms tbody tr:hover td { background: var(--row-hover); }
 .sec-boards tbody tr.sel td, .sec-boards tbody tr.sel:hover td { background: var(--row-on); }
 
@@ -38,9 +38,9 @@
 .sec-boards { max-width: calc(var(--s10) * 17); }
 .sec-boards col.c-pct { width: calc(var(--s10) * 4 + var(--s2)); }
 .sec-boards col.c-beat { width: calc(var(--s10) * 2 + var(--s3)); }
-.sec-name { overflow: hidden; text-overflow: ellipsis; display: block; color: var(--text-1); font-weight: 500; }
+.sec-name { overflow: hidden; text-overflow: ellipsis; display: block; color: var(--text-1); font-size: var(--type-name); font-weight: var(--weight-name); }
 .sec-boards tr.sel .sec-name { color: var(--text-1); font-weight: 600; }
-.sec-boards .sec-pct { display: inline-block; min-width: calc(var(--s12) + var(--s4)); text-align: right; }
+.sec-boards .sec-pct { display: inline-block; min-width: calc(var(--s12) + var(--s4)); text-align: right; font-size: var(--type-change); font-weight: var(--weight-name); }
 .sec-boards .sec-pct.up { color: var(--up-text); }
 .sec-boards .sec-pct.down { color: var(--down-text); }
 .sec-boards .faint { font-weight: 400; color: var(--text-3); }
@@ -55,9 +55,10 @@
 .sec-syms col.c-star { width: var(--s12); }
 .sec-syms th:last-child, .sec-syms td:last-child { padding: 0 var(--s2) 0 0; }
 .sec-syms .sym { gap: var(--s2); min-width: 0; }
-.sec-syms .sym b { font-weight: 600; color: var(--text-1); }
+.sec-syms .sym b { font-size: var(--type-name); font-weight: var(--weight-name); color: var(--text-1); }
 .sec-syms .badge { width: calc(var(--s5) + 2px); height: calc(var(--s5) + 2px); flex: none; }
 .sec-kind { flex: none; font-size: var(--t11); font-weight: 400; color: var(--text-3); }
+.sec-syms td.up, .sec-syms td.down { font-size: var(--type-change); font-weight: var(--weight-name); }
 .sec-syms td.up { color: var(--up-text); }
 .sec-syms td.down { color: var(--down-text); }
 /* 「领涨」：中性小签（凹槽底 + text-2），涨跌已经由涨跌列的颜色说了 */

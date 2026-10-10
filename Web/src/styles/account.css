@@ -20,7 +20,7 @@
 #closeForm .err { grid-column: 1 / -1; order: 1; }
 
 /* ───────── 「我的」整页按图表页同一套「精致层级」收（2026-10-10 晚，app.css chrome 灰阶注释） ─────────
- * 层级靠对比与字重，颜色只给涨跌：标题一处 16/600；组名 11/500/字距 .4 text-3；行名 13/500 text-1，说明 12 text-3；
+ * 层级靠对比与字重，颜色只给涨跌：标题一处 13/600；组名 11/500/字距 .4 text-3；行名 13/500 text-1，说明 12 text-3；
  * 左栏选中项 --row-on + text-1 600（不再强调色淡底 + 强调字），字形 24 格细线 18、墨 text-2 / 当前 text-1；
  * 分段同周期条（中性凹槽 + 浮起块）；分隔只用 1px --sep。主按钮（.btn.primary）保留强调色。 */
 #page-me .me-nav { gap: 2px; }
@@ -39,12 +39,12 @@
   #page-me .me-nav a { height: var(--h-md); }
 }
 
-#page-me .me-body h2 { font-size: var(--t16); line-height: var(--s6); font-weight: 600; color: var(--text-1); }
+#page-me .me-body h2 { font-size: var(--type-title); line-height: var(--s5); font-weight: var(--weight-title); color: var(--text-1); }
 #page-me .me-body .lede { font-size: var(--t13); color: var(--text-2); margin-bottom: var(--s5); }
 #page-me .group { border-color: var(--sep); }
 #page-me .group-title { font-size: var(--t11); line-height: var(--s4); font-weight: 500; letter-spacing: .4px; color: var(--text-3); margin-bottom: var(--s2); }
 #page-me .row { border-bottom-color: var(--sep); min-height: calc(var(--s12) + var(--s1)); }
-#page-me .row .rl .t { font-size: var(--t13); font-weight: 500; color: var(--text-1); }
+#page-me .row .rl .t { font-size: var(--type-name); font-weight: var(--weight-name); color: var(--text-1); }
 #page-me .row .rl .d { color: var(--text-3); }
 #page-me .tag.accent { color: var(--text-1); background: var(--well); }
 #page-me .field > label { font-size: var(--t11); color: var(--text-3); }

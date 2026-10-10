@@ -27,6 +27,14 @@
 
   --t11: 11px; --t12: 12px; --t13: 13px; --t14: 14px; --t16: 16px; --t20: 20px; --t24: 24px; --t32: 32px;
 
+  /* 电脑五页共用图表侧栏的字阶（2026-10-10）：标题不再单独放大，
+   * 名称中等、数值常规、涨跌小一号；600 只留给标题与当前项。 */
+  --type-title: var(--t13); --weight-title: 600;
+  --type-name: var(--t13); --weight-name: 500;
+  --type-value: var(--t13);
+  --type-change: var(--t12);
+  --type-metric: var(--t16); --weight-metric: 500;
+
   --header-h: 48px;
   --toolbar-h: 38px;
   --drawbar-w: 52px;
@@ -671,7 +679,7 @@ kbd {
 
 /* 侧栏面板通用 */
 .sp-head { display: flex; align-items: center; gap: var(--s2); height: 48px; padding: 0 var(--s2) 0 var(--s4); flex: none; }
-.sp-head h3 { margin: 0; font-size: var(--t14); font-weight: 600; flex: 1; }
+.sp-head h3 { margin: 0; font-size: var(--type-title); font-weight: var(--weight-title); flex: 1; }
 .sp-sub { display: flex; align-items: center; gap: var(--s1); padding: 0 var(--s4) var(--s2); flex: none; }
 .chip {
   height: var(--h-xs); padding: 0 10px; border-radius: 12px; font-size: var(--t12); font-weight: 500; color: var(--text-2);
@@ -1003,7 +1011,7 @@ kbd {
 .widget-watch { flex: 1; }
 /* 自选：标题、分类、按钮并成一行；表头 28、行高 34；列表放不下时滚轮能滚但不出滚动条 */
 .wv-head { height: 36px; gap: var(--s1); padding: 0 var(--s1) 0 var(--s4); }
-.wv-head h3 { flex: none; font-size: var(--t13); font-weight: 600; margin-right: var(--s2); }
+.wv-head h3 { flex: none; font-size: var(--type-title); font-weight: var(--weight-title); margin-right: var(--s2); }
 /* 分类胶囊：一块轻凹槽，当前那一节浮起内容色 + 主文字色（不再是蓝色实心药丸）；凹槽按内容宽，＋ / … 靠右 */
 .wv-tabs { display: flex; gap: 0; flex: 0 1 auto; min-width: 0; padding: 2px; border-radius: var(--r-md); background: var(--well); overflow-x: auto; scrollbar-width: none; }
 .wv-tabs::-webkit-scrollbar { display: none; }
@@ -1018,12 +1026,12 @@ kbd {
    各自成一竖条对齐，不再贴在一起挤到右边 */
 /* 行层级（2026-10-10）：代号 13 / 500 主文字色、计价 11 淡字；价格 13 / 400 正文灰等宽；涨跌 12 / 500 是这一行唯一的颜色 */
 .widget-watch .tbl th { height: 28px; font-size: var(--t11); font-weight: 500; color: var(--text-3); }
-.widget-watch .tbl td { height: 34px; font-size: var(--t13); }
+.widget-watch .tbl td { height: 34px; font-size: var(--type-value); }
 .widget-watch .tbl th:not(:first-child), .widget-watch .tbl td:not(:first-child) { padding-left: var(--s4); padding-right: 0; }
 .widget-watch .tbl th:last-child, .widget-watch .tbl td:last-child { padding-right: var(--s4); }
 .widget-watch .tbl .wc-px { min-width: 88px; color: var(--text-2); font-weight: 400; }
 .widget-watch .tbl th.wc-px { color: var(--text-3); }
-.widget-watch .tbl .wc-pct { min-width: 72px; font-size: var(--t12); font-weight: 500; }
+.widget-watch .tbl .wc-pct { min-width: 72px; font-size: var(--type-change); font-weight: var(--weight-name); }
 .widget-watch .tbl .sym { gap: 10px; min-width: 0; }
 /* 品种列吃掉剩下的宽、代号放不下就省略号（侧栏跟视口变窄时不和价格列撞在一起） */
 .widget-watch .tbl td:first-child { width: 100%; max-width: 0; }
@@ -1037,7 +1045,7 @@ kbd {
   .widget-watch .tbl .wc-px, .widget-watch .tbl .wc-pct { min-width: 0; }
   .widget-watch .tbl .sym { gap: var(--s2); }
 }
-.widget-watch .tbl .sym b { font-weight: 500; letter-spacing: .01em; color: var(--text-1); }
+.widget-watch .tbl .sym b { font-size: var(--type-name); font-weight: var(--weight-name); letter-spacing: .01em; color: var(--text-1); }
 .widget-watch .wv-name b > span + span { color: var(--text-3); font-size: var(--t11); font-weight: 500; letter-spacing: 0; }
 .wv-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 代号 + 计价分两段：放不下时计价（USDT）整段折到看不见的第二行，代号完整；代号本身也放不下才省略号 */
