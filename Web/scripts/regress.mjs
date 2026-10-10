@@ -424,7 +424,8 @@ async function partSectors() {
   const rowsOf = () => page.evaluate(() => [...document.querySelectorAll('#secBody tr[data-sec]')].map(tr => ({
     id: tr.dataset.sec, name: tr.querySelector('.sec-name')?.textContent, beat: tr.children[2].textContent.trim(), thin: tr.dataset.thin === '1',
     thinTip: tr.querySelector('.sec-thin')?.dataset.tip || '',
-    pct: parseFloat((tr.querySelector('.sec-pct')?.textContent || '').replace('%', ''))
+    pct: parseFloat((tr.querySelector('.sec-pct')?.textContent || '').replace('%', '')),
+    bar: (() => { const i = tr.querySelector('.sec-sb i'); return i ? { l: parseFloat(i.style.left), w: parseFloat(i.style.width), dir: i.className } : null })(),
   })))
   let rows = await rowsOf()
   const fat = rows.filter(r => !r.thin), thin = rows.filter(r => r.thin)
@@ -442,9 +443,16 @@ async function partSectors() {
     await shotN('板块-不到三家写横杠')
     await page.mouse.move(10, 10); await wait(300)
   }
+  // 强弱条：中线为 0，涨向右、跌向左；最大绝对涨跌幅那一行占满半根
+  const scale = Math.max(...rows.map(r => Number.isFinite(r.pct) ? Math.abs(r.pct) : 0))
+  const barOk = rows.every(r => r.bar && (!r.pct ? r.bar.w === 0 : r.pct > 0 ? r.bar.l === 50 && r.bar.dir === 'up' : Math.abs(r.bar.l + r.bar.w - 50) < 0.11 && r.bar.dir === 'down')
+    && Math.abs(r.bar.w - Math.abs(r.pct || 0) / scale * 50) <= 0.6)
+  ok('涨跌幅后的强弱条：中线为 0、方向对、长度按本表最大绝对值', barOk, rows.slice(0, 4).map(r => `${r.name} ${r.pct}% → ${r.bar?.dir} ${r.bar?.w}%`).join('，'))
+  const lhead = await page.evaluate(() => document.querySelector('#secHead')?.textContent?.replace(/\s+/g, ' ').trim() || '')
+  ok('左栏头：板块 · N 个 · 大盘 ±x% · 窗口', /板块\s*\d+ 个 · 大盘 [+-]?\d+\.\d+% · (今日|5 日)/.test(lhead), lhead)
   const beatOk = fat.every(r => /^\d+ \/ \d+$/.test(r.beat) && +r.beat.split('/')[0] <= +r.beat.split('/')[1])
   ok('跑赢大盘 = x / N（x ≤ N）', beatOk, fat.slice(0, 3).map(r => `${r.name} ${r.beat}`).join('，'))
-  await page.locator('#secThead .term').first().hover(); await wait(900)
+  await page.locator('#secThead .term[data-term="跑赢大盘"]').hover(); await wait(900)
   const tip = await page.evaluate(() => document.querySelector('#tooltip')?.textContent?.trim().slice(0, 120) || '')
   ok('「跑赢大盘」悬停有口径说明', tip.length > 10, tip)
   const pick = rows[3]
@@ -457,10 +465,34 @@ async function partSectors() {
   const head = await page.evaluate(() => document.querySelector('#secMHead')?.textContent?.replace(/\s+/g, ' ').trim())
   const mRows = await page.locator('#secMBody tr[data-msym]').count()
   ok('点开一个板块：右边换成它的品种', !!head?.includes(pick.name) && mRows > 0, `${head}；${mRows} 只`)
+  ok('右栏头：板块名 · N 只 · 涨跌幅 · 排序三档', /\d+ 只 · 涨跌幅 [+-]?\d+\.\d+%/.test(head || '') && /涨跌幅成交额持仓变化$/.test(head || ''), head)
   ok('板块里的品种点开时按涨跌降序', mp.every((v, i) => i === 0 || !(v > mp[i - 1])), mp.slice(0, 6).join(', '))
+  // 持仓变化逐只取（3 个在途），等它取齐再读；费率来自全市场表
+  await wait(Math.min(20000, 600 * mRows))
+  const cells = await page.evaluate(() => [...document.querySelectorAll('#secMBody tr[data-msym]')].map(tr => ({
+    k: tr.dataset.msym, oi: tr.querySelector('[data-f="oi"]')?.textContent || '', fr: tr.querySelector('[data-f="fr"]')?.textContent || '',
+  })))
+  const oiN = cells.filter(c => /^[+-]?\d+\.\d{2}%$/.test(c.oi)).length, frN = cells.filter(c => /^-?\d+\.\d{4}%$/.test(c.fr)).length
+  ok('成分表：持仓变化 / 费率有数（取不到的写「—」）', oiN >= cells.length * 0.8 && frN >= cells.length * 0.8 && cells.every(c => c.oi && c.fr),
+    `持仓变化 ${oiN}/${cells.length}，费率 ${frN}/${cells.length}；${cells.slice(0, 3).map(c => `${c.k} ${c.oi} ${c.fr}`).join('，')}`)
+  // 排序胶囊：成交额 / 持仓变化降序；记本机，切回涨跌幅
+  const colVals = f => page.evaluate(f => [...document.querySelectorAll(`#secMBody [data-f="${f}"]`)].map(td => {
+    const m = /^([+-]?\d+(?:\.\d+)?)([KMBT%]?)$/.exec(td.textContent.trim())
+    return m ? +m[1] * ({ K: 1e3, M: 1e6, B: 1e9, T: 1e12 }[m[2]] || 1) : -Infinity
+  }), f)
+  const descOk = a => a.every((v, i) => i === 0 || !(v > a[i - 1]))
+  await page.click('[data-sort="vol"]'); await wait(300)
+  const vols = await colVals('vol')
+  ok('排序「成交额」：按成交额降序', descOk(vols), vols.slice(0, 5).join(', '))
+  await page.click('[data-sort="oi"]'); await wait(300)
+  const ois = await colVals('oi')
+  const savedSort = await page.evaluate(() => localStorage.getItem('hkline-web-sector-sort-v1'))
+  ok('排序「持仓变化」：按持仓变化降序、取不到的沉底，记在本机', descOk(ois) && savedSort === 'oi', `${ois.slice(0, 5).join(', ')}；本机 ${savedSort}`)
+  await page.click('[data-sort="pct"]'); await wait(300)
   const [bw, mw] = await tableCols()
-  ok('板块表：名称列 ≤ 320 px，其余三列平分、铺满整张表', bw.ws[0] <= 320 && even(bw.ws.slice(1)) && Math.abs(sum(bw.ws) - bw.tw) <= 2, colsText(bw))
-  ok('品种表：名称列 ≤ 320 px，最新价 / 涨跌 / 成交额平分，星标 48 px，铺满', mw.ws[0] <= 320 && even(mw.ws.slice(1, 4)) && Math.abs(mw.ws[4] - 48) <= 1 && Math.abs(sum(mw.ws) - mw.tw) <= 2, colsText(mw))
+  // 左表：名字一列、数字一块（数字两列合计约 260，名字列 ≤ 420，表靠左右边留空）；右表铺满，星 48
+  ok('板块表：数字两列合计 ≈ 260 px、名字列 ≤ 420 px', Math.abs(sum(bw.ws.slice(1)) - 260) <= 2 && bw.ws[0] <= 420, colsText(bw))
+  ok('品种表：最新价 / 涨跌 / 成交额 / 持仓变化 / 费率平分，星标 48 px，铺满', even(mw.ws.slice(1, 6)) && Math.abs(mw.ws[6] - 48) <= 1 && Math.abs(sum(mw.ws) - mw.tw) <= 2, colsText(mw))
   await shot('板块-列表')
   await shotN('板块-今日')
   await page.click('[data-mk="us"]'); await wait(4000)
@@ -541,8 +573,8 @@ async function partFinish() {
   const first = await page.locator('#secBody tr[data-sec]').nth(2)
   if (await first.count()) { await first.click(); await wait(1500) }
   const [bw, mw] = await tableCols()
-  ok('板块表：名称列 ≤ 320 px，其余三列平分、铺满整张表', bw.ws[0] <= 320 && even(bw.ws.slice(1)) && Math.abs(sum(bw.ws) - bw.tw) <= 2, colsText(bw))
-  ok('品种表：名称列 ≤ 320 px，最新价 / 涨跌 / 成交额平分，星标 48 px，铺满', mw.ws[0] <= 320 && even(mw.ws.slice(1, 4)) && Math.abs(mw.ws[4] - 48) <= 1 && Math.abs(sum(mw.ws) - mw.tw) <= 2, colsText(mw))
+  ok('板块表：数字两列合计 ≈ 260 px、名字列 ≤ 420 px（10-10 重排后同 partSectors）', Math.abs(sum(bw.ws.slice(1)) - 260) <= 2 && bw.ws[0] <= 420, colsText(bw))
+  ok('品种表：最新价 / 涨跌 / 成交额 / 持仓变化 / 费率平分，星标 48 px，铺满', even(mw.ws.slice(1, 6)) && Math.abs(mw.ws[6] - 48) <= 1 && Math.abs(sum(mw.ws) - mw.tw) <= 2, colsText(mw))
   await shotF('板块表')
   ok('收尾（不登录的几项）：控制台无报错', sectionErrors(e0).length === 0, sectionErrors(e0).slice(0, 5).join(' | '))
 }

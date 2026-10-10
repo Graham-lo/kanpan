@@ -184,7 +184,8 @@ export function covered(set: MemberSet, w: SectorWindow): boolean {
   return set.returns.length >= MIN_WINDOW_COVERAGE * set.quotedCount
 }
 
-export interface SectorPool { excess: Map<string, number>; frontierCut: number }
+/** bench：全场等权池的对数收益均值（池空时 NaN）——跑赢大盘的那条基准线 */
+export interface SectorPool { excess: Map<string, number>; frontierCut: number; bench: number }
 
 export function pool(market: SectorMarket, quotes: Quotes, buckets: SectorBucket[], w: SectorWindow = 'today', history: SectorHistory = EMPTY_HISTORY): SectorPool {
   const seen = new Set<string>()
@@ -201,13 +202,19 @@ export function pool(market: SectorMarket, quotes: Quotes, buckets: SectorBucket
   }
   for (const d of catalog.sectors(market)) collect(d.members)
   for (const b of buckets) collect(b.members)
-  if (!returns.size) return { excess: new Map(), frontierCut: Infinity }
+  if (!returns.size) return { excess: new Map(), frontierCut: Infinity, bench: NaN }
   let sum = 0
   for (const v of returns.values()) sum += v
   const b = sum / returns.size
   const excess = new Map<string, number>()
   for (const [k, v] of returns) excess.set(k, v - b)
-  return { excess, frontierCut: quantile([...excess.values()].sort((x, y) => x - y), 0.9) }
+  return { excess, frontierCut: quantile([...excess.values()].sort((x, y) => x - y), 0.9), bench: b }
+}
+
+/** 「大盘」这段窗口的涨跌幅（%）：全场等权池对数收益均值换回百分数，就是跑赢大盘比的那条线；池空给 null */
+export function marketReturn(market: SectorMarket, quotes: Quotes, buckets: SectorBucket[], w: SectorWindow = 'today', history: SectorHistory = EMPTY_HISTORY): number | null {
+  const b = pool(market, quotes, buckets, w, history).bench
+  return Number.isFinite(b) ? Math.expm1(b) * 100 : null
 }
 
 function stat(id: string, name: string, market: SectorMarket, members: string[], quotes: Quotes, p: SectorPool, isFallback: boolean, w: SectorWindow, history: SectorHistory): SectorStat | null {
