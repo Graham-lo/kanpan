@@ -284,6 +284,9 @@ export interface ChartLayer {
   /** 画在成交量柱与蜡烛之下（深度热力这种铺底的） */
   back?: (c: CanvasRenderingContext2D, g: ChartGeometry) => void
   under?: (c: CanvasRenderingContext2D, g: ChartGeometry) => void
+  /** 画在 under 各层与内置大单线之后、蜡烛之前：under 各层按挂上的先后画，订单流是延后挂的，
+   *  要稳稳压在它上面又垫在蜡烛下面的（公允价值缺口，照 iOS 订单流 → 缺口 → 蜡烛）走这一格 */
+  beforeCandles?: (c: CanvasRenderingContext2D, g: ChartGeometry) => void
   over?: (c: CanvasRenderingContext2D, g: ChartGeometry) => void
   after?: (g: ChartGeometry) => void
   /** true = 认领悬停并换成手形；'soft' = 认领（出浮层）但光标保持十字 */
@@ -1192,6 +1195,7 @@ export class TVChart {
     if (this.ind.vol && this.deg.vol && !this.hidden.has('vol')) this.drawVolume(mainPane, from, to)
     if (geo) for (const l of this.layers) if (l.under) { c.save(); l.under(c, geo); c.restore() }
     if (this.walls && !this.hidden.has('walls')) this.drawWalls(mainPane, mr, from, to)
+    if (geo) for (const l of this.layers) if (l.beforeCandles) { c.save(); l.beforeCandles(c, geo); c.restore() }
     if (this.markers) this.drawTradeSpan(mainPane, mr)
     if (this.ind.keys && !this.hidden.has('keys')) drawKeyLevels(this, mainPane, mr, from, to)
     if (!this.footprint?.(mainPane, mr, from, to)) this.drawCandles(mainPane, mr, from, to)

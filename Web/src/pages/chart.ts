@@ -58,7 +58,10 @@ import { KlineCache } from '../market/klineCache'
 import { installCompare, openCompare, refreshCompare, removeCompare } from './compare'
 import { bindFootprint, setFootprintSource } from '../chart/footprint'
 import { bindHeikinAshi, setHeikinAshiSource } from '../chart/heikinAshi'
-import { baseBars, bindRangeBars, setRangeBarsSource, syncRangeBars } from '../chart/rangeBars'
+import { baseBars, bindRangeBars, setRangeBarsSource, syncRangeBars, rangeStepOf } from '../chart/rangeBars'
+import { createFVGLayer } from '../chart/fvgLayer'
+import { AN } from '../terms'
+import type { AutoLayerId } from '../analysis/fvg'
 import { styleMenuItems } from '../chart/mainStyle'
 import { setsMenu, switchNth, setButtonHTML, paintSetButtons } from './layoutSets'
 import type { CellFlag } from '../app/layouts'
@@ -329,6 +332,9 @@ function makeCell(i: number): Cell {
   cell.chart.setVpvrMode(st.vpvrMode)
   cell.chart.drawingsHidden = st.drawHidden
   bindFootprint(cell.chart, i); bindHeikinAshi(cell.chart, i); bindRangeBars(cell.chart, i)
+  // 公允价值缺口：每格一层，开关读 st.autoLayers（切开关只标脏重画，见 toggleAutoLayer）
+  const ch = cell.chart
+  ch.layers.push(createFVGLayer({ chart: ch, on: () => st.autoLayers.includes('FVG'), hidden: () => rangeStepOf(ch) != null }))
   cell.chart.setSettings(st.chartSettings)
   el.addEventListener('click', e => {
     const t = tgt(e)
@@ -1238,22 +1244,38 @@ const MAIN_TOGGLES: string[] = ['ma', 'ema', 'boll', 'vol', 'vwap', 'st', 'ichi'
 const isMainToggle = (id: string): id is MainToggle => MAIN_TOGGLES.includes(id)
 /** 主力订单流那一行（orderflow 模块出的 HTML）只取开关与齿轮，说明小字不要 */
 const OF_NAME = '主力订单流'
+/** 自动分析层（公允价值缺口）：记在 st.autoLayers、不进 st.ind；所有图格共用一份，切了标脏重画（图层自己读开关） */
+function toggleAutoLayer(id: AutoLayerId): void {
+  st.autoLayers = st.autoLayers.includes(id) ? st.autoLayers.filter(x => x !== id) : [...st.autoLayers, id]
+  cells.forEach(c => { c.chart.dirty = true })
+  save()
+}
 function openIndicators(): void {
   let cat: 'all' | 'main' | 'sub' = 'all', q = ''
   const rows = indicatorRows()
-  const count = (k: typeof cat) => (k === 'sub' ? 0 : 1) + rows.filter(r => k === 'all' || r.place === k).length
+  // 主图另有两行不在指标目录里：主力订单流、公允价值缺口
+  const count = (k: typeof cat) => (k === 'sub' ? 0 : 2) + rows.filter(r => k === 'all' || r.place === k).length
   const d = dialog(`${head('指标')}<div class="body"><div class="ind-side"><div class="ind-search">${I('search', 'icon-16')}<input id="indQ" type="search" placeholder="搜索" autocomplete="off" spellcheck="false" aria-label="搜索指标"></div><div class="ind-cats">${([['all', '全部'], ['main', '主图'], ['sub', '副图']] as ['all' | 'main' | 'sub', string][]).map(([k, l]) => `<button data-c="${k}" aria-pressed="${k === cat}">${l}<span class="faint">${count(k)}</span></button>`).join('')}</div></div><div class="scroll" id="indList"></div></div>`, 'ind-dlg', { label: '指标' })
   const inp = $<HTMLInputElement>('#indQ', d.dlg), list = $('#indList', d.dlg)
   const isOn = (id: IndicatorId) => isMainToggle(id) ? !!st.ind[id] : isMoreMain(id) ? !!st.ind.mains?.includes(id) : st.ind.subs.includes(id as SubId)
   const ofRow = () => indicatorRowHTML().replace(/<small>[\s\S]*?<\/small>/, '')
   const ofHit = () => { const k = q.toLowerCase().replace(/\s+/g, ''); return cat !== 'sub' && (!k || `${OF_NAME}|orderflow`.includes(k)) }
+  // 公允价值缺口：排在趋势类主图那几行的末尾，绑 st.autoLayers（data-auto），没有参数
+  const fvgHit = () => { const k = q.toLowerCase().replace(/\s+/g, ''); return cat !== 'sub' && (!k || `${AN.fvg}|fvg`.includes(k)) }
+  const fvgRow = () => {
+    const on_ = st.autoLayers.includes('FVG')
+    return `<div class="ind-row" data-auto="FVG" tabindex="0" role="checkbox" aria-checked="${on_}">
+      <span class="check-box ${on_ ? 'on' : ''}">${on_ ? I('check', 'icon-16') : ''}</span><span class="nm">${AN.fvg}</span>
+      <span class="tag">主图</span><span style="width:24px"></span></div>`
+  }
   function render(): void {
     const full = st.ind.subs.length >= MAX_SUBS
     const shown = rows.filter(r => (cat === 'all' || r.place === cat) && matchRow(r, q))
     const html = IND_GROUPS.map(g => {
       const rs = shown.filter(r => r.group === g)
       const of = g === '成交量类' && ofHit()
-      if (!rs.length && !of) return ''
+      const fv = g === '趋势类' && fvgHit()
+      if (!rs.length && !of && !fv) return ''
       // 订单流行排在成交量类主图那几行的末尾
       const mainEnd = rs.filter(r => r.place === 'main').length
       const items = rs.map(({ id, place }) => {
@@ -1264,6 +1286,7 @@ function openIndicators(): void {
         ${id !== 'vol' && Object.keys(CATALOG[id]?.params || {}).length ? `<button class="ibtn xs" data-set="${id}" aria-label="参数" data-tip="参数">${I('gear', 'icon-16')}</button>` : '<span style="width:24px"></span>'}</div>`
       })
       if (of) items.splice(mainEnd, 0, ofRow())
+      if (fv) items.splice(mainEnd, 0, fvgRow())
       return `<div class="ind-group" role="group" aria-label="${g}"><div class="ind-gh">${g}</div>${items.join('')}</div>`
     }).join('')
     list.innerHTML = html || '<div class="ind-empty faint">没有匹配的指标</div>'
@@ -1282,6 +1305,7 @@ function openIndicators(): void {
     const t = tgt(e)
     const c = t.closest<HTMLElement>('[data-c]'); if (c) { cat = c.dataset.c as typeof cat; $$('[data-c]', d.dlg).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.c === cat))); render(); return }
     if (indicatorRowClick(t)) { render(); return }
+    const au = t.closest<HTMLElement>('[data-auto]'); if (au) { toggleAutoLayer(au.dataset.auto as AutoLayerId); render(); $<HTMLElement>(`[data-auto="${au.dataset.auto}"]`, list)?.focus(); return }
     const s = t.closest<HTMLElement>('[data-set]'); if (s) { e.stopPropagation(); openParams(s.dataset.set as IndicatorId); return }
     const r = t.closest<HTMLElement>('.ind-row'); if (r && r.getAttribute('aria-disabled') !== 'true') toggle(r.dataset.id as IndicatorId)
   })
@@ -1304,6 +1328,9 @@ function openIndicators(): void {
     if (t.hasAttribute('data-of-row') || t.hasAttribute('data-of-history')) {
       const selector = t.hasAttribute('data-of-history') ? '[data-of-history]' : '[data-of-row]'
       indicatorRowClick(t); render(); $<HTMLElement>(selector, d.dlg)?.focus()
+    } else if (t.dataset.auto) {
+      const id = t.dataset.auto as AutoLayerId
+      toggleAutoLayer(id); render(); $<HTMLElement>(`[data-auto="${id}"]`, list)?.focus()
     } else if (t.getAttribute('aria-disabled') !== 'true') toggle(t.dataset.id as IndicatorId)
   })
   render(); $<HTMLElement>('.ind-row', list)?.focus()
