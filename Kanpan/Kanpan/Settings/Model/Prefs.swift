@@ -49,6 +49,9 @@ struct Prefs: Sendable, Equatable {
   /// 图上大单与爆仓气泡（2026-10-08，键名沿用）：每根向上（大买 + 空单爆仓）/ 向下（大卖 + 多单爆仓）过门槛的在 K 线高 / 低外
   /// 标点或泡，点泡开「大单与爆仓」。出厂开、跟账号走；和挂单墙（`orderFlow`）互不依赖——墙关着泡照出。「指标 › 主力订单流」里一颗开关。
   var bigTradeSigns: Bool = true
+  /// 自动分析层，跟人走；目前只有公允价值缺口（`AutoLayer.fvg`）。「分析 › 指标」里单独一颗开关，
+  /// 不进 `overlays`、不受「隐藏画线」影响。按打开先后排、不重复，出厂全关。
+  var autoLayers: [AutoLayer] = []
   /// 主力订单流：用户改过门槛 / 步长的那几只（键是去掉缩放前缀的 base，`OrderFlowFacts.overrideKey`）。
   /// 没改过的 base 不在表里，一律走默认表——默认表以后调了，没改过的人跟着变。随账号同步（整张表一个字段）。
   ///
@@ -390,6 +393,9 @@ struct Prefs: Sendable, Equatable {
     return id.placement == .main ? overlays.contains(id) : subs.contains(id)
   }
 
+  /// 某个自动分析层是不是开着的。
+  func isAutoLayerOn(_ layer: AutoLayer) -> Bool { autoLayers.contains(layer) }
+
   /// 当前这一套配色 + 深浅下的原始令牌。全 app 只有这一处把两根轴合起来。
   func seed(systemDark: Bool) -> PaletteSeed { theme.seed(skin: skin, systemDark: systemDark) }
 
@@ -406,6 +412,11 @@ struct Prefs: Sendable, Equatable {
   ///
   /// 成交量不占名额（见 `maxSubs`）：开成交量永远不换下别人，满了换下的也只在
   /// 非成交量的副图里挑最早的那个，成交量本身不会被换下。
+  /// 开 / 关一个自动分析层。开的接在末尾，关的从列表里拿掉。
+  mutating func toggleAutoLayer(_ layer: AutoLayer) {
+    if let at = autoLayers.firstIndex(of: layer) { autoLayers.remove(at: at) } else { autoLayers.append(layer) }
+  }
+
   @discardableResult
   mutating func toggle(_ id: IndicatorID) -> String? {
     if id == .orderFlow { orderFlow.toggle(); return nil }

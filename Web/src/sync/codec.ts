@@ -25,6 +25,7 @@ import { symbolOk } from '../venues'
 import { type Body, type Json, type SyncObject, same } from './types'
 import { MAX_OVERRIDES, isValidBase, normalizeOverride, type Override } from '../orderflow/settings'
 import { LAYOUTS_FIELD, bookFrom, cleanBook, liveBook, loadLive, type CellCfg, type Layout, type LayoutBook } from '../app/layouts'
+import { AUTO_LAYERS, type AutoLayerId } from '../analysis/fvg'
 import { DEFAULTS as CHART_DEFAULTS, MAX_BYTES as CHART_MAX_BYTES, clean as cleanChart, diff as chartDiff, type ChartSettings } from '../chart/chartSettings'
 
 export interface Ctx {
@@ -106,6 +107,12 @@ export function cleanCompare(v: unknown): string[] {
   }
   return out
 }
+/** 自动分析层的规范形（照手机 m/app/prefs.autoLayerList）：只认 AUTO_LAYERS 里的名字、去重、保留打开先后 */
+export function cleanAutoLayers(v: unknown): AutoLayerId[] {
+  const out: AutoLayerId[] = []
+  for (const x of Array.isArray(v) ? v : []) if ((AUTO_LAYERS as readonly unknown[]).includes(x) && !out.includes(x as AutoLayerId)) out.push(x as AutoLayerId)
+  return out
+}
 /** 标题里用的品种名：去掉计价币（和手机 `Alert.base(of:)` 一致） */
 export function baseName(s: string): string { return isMacro(s) ? MACRO_CN : s.replace(/(USDT|USDC|FDUSD|BUSD|USD1|TUSD)$/, '') || s }
 
@@ -136,6 +143,8 @@ export interface SettingsState {
   orderFlowOverrides?: Record<string, Override>
   /** 对比品种（规范键 venue/market/SYMBOL，最多三只），和手机 Prefs.compareSymbols 同一个字段 */
   compareSymbols?: string[]
+  /** 自动分析层（目前只有公允价值缺口 'FVG'），和手机 Prefs.autoLayers 同一个字段，2026-10-10 起跟账号同步 */
+  autoLayers?: AutoLayerId[]
   /** 隐藏画线（PC 画线工具条的眼睛 / ⌘⌥H），和手机 Prefs.drawingsHidden 同一个字段，2026-10-06 起跟账号同步 */
   drawHidden?: boolean
   /** 布局集（app/layouts.ts）与当前那套的活数据：chartLayouts 字段 = 活数据抄回之后的整个布局集，2026-10-07 起跟账号同步 */
@@ -146,7 +155,7 @@ export interface SettingsState {
 
 export const SETTINGS_ID = 'chart'
 const PARAM_IDS: [string, string][] = [['ma', 'MA'], ['ema', 'EMA'], ['boll', 'BOLL'], ['macd', 'MACD'], ['rsi', 'RSI'], ['kdj', 'KDJ']]
-export const SETTINGS_FIELDS = ['quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlowOverrides', 'orderFlowHistory', 'compareSymbols', 'drawingsHidden', LAYOUTS_FIELD, 'webChart']
+export const SETTINGS_FIELDS = ['quickIntervals', 'overlays', 'subs', ...PARAM_IDS.map(([, p]) => 'params/' + p), 'orderFlowOverrides', 'orderFlowHistory', 'compareSymbols', 'autoLayers', 'drawingsHidden', LAYOUTS_FIELD, 'webChart']
 /** 云端没有这个字段时本机的值要推上去（网页独有，没有别的端会写它）：seen 记成 null，下一次记账一定推 */
 const PUSH_WHEN_CLOUD_EMPTY = new Set([LAYOUTS_FIELD])
 /** 状态里有没有布局集那几项（单元测试里的精简状态可以没有） */
@@ -174,6 +183,7 @@ export function webSetting(s: SettingsState, field: string): Json {
   if (field === 'orderFlowOverrides') return (cleanOverrides(s.orderFlowOverrides) ?? {}) as unknown as Json
   if (field === 'compareSymbols') return cleanCompare(s.compareSymbols)
   if (field === 'orderFlowHistory') return s.orderFlowHistory === true
+  if (field === 'autoLayers') return cleanAutoLayers(s.autoLayers)
   if (field === 'drawingsHidden') return s.drawHidden === true
   if (field === LAYOUTS_FIELD) return hasLayouts(s) ? liveBook({ ...s, active: s.active ?? 0 }) as unknown as Json : null
   if (field === 'webChart') return chartDiff(cleanChart(s.chartSettings)) as unknown as Json
@@ -220,6 +230,8 @@ export function encodeSetting(field: string, web: Json, prev: Json | undefined):
   if (field === 'orderFlowOverrides') return (cleanOverrides(web) ?? undefined) as unknown as Json | undefined
   if (field === 'compareSymbols') return cleanCompare(web)
   if (field === 'orderFlowHistory') return web === true
+  // 网页认不出的层（更新版本的客户端写的）原地留着，认得的按网页的开关与先后来
+  if (field === 'autoLayers') return mergeList(prevList, new Set<string>(AUTO_LAYERS), cleanAutoLayers(web))
   if (field === 'drawingsHidden') return web === true
   if (field === LAYOUTS_FIELD) return (cleanBook(web) ?? undefined) as unknown as Json | undefined
   if (field === 'webChart') return obj(web) && JSON.stringify(web).length <= CHART_MAX_BYTES ? web : undefined
@@ -261,6 +273,8 @@ export function decodeSetting(field: string, cloud: Json | undefined, cur: Setti
   // 别家的键（Coinbase 现货）照样留着：网页画不了就不画，但不能一装一推把手机那只冲掉
   if (field === 'compareSymbols') return Array.isArray(cloud) ? cleanCompare(cloud) : undefined
   if (field === 'orderFlowHistory') return typeof cloud === 'boolean' ? cloud : undefined
+  // 认不出的层（更新版本的客户端写的新层）网页画不了，装进来时丢掉；推的时候 encodeSetting 把它原地留着
+  if (field === 'autoLayers') return Array.isArray(cloud) ? cleanAutoLayers(cloud) : undefined
   if (field === 'drawingsHidden') return typeof cloud === 'boolean' ? cloud : undefined
   if (field === LAYOUTS_FIELD) return (cleanBook(cloud) ?? undefined) as unknown as Json | undefined
   if (field === 'webChart') return obj(cloud) ? chartDiff(cleanChart(cloud)) as unknown as Json : undefined
@@ -286,6 +300,7 @@ export function putSetting(s: SettingsState, field: string, v: Json): void {
   else if (field === 'orderFlowOverrides') s.orderFlowOverrides = cleanOverrides(v) ?? {}
   else if (field === 'compareSymbols') s.compareSymbols = cleanCompare(v)
   else if (field === 'orderFlowHistory') s.orderFlowHistory = v === true
+  else if (field === 'autoLayers') s.autoLayers = cleanAutoLayers(v)
   else if (field === 'drawingsHidden') s.drawHidden = v === true
   else if (field === LAYOUTS_FIELD) {
     const b = cleanBook(v)
@@ -332,6 +347,7 @@ export function factorySettings(): Required<SettingsState> {
     orderFlowOverrides: {},
     orderFlowHistory: false,
     compareSymbols: [],
+    autoLayers: [],
     drawHidden: false,
     layouts: bookFrom('1', [{ symbol: 'BTCUSDT', iv: '1h' }]),
     layout: '1', cells: [{ symbol: 'BTCUSDT', iv: '1h' }], active: 0,
@@ -343,7 +359,7 @@ export function factorySettings(): Required<SettingsState> {
 export function resetSettings(s: SettingsState): string[] {
   const before = SETTINGS_FIELDS.map(f => webSetting(s, f))
   const f = factorySettings()
-  s.pinned = f.pinned; s.ind = f.ind; s.params = f.params; s.orderFlowOverrides = f.orderFlowOverrides; s.orderFlowHistory = f.orderFlowHistory; s.compareSymbols = f.compareSymbols; s.drawHidden = f.drawHidden; s.chartSettings = f.chartSettings
+  s.pinned = f.pinned; s.ind = f.ind; s.params = f.params; s.orderFlowOverrides = f.orderFlowOverrides; s.orderFlowHistory = f.orderFlowHistory; s.compareSymbols = f.compareSymbols; s.autoLayers = f.autoLayers; s.drawHidden = f.drawHidden; s.chartSettings = f.chartSettings
   if (hasLayouts(s)) { s.layouts = f.layouts; s.layout = f.layout; s.cells = f.cells; s.active = f.active }
   return SETTINGS_FIELDS.filter((x, i) => !same(before[i], webSetting(s, x)))
 }

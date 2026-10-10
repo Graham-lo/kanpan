@@ -14,7 +14,8 @@ import { DEFAULT_WATCH, INTERVALS, type Kind } from '../market/symbols'
 import { displayKey } from '../market/identity'
 import { setItemMakingRoom } from '../util/storage'
 import { normalizeOverride, MAX_OVERRIDES, type Override } from '../orderflow/settings'
-import { cleanCompare } from '../sync/codec'
+import { cleanAutoLayers, cleanCompare } from '../sync/codec'
+import type { AutoLayerId } from '../analysis/fvg'
 import {
   bookFrom, cleanBook, cleanCells, cleanLayout, clampActive, commitLive, loadLive, migrateLegacyFlag, validIv, validSymbol,
   CELL_FLAGS, LEGACY_FLAG_KEYS, type CellCfg, type Layout, type LayoutBook,
@@ -115,6 +116,9 @@ export interface State {
   /** 对比品种：规范键 venue/market/SYMBOL（美元指数是 macro/index/DXY），最多三只；一人一份，随账号同步（和手机同一个字段）。
    *  多图时每格按自己的主图叠这同一份，去掉格子主图那只 */
   compareSymbols: string[]
+  /** 自动分析层（2026-10-10，和手机 Prefs.autoLayers 同一个字段，出厂全关；一人一份、所有图格共用，随账号同步）：
+   *  目前只有公允价值缺口 'FVG'。按打开先后排、不重复，只认 AUTO_LAYERS 里的名字 */
+  autoLayers: AutoLayerId[]
   /** 图表设置（右键「设置…」，照 TradingView 四页）：一人一份、所有图格共用，随账号同步（settings 对象的 webChart 字段） */
   chartSettings: ChartSettings
   /** 以下不落盘 */
@@ -142,7 +146,7 @@ function defaults(): State {
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
     vpvrMode: 'split', linkCross: true, linkSymbol: false, linkIv: false, linkTime: false, customIvs: [],
-    orderFlow: false, orderFlowHistory: false, orderFlowOverrides: {}, compareSymbols: [], chartSettings: { ...CHART_DEFAULTS },
+    orderFlow: false, orderFlowHistory: false, orderFlowOverrides: {}, compareSymbols: [], autoLayers: [], chartSettings: { ...CHART_DEFAULTS },
     page: 'chart', stale: false, account: null,
   }
 }
@@ -300,6 +304,7 @@ export function hydrate(saved: Partial<State>): State {
   }
   s.orderFlowOverrides = ofo
   s.compareSymbols = cleanCompare(s.compareSymbols)
+  s.autoLayers = cleanAutoLayers(s.autoLayers)
   s.page = 'chart'; s.stale = false; s.account = null
   return s
 }

@@ -162,6 +162,14 @@ struct PrefsFieldPlanTests {
       新指标落错一边，`overlays` / `subs` / `subInverted` 就会拒掉它，整条同步操作 400。
       """)
 
+    let autoLayers = AutoLayer.allCases.map(\.rawValue)
+    #expect(contract.autoLayerIDs == autoLayers, """
+      契约里的 `autoLayerIDs` 和 `AutoLayer` 对不上（顺序也算）：
+      契约 \(contract.autoLayerIDs)
+      枚举 \(autoLayers)
+      跑 `make sync-contract` 重新生成；服务端 sync_validation 的 AUTO_LAYERS 要跟着改。
+      """)
+
     let kinds = Drawing.Kind.allCases.map(\.rawValue)
     #expect(contract.drawingKinds == kinds, """
       契约里的 `drawingKinds` 和 `Drawing.Kind` 对不上：
@@ -243,6 +251,35 @@ struct PrefsFieldPlanTests {
     let back = PrefsCodec.decode(PrefsCodec.encode(prefs))
     #expect(back.bigTradeSigns == false && back.orderFlow)
     #expect(PrefsCodec.decode(Data("{}".utf8)).bigTradeSigns)
+  }
+
+  /// 自动分析层（2026-10-10，公允价值缺口）：跟着人走、出厂全关；线上是 rawValue 数组。
+  @Test("自动分析层跟着人走，出厂全关，往返不丢")
+  func autoLayersIsSyncedAndRoundTrips() throws {
+    #expect(PrefsFieldPlan.table["autoLayers"] == .synced)
+    #expect(Prefs.syncedFieldNames.contains("autoLayers"))
+    var prefs = Prefs.defaults
+    #expect(prefs.autoLayers.isEmpty && !prefs.isAutoLayerOn(.fvg))
+    prefs.toggleAutoLayer(.fvg)
+    #expect(prefs.autoLayers == [.fvg] && prefs.isAutoLayerOn(.fvg))
+    let data = PrefsCodec.encode(prefs)
+    let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    #expect(json["autoLayers"] as? [String] == ["FVG"])
+    #expect(PrefsCodec.decode(data).autoLayers == [.fvg])
+    prefs.toggleAutoLayer(.fvg)
+    #expect(prefs.autoLayers.isEmpty)
+    #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)).autoLayers.isEmpty)
+  }
+
+  /// 自动分析层宽容解码：认不出的名字（更新版本的新层、手改的档）一项一项丢、重复的去掉；
+  /// 键缺失或形状不对按出厂（空表），不拖垮整份存档。
+  @Test("自动分析层宽容解码")
+  func autoLayersDecodeTolerantly() {
+    #expect(PrefsCodec.decode(Data("{}".utf8)).autoLayers.isEmpty)
+    #expect(PrefsCodec.decode(Data(#"{"autoLayers":["X","FVG","fvg","FVG"]}"#.utf8)).autoLayers == [.fvg])
+    #expect(PrefsCodec.decode(Data(#"{"autoLayers":["X"]}"#.utf8)).autoLayers.isEmpty)
+    #expect(PrefsCodec.decode(Data(#"{"autoLayers":"FVG","bigTradeSigns":false}"#.utf8)).autoLayers.isEmpty)
+    #expect(PrefsCodec.decode(Data(#"{"autoLayers":"FVG","bigTradeSigns":false}"#.utf8)).bigTradeSigns == false)
   }
 
   /// 「自选走势线」（2026-10-08）：跟着人走、出厂开；老存档没有这个键时按出厂（开）。
@@ -430,6 +467,9 @@ enum SettingsFieldContract {
     var subIndicatorIDsNote: String
     /// 画在副图上的那几种（`placement == .sub`）。
     var subIndicatorIDs: [String]
+    var autoLayerIDsNote: String
+    /// `AutoLayer` 的全部 rawValue（「分析」面板的自动分析层，2026-10-10）。
+    var autoLayerIDs: [String]
     var drawingKindsNote: String
     /// `Drawing.Kind` 的全部 rawValue。
     var drawingKinds: [String]
@@ -494,7 +534,8 @@ enum SettingsFieldContract {
         + "客户端按 fieldClasses 决定一个字段跟不跟人走；服务端 sync::SETTINGS_FIELDS 必须逐字等于 wireKeys，"
         + "sync_validation 的指标与画线词表必须逐项等于这里的两份。",
       generatedFrom: "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table；"
-        + "KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Drawing/Drawing.swift · Drawing.Kind；"
+        + "KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Analysis/AutoLayer.swift · AutoLayer；"
+        + "KanpanCore/Drawing/Drawing.swift · Drawing.Kind；"
         + "KanpanCore/OrderFlow/OrderFlowSettings.swift · OrderFlowOverride；KanpanNetwork/OrderFlow/OrderFlowCatalog.swift · OrderFlowBase",
       generatedBy: "Kanpan/KanpanTests/Settings/PrefsFieldPlanTests.swift · SettingsFieldContract",
       howToRegenerate: "这是生成物，不要手改。改 PrefsFieldPlan.table（或 IndicatorID / Drawing.Kind），"
@@ -528,6 +569,10 @@ enum SettingsFieldContract {
         + "主副分界也是契约的一部分：服务端是按「前 N 个是主图、其余是副图」切的，"
         + "新指标落错一边 = 那条设置永远同步不上去。",
       subIndicatorIDs: IndicatorID.allCases.filter { $0.placement == .sub }.map(\.rawValue),
+      autoLayerIDsNote: "`AutoLayer` 的全部 rawValue（「分析」面板的自动分析层，目前只有公允价值缺口）。"
+        + "settings.autoLayers 只认这份词表、每个最多一次；服务端 sync_validation 的 AUTO_LAYERS 必须逐项等于它"
+        + "（测试 auto_layers_are_the_contract_ones）。少一个：带它的那条设置操作整条 400。",
+      autoLayerIDs: AutoLayer.allCases.map(\.rawValue),
       drawingKindsNote: "`Drawing.Kind` 的全部 rawValue。服务端 sync_validation 的 KINDS 必须和它一样——"
         + "drawings.kind、drawingPreferences.favorites 与 styles/<kind>、settings.lastDrawTool "
         + "四条值规则都拿它当词表。少一个：用那把工具画出来的线被服务端整条拒绝，永远离不开这台手机。",

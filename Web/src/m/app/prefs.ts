@@ -13,6 +13,7 @@ import { syncKeyOf } from '../../market/identity'
 import { isDrawingKind } from '../chart/draw/drawing'
 import { ANALYSIS_SECTIONS, isAnalysisSection } from '../pages/chart/analysisRank'
 import { defaultParams } from '../indicator/ids'
+import { AUTO_LAYERS, type AutoLayerId } from '../../analysis/fvg'
 
 export type IntervalId = '1m' | '3m' | '5m' | '15m' | '30m' | '1h' | '2h' | '4h' | '6h' | '12h' | '1d' | '1w' | '1M' | '1y'
 export const INTERVALS: readonly IntervalId[] = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w', '1M', '1y']
@@ -95,6 +96,9 @@ export interface Prefs {
   favoritesTrend: boolean
   /** 图上大单与爆仓气泡（2026-10-08，出厂开；跟人走，和挂单墙开关互不牵连） */
   bigTradeSigns: boolean
+  /** 自动分析层（2026-10-10，与 iOS `Prefs.autoLayers` 同义，出厂全关；跟人走）：目前只有公允价值缺口 'FVG'。
+   *  按打开先后排、不重复，只认 AUTO_LAYERS 里的名字 */
+  autoLayers: AutoLayerId[]
   notifyListingChanges: boolean
   habitLearning: boolean
   learnedDefaults: LearnedDefaults
@@ -124,7 +128,7 @@ export interface Prefs {
 
 /** 进账号同步的字段（settings 集合）。顺序无意义，集合必须与 iOS 契约、服务端对齐 */
 export const SYNCED_FIELDS = [
-  'alertSound', 'analysisUsage', 'barSpacing', 'bigTradeSigns', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'drawingsHidden', 'favoritesGroup', 'favoritesTrend', 'habitLearning',
+  'alertSound', 'analysisUsage', 'autoLayers', 'barSpacing', 'bigTradeSigns', 'candleKind', 'compareSymbols', 'depth', 'drawToolUsage', 'drawingOverlaysShown', 'drawingsHidden', 'favoritesGroup', 'favoritesTrend', 'habitLearning',
   'indicatorColors', 'indicatorLayouts', 'interval', 'landscapeBarSpacing', 'lastDrawTool', 'learnedDefaults', 'mainInverted',
   'notifyListingChanges', 'orderFlow', 'orderFlowHistory', 'orderFlowOverrides', 'overlays', 'params', 'portraitHeight', 'priceMode',
   'quickIntervals', 'redUp', 'reviewSearchScope', 'sectorMarket', 'sectorWindow', 'skin', 'subHeightOverrides',
@@ -143,7 +147,7 @@ export function defaultPrefs(): Prefs {
     interval: '1h', quickIntervals: [...QUICK_INTERVALS], theme: 'auto', skin: 'sage', redUp: false,
     compareSymbols: [], priceMode: 'log', depth: false, orderFlow: false, orderFlowHistory: false, orderFlowOverrides: {},
     candleKind: 'candle', barSpacing: 4, landscapeBarSpacing: 4, mainInverted: false, subInverted: [], portraitHeight: 0.5,
-    indicatorColors: {}, alertSound: 'default', watchMoveAlert: false, favoritesTrend: true, bigTradeSigns: true, notifyListingChanges: false,
+    indicatorColors: {}, alertSound: 'default', watchMoveAlert: false, favoritesTrend: true, bigTradeSigns: true, autoLayers: [], notifyListingChanges: false,
     habitLearning: true, learnedDefaults: emptyLearned(), overlays: ['MA'], subs: ['VOL', 'OI', 'MACD'],
     params, subHeightOverrides: {}, indicatorLayouts: { others: {} }, routePolicy: 'gateway',
     favoritesGroup: '', sectorMarket: 'crypto', sectorWindow: 'today', lastDrawTool: '', drawToolUsage: {}, analysisUsage: {}, reviewSearchScope: 'history',
@@ -293,6 +297,8 @@ export function cappedSubs(subs: readonly IndicatorId[]): IndicatorId[] {
   const nonVol = subs.filter(x => x !== 'VOL')
   return subs.filter(x => x === 'VOL' || nonVol.indexOf(x) < MAX_SUBS)
 }
+/** 自动分析层：认不出的名字丢掉、去重（iOS `Prefs.cleanAutoLayers`） */
+export const autoLayerList = (v: unknown): AutoLayerId[] => [...new Set(strs(v).filter(x => (AUTO_LAYERS as readonly string[]).includes(x)))] as AutoLayerId[]
 const idList = (v: unknown, pool: readonly IndicatorId[]): IndicatorId[] => [...new Set(strs(v).filter(x => (pool as readonly string[]).includes(x)))] as IndicatorId[]
 
 // ───────── 指标布局：只有一份，跟人走（照 iOS Settings/Model/IndicatorLayouts.swift） ─────────
@@ -419,6 +425,7 @@ export function normalizePrefs(raw: unknown): Prefs {
     watchMoveAlert: bool(r.watchMoveAlert, d.watchMoveAlert),
     favoritesTrend: bool(r.favoritesTrend, d.favoritesTrend),
     bigTradeSigns: bool(r.bigTradeSigns, d.bigTradeSigns),
+    autoLayers: autoLayerList(r.autoLayers),
     notifyListingChanges: bool(r.notifyListingChanges, d.notifyListingChanges),
     habitLearning: bool(r.habitLearning, d.habitLearning),
     learnedDefaults: cleanLearned(r.learnedDefaults),

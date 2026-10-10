@@ -1,4 +1,8 @@
 {
+  "autoLayerIDs" : [
+    "FVG"
+  ],
+  "autoLayerIDsNote" : "`AutoLayer` 的全部 rawValue（「分析」面板的自动分析层，目前只有公允价值缺口）。settings.autoLayers 只认这份词表、每个最多一次；服务端 sync_validation 的 AUTO_LAYERS 必须逐项等于它（测试 auto_layers_are_the_contract_ones）。少一个：带它的那条设置操作整条 400。",
   "drawingKinds" : [
     "hline",
     "trend",
@@ -46,6 +50,7 @@
   "fieldClasses" : {
     "alertSound" : "synced",
     "analysisUsage" : "synced",
+    "autoLayers" : "synced",
     "barSpacing" : "synced",
     "bigTradeSigns" : "synced",
     "candleKind" : "synced",
@@ -87,7 +92,7 @@
   },
   "fieldClassesNote" : "synced=随账号同步、线上用自己的名字；deviceOnly=这台机器 / 这张网的属性，不跟人走；derivedLocal=自动累积的统计，不跟人也不同步。",
   "generatedBy" : "Kanpan/KanpanTests/Settings/PrefsFieldPlanTests.swift · SettingsFieldContract",
-  "generatedFrom" : "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table；KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Drawing/Drawing.swift · Drawing.Kind；KanpanCore/OrderFlow/OrderFlowSettings.swift · OrderFlowOverride；KanpanNetwork/OrderFlow/OrderFlowCatalog.swift · OrderFlowBase",
+  "generatedFrom" : "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table；KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Analysis/AutoLayer.swift · AutoLayer；KanpanCore/Drawing/Drawing.swift · Drawing.Kind；KanpanCore/OrderFlow/OrderFlowSettings.swift · OrderFlowOverride；KanpanNetwork/OrderFlow/OrderFlowCatalog.swift · OrderFlowBase",
   "howToRegenerate" : "这是生成物，不要手改。改 PrefsFieldPlan.table（或 IndicatorID / Drawing.Kind），然后在仓库根跑 `make sync-contract`。改完两边的测试自动对账：KanpanTests 的 theContractFileIsTheOneListBothSidesRead，Backend/kanpan-api 的 the_allowlist_is_what_ios_sends、every_wire_key_has_a_value_rule、the_indicator_vocabulary_is_the_contract_one、every_drawing_tool_is_in_the_contract、order_flow_limits_are_the_contract_ones 与 binance_scaled_prefixes_are_the_contract_ones。",
   "indicatorIDs" : [
     "MA",
@@ -171,6 +176,7 @@
   "wireKeys" : [
     "alertSound",
     "analysisUsage",
+    "autoLayers",
     "barSpacing",
     "bigTradeSigns",
     "candleKind",

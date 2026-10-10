@@ -146,6 +146,7 @@ extension Prefs: Codable {
     // `orderFlowFilledBid/Ask`、`orderFlowCancelledBid/Ask` 2026-09-28 收掉（收设置项 D 组），老档读时忽略。
     case orderFlowOverrides
     case bigTradeSigns
+    case autoLayers
     case candleKind
     case barSpacing, mainInverted, subInverted
     case landscapeBarSpacing
@@ -194,6 +195,7 @@ extension Prefs: Codable {
     try c.encode(orderFlowHistory, forKey: .orderFlowHistory)
     try c.encode(orderFlowOverrides, forKey: .orderFlowOverrides)
     try c.encode(bigTradeSigns, forKey: .bigTradeSigns)
+    try c.encode(autoLayers.map(\.rawValue), forKey: .autoLayers)
     try c.encode(barSpacing, forKey: .barSpacing)
     try c.encode(landscapeBarSpacing, forKey: .landscapeBarSpacing)
     try c.encode(mainInverted, forKey: .mainInverted)
@@ -322,6 +324,8 @@ extension Prefs: Codable {
     if let v = bool(.orderFlow) { orderFlow = v }
     if let v = bool(.orderFlowHistory) { orderFlowHistory = v }
     if let v = bool(.bigTradeSigns) { bigTradeSigns = v }
+    // 自动分析层：认不出的名字（更新版本写下的新层、手改的档）一项一项丢、去重；没有这个键留出厂的空表。
+    if let raw = strs(.autoLayers) { autoLayers = Prefs.cleanAutoLayers(raw) }
     // 改过的门槛 / 步长：认不出的 base、越界的数一项一项丢，不让一只坏档拖垮整张表。
     if let raw = try? c.decode([String: OrderFlowOverride].self, forKey: .orderFlowOverrides) {
       for base in raw.keys.sorted() where orderFlowOverrides.count < Prefs.maxOrderFlowOverrides {
@@ -406,6 +410,16 @@ extension Prefs: Codable {
 
     if let raw = strs(.compareSymbols) { compareSymbols = Prefs.cleanCompareSymbols(raw) }
     PrefsCodec.migrate(&self, from: archived, archivedQuicks: archivedQuicks)
+  }
+
+  /// 一串 rawValue → 去重、去掉认不出的自动分析层。
+  static func cleanAutoLayers(_ raw: [String]) -> [AutoLayer] {
+    var out: [AutoLayer] = []
+    for r in raw {
+      guard let layer = AutoLayer(rawValue: r), !out.contains(layer) else { continue }
+      out.append(layer)
+    }
+    return out
   }
 
   /// 一串 rawValue → 去重、去掉认不出的、去掉放错位置的指标。

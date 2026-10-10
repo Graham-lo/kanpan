@@ -119,6 +119,8 @@ enum PrefsFieldPlan {
     "orderFlowOverrides": .synced,
     // 2026-10-08 图上大单与爆仓气泡：个人的看图偏好，换台手机还该是那样，跟账号走。
     "bigTradeSigns": .synced,
+    // 2026-10-10 自动分析层（公允价值缺口）：个人的看图偏好，换台手机还该是开着的，跟账号走。
+    "autoLayers": .synced,
     // 「按我的习惯自动调整」：开关 + 学到的结论（整份一个对象，≤ 16 KB）。行为日志只在本机。
     "habitLearning": .synced, "learnedDefaults": .synced,
 

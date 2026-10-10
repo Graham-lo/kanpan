@@ -11,6 +11,11 @@ use serde_json::Value;
 // keep in step (same reason `sync::SETTINGS_FIELDS` is a slice).
 const OVERLAY_INDICATORS:&[&str]=&["MA","EMA","BOLL","VWAP","ST","SAR","ORDERFLOW"];
 const SUB_INDICATORS:&[&str]=&["VOL","MACD","RSI","KDJ","SRSI","ATR","OI","LSR","TAKER","BASIS","DMI","CVD"];
+// `AutoLayer` (KanpanCore/Analysis/AutoLayer.swift): the automatic analysis layers the chart can
+// draw on its own (today only the fair value gap). `settings.autoLayers` is a list of these, each
+// at most once. Generated into the contract as `autoLayerIDs`; `auto_layers_are_the_contract_ones`
+// holds this to it. Slice, so adding one is a single string.
+const AUTO_LAYERS:&[&str]=&["FVG"];
 fn indicator(name:&str)->bool {OVERLAY_INDICATORS.contains(&name)||SUB_INDICATORS.contains(&name)}
 // `Drawing.Kind` in full (KanpanCore/Drawing/Drawing.swift:22). The first ten are the
 // original tools; the rest arrived with the TradingView-aligned panel and must be listed
@@ -230,6 +235,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "overlays"=>names(v,OVERLAY_INDICATORS.len(),OVERLAY_INDICATORS),"subs"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
    // `subInverted` is a set of sub-panel ids, same vocabulary as `subs`.
    "subInverted"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
+   // 自动分析层（2026-10-10）：白名单里的名字、每个最多一次（条数上限 = 白名单长度，重复的放不下）。
+   "autoLayers"=>names(v,AUTO_LAYERS.len(),AUTO_LAYERS)&&v.as_array().is_some_and(|a|a.iter().enumerate().all(|(i,x)|!a[..i].contains(x))),
    "quickIntervals"=>intervals(v,10),"interval"=>v.as_str().is_some_and(is_synced_interval),
    "portraitHeight"=>number(v,0.1,1.0),
    // `Prefs.clampSpacing` never stores anything outside AICoinBehavior's 1.6…40pt.
@@ -840,6 +847,23 @@ mod tests {
   for flag in ["mainInverted","watchMoveAlert","drawingOverlaysShown","drawingsHidden","favoritesTrend","bigTradeSigns"] {
    assert!(field("settings",flag,&json!(true))&&!field("settings",flag,&json!(1)),"{flag} is a boolean");
   }
+ }
+
+ /// `settings.autoLayers`（2026-10-10）：白名单字符串数组，和 `overlays` 同一种规则，外加不许重复。
+ #[test] fn auto_layers_are_a_whitelisted_list() {
+  assert!(crate::sync::SETTINGS_FIELDS.contains(&"autoLayers"));
+  for ok in [json!([]),json!(["FVG"])] {assert!(field("settings","autoLayers",&ok),"autoLayers {ok}")}
+  for bad in [json!(["X"]),json!(["fvg"]),json!(["FVG","FVG"]),json!([1]),json!("FVG"),json!(true),json!({"FVG":true}),json!(null)] {
+   assert!(!field("settings","autoLayers",&bad),"autoLayers {bad}");
+  }
+ }
+
+ /// `AUTO_LAYERS` is the client's `AutoLayer`, in the client's order (contract `autoLayerIDs`).
+ #[test] fn auto_layers_are_the_contract_ones() {
+  let ours:Vec<String>=AUTO_LAYERS.iter().map(|s|s.to_string()).collect();
+  assert_eq!(ours,contract_list("autoLayerIDs"),
+   "AUTO_LAYERS drifted from the contract's `autoLayerIDs` (generated from `AutoLayer`): edit the \
+    list at the top of sync_validation.rs to match, or run `make sync-contract` if the contract is stale.");
  }
 
  /// P2.17 加了第三种画法「收盘价」（`CandleKind.line`，rawValue `line`）。`candleKind` 在这里

@@ -187,6 +187,8 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "favoritesTrend",
  // 主力订单流「图上大单签」（2026-10-08，布尔）：大单主动成交按根在 K 线高 / 低外标签，出厂开；和挂单墙 `orderFlow` 互不依赖。
  "bigTradeSigns",
+ // 「分析」面板的自动分析层（2026-10-10，跟人走）：字符串数组，白名单见 `sync_validation::AUTO_LAYERS`（目前只有公允价值缺口 FVG）。
+ "autoLayers",
  // 电脑网页版的多套图表布局（2026-10-07，整份布局集一个对象，规则见 `sync_validation::chart_layouts`）。
  // 只有网页版读写，不在 iOS 的 PrefsFieldPlan 契约里，见 WEB_ONLY_SETTINGS_FIELDS。
  "chartLayouts",
@@ -648,7 +650,7 @@ mod tests {
  #[test] fn every_wire_key_has_a_value_rule() {
   let probes=[
    json!(true),json!(""),json!(0.5),json!(1),json!(4.0),json!([5]),
-   json!(["MA"]),json!(["VOL"]),json!(["1m"]),json!(["BTCUSDT"]),json!(["binance/usd_m/BTCUSDT"]),json!([30,70]),
+   json!(["MA"]),json!(["VOL"]),json!(["FVG"]),json!(["1m"]),json!(["BTCUSDT"]),json!(["binance/usd_m/BTCUSDT"]),json!([30,70]),
    json!("1m"),json!("sage"),json!("direct"),json!("custom"),json!("crypto"),json!("today"),
    json!("change"),json!("history"),json!("medium"),json!({"value":"#112233"}),json!("default"),json!({}),
    json!({"active":"default","sets":[{"id":"default","name":"默认","layout":"1","cells":[{"symbol":"BTCUSDT","iv":"1h"}]}]}),

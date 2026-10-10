@@ -267,6 +267,12 @@ final class PrefsStore {
     persist(marking: changed)
   }
 
+  /// 开 / 关一个自动分析层（「分析 › 指标」里那颗「公允价值缺口」）。跟 `toggleIndicator` 并排：
+  /// 它不进 `overlays`、没有名额，开关就是一改一落盘，不带「撤销」。
+  func toggleAutoLayer(_ layer: AutoLayer) {
+    update { $0.toggleAutoLayer(layer) }
+  }
+
   /// 开 / 关一个指标。
   ///
   /// 单独开一个口子而不是走 `attempt`：副图满三个时 `toggle` 是**改成了**并且带一句话
