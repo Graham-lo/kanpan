@@ -4,7 +4,7 @@
  * 布局槽位（深度梯子列、底部抽屉、侧栏小部件顺序）也在这里，后续跟账号同步。
  */
 import type { Drawing } from '../chart/chart'
-import { cleanDrawing } from '../chart/drawTools'
+import { DEFAULT_DRAW_COLOR, TOOL_GROUPS, cleanDrawing } from '../chart/drawTools'
 import { MAX_SUBS, CATALOG, type IndParams, type IndicatorId, type SubId } from '../chart/calc'
 import { isMoreMain } from '../chart/mainIndicators'
 import { migrateAlert, type Alert } from '../alerts/shape'
@@ -91,7 +91,7 @@ export interface State {
   panel: PanelId | null; watchTab: Kind; watch: Record<Kind, string[]>
   ind: IndState; params: Record<string, IndParams> | null
   drawings: Record<string, Drawing[]>; alerts: Alert[]; notes: Note[]
-  magnet: boolean; drawHidden: boolean; drawLocked: boolean; drawColor: string
+  magnet: boolean; drawHidden: boolean; drawLocked: boolean
   /** 画线：同族工具上次改过的样式（族 → 颜色 / 粗细 / 线型）、最近用过的颜色（新的在前）、
    *  工具栏每组上次用的那把、侧栏上一次开的是哪块（⌥⇧W 收起再打开） */
   drawStyles: Record<string, DrawStyle>; recentColors: string[]; toolLast: Record<string, string>; lastPanel: PanelId | null
@@ -146,7 +146,7 @@ function defaults(): State {
     panel: 'watch', watchTab: 'crypto', watch: structuredClone(DEFAULT_WATCH),
     ind: { ma: true, ema: false, boll: false, vol: true, subs: ['macd', 'rsi'] }, params: null,
     drawings: {}, alerts: [], notes: [],
-    magnet: true, drawHidden: false, drawLocked: false, drawColor: '#2962FF',
+    magnet: true, drawHidden: false, drawLocked: false,
     drawStyles: {}, recentColors: [], toolLast: {}, lastPanel: 'watch',
     alertScope: 'symbol', meSection: 'look',
     slots: { ladder: false, drawer: false, widgets: ['watch', 'detail'] },
@@ -270,7 +270,6 @@ export function hydrate(saved: Partial<State>): State {
   else { s.layouts = book ?? bookFrom(s.layout, s.cells); commitLive(s) }
   clampActive(s)
   for (const k of ['magnet', 'drawHidden', 'drawLocked'] as const) s[k] = s[k] === true
-  if (typeof s.drawColor !== 'string' || !HEX.test(s.drawColor)) s.drawColor = d.drawColor
   if (s.alertScope !== 'all') s.alertScope = 'symbol'
   if (typeof s.meSection !== 'string') s.meSection = d.meSection
   if (!['split', 'delta', 'total'].includes(s.vpvrMode)) s.vpvrMode = 'split'
@@ -299,6 +298,13 @@ export function hydrate(saved: Partial<State>): State {
     if (v.dash === 'dashed' || v.dash === 'dotted') one.dash = v.dash
     ds[k] = one
   }
+  // 老存档的 drawColor（新画线的统一颜色，界面上早就没有改它的地方，2026-10-10 删掉）：
+  // 不是出厂蓝的，并进各族样式里还没设颜色的那几族（新画的线颜色照旧），然后删键
+  const legacy = (saved as { drawColor?: unknown }).drawColor
+  if (typeof legacy === 'string' && HEX.test(legacy) && legacy.toUpperCase() !== DEFAULT_DRAW_COLOR.toUpperCase()) {
+    for (const g of TOOL_GROUPS) if (!ds[g.id]?.color) ds[g.id] = { ...(ds[g.id] ?? {}), color: legacy }
+  }
+  delete (s as { drawColor?: unknown }).drawColor
   s.drawStyles = ds
   s.recentColors = Array.isArray(s.recentColors) ? s.recentColors.filter(c => typeof c === 'string' && /^#[0-9A-Fa-f]{6}$/.test(c)).slice(0, 3) : []
   s.toolLast = strMap(s.toolLast)

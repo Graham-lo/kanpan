@@ -72,7 +72,7 @@ describe('页面状态', () => {
     expect(s.ind.subs).toEqual(['macd', 'rsi'])
     expect(s.params).toEqual({ macd: { fast: 10, slow: 30, signal: 9 } }) // 坏的 fast 回默认（与手机同一组 10）
     expect(s.panel).toBe('watch'); expect(s.watchTab).toBe('crypto'); expect(s.lastPanel).toBe('watch')
-    expect(s.magnet).toBe(false); expect(s.drawColor).toBe('#2962FF')
+    expect(s.magnet).toBe(false); expect('drawColor' in s).toBe(false) // 死字段 2026-10-10 删掉：坏值也不留键
     expect(s.slots).toEqual({ ladder: false, drawer: false, widgets: ['watch', 'detail'] })
     expect(s.drawStyles).toEqual({ shape: { dash: 'dashed' } })
     expect(s.toolLast).toEqual({ shape: 'rect' })

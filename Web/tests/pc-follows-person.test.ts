@@ -388,3 +388,65 @@ describe('画线工具偏好 drawingPreferences（磁吸、同族样式、线那
     expect(drawPrefsPending(a.store)).toBe(false)
   })
 })
+
+describe('每格的对数坐标与根宽跟人走（chartLayouts 格子短键 log / bs）', () => {
+  it('记：出厂值不写键；根宽留两位小数；改回出厂删键；返回改没改', async () => {
+    const { writeCellView, cellView, CELL_BS_DEFAULT } = await import('../src/app/layouts')
+    const { DEFAULT_SPACING } = await import('../src/chart/wheel')
+    expect(CELL_BS_DEFAULT).toBe(DEFAULT_SPACING)
+    const c: import('../src/app/layouts').CellCfg = { symbol: 'BTCUSDT', iv: '1h' }
+    expect(writeCellView(c, { log: false, spacing: 6 })).toBe(false)
+    expect(c).toEqual({ symbol: 'BTCUSDT', iv: '1h' })
+    expect(writeCellView(c, { log: true, spacing: 13.3333333 })).toBe(true)
+    expect(c).toEqual({ symbol: 'BTCUSDT', iv: '1h', log: true, bs: 13.33 })
+    expect(writeCellView(c, { log: true, spacing: 13.331 })).toBe(false) // 同一个两位小数：不再落盘
+    expect(cellView(c)).toEqual({ log: true, spacing: 13.33 })
+    expect(writeCellView(c, { log: false, spacing: 6.001 })).toBe(true)
+    expect(c).toEqual({ symbol: 'BTCUSDT', iv: '1h' })
+    // 坏值读成出厂；超大的夹住
+    expect(cellView({ symbol: 'X', iv: '1h', log: 'yes', bs: 'x' } as never)).toEqual({ log: false, spacing: 6 })
+    expect(cellView({ symbol: 'X', iv: '1h', bs: 1e9 })).toEqual({ log: false, spacing: 2000 })
+  })
+
+  it('格子短键满 6 个时，对数坐标与根宽先占位（别的按字母排在后面的丢掉）', async () => {
+    const { cleanCells } = await import('../src/app/layouts')
+    const raw = [{ symbol: 'BTCUSDT', iv: '1h', a1: 1, a2: 1, a3: 1, a4: 1, a5: 1, a6: 1, bs: 9, log: true }]
+    const [c] = cleanCells(raw)
+    expect(c.bs).toBe(9); expect(c.log).toBe(true)
+    expect(Object.keys(c).filter(k => !['symbol', 'iv'].includes(k))).toEqual(['a1', 'a2', 'a3', 'a4', 'bs', 'log'])
+  })
+
+  it('编码进 chartLayouts、换一台电脑装回来同一个样子；首次合并时只差缩放的本机布局不另存一份', async () => {
+    const { mergeBooks, bookFrom } = await import('../src/app/layouts')
+    type Book = import('../src/app/layouts').LayoutBook
+    const cells = [{ symbol: 'BTCUSDT', iv: '1h', log: true, bs: 12.5 }, { symbol: 'ETHUSDT', iv: '4h' }]
+    const s = { ...base(), layout: '2', cells, active: 0, layouts: bookFrom('2', cells) } as WebState
+    const o = encodeSettings(s, undefined, {})!
+    const book = o.body.chartLayouts as unknown as Book
+    expect(book.sets[0].cells[0]).toEqual({ symbol: 'BTCUSDT', iv: '1h', bs: 12.5, log: true })
+    const one = [{ symbol: 'BTCUSDT', iv: '1h' }]
+    const t = { ...base(), layout: '1', cells: one, active: 0, layouts: bookFrom('1', one) } as WebState
+    applySettings(t, o, {})
+    expect(t.cells![0]).toMatchObject({ log: true, bs: 12.5 })
+    // 本机那套只是多缩放了一下：和云端算同一套
+    const local = bookFrom('2', [{ symbol: 'BTCUSDT', iv: '1h', bs: 30 }, { symbol: 'ETHUSDT', iv: '4h' }])
+    expect(mergeBooks(book, local).sets).toHaveLength(1)
+    // 出厂那一格只开了对数：仍算出厂，不另存
+    expect(mergeBooks(book, bookFrom('1', [{ symbol: 'BTCUSDT', iv: '1h', log: true }])).sets).toHaveLength(1)
+  })
+})
+
+describe('死字段 drawColor 删掉（带迁移）', () => {
+  it('老存档里不是出厂蓝的：并进还没设颜色的各族样式，键删掉；出厂蓝的直接删', async () => {
+    const { hydrate } = await import('../src/app/store')
+    const { TOOL_GROUPS } = await import('../src/chart/drawTools')
+    const s = hydrate({ drawColor: '#D500F9', drawStyles: { lines: { color: '#FF0000', width: 3 }, fib: { width: 2 } } } as never)
+    expect('drawColor' in s).toBe(false)
+    expect(s.drawStyles.lines).toEqual({ color: '#FF0000', width: 3 })
+    expect(s.drawStyles.fib).toEqual({ width: 2, color: '#D500F9' })
+    for (const g of TOOL_GROUPS) expect(s.drawStyles[g.id]?.color).toBeTruthy()
+    const d = hydrate({ drawColor: '#2962ff' } as never)
+    expect('drawColor' in d).toBe(false)
+    expect(d.drawStyles).toEqual({})
+  })
+})

@@ -64,7 +64,8 @@ import { AN } from '../terms'
 import type { AutoLayerId } from '../analysis/fvg'
 import { styleMenuItems } from '../chart/mainStyle'
 import { setsMenu, switchNth, setButtonHTML, paintSetButtons } from './layoutSets'
-import type { CellFlag } from '../app/layouts'
+import { cellView, writeCellView, type CellFlag } from '../app/layouts'
+import { MIN_SPACING, clampSpacing } from '../chart/wheel'
 import { exportChart, type ExportRange } from '../chart/exportCsv'
 import { secondsKlines } from '../chart/secondsHistory'
 import { installReplay, replayLoad, replaying, toggleReplay, paintReplayQuote } from '../replay/controller'
@@ -245,6 +246,36 @@ function linkView(from: Cell, t0: number, t1: number): void {
   try { cells.forEach(o => { if (o !== from) o.chart.syncView(t0, t1) }) } finally { syncingView = false }
 }
 
+/**
+ * 每格的对数坐标与根宽跟人走（2026-10-10）：记进这一格的格子配置（log / bs，见 app/layouts.ts「每格的视图」），随布局集同步。
+ * 只在手势结束时写（TVChart onViewSettled：拖完松手、滚轮缩放到位、捏合每一口、键盘缩放、复位、点范围按钮），
+ * 联动的格子跟着变了根宽也一起记；位置不记（刷新、换品种回到最新一根）
+ */
+function noteViews(): void {
+  let changed = false
+  for (const c of cells) {
+    const k = st.cells[c.idx]
+    if (k && writeCellView(k, { log: c.chart.log, spacing: c.chart.spacing })) changed = true
+  }
+  if (changed) save()
+}
+/** 格子配置里记的视图套到图上（建格子、换了一套布局、别的设备改了布局集）：一样的不动 */
+function applyCellView(cell: Cell): void {
+  const v = cellView(st.cells[cell.idx]), ch = cell.chart
+  if (ch.log !== v.log) { ch.setLog(v.log); $('[data-act="log"]', cell.el)?.setAttribute('aria-pressed', String(v.log)) }
+  if (Math.abs(ch.spacing - v.spacing) >= 0.005) {
+    // 刚建的格子还没量出宽：先原样放，第一帧量出宽后由图自己夹（clampRightBar / 缩放都按宽夹）
+    const W = ch.plotW()
+    ch.spacing = W > 0 ? clampSpacing(v.spacing, W) : Math.max(MIN_SPACING, v.spacing)
+    ch.dirty = true; ch.legendDirty = true
+  }
+}
+function toggleLog(cell: Cell): void {
+  cell.chart.setLog(!cell.chart.log)
+  $('[data-act="log"]', cell.el)?.setAttribute('aria-pressed', String(cell.chart.log))
+  noteViews()
+}
+
 // 回归脚本（scripts/regress.mjs「布局与拖动」）读：各格子的品种、周期、可见时间段、同步来的十字线、降级档；行情连接
 ;(globalThis as unknown as { __cells?: () => unknown }).__cells = () => cells.map(c => {
   const g = c.chart.geometry(), k = cfg(c)
@@ -312,7 +343,6 @@ function makeCell(i: number): Cell {
     onDrawingsChanged: () => drawingsChanged(cell),
     onAlertCreate: p => quickAlert(cfg(cell).symbol, p),
     onAlertMove: (a, p) => { if (a.id) moveAlert(a.id, p) },
-    drawColor: () => st.drawColor,
     drawStyle: styleFor,
     canAdd: add => canAdd(cfg(cell).symbol, add),
     onDrawDrag: quickFade,
@@ -324,6 +354,7 @@ function makeCell(i: number): Cell {
       cells.forEach(o => { if (o !== cell) o.chart.setPaneRatios(sizes.panes ?? null) })
     },
     onViewChange: (t0, t1) => linkView(cell, t0, t1),
+    onViewSettled: noteViews,
   })
   cell.chart.setPaneRatios(sizes.panes ?? null)
   cell.chart.setIndicators(structuredClone(st.ind))
@@ -336,6 +367,7 @@ function makeCell(i: number): Cell {
   const ch = cell.chart
   ch.layers.push(createFVGLayer({ chart: ch, on: () => st.autoLayers.includes('FVG'), hidden: () => rangeStepOf(ch) != null }))
   cell.chart.setSettings(st.chartSettings)
+  applyCellView(cell)
   el.addEventListener('click', e => {
     const t = tgt(e)
     const r = t.closest<HTMLElement>('[data-range]'); if (r) return applyRange(cell, +(r.dataset.range || 0))
@@ -346,7 +378,7 @@ function makeCell(i: number): Cell {
     if (a === 'replay') { setActive(cell.idx); toggleReplay(cell); return }
     if (a === 'sets') { setsMenu(t.closest<HTMLElement>('[data-act]') as HTMLElement, applyLayoutSet); return }
     if (a === 'export') { setActive(cell.idx); exportMenu(t.closest<HTMLElement>('[data-act]') as HTMLElement, cell); return }
-    if (a === 'log') { cell.chart.setLog(!cell.chart.log); t.closest('[data-act]')?.setAttribute('aria-pressed', String(cell.chart.log)) }
+    if (a === 'log') toggleLog(cell)
     if (a === 'auto') cell.chart.setAuto(!cell.chart.auto)
   })
   // 双击格子的「标题区」放大 / 还原这一格：底栏按钮以外的空白，或画布顶部一条（图例以外、价格轴以左，手里没拿工具、没选中画线）
@@ -835,6 +867,7 @@ export function applyLayoutSet(): void {
   settle.noteSwitch()
   cells.slice(0, n).forEach(c => {
     const k = cfg(c), m = c.chart.meta
+    applyCellView(c)
     if (m.symbol !== k.symbol || m.sub !== metaFor(k).sub) void loadCell(c)
     else { syncRangeBars(c.idx); c.chart.dirty = true; c.chart.legendDirty = true }
   })
@@ -955,7 +988,7 @@ function chartContextMenu(cell: Cell, info: ContextMenuInfo): void {
   if (info.pane === 'rsi' && !isMacro(c.symbol)) items.push({ icon: 'bellPlus', label: '以此建 RSI 提醒', run: () => indicatorAlert(cell, 'rsi') }, '-')
   items.push(
     { label: '重置视图', icon: 'candles', sc: 'Alt 0', run: () => cell.chart.resetView() },
-    { label: '对数坐标', check: true, checked: cell.chart.log, run: () => { cell.chart.setLog(!cell.chart.log); $('[data-act="log"]', cell.el)?.setAttribute('aria-pressed', String(cell.chart.log)) } },
+    { label: '对数坐标', check: true, checked: cell.chart.log, run: () => toggleLog(cell) },
     { label: '隐藏画线', check: true, checked: st.drawHidden, sc: '⌘ ⌥ H', run: toggleHideDrawings },
   )
   if (cells.length > 1) items.push('-', zoomed

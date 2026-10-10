@@ -200,8 +200,7 @@ export interface ChartOptions {
   /** 双击带字的画线（文字注释 / 标注框 / 旗标），或刚放下一条：在图上原地改字；at = 字块在画布里的位置 */
   onEditText?: (d: Drawing, at: { x: number; y: number; w: number; h: number }) => void
   onDrawingsChanged?: () => void
-  drawColor?: () => string | null | undefined
-  /** 新画一条时的样式（同族工具记住上次改过的颜色、粗细、线型）；给了就不看 drawColor */
+  /** 新画一条时的样式（同族工具记住上次改过的颜色、粗细、线型）；没设颜色的用默认蓝 */
   drawStyle?: (t: DrawingType) => Partial<Pick<Drawing, 'color' | 'width' | 'dash'>>
   /** 再加这几条还在每只品种的上限以内吗；返回 false 就不加（由页面提示） */
   canAdd?: (add: Drawing[]) => boolean
@@ -216,6 +215,9 @@ export interface ChartOptions {
   onPaneResize?: (ratios: Record<string, number> | null) => void
   /** 用户平移 / 缩放了时间轴：当前可见的首尾时间（多图时间轴联动） */
   onViewChange?: (t0: number, t1: number) => void
+  /** 一次改根宽的手势结束了（拖平移 / 拖时间轴松手、滚轮缩放插值到位、触控板捏合的每一口、双击时间轴复位）：
+   *  页面这时把根宽记进格子配置落盘（不在每一帧里写） */
+  onViewSettled?: () => void
 }
 
 export interface ThemeColors {
@@ -821,13 +823,15 @@ export class TVChart {
   setStale(on: boolean): void { this.stale = on; this.dirty = true; this.renderLegend() }
   // 图例读数也跟着同步来的时间走（legendIndex 认 extCross），不然别的格子十字线挪了、图例还停在最新一根上
   syncCrosshair(t: number | null): void { if (t === this.extCross) return; this.extCross = t; this.crossDirty = true; this.legendDirty = true }
-  resetView(): void { this.zAnim = null; this.spacing = DEFAULT_SPACING; this.rightBar = this.lastIndex() + this.rightMarginBars(); this.setAuto(true) }
+  /** 复位（双击时间轴、菜单、Alt 0）：根宽回出厂、回到最新一根；算一次手势结束（页面把根宽记回出厂） */
+  resetView(): void { this.zAnim = null; this.spacing = DEFAULT_SPACING; this.rightBar = this.lastIndex() + this.rightMarginBars(); this.setAuto(true); this.o.onViewSettled?.() }
   setVisibleRange(t0: number, t1: number): void {
     this.zAnim = null
     const i0 = this.indexAt(t0), i1 = this.indexAt(t1)
     const n = Math.max(10, i1 - i0 + 1)
     this.spacing = clampSpacing(this.plotW() / (n + this.rightMarginBars()), this.plotW())
     this.rightBar = i1 + this.rightMarginBars(); this.setAuto(true)
+    this.o.onViewSettled?.()
   }
   scrollBars(k: number): void { this.rightBar += k; this.dirty = true; this.maybeMore() }
   /** 一步到位的缩放（键盘 + / -）：anchorX 底下那根不动 */
@@ -838,6 +842,8 @@ export class TVChart {
     this.spacing = clampSpacing(this.spacing * f, this.plotW())
     this.rightBar = this.clampRB(idx + (this.plotW() - ax) / this.spacing)
     this.dirty = true; this.maybeMore()
+    // 一步到位：这一下就是手势结束（键盘 + / -、开足迹放到最宽）
+    this.o.onViewSettled?.()
   }
   /** 右沿下标夹住，两头至少各留 2 根看得见（TV correctOffset），不让一路滚 / 拖到整屏空白 */
   private clampRB(rb: number): number { return clampRightBar(rb, this.lastIndex(), this.plotW(), this.spacing) }
@@ -853,7 +859,7 @@ export class TVChart {
       this.spacing = clampSpacing(this.spacing * f, W)
       this.rightBar = this.clampRB(anchoredRightBar(idx, ax, W, this.spacing))
       this.dirty = true; this.legendDirty = true
-      this.maybeMore(); this.emitView()
+      this.maybeMore(); this.emitView(); this.o.onViewSettled?.()
       return
     }
     this.zAnim = zoomStart(this.zAnim, this.spacing, this.rightBar, f, this.xToIndex(ax), ax, now, W)
@@ -871,6 +877,7 @@ export class TVChart {
     if (r.done) this.zAnim = null
     this.dirty = true; this.legendDirty = true
     this.maybeMore(); this.emitView()
+    if (r.done) this.o.onViewSettled?.()
   }
   /** 滚轮横滑（TV scrollChart）：px > 0 往新的那头；不带惯性 */
   wheelPan(px: number): void {
@@ -2243,7 +2250,7 @@ export class TVChart {
         if (d.moved && this.paneR) this.o.onPaneResize?.({ ...this.paneR })
         return
       }
-      if (d.kind === 'pan' && d.moved && (d.region === 'plot' || d.region === 'time')) this.emitView()
+      if (d.kind === 'pan' && d.moved && (d.region === 'plot' || d.region === 'time')) { this.emitView(); this.o.onViewSettled?.() }
       this.canvas.style.cursor = 'crosshair'
     }, { signal })
     // ⌘ 按下 / 松开：磁吸临时反过来，草稿跟着重吸
@@ -2298,7 +2305,7 @@ export class TVChart {
   styleFor(t: DrawingType): Pick<Drawing, 'color' | 'width' | 'dash'> {
     if (t === 'measure') return { color: '#2962FF', width: LINE.measure }
     const s = this.o.drawStyle?.(t) ?? {}
-    const out: Pick<Drawing, 'color' | 'width' | 'dash'> = { color: s.color || this.o.drawColor?.() || '#2962FF', width: s.width || LINE.draw }
+    const out: Pick<Drawing, 'color' | 'width' | 'dash'> = { color: s.color || '#2962FF', width: s.width || LINE.draw }
     if (s.dash) out.dash = s.dash
     return out
   }

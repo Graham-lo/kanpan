@@ -10,7 +10,7 @@
  */
 import { st, save } from '../app/store'
 import type { Drawing, DrawingType, TVChart } from '../chart/chart'
-import { QUOTA, TOOL_GROUPS, cleanDrawColor, cleanDrawWidth, familyOf, groupOf, quotaOK, toolName, usesFill, usesLevels, usesText, type Dash } from '../chart/drawTools'
+import { DEFAULT_DRAW_COLOR, QUOTA, TOOL_GROUPS, cleanDrawColor, cleanDrawWidth, familyOf, groupOf, quotaOK, toolName, usesFill, usesLevels, usesText, type Dash } from '../chart/drawTools'
 import { drawingAlertOf, drawingCanAlert, toggleDrawingAlert } from '../alerts/model'
 import { askNotify } from '../alerts/panel'
 import { $$, I, esc, tgt } from '../ui/dom'
@@ -170,7 +170,7 @@ export function styleFor(t: DrawingType): Partial<Pick<Drawing, 'color' | 'width
 /** 用同族样式新建一条（右键画水平线、订单流「在这里画线」） */
 export function newDrawing(type: DrawingType, pts: Drawing['pts']): Drawing {
   const s = styleFor(type)
-  const d: Drawing = { id: uid(), type, pts, color: s.color || st.drawColor, width: s.width || 2 }
+  const d: Drawing = { id: uid(), type, pts, color: s.color || DEFAULT_DRAW_COLOR, width: s.width || 2 }
   if (s.dash) d.dash = s.dash
   return d
 }

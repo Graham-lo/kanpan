@@ -23,8 +23,9 @@ export const LAYOUT_N: Record<Layout, number> = { '1': 1, '2': 2, '2v': 2, '3': 
 export const MAX_CELLS = 16
 
 /** 一格的配置。主图画法三选一的开关只在开着时出现：footprint 足迹、ha 平均 K 线、range 等幅 K 线；
+ *  log 对数坐标、bs 根宽（见下面「每格的视图」）；
  *  别的键（以后加的格子画法）按「短键 → 布尔 / 短串 / 数」原样留着，老版本读到也不丢 */
-export interface CellCfg { symbol: string; iv: string; footprint?: boolean; ha?: boolean; range?: boolean; [extra: string]: unknown }
+export interface CellCfg { symbol: string; iv: string; footprint?: boolean; ha?: boolean; range?: boolean; log?: boolean; bs?: number; [extra: string]: unknown }
 /** 主图画法开关（每格各自记、随布局集跟人走） */
 export const CELL_FLAGS = ['footprint', 'ha', 'range'] as const
 export type CellFlag = typeof CELL_FLAGS[number]
@@ -102,12 +103,12 @@ function cleanCell(c: Record<string, unknown>, iv0: string): CellCfg | undefined
   // 原样留着的话这一格拿完整键去要币安的 K 线，本地就被拒（rest.ts guardVenue），格子一直空着
   const out: CellCfg = { symbol: displayKey(c.symbol), iv: validIv(c.iv) ? c.iv : iv0 }
   for (const f of CELL_FLAGS) if (c[f] === true) out[f] = true
-  let n = 0
-  for (const k of Object.keys(c).sort()) {
-    if (k === 'symbol' || k === 'iv' || (CELL_FLAGS as readonly string[]).includes(k) || !EXTRA_KEY.test(k) || n >= MAX_EXTRAS) continue
-    const v = c[k]
-    if (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && v.length <= 16)) { out[k] = v; n++ }
-  }
+  const ok = (v: unknown): boolean => typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && v.length <= 16)
+  const keys = Object.keys(c).sort().filter(k => k !== 'symbol' && k !== 'iv' && !(CELL_FLAGS as readonly string[]).includes(k) && EXTRA_KEY.test(k) && ok(c[k]))
+  // 最多 MAX_EXTRAS 个短键（服务端同一个数）：对数坐标与根宽先占位，别的按字母排在后面的超了丢掉；写出来仍按字母排
+  const view = keys.filter(k => (CELL_VIEW_KEYS as readonly string[]).includes(k))
+  const keep = new Set([...view, ...keys.filter(k => !view.includes(k)).slice(0, MAX_EXTRAS - view.length)])
+  for (const k of keys) if (keep.has(k)) out[k] = c[k]
   return out
 }
 
@@ -222,11 +223,40 @@ export function deleteLayout(s: LiveLayout, id: string): boolean {
   return true
 }
 
-/** 出厂那一套（只有一格 BTC 1 小时、没开足迹）：首次合并云端时不把它当成「本机自己的布局」另存一份 */
-function isFactory(x: SavedLayout): boolean {
-  return x.layout === '1' && x.cells.length === 1 && x.cells[0].symbol === 'BTCUSDT' && x.cells[0].iv === '1h' && Object.keys(x.cells[0]).length === 2
+// ───────── 每格的视图：对数坐标与根宽 ─────────
+// 2026-10-10 起跟人走：记成格子配置里的两个短键（随布局集同步，服务端按格子短键收：布尔 / 数）。
+// log：这一格开着对数坐标；bs：K 线间距（px / 根，即根宽）。都是出厂值时不写（出厂那一格仍是 { symbol, iv }）。
+// 只记根宽、不记位置：刷新、换品种后回到最新一根，根宽留着
+
+/** 格子配置里的两个短键 */
+export const CELL_VIEW_KEYS = ['log', 'bs'] as const
+/** 根宽的出厂值（chart/wheel.ts DEFAULT_SPACING，TV barSpacing 默认 6）：这个文件不引图表模块，抄一份，测试里对着 */
+export const CELL_BS_DEFAULT = 6
+/** 记的根宽夹在这里（读出来再按格子的宽夹一次，见 chart/wheel.ts clampSpacing） */
+const BS_MIN = 0.5, BS_MAX = 2000
+export interface CellView { log: boolean; spacing: number }
+/** 这一格记着的视图（没记的是出厂：线性坐标、根宽 6） */
+export function cellView(c: CellCfg | undefined): CellView {
+  const bs = c?.bs
+  return { log: c?.log === true, spacing: typeof bs === 'number' && Number.isFinite(bs) ? Math.min(BS_MAX, Math.max(BS_MIN, bs)) : CELL_BS_DEFAULT }
 }
-const sameSet = (a: SavedLayout, b: SavedLayout): boolean => a.layout === b.layout && JSON.stringify(a.cells) === JSON.stringify(b.cells)
+/** 把图上眼下的视图记进格子配置（根宽留两位小数），返回改没改。出厂值删键 */
+export function writeCellView(c: CellCfg, v: CellView): boolean {
+  let changed = false
+  if (v.log) { if (c.log !== true) { c.log = true; changed = true } } else if ('log' in c) { delete c.log; changed = true }
+  const bs = Number.isFinite(v.spacing) ? Math.round(Math.min(BS_MAX, Math.max(BS_MIN, v.spacing)) * 100) / 100 : CELL_BS_DEFAULT
+  if (bs === CELL_BS_DEFAULT) { if ('bs' in c) { delete c.bs; changed = true } } else if (c.bs !== bs) { c.bs = bs; changed = true }
+  return changed
+}
+/** 去掉视图两键的格子（比两套布局是不是同一套时不看缩放与坐标） */
+const withoutView = (c: CellCfg): CellCfg => { const { log: _l, bs: _b, ...rest } = c; return rest as CellCfg }
+
+/** 出厂那一套（只有一格 BTC 1 小时、没开足迹）：首次合并云端时不把它当成「本机自己的布局」另存一份。
+ *  只缩放过、开过对数坐标的也算出厂（视图不是一套布局） */
+function isFactory(x: SavedLayout): boolean {
+  return x.layout === '1' && x.cells.length === 1 && x.cells[0].symbol === 'BTCUSDT' && x.cells[0].iv === '1h' && Object.keys(withoutView(x.cells[0])).length === 2
+}
+const sameSet = (a: SavedLayout, b: SavedLayout): boolean => a.layout === b.layout && JSON.stringify(a.cells.map(withoutView)) === JSON.stringify(b.cells.map(withoutView))
 
 /**
  * 这台电脑第一次和云端的布局集对上（刚登录、或老版本升上来）：以云端为准，
