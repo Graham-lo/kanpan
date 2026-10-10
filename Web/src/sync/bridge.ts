@@ -20,10 +20,11 @@ import {
 import { LAYOUTS_FIELD, cleanBook, liveBook, mergeBooks } from '../app/layouts'
 import type { Owned, SyncStore } from './store'
 import { type Json, type SyncObject, keyOf, same } from './types'
+import { DP_COLLECTION, DP_OWNED, DP_READY, DP_SINCE, applyDrawPrefs, encodeDrawPrefs } from './drawPrefs'
 
 export type WebState = Pick<State, 'pinned' | 'ind' | 'params' | 'watch' | 'drawings' | 'alerts'> & Partial<Pick<State, 'orderFlowOverrides' | 'orderFlowHistory' | 'compareSymbols' | 'autoLayers' | 'drawHidden' | 'layouts' | 'layout' | 'cells' | 'active' | 'chartSettings'
   | 'orderFlow' | 'bigTradeSigns' | 'updown' | 'sectorMarket' | 'sectorWindow'
-  | 'theme' | 'skin' | 'vpvrMode' | 'linkCross' | 'linkSymbol' | 'linkIv' | 'linkTime' | 'slots' | 'panel' | 'lastPanel' | 'watchTab' | 'alertScope' | 'meSection' | 'drawLocked' | 'drawStyles' | 'toolLast'>>
+  | 'magnet' | 'theme' | 'skin' | 'vpvrMode' | 'linkCross' | 'linkSymbol' | 'linkIv' | 'linkTime' | 'slots' | 'panel' | 'lastPanel' | 'watchTab' | 'alertScope' | 'meSection' | 'drawLocked' | 'drawStyles' | 'toolLast'>>
 export type Part = 'settings' | 'favorites' | 'drawings' | 'alerts'
 export type Prints = Partial<Record<Part, string>>
 
@@ -33,6 +34,8 @@ export const OWNED: Owned = {
   favorites: new Set(['symbol', 'market', 'venue', 'groupId', 'order']),
   // style：网页独有的扩展样式，只有网页写，本机清掉时发 null（codec.WEB_ONLY_BODY_KEYS）
   drawings: new Set(['kind', 'anchors', 'color', 'lineWidth', 'locked', 'symbol', 'market', 'venue', 'dash', 'filled', 'hidden', 'levels', 'style']),
+  // 画线工具偏好：网页只替磁吸、样式、画法说话，收藏与连续画原样带回（drawPrefs.ts）
+  drawingPreferences: DP_OWNED,
   alerts: new Set(['kind', 'symbol', 'market', 'drawingID', 'lines', 'condition', 'armedAt', 'once', 'status', 'firedAt', 'firedPrice', 'dueAt', 'reviewID', 'title', 'created', 'note', 'webhook', 'webhookText', 'rule']),
 }
 
@@ -70,12 +73,17 @@ export function captureInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: b
   }
   if (now.drawings !== fp.drawings) { vals.push(...encodeDrawings(s.drawings, store.localOf('drawings'), opts)); fp.drawings = now.drawings }
   if (now.alerts !== fp.alerts) { vals.push(...encodeAlerts(s.alerts, store.localOf('alerts'), spent)); fp.alerts = now.alerts }
+  // 画线工具偏好：按 seen 比，便宜，每次都看
+  const dp = encodeDrawPrefs(s, store)
+  if (dp) vals.push(dp)
   return store.capture(vals, OWNED)
 }
 
 /** `fired`：本机还在等、云端已经是已触发的那几条（服务端判响了）——外面报给人，再记删除 */
 export interface Applied {
   settings: string[]; favorites: boolean; drawings: Set<string>; alerts: boolean; fired: Alert[]
+  /** 画线工具偏好（磁吸、同族样式、线那一组的画法）装进来改了 */
+  drawPrefs?: boolean
   /** 云端还有暂停着的画线提醒（老版本「线找不到」时暂停的）：网页已当生效的装进来，要再记一次账推回 active */
   revive?: boolean
 }
@@ -85,6 +93,7 @@ export function applyInto(s: WebState, store: SyncStore, ctx: Ctx & { ready: boo
   const u = store.a.unapplied
   const r: Applied = { settings: [], favorites: false, drawings: new Set(), alerts: false, fired: [] }
   if (all || u.has('settings')) r.settings = applySettings(s, store.get('settings', SETTINGS_ID), store.a.seen)
+  if ((all || u.has(DP_COLLECTION)) && DP_READY in store.a.seen) r.drawPrefs = applyDrawPrefs(s, store)
   if ((all || u.has('favorites')) && ctx.ready) {
     const w = decodeFavorites(store.localOf('favorites'), ctx)
     // 本机那几条上不了云的（代号不合规）原样留着
@@ -204,6 +213,9 @@ export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: bo
     r.settings.push(...adoptBook(s, body[LAYOUTS_FIELD], a.seen, how))
   }
   r.settings = [...new Set([...reset, ...r.settings])]
+  // 画线工具偏好：换了人先回出厂（磁吸开；样式与画法已随 webPrefs 回出厂），再按 drawPrefs 的第一次对上规则装云端的
+  if (override && 'magnet' in s) s.magnet = true
+  r.drawPrefs = applyDrawPrefs(s, store)
 
   // 自选
   if (ctx.ready) {
@@ -246,6 +258,22 @@ export function mergeFirst(s: WebState, store: SyncStore, ctx: Ctx & { ready: bo
   a.unapplied.clear()
   return r
 }
+
+/** 升级前的老账本（没拉过画线工具偏好那张表）续上时：记下时刻、让下一轮做一次全量（把那张表拉进来）。
+ *  已经对上过、或已经在等的，什么都不做 */
+export function wantDrawPrefs(store: SyncStore): void {
+  const seen = store.a.seen
+  if (DP_READY in seen || DP_SINCE in seen) return
+  seen[DP_SINCE] = Date.now()
+  store.a.lastFull = 0
+}
+/** 等的那一次全量做完了（lastFull 晚于记下的时刻）：可以第一次对上画线工具偏好 */
+export function drawPrefsPending(store: SyncStore): boolean {
+  const since = store.a.seen[DP_SINCE]
+  return !(DP_READY in store.a.seen) && typeof since === 'number' && store.a.lastFull >= since
+}
+/** 第一次对上画线工具偏好（老账本续上、全量拉完之后），返回改没改 */
+export function adoptDrawPrefs(s: WebState, store: SyncStore): boolean { return applyDrawPrefs(s, store) }
 
 /** 本机画线存档读坏过之后第一次对上账本：把账本里云端那份（活的）并回本机，本机现有的一条不动。
  *  并完本机 ⊇ 云端，接下来的记账不会产生删除；返回并进来的品种 */

@@ -14,7 +14,7 @@ import { fmt } from '../util/format'
 import type { IndicatorId } from '../chart/calc'
 import { allCells, applyChartSettings, applyDrawingsHidden, applyLayoutSet, cfg, drawingsFor, rebaseDrawings, refreshWebPrefs, renderPanel, renderToolbar } from '../pages/chart'
 import { announceRemoteFire, notifyAlerts, onAlertFired } from '../alerts/model'
-import { type Applied, type Edited, type Prints, OWNED, adoptNewSettings, applyInto, captureInto, corePrint, fingerprint, layoutsPrint, mergeFirst, prefsPrint, restoreDrawings } from './bridge'
+import { type Applied, type Edited, type Prints, OWNED, adoptDrawPrefs, adoptNewSettings, applyInto, captureInto, corePrint, drawPrefsPending, fingerprint, layoutsPrint, mergeFirst, prefsPrint, restoreDrawings, wantDrawPrefs } from './bridge'
 import { onWebPrefsTouched } from './webPrefs'
 import { LAYOUTS_FIELD } from '../app/layouts'
 import { refreshCompare } from '../pages/compare'
@@ -23,6 +23,8 @@ import { isDefaultVenue } from '../market/identity'
 import { isMacro } from '../market/macro'
 import { type SyncAdapter, type SyncRuntime, createSyncRuntime } from './runtime'
 import type { SyncStore } from './store'
+import { COLLECTIONS } from './types'
+import { DP_COLLECTION } from './drawPrefs'
 import { syncKeys } from './keys'
 
 export { transport } from './runtime'
@@ -86,12 +88,14 @@ function refreshUI(store: SyncStore, r: Applied): boolean {
       }
       renderToolbar()
     }
+    // 画线工具偏好（手机 / 别的电脑改了磁吸、同族样式、线那一组的画法）：各格磁吸与画线工具条跟着换
+    if (r.drawPrefs && !r.settings.includes('webPrefs')) refreshWebPrefs()
     if (r.drawings.size) { r.drawings.forEach(rebaseDrawings); allCells().forEach(c => { const s = cfg(c).symbol; if (r.drawings.has(s)) c.chart.setDrawings(drawingsFor(s)) }) }
     // 走提醒模块的通知：图、侧栏，以及开着的「全部提醒」「创建提醒」弹层都跟着刷新
     if (r.alerts || r.drawings.size) notifyAlerts()
     // 自选与提醒同一轮变了也要重画自选侧栏（notifyAlerts 只在开着提醒侧栏时重画）
     if (r.favorites) renderPanel()
-    if (r.settings.length || r.favorites || r.alerts || r.drawings.size) save()
+    if (r.settings.length || r.favorites || r.alerts || r.drawings.size || r.drawPrefs) save()
   } catch (e) { console.error(e) } finally { applying = false }
   const now = fingerprint(st)
   fp.settings = now.settings; fp.drawings = now.drawings; fp.alerts = now.alerts
@@ -110,7 +114,14 @@ function settleRemoteFires(store: SyncStore, r: Applied): boolean {
 
 const pc: SyncAdapter = {
   owned: OWNED,
-  capture: store => applying ? 0 : captureInto(st, store, ctx, fp, spent, hold()),
+  // 画线工具偏好（drawingPreferences）2026-10-10 起也拉：磁吸、同族样式、画法和手机同一份
+  collections: [...COLLECTIONS, DP_COLLECTION],
+  capture: store => {
+    if (applying) return 0
+    // 老账本升级后等的那次全量拉完了：先和云端的画线工具偏好对上一次，再记账
+    if (drawPrefsPending(store)) refreshUI(store, { settings: [], favorites: false, drawings: new Set(), alerts: false, fired: [], drawPrefs: adoptDrawPrefs(st, store) })
+    return captureInto(st, store, ctx, fp, spent, hold())
+  },
   apply: store => refreshUI(store, applyInto(st, store, ctx)),
   mergeFirst(store, override) {
     const r = mergeFirst(st, store, ctx, readEdited(), override)
@@ -121,6 +132,8 @@ const pc: SyncAdapter = {
     if (again) rt?.pushSoon()
   },
   resume(store) {
+    // 升级前的老账本没拉过画线工具偏好：下一轮做一次全量把它拉进来（对上之前不推，免得出厂值冲掉手机的）
+    wantDrawPrefs(store)
     // 新版本新加的同步字段（compareSymbols）：老账本没记过它，先按云端装，免得续上那一下把出厂值推上去冲掉手机的
     const adopted = adoptNewSettings(st, store)
     if (adopted.length) refreshUI(store, { settings: adopted, favorites: false, drawings: new Set(), alerts: false, fired: [] })

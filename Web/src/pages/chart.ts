@@ -997,9 +997,9 @@ function renderSlots(): void {
   mountLadder($('#ladderSlot')); mountDrawer($('#drawerSlot'))
 }
 /** 网页独有偏好（webPrefs：联动、侧栏与槽位、成交量分布口径、画线锁……）从别的电脑同步过来：各处跟着换。
- *  画线锁只换工具条上那颗的样子——每条线自己的锁随画线同步，不在这里再锁一遍 */
+ *  磁吸也在这里（画线工具偏好同步过来时同样走这一处）。画线锁只换工具条上那颗的样子——每条线自己的锁随画线同步，不在这里再锁一遍 */
 export function refreshWebPrefs(): void {
-  cells.forEach(c => { c.chart.setVpvrMode(st.vpvrMode); c.chart.setPaneRatios(sizes.panes ?? null); if (!st.linkCross) c.chart.syncCrosshair(null) })
+  cells.forEach(c => { c.chart.setVpvrMode(st.vpvrMode); c.chart.setMagnet(st.magnet); c.chart.setPaneRatios(sizes.panes ?? null); if (!st.linkCross) c.chart.syncCrosshair(null) })
   renderDrawbar(); renderRail(); renderSlots(); renderPanel()
 }
 

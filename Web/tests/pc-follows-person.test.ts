@@ -13,7 +13,9 @@ import { DEFAULTS as CHART_DEFAULTS } from '../src/chart/chartSettings'
 import type { Edited } from '../src/sync/bridge'
 import { Engine } from '../src/sync/engine'
 import { SyncStore } from '../src/sync/store'
-import { emptyArchive, type SyncObject } from '../src/sync/types'
+import { COLLECTIONS, emptyArchive, type SyncObject } from '../src/sync/types'
+import { DP_COLLECTION, DP_ID, DP_READY } from '../src/sync/drawPrefs'
+import { drawPrefsPending, wantDrawPrefs, adoptDrawPrefs } from '../src/sync/bridge'
 import { FakeServer, ctx } from './sync-fake'
 
 const base = (drawings: Record<string, Drawing[]> = {}): WebState => ({
@@ -109,7 +111,7 @@ function device(server: FakeServer, s: WebState) {
   const engine = new Engine(store, server.transport(), OWNED, {
     capture: () => { if (!initial) captureInto(s, store, ctx, fp) },
     apply: () => { if (!initial) applyInto(s, store, ctx) },
-  })
+  }, [...COLLECTIONS, DP_COLLECTION])
   return {
     s, store, engine, fp,
     async first(edited: Edited = { settings: 0, favorites: 0 }, override = false) {
@@ -297,5 +299,92 @@ describe('webPrefs 里别的模块登记的块', () => {
     expect(hydrate({ orderFlow: true }).bigTradeSigns).toBe(true)
     expect(hydrate({}).bigTradeSigns).toBe(true)
     expect(hydrate({ orderFlow: false, bigTradeSigns: true }).bigTradeSigns).toBe(true)
+  })
+})
+
+describe('画线工具偏好 drawingPreferences（磁吸、同族样式、线那一组的画法）', () => {
+  const DKEY = DP_COLLECTION + ':' + DP_ID
+  const phoneDp = (server: FakeServer, patch: Record<string, unknown>) => {
+    server.now += 1000
+    const o = server.objects.get(DKEY)
+    server.put({ collection: DP_COLLECTION, id: DP_ID, body: { ...(o?.body ?? {}), ...patch } as SyncObject['body'], deleted: false })
+  }
+  const dpState = (x: Partial<WebState> = {}): WebState => ({ ...base(), magnet: true, drawStyles: {}, toolLast: {}, ...x })
+
+  it('网页改了「线」那一族的颜色与线宽：这一族每个 kind 都写上，线宽夹到 6，手机的收藏 / 连续画 / 填色与刻度原样留着', async () => {
+    const server = new FakeServer()
+    phoneDp(server, { favorites: ['trend'], continuous: true, magnet: true, 'styles/hline': { lineWidth: 1, dash: 'solid', filled: false, levels: [] } })
+    const a = device(server, dpState())
+    await a.first()
+    a.s.drawStyles = { lines: { color: '#FF0000', width: 8 } }
+    await a.sync()
+    const b = server.objects.get(DKEY)!.body
+    expect(b.favorites).toEqual(['trend'])
+    expect(b.continuous).toBe(true)
+    for (const k of ['trend', 'ray', 'extended', 'hline', 'hray', 'vline', 'crossLine', 'arrowLine']) expect(b['styles/' + k]).toMatchObject({ color: { value: '#FF0000' }, lineWidth: 6, dash: 'solid' })
+    expect(b['styles/hline']).toMatchObject({ filled: false, levels: [] })
+    expect(b['styles/fibonacci']).toBeUndefined()
+  })
+
+  it('手机改了一把（水平线）的样式：网页整族换成它，不把这一族别的 kind 回推', async () => {
+    const server = new FakeServer()
+    const a = device(server, dpState({ drawStyles: { lines: { color: '#FF0000', width: 2 } } }))
+    await a.first()
+    const before = server.pushes.length
+    phoneDp(server, { 'styles/hline': { color: { value: '#00FF00' }, lineWidth: 3, dash: 'solid', filled: true, levels: [] } })
+    await a.sync()
+    expect(a.s.drawStyles!.lines).toEqual({ color: '#00FF00', width: 3 })
+    expect(server.pushes.slice(before).flat().filter(op => op.collection === DP_COLLECTION)).toEqual([])
+  })
+
+  it('画法：网页线那一组用的是两端延伸 → variants/trend；手机把竖线换成十字线 → 网页那一组换成十字线', async () => {
+    const server = new FakeServer()
+    const a = device(server, dpState({ toolLast: { lines: 'extended' } }))
+    await a.first()
+    expect(server.objects.get(DKEY)!.body['variants/trend']).toBe('extended')
+    phoneDp(server, { 'variants/vline': 'crossLine' })
+    await a.sync()
+    expect(a.s.toolLast!.lines).toBe('crossLine')
+    // 再拉一次不反复装
+    a.s.toolLast!.lines = 'trend'
+    await a.sync()
+    expect(a.s.toolLast!.lines).toBe('trend')
+    expect(server.objects.get(DKEY)!.body['variants/trend']).toBe('trend')
+  })
+
+  it('磁吸：云端有就装云端的（手机设过关），云端没有就推本机的', async () => {
+    const server = new FakeServer()
+    phoneDp(server, { magnet: false })
+    const a = device(server, dpState())
+    await a.first()
+    expect(a.s.magnet).toBe(false)
+    const fresh = new FakeServer()
+    const b = device(fresh, dpState({ magnet: false }))
+    await b.first()
+    expect(fresh.objects.get(DKEY)!.body.magnet).toBe(false)
+    b.s.magnet = true
+    await b.sync()
+    expect(fresh.objects.get(DKEY)!.body.magnet).toBe(true)
+  })
+
+  it('升级前的老账本：对上之前不推（出厂磁吸不冲掉手机的关），等一次全量拉完再装云端的', async () => {
+    const server = new FakeServer()
+    phoneDp(server, { magnet: false })
+    const a = device(server, dpState())
+    await a.first()
+    // 模拟老账本：从没对上过画线工具偏好、账本里也没有那张表
+    for (const k of Object.keys(a.store.a.seen)) if (k.startsWith('dp:')) delete a.store.a.seen[k]
+    delete a.store.a.local[DKEY]; delete a.store.a.objects[DKEY]
+    a.s.magnet = true
+    wantDrawPrefs(a.store)
+    expect(a.store.a.seen[DP_READY]).toBeUndefined()
+    expect(drawPrefsPending(a.store)).toBe(false)
+    captureInto(a.s, a.store, ctx, a.fp)
+    expect(a.store.a.operations.filter(op => op.collection === DP_COLLECTION)).toEqual([])
+    await a.engine.full()
+    expect(drawPrefsPending(a.store)).toBe(true)
+    expect(adoptDrawPrefs(a.s, a.store)).toBe(true)
+    expect(a.s.magnet).toBe(false)
+    expect(drawPrefsPending(a.store)).toBe(false)
   })
 })
