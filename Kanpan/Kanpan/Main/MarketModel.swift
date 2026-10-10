@@ -1222,14 +1222,16 @@ final class MarketModel {
     orderFlow.liquidations.run(base: base) { [weak self] base, from, to in
       await self?.liquidations(base: base, fromMs: from, toMs: to)
     }
-    let facts = orderFlow.currentFactsSymbol == InstrumentID.canonical(symbol) ? orderFlow.currentFacts : nil
-    let insightsBase = foreground && capabilities.hasOrderFlow && orderFlow.sheetOpen ? facts?.overrideKey : nil
-    orderFlow.insights.run(symbol: insightsBase == nil ? nil : symbol, base: insightsBase) { [weak self] symbol, base in
-      guard let self else { return .init() }
-      async let page = self.feed.orderFlowInsights(base: base, symbol: symbol)
-      async let bars = self.feed.insightMinuteBars(symbol: symbol)
-      return await .init(page: page, bars: bars)
-    }
+    // 盘口洞察轮询（/v1/market/orderflow/insights + 70 根 1m K 线）2026-10-10 起暂停：气泡页已回退到 10-08 定版，
+    // 旧页不读这份数据；新的「盘口要点」半页另行设计后再打开（届时取消下面这段注释）。
+    // let facts = orderFlow.currentFactsSymbol == InstrumentID.canonical(symbol) ? orderFlow.currentFacts : nil
+    // let insightsBase = foreground && capabilities.hasOrderFlow && orderFlow.sheetOpen ? facts?.overrideKey : nil
+    // orderFlow.insights.run(symbol: insightsBase == nil ? nil : symbol, base: insightsBase) { [weak self] symbol, base in
+    //   guard let self else { return .init() }
+    //   async let page = self.feed.orderFlowInsights(base: base, symbol: symbol)
+    //   async let bars = self.feed.insightMinuteBars(symbol: symbol)
+    //   return await .init(page: page, bars: bars)
+    // }
   }
 
   /// 主力订单流开关（`Prefs.orderFlow` 挂单墙、`Prefs.bigTradeSigns` 图上大单与爆仓气泡，任一开着就订）。

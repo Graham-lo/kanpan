@@ -255,8 +255,8 @@ struct IndicatorPage: View {
       // 「大单与爆仓」（2026-10-08）：本根买卖对撞、每根、价位、爆仓那张弹层。两颗开关都关着也能开——
       // 弹层开着时成交账照订（`OrderFlowLink.wanted`）。右边那行副文字是正在走那根的净额，单拎一块刷新。
       if let entry, let link = orderFlow {
-        PanelRow(name: OrderFlowInsightLabels.title, divider: base != nil, onTap: { used(.orderFlow); entry.open() },
-                 buttonID: "orderflow.bigTrades", buttonLabel: OrderFlowInsightLabels.title) {
+        PanelRow(name: BigTradeTerm.title.text, divider: base != nil, onTap: { used(.orderFlow); entry.open() },
+                 buttonID: "orderflow.bigTrades", buttonLabel: BigTradeTerm.title.text) {
           HStack(spacing: Space.s) {
             BigTradeEntryMeta(link: link, entry: entry)
             VectorIcon.chevron(ControlMetrics.chevron, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)

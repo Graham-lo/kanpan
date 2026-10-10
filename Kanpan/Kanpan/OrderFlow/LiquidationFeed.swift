@@ -43,7 +43,7 @@ final class LiquidationFeed {
         book?.merge(page, nowMs: now)
         unavailable = false
         updatedAtMs = Self.nowMs()
-      } else {
+      } else if book?.tracked == nil {
         unavailable = true
       }
       try? await Task.sleep(for: .milliseconds(LiquidationBook.pollMs))
