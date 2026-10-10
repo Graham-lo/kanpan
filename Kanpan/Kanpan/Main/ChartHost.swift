@@ -234,8 +234,10 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
       resizeStart = (id, pane.h, scale, content, scale * (content - pane.h) / pane.h)
     }
     guard let start = resizeStart else { return }
+    // 拖到底停在一格可读的最矮高度（竖屏 40pt / 横屏 28pt，同 `ChartContentLayout`），见 `SubPaneResize`。
     let scale = pan.state == .cancelled ? start.scale : SubPaneResize.scale(initialHeight: start.height,
-      translation: delta, contentHeight: start.content, otherWeight: start.other)
+      translation: delta, contentHeight: start.content, otherWeight: start.other,
+      minimumHeight: portrait ? SubPaneResize.minimumHeight : 28)
     state.subScale[start.id] = scale
     chart.state = state
     setNeedsLayout(); layoutIfNeeded()

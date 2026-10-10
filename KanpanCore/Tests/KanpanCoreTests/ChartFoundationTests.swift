@@ -34,7 +34,16 @@ struct ChartFoundationTests {
     #expect(abs(resized.panes[1].h - pane.h - 35) < 1e-8)
     #expect(resized.H == layout.H && resized.plotW == layout.plotW)
     #expect(resized.panes.last!.y + resized.panes.last!.h <= 540.00001)
-    #expect(SubPaneResize.scale(initialHeight: pane.h, translation: -1e5, contentHeight: content, otherWeight: 5) == 0.5)
+    // 往小拖压到底：这一格停在 40pt（点数底线），不是倍率 0.5 那种随图高变的底线。
+    let floorScale = SubPaneResize.scale(initialHeight: pane.h, translation: -1e5, contentHeight: content, otherWeight: 5)
+    let floored = Layout(width: 393, height: 540, subs: subs, subScale: [.vol: floorScale, .oi: 1, .macd: 1])
+    #expect(abs(floored.panes[1].h - SubPaneResize.minimumHeight) < 1e-8)
+    #expect(SubPaneResize.scale(initialHeight: pane.h, translation: -1e5, contentHeight: content, otherWeight: 5,
+                                minimumHeight: 28) < floorScale)
+    // 本来就比底线矮的那格往小拖不动，也不被顶回 40pt。
+    let short = SubPaneResize.scale(initialHeight: 30, translation: -20, contentHeight: content, otherWeight: 5)
+    #expect(abs(short - 30 * 5 / (content - 30)) < 1e-12)
+    #expect(SubPaneResize.scale(initialHeight: 1, translation: -1e5, contentHeight: 1e4, otherWeight: 1) == SubPaneResize.minimumScale)
     #expect(SubPaneResize.scale(initialHeight: pane.h, translation: 1e5, contentHeight: content, otherWeight: 5) == 2)
   }
 

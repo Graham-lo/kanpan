@@ -476,7 +476,7 @@ export class Layout {
     const content = Math.max(1, H - AICoinBehavior.timeHeight)
     const weights = subs.map(id => {
       const raw = subScale[id] ?? DEFAULT_SUB_SCALE
-      return Number.isFinite(raw) ? Math.min(2, Math.max(0.5, raw)) : 0.5
+      return Number.isFinite(raw) ? Math.min(SubPaneResize.maximumScale, Math.max(SubPaneResize.minimumScale, raw)) : 0.5
     })
     const sum = weights.reduce((a, b) => a + b, 0)
     const unit = content / (Math.max(0.5, mainWeight) + sum)
@@ -549,11 +549,19 @@ export const ChartGestureRoute = {
   },
 }
 
+/**
+ * KanpanCore `SubPaneResize`：往小拖的底线是点数（一格最矮 40pt），不是倍率 0.5；
+ * 倍率下界 0.25、上界 2（2026-10-10，原因见 Swift 那份注释）。
+ */
 export const SubPaneResize = {
-  scale(initialHeight: number, translation: number, contentHeight: number, otherWeight: number): number {
+  minimumScale: 0.25,
+  maximumScale: 2,
+  minimumHeight: 40,
+  scale(initialHeight: number, translation: number, contentHeight: number, otherWeight: number, minimumHeight = 40): number {
     if (!(contentHeight > 0) || !Number.isFinite(translation) || !(otherWeight > 0)) return 1
-    const desired = Math.min(contentHeight - 1, Math.max(1, initialHeight + translation))
-    return Math.min(2, Math.max(0.5, desired * otherWeight / (contentHeight - desired)))
+    const floor = Math.min(minimumHeight, initialHeight)
+    const desired = Math.min(contentHeight - 1, Math.max(1, floor, initialHeight + translation))
+    return Math.min(SubPaneResize.maximumScale, Math.max(SubPaneResize.minimumScale, desired * otherWeight / (contentHeight - desired)))
   },
 }
 

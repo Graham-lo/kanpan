@@ -76,7 +76,7 @@ enum PrefsCodec {
     var p = prefs
     p.barSpacing = Prefs.clampSpacing(p.barSpacing)
     p.landscapeBarSpacing = Prefs.clampSpacing(p.landscapeBarSpacing)
-    p.subHeightOverrides = p.subHeightOverrides.compactMapValues { $0.isFinite ? min(2, max(0.5, $0)) : nil }
+    p.subHeightOverrides = p.subHeightOverrides.compactMapValues { $0.isFinite ? min(SubPaneResize.maximumScale, max(SubPaneResize.minimumScale, $0)) : nil }
     p.orderFlowOverrides = p.orderFlowOverrides.compactMapValues { $0.normalized }
     p.learnedDefaults = p.learnedDefaults.sanitized()
     p.drawToolUsage = Prefs.cleanDrawToolUsage(p.drawToolUsage)
@@ -255,7 +255,7 @@ extension Prefs: Codable {
     if let raw = try? c.decode([String: Double].self, forKey: .subHeightOverrides) {
       var out: [IndicatorID: Double] = [:]
       for (key, scale) in raw {
-        if let id = IndicatorID(rawValue: key), id.placement == .sub, scale.isFinite { out[id] = min(2, max(0.5, scale)) }
+        if let id = IndicatorID(rawValue: key), id.placement == .sub, scale.isFinite { out[id] = min(SubPaneResize.maximumScale, max(SubPaneResize.minimumScale, scale)) }
       }
       layout.subHeightOverrides = out
     }

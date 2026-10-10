@@ -56,7 +56,7 @@ public struct Layout: Sendable, Equatable {
     let content = max(1, H - AICoinBehavior.timeHeight)
     let weights = subs.map { id -> Double in
       let raw = subScale[id] ?? 1
-      return raw.isFinite ? min(2, max(0.5, raw)) : 0.5
+      return raw.isFinite ? min(SubPaneResize.maximumScale, max(SubPaneResize.minimumScale, raw)) : 0.5
     }
     let unit = content / (max(0.5, mainWeight) + weights.reduce(0, +))
     mainH = content - weights.reduce(0, +) * unit
@@ -133,11 +133,30 @@ public enum ChartGestureRoute {
 }
 
 /// Continuous panel resize uses the same relative weights as preset heights.
+///
+/// 拖分隔线：这一格的高度 = 按下时的高度 + 手指走的距离，其余各格按原倍率分剩下的。
+///
+/// **往小拖的底线是点数，不是倍率**（2026-10-10）。原来底线是倍率 0.5——那是出厂倍率还是 1.0 时
+/// 定的「最矮压到一半」；09-17 出厂改成三格等高 0.75 之后底线没跟着走，一格只能压掉三分之一，
+/// 而且压到多矮随整张图的高度变：图一矮（10-10 图下多了「大单与爆仓」入口条，图矮了 44pt），
+/// 成交量那格往上拖 40pt 只肯缩到 51pt，主图只长 14.6pt，手指走出去一大截分隔线几乎不动。
+/// 现在拖的时候一格最矮压到 `minimumHeight`（40pt，和 `ChartContentLayout.mainWeight` 里
+/// 「一格副图最少 40pt」是同一个数，横屏 28pt 同 `ChartContentLayout.height`），倍率本身的下界
+/// 放到 `minimumScale` 0.25（服务端 `sync_validation.rs` 的 `subHeightOverrides` 收 0.25…5，
+/// 不用动），手机网页 `geometry.ts` / `prefs.ts` 同一套数。
 public enum SubPaneResize {
+  /// 倍率下界 / 上界：存档、同步、布局都夹在这里。
+  public static let minimumScale = 0.25
+  public static let maximumScale = 2.0
+  /// 拖的时候一格副图最矮多少点（竖屏）。横屏传 28。
+  public static let minimumHeight = 40.0
+
   public static func scale(initialHeight: Double, translation: Double, contentHeight: Double,
-                           otherWeight: Double) -> Double {
+                           otherWeight: Double, minimumHeight: Double = minimumHeight) -> Double {
     guard contentHeight > 0, translation.isFinite, otherWeight > 0 else { return 1 }
-    let desired = min(contentHeight - 1, max(1, initialHeight + translation))
-    return min(2, max(0.5, desired * otherWeight / (contentHeight - desired)))
+    // 本来就比底线矮（老存档 / 窄屏）的那格，往小拖不再往下压，但也不把它顶回底线。
+    let floor = min(minimumHeight, initialHeight)
+    let desired = min(contentHeight - 1, max(1, floor, initialHeight + translation))
+    return min(maximumScale, max(minimumScale, desired * otherWeight / (contentHeight - desired)))
   }
 }

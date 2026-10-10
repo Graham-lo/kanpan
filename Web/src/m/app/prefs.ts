@@ -179,8 +179,8 @@ const isSub = (x: unknown): x is IndicatorId => (SUB_IDS as readonly unknown[]).
 
 /** Prefs.clampSpacing：AICoinBehavior 的 1.6…40 pt */
 export const BAR_SPACING = [1.6, 40] as const
-/** IndicatorLayout.sanitized：副图高度倍数 */
-export const SUB_HEIGHT = [0.5, 2] as const
+/** IndicatorLayout.sanitized：副图高度倍数（KanpanCore `SubPaneResize.minimumScale` / `maximumScale`，2026-10-10 下界 0.5 → 0.25） */
+export const SUB_HEIGHT = [0.25, 2] as const
 /** 对比品种最多三个（compareSymbols） */
 export const MAX_COMPARE = 3
 /** Prefs.maxOrderFlowOverrides */

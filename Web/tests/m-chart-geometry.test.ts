@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AICoinBehavior, Chart, FlingCurve, calendarMonths, daysFromCivil, Layout, ViewMath, ViewWindow, VelocityTracker, candleMetrics, candlePixels,
   clampView, defaultChartOptions, forward, hairline, inverse, niceStep, pOf, priceRange, priceTicks, priceTransform,
-  reconcile, snap, swiftRound, timeStep, timeSteps, timeTicks, visibleRange, wickLineWidth, wickPixels, yOf, yOfValue,
+  reconcile, snap, SubPaneResize, swiftRound, timeStep, timeSteps, timeTicks, visibleRange, wickLineWidth, wickPixels, yOf, yOfValue,
 } from '../src/m/chart/geometry'
 import type { Pane, PriceBias, PriceMode, PriceRange } from '../src/m/chart/geometry'
 import { BarSeries, INTERVALS, INTERVAL_STEP, bar, jsRound } from '../src/m/chart/series'
@@ -753,5 +753,24 @@ describe('K 线设置（ChartOptionsTests）', () => {
     const maxHigh = maxOf(span(lo, hi).map(i => s.high[i]))
     if (maxHigh > maxOf(closes)) expect(line.hi).toBeLessThan(candle.hi)
     expect(priceRange(v, s, { paneHeight: 400, closeOnly: false })).toEqual(candle)
+  })
+})
+
+// ================================================================== ChartFoundationTests.panelResize
+describe('SubPaneResize（ChartFoundationTests.panelResize）', () => {
+  it('panelResize：拖多少长多少；往小拖停在 40pt 底线，不是倍率 0.5', () => {
+    const subs = ['VOL', 'OI', 'MACD']
+    const layout = new Layout(393, 540, subs, { VOL: 1, OI: 1, MACD: 1 })
+    const pane = layout.panes[1], content = layout.H - AICoinBehavior.timeHeight
+    const scale = SubPaneResize.scale(pane.h, 35, content, 5)
+    const resized = new Layout(393, 540, subs, { VOL: scale, OI: 1, MACD: 1 })
+    expect(Math.abs(resized.panes[1].h - pane.h - 35)).toBeLessThan(1e-8)
+    const floorScale = SubPaneResize.scale(pane.h, -1e5, content, 5)
+    const floored = new Layout(393, 540, subs, { VOL: floorScale, OI: 1, MACD: 1 })
+    expect(Math.abs(floored.panes[1].h - SubPaneResize.minimumHeight)).toBeLessThan(1e-8)
+    expect(SubPaneResize.scale(pane.h, -1e5, content, 5, 28)).toBeLessThan(floorScale)
+    expect(Math.abs(SubPaneResize.scale(30, -20, content, 5) - 30 * 5 / (content - 30))).toBeLessThan(1e-12)
+    expect(SubPaneResize.scale(1, -1e5, 1e4, 1)).toBe(SubPaneResize.minimumScale)
+    expect(SubPaneResize.scale(pane.h, 1e5, content, 5)).toBe(2)
   })
 })

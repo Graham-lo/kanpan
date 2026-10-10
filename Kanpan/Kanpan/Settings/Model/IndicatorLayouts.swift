@@ -35,7 +35,7 @@ struct IndicatorLayout: Sendable, Equatable {
     var l = self
     // 副图名额和读档同一把尺子：成交量不占，别的最多三个（`Prefs.cappedSubs`）。
     l.subs = Prefs.cappedSubs(l.subs)
-    l.subHeightOverrides = l.subHeightOverrides.compactMapValues { $0.isFinite ? min(2, max(0.5, $0)) : nil }
+    l.subHeightOverrides = l.subHeightOverrides.compactMapValues { $0.isFinite ? min(SubPaneResize.maximumScale, max(SubPaneResize.minimumScale, $0)) : nil }
     return l
   }
 }
