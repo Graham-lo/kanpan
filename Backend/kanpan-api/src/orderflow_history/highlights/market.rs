@@ -229,13 +229,15 @@ pub(super) fn rank(kind:Kind,window:usize,latest:&HashMap<String,Cur>,then:&[&Sn
    },
   };
    // 持仓榜看「钱往哪建仓」、涨幅榜只放涨的、跌幅榜只放跌的：方向不对的不拿来凑满 100 行。
+  // 按写出去的两位小数判：0.00 / -0.00 不进榜。
+  let change=(change*100.0).round()/100.0+0.0;
   let right_way=if kind==Kind::Losers {change<0.0} else {change>0.0};
   (change.is_finite()&&right_way).then_some((change,b,c))
  }).collect();
  rows.sort_by(|a,b|{let o=b.0.total_cmp(&a.0);(if kind==Kind::Losers {o.reverse()} else {o}).then_with(||a.1.cmp(b.1))});
  let rows:Vec<Value>=rows.into_iter().take(MAX_ROWS).map(|(change,b,c)|{
   let total:Option<f64>=c.oi.iter().flatten().copied().reduce(|a,b|a+b);
-  json!({"base":b,"oiUsd":total.map(|v|v.round()),"changePct":(change*100.0).round()/100.0,"price":super::state::sig(c.px)})
+  json!({"base":b,"oiUsd":total.map(|v|v.round()),"changePct":change,"price":super::state::sig(c.px)})
  }).collect();
  json!({"generatedAtMs":now,"rows":rows})
 }
@@ -506,6 +508,10 @@ mod tests {
   assert_eq!(oi["rows"][1]["oiUsd"],2e6);
   assert_eq!(bases(&rank(Kind::Gainers,1,&latest,&[&then],5)),vec!["C","A"],"D below turnover floor; B fell");
   assert_eq!(bases(&rank(Kind::Losers,1,&latest,&[&then],5)),vec!["B"],"only fallers");
+  let flat=HashMap::from([("F".to_string(),cur(100.004,2e6,5e6,0.0)),("G".to_string(),cur(99.996,2e6,5e6,0.0))]);
+  let flat_then=Snapshot{at:0,cells:HashMap::from([("F".to_string(),Cell{px:100.0,oi:[Some(2e6),None,None,None]}),("G".to_string(),Cell{px:100.0,oi:[Some(2e6),None,None,None]})])};
+  assert!(bases(&rank(Kind::Gainers,1,&flat,&[&flat_then],5)).is_empty(),"+0.004% rounds to 0.00");
+  assert!(bases(&rank(Kind::Losers,1,&flat,&[&flat_then],5)).is_empty(),"-0.004% rounds to -0.00");
   assert_eq!(bases(&rank(Kind::Gainers,2,&latest,&[],5)),vec!["A","C"],"24h uses the venue's own change");
   assert!(rank(Kind::Gainers,0,&latest,&[],5)["rows"].as_array().unwrap().is_empty());
   let r=&rank(Kind::Gainers,2,&latest,&[],5)["rows"][0];
