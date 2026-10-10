@@ -45,8 +45,7 @@ final class BigTradeSheetModel {
   @ObservationIgnored private var tapeCache: (flow: BigTradeFlow, tape: BigTradeTape)?
 
   /// 弹层此刻读哪一根：十字线那根，或刚收掉还在停留的那根；nil = 正在走那根。
-  private(set) var pinnedT: Int64?
-  var focusT: Int64? { pinnedT ?? crossT ?? heldT }
+  var focusT: Int64? { crossT ?? heldT }
 
   /// 点气泡 / 点分析面板那一行。一开就是整页；已经开着只换根。
   func open(at t: Int64?) {
@@ -54,21 +53,14 @@ final class BigTradeSheetModel {
       openedAt = Date()
       presented = true
     }
-    focusCurrent()
-    pinnedT = t
     if let t { flash(t) }
   }
 
   func close() { presented = false; editing = false }
 
-  func focusCurrent() {
-    holdTask?.cancel(); holdTask = nil
-    pinnedT = nil; heldT = nil; crossT = nil
-  }
-
   /// 主图十字线变了（`MainChartView.onCrosshair`）：t = 十字线所在那根的开盘时间，nil = 收掉了 / 不在主图。
   func noteCrosshair(t: Int64?) {
-    guard presented, t != crossT else { return }
+    guard t != crossT else { return }
     if let t {
       holdTask?.cancel(); holdTask = nil
       heldT = nil
@@ -318,11 +310,13 @@ private struct BigTradeSheetModifier: ViewModifier {
     @Bindable var model = market.orderFlow.sheet
     let shown = enabled && model.presented
     content
-      .fullScreenCover(isPresented: Binding(get: { shown }, set: { if !$0 { model.close() } })) {
+      .sheet(isPresented: Binding(get: { shown }, set: { if !$0 { model.close() } })) {
         BigTradeSheet(market: market, store: store, proxy: proxy)
           .environment(\.panelTheme, theme)
           // 一档到底：一开就把每张卡都摆出来，不再半屏 + 上拉。
-          .background { LiuliBackdrop(material: LiuliMaterial(theme), lobes: true).ignoresSafeArea() }
+          .presentationDetents([.large])
+          .presentationDragIndicator(.visible)
+          .presentationBackground { LiuliBackdrop(material: LiuliMaterial(theme), lobes: true) }
           .preferredColorScheme(scheme)
       }
       .onChange(of: shown, initial: true) { _, open in market.setBigTradeSheet(open: open) }
@@ -355,7 +349,6 @@ struct BigTradeSheet: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("bigtrade.sheet")
-    .onChange(of: market.symbol) { _, _ in model.focusCurrent() }
     .sheet(isPresented: $model.editing) {
       OrderFlowEditor(store: store, link: link, symbol: market.symbol)
         .environment(\.panelTheme, t)
@@ -368,7 +361,7 @@ struct BigTradeSheet: View {
   /// 副标题只写品种（现货加「现货」）。用户 2026-10-08：标题没必要写交易所——他关心的是品种和数据，
   /// 哪几家合在一起权重不大；分家的信息留在读数卡与爆仓「最大一笔」里。
   private var subtitle: String {
-    OrderFlowBase.normalize(market.info.base).base + (spot ? " " + BT.spot.text : "")
+    (link.currentFacts?.overrideKey ?? SymbolInfo.placeholder(symbol: market.symbol).base) + (spot ? " " + BT.spot.text : "")
   }
 
   private var header: some View {
@@ -383,7 +376,7 @@ struct BigTradeSheet: View {
       .accessibilityLabel("返回")
       .accessibilityIdentifier("bigtrade.back")
       VStack(alignment: .leading, spacing: 5) {
-        Text(OrderFlowInsightLabels.title).font(TypeScale.title).foregroundStyle(t.ink)
+        Text(BT.title.text).font(TypeScale.title).foregroundStyle(t.ink)
           .accessibilityAddTraits(.isHeader)
         Text(subtitle).lineLimit(1)
           .font(TypeScale.captionEmph).foregroundStyle(t.ink3)
@@ -402,15 +395,32 @@ struct BigTradeSheet: View {
       .accessibilityIdentifier("bigtrade.threshold")
     }
     .padding(.horizontal, Space.l)
-    .padding(.top, Space.s)
+    .padding(.top, Space.l + Space.xs)
     .padding(.bottom, Space.xs)
   }
 
   // MARK: 页
 
   @ViewBuilder private func page(nowMs: Int64, now: Date) -> some View {
-    let summary = model.focusT == nil ? nil : makeSummary(nowMs: nowMs, now: now)
-    OrderFlowInsightsContent(market: market, store: store, proxy: proxy, nowMs: nowMs, summary: summary)
+    let summary = makeSummary(nowMs: nowMs, now: now)
+    ScrollView {
+      VStack(spacing: 10) {
+        if let summary {
+          hero(summary)
+          if let liq = summary.liq { liqCard(liq, muted: summary.muted) }
+          columnsCard(summary)
+          ladderCard(summary)
+          if let liq = summary.liq, !liq.loading { liq24Card(liq, summary: summary) }
+          thresholdRow
+        } else {
+          skeleton
+        }
+      }
+      .padding(.horizontal, Space.l)
+      .padding(.top, Space.xs)
+      .padding(.bottom, Space.xxl)
+    }
+    .scrollBounceBehavior(.basedOnSize)
   }
 
 
