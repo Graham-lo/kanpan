@@ -37,8 +37,11 @@ public struct HTTPSyncTransport: SyncTransport {
   /// 档案还没来得及换过去的那一小段里，这样建出来的传输也不会替错人发。
   public init(client: AccountClient, owner: UUID?) { self.client = client; self.owner = owner }
   public func push(_ body: Data, key: UUID) async throws -> SyncPushResponse {
-    try await client.request("v1/sync/operations", method: "POST", body: body, key: key, owner: owner)
+    try await client.request(Self.pushPath, method: "POST", body: body, key: key, owner: owner)
   }
+  /// 推送的路径。`rejections=inline`（2026-10-10 起）：某一条有毛病时服务端只拒那一条、写进它那格结果，
+  /// 同批其余照常提交，不再整批 400（见 `SyncRejection`）。老服务端不认这个参数，照旧整批 400，引擎两条路都走得通。
+  public static let pushPath = "v1/sync/operations?rejections=inline"
   public func bootstrap(collection: String, prefix: String?, after: String?) async throws -> SyncPage {
     try await client.request(Self.bootstrapPath(collection: collection, prefix: prefix, after: after), owner: owner)
   }

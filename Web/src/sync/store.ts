@@ -11,7 +11,7 @@
  * 「409 之后按服务端规则把没发出的操作重新推演一遍」这几条。
  */
 import {
-  type Archive, type Body, type Json, type PushResponse, type RejectedOperation, type SyncObject, type SyncOperation,
+  type Archive, type Body, type Json, type PushResponse, type RejectedOperation, type SyncObject, type SyncOperation, type SyncResult,
   blank, emptyArchive, keyOf, objKey, opKey, same, uuid,
 } from './types'
 
@@ -33,6 +33,39 @@ export function differs(local: SyncObject | undefined, remote: SyncObject): bool
   return local.deleted !== remote.deleted || !same(local.body, remote.body)
 }
 
+/** 云端那一项的字段戳是不是比这条操作**更新**（服务端 `merge()` 比的那一对：时间戳，再逻辑钟）。读不出戳就当不比它新 */
+export function newerThan(stamp: Json | undefined, op: SyncOperation): boolean {
+  if (!stamp || typeof stamp !== 'object' || Array.isArray(stamp)) return false
+  const t = stamp.timestamp, l = stamp.logical
+  if (typeof t !== 'number') return false
+  const logical = typeof l === 'number' ? l : 0
+  return t > op.timestamp || (t === op.timestamp && logical > op.logical)
+}
+
+/** 这条拒绝记录被这份云端对象了结了没有：被拒那几项要么本机和云端一样了，要么云端那一项比被拒那一刻新。
+ *  删除 / 恢复看整份 */
+export function settles(record: RejectedOperation, local: SyncObject | undefined, cloud: SyncObject): boolean {
+  if (!local || local.deleted !== cloud.deleted) return false
+  if (record.operation.action !== 'patch') return same(local.body, cloud.body)
+  return Object.keys(record.operation.fields).every(k => same(local.body[k], cloud.body[k]) || newerThan(cloud.fields[k], record.operation))
+}
+
+/** 回执里的对象，叠回这条操作里**服务端不认识、没收下**的那几项（droppedFields − invalidFields）。
+ *  不叠的话下一次记账又差出同一项、再推、再被丢——一个服务端还不认识的字段就能让这一页一直打转。
+ *  值不对的那几项不叠：本机认云端那份（审查 2026-10-10 第 3 项） */
+export function keepingUnknown(r: SyncResult, op: SyncOperation | undefined): SyncObject {
+  if (!op || r.object.deleted || !r.droppedFields?.length) return r.object
+  const invalid = new Set(r.invalidFields ?? [])
+  let out: SyncObject | null = null
+  for (const k of r.droppedFields) {
+    if (invalid.has(k) || !(k in op.fields)) continue
+    out ??= { ...r.object, body: { ...r.object.body } }
+    const v = op.fields[k]
+    if (v === null) delete out.body[k]; else out.body[k] = v
+  }
+  return out ?? r.object
+}
+
 export class SyncStore {
   a: Archive
   device: string
@@ -42,6 +75,30 @@ export class SyncStore {
 
   constructor(archive: Archive, device: string, now: () => number = Date.now) {
     this.a = archive; this.device = device; this.now = now
+    this.adoptDevice()
+  }
+
+  /** 还没发出去的操作一律改记到这台设备名下，返回改了几条（审查 2026-10-10 第 1 项）。
+   *  服务端只收会话那台设备的操作；设备号不是用户意图的一部分，未发出的改一下没有风险。
+   *  **已发出去（sent）的不动**：那一条可能已经落库，同一个 id 换了载荷再发会撞上 idempotency_mismatch */
+  adoptDevice(): number {
+    let n = 0
+    for (const op of this.a.operations) if (op.deviceId !== this.device && !this.a.sent.has(op.id)) { op.deviceId = this.device; n++ }
+    if (n) this.changed()
+    return n
+  }
+
+  /** 服务端明说「这一条没落库、设备不对」（invalid_device）之后：改记到这台设备、退回未发送，返回改了几条。
+   *  没落库是服务端先查回执再查设备保证的，同一个 id 换了设备号再发不会撞上幂等摘要 */
+  reassign(ids: string[]): number {
+    const wanted = new Set(ids)
+    let n = 0
+    for (const op of this.a.operations) {
+      if (!wanted.has(op.id) || op.deviceId === this.device) continue
+      op.deviceId = this.device; this.a.sent.delete(op.id); n++
+    }
+    if (n) this.changed()
+    return n
   }
 
   private changed(): void { this.onChange() }
@@ -200,12 +257,19 @@ export class SyncStore {
     this.changed()
   }
 
-  /** 只在全量同步之后跑：被拒的对象，本机值和云端还不一样，就拿被拒那条的时间戳对着
-   *  最新的云端重新记一次账（云端可能已经修好了导致被拒的那一侧） */
-  retryRejected(owned: Owned = {}): void {
+  /** 只在全量同步之后跑：被拒的对象，被拒的那几项和云端还不一样、云端那一项也没有更新过，就用一条新 id 的操作
+   *  补推那几项（云端可能已经修好了导致被拒的那一侧）。
+   *
+   *  **只补被拒的那几项**（审查 2026-10-10 第 2 项）。从前拿整份本地值对整份云端值现做差分：拒绝记录挡着整个
+   *  对象，这段时间别的设备改的字段进得了 objects、进不了 local，整份一差，别人后来改的字段全被当成「本机要改回去」，
+   *  还带着被拒那一刻的旧时间戳推上去。现在逐项看：本机和云端一样的不补；云端那一项比被拒那一刻新的按云端了结
+   *  （记账跟上云端）；剩下的才补，baseRevision 保持被拒那条当初看到的那一版，时间戳 / 逻辑钟也沿用。
+   *  删除 / 恢复是整对象的动作，仍走整份差分。返回每个对象上按云端了结的那几项 */
+  retryRejected(owned: Owned = {}): Record<string, string[]> {
     const a = this.a
-    if (!a.rejected.length) return
-    let resolved = false
+    const settled: Record<string, string[]> = {}
+    if (!a.rejected.length) return settled
+    let resolved = false, touched = false
     const keep: RejectedOperation[] = []
     const queued = new Set(a.operations.map(opKey))
     const before = a.operations.length
@@ -216,13 +280,53 @@ export class SyncStore {
       const remote = a.objects[k] ?? blank(record.operation.collection, record.operation.objectId)
       if (!differs(local, remote)) { resolved = true; continue }
       if (queued.has(k)) { keep.push(record); continue }
+      const rejected = record.operation
+      if (rejected.action === 'patch' && !local.deleted && !remote.deleted) {
+        const own = owned[rejected.collection]
+        const next: SyncObject = { ...local, body: { ...local.body } }
+        const fields: Body = {}
+        const cloudWins: string[] = []
+        for (const path of Object.keys(rejected.fields)) {
+          if (same(next.body[path], remote.body[path])) { cloudWins.push(path); continue }
+          if (newerThan(remote.fields[path], rejected)) {
+            cloudWins.push(path)
+            if (path in remote.body) next.body[path] = remote.body[path]; else delete next.body[path]
+            continue
+          }
+          if (!(path in next.body) && own && !own.has(path)) {
+            // 外来字段：本机不替它说话，不补 null，记账带回云端那一项
+            if (path in remote.body) next.body[path] = remote.body[path]
+            continue
+          }
+          fields[path] = path in next.body ? next.body[path] : null
+        }
+        if (cloudWins.length) settled[k] = cloudWins
+        if (!Object.keys(fields).length) {
+          // 被拒的那几项都了结了：记录作废，记账跟上云端那份（别的字段这段时间被挡在 local 外面，现在放进来）
+          resolved = true
+          if (differs(a.local[k], remote)) a.unapplied.add(remote.collection)
+          a.local[k] = remote
+          continue
+        }
+        if (!same(next.body, local.body)) { a.unapplied.add(next.collection); a.local[k] = next; touched = true }
+        let dependsOn: string | null = null
+        for (let i = a.operations.length - 1; i >= 0; i--) if (opKey(a.operations[i]) === k) { dependsOn = a.operations[i].id; break }
+        a.operations.push({
+          id: uuid(), collection: rejected.collection, objectId: rejected.objectId, deviceId: this.device,
+          baseRevision: Math.min(rejected.baseRevision, remote.revision), generation: remote.generation,
+          timestamp: rejected.timestamp, logical: rejected.logical, action: 'patch', fields, importBatch: null, dependsOn,
+        })
+        queued.add(k); keep.push(record)
+        continue
+      }
       a.local[k] = remote
-      const op = this.stage(local, owned, { timestamp: record.operation.timestamp, logical: record.operation.logical })
+      const op = this.stage(local, owned, { timestamp: rejected.timestamp, logical: rejected.logical })
       if (op) { queued.add(k); keep.push(record) } else resolved = true
     }
-    if (!resolved && keep.length === a.rejected.length && a.operations.length === before) return
+    if (!resolved && !touched && keep.length === a.rejected.length && a.operations.length === before) return settled
     a.rejected = keep
     this.changed()
+    return settled
   }
 
   // ───────── 收 ─────────
@@ -247,12 +351,17 @@ export class SyncStore {
       for (const o of a.operations) if (!removed.has(o.id) && o.dependsOn === r.operationId) o.dependsOn = acked?.dependsOn ?? null
       latest.set(k, r.object)
       if (acked?.action === 'restore') latestRestore.set(k, r.object)
-      const local = a.local[k]
-      if (local && !differs(local, r.object) && rejectedKeys.delete(k)) rejectedCleared = true
+      // 被拒的那几项云端已经和本机一样（或者云端那一项更新）：那条拒绝记录可以了结。只看被拒的那几项，
+      // 不看整份：这段时间别的设备改过别的字段，整份永远对不上（审查 2026-10-10 第 2 项）
+      if (rejectedKeys.has(k)) {
+        const record = [...a.rejected].reverse().find(x => opKey(x.operation) === k)
+        if (record && settles(record, a.local[k], r.object)) { rejectedKeys.delete(k); rejectedCleared = true }
+      }
       const queued = a.operations.some(o => !removed.has(o.id) && opKey(o) === k)
       if (!queued && !rejectedKeys.has(k)) {
-        if (differs(a.local[k], r.object)) a.unapplied.add(r.object.collection)
-        a.local[k] = r.object
+        const next = keepingUnknown(r, acked)
+        if (differs(a.local[k], next)) a.unapplied.add(r.object.collection)
+        a.local[k] = next
       }
     }
     for (const [k, obj] of latest) {

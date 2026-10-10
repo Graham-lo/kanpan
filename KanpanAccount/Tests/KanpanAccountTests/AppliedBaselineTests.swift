@@ -315,13 +315,16 @@ import Testing
     server.seed(remote)
     try store.receive(server.page(["drawings"]))
     var local = remote; local.body["text"] = nil
-    try reject(store, local: local, timestamp: 123_456, logical: 7)
+    // 被拒那一刻晚于云端那一项的字段戳（云端那份是十分钟前写的）：补推只补「云端没有更新过」的项，
+    // 被拒时刻要是早于云端字段戳，那一项按云端了结、根本不补（审查 2026-10-10 第 2 项）。
+    let rejectedAt = server.now - 1_000
+    try reject(store, local: local, timestamp: rejectedAt, logical: 7)
     let logical = store.archive.logical
 
     try store.retryRejected(device: device)
     let op = try #require(store.archive.operations.first)
     #expect(op.fields == ["text": .null])
-    #expect(op.timestamp == 123_456)
+    #expect(op.timestamp == rejectedAt)
     #expect(op.logical == 7)
     #expect(op.id != store.archive.rejected.first?.operation.id)
     #expect(store.archive.logical == logical, "沿用旧逻辑钟时不许把本机时钟往前拨")

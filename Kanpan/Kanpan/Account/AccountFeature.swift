@@ -17,7 +17,18 @@ import KanpanData
   var exporting = false
   var devices: [AccountSessionDevice] = []
   private(set) var user: AccountUser?
-  private(set) var device = AccountDevice(name: UIDevice.current.model, kind: .current)
+  /// 这台机器在账号体系里的身份。**设备号跨启动、跨退登不变**（审查 2026-10-10 第 1 项）：
+  ///
+  /// 从前每次启动都 `UUID()` 一个新的，钥匙串里那份要等 `restore()` 两次 actor 往返之后才换回来。
+  /// 这中间（冷启动恢复会话之前）用户改的那一笔就记在一个服务端不认识的设备号名下，推上去
+  /// `invalid_device`，还被当成坏操作隔离掉；退登后离线改了再登回同一个号也是一样。现在设备号
+  /// 存在本机（`deviceDefaults`），`init` 时同步读出来；`restore` 读到钥匙串里那份会话的设备时把它记下，
+  /// 下一次冷启动一开始就是它。退登不清——同一台机器换一个人登，用的还是这台机器的号
+  /// （服务端按设备号顶掉旧会话，见 `auth.rs`）。设备密钥不在这里：它只在登录那一下随会话绑定，
+  /// 恢复会话时用钥匙串里那份。
+  private(set) var device: AccountDevice
+  /// 设备号存在哪。产品是 `.standard`，测试给一个临时 suite。
+  @ObservationIgnored private let deviceDefaults: UserDefaults
   private(set) var client: AccountClient?
   private var attempt = UUID()
   /// 「这台机器上现在是谁」的版本号。主动登录、退出登录各抬一次。
@@ -74,8 +85,13 @@ import KanpanData
   private(set) var replacedNotice: String?
 
   /// 测试用：直接给一个客户端（假服务器、假钥匙串）。产品走下面那个无参的。
-  init(client: AccountClient?) { self.client = client }
+  init(client: AccountClient?, defaults: UserDefaults = .standard) {
+    self.client = client; deviceDefaults = defaults
+    device = AccountDevice(id: Self.storedDeviceID(defaults), name: UIDevice.current.model, kind: .current)
+  }
   init() {
+    deviceDefaults = .standard
+    device = AccountDevice(id: Self.storedDeviceID(.standard), name: UIDevice.current.model, kind: .current)
     // 上一次运行留下的导出文件（面板没收起 app 就被杀了之类）冷启动时清掉。
     Self.purgeExports()
     deviceCache = DeviceListCache(directory: Paths.caches().root)
@@ -98,6 +114,29 @@ import KanpanData
         client = try AccountClient(baseURL: url, vault: KeychainCredentialVault(service: service))
       } catch { show(error) }
     }
+  }
+  /// 设备号在本机存的键。DEBUG 测试档案（`KANPAN_TEST_PROFILE`）各用各的，和钥匙串那一条同一个规矩。
+  nonisolated static var deviceKey: String {
+    var key = "kanpan.account.deviceID"
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" {
+      key += ".test." + (ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"] ?? "normal")
+    }
+    #endif
+    return key
+  }
+  /// 读本机存的设备号，没有就现起一个并当场存下（之后每次启动都是它）。
+  static func storedDeviceID(_ defaults: UserDefaults) -> UUID {
+    if let raw = defaults.string(forKey: deviceKey), let id = UUID(uuidString: raw) { return id }
+    let id = UUID()
+    defaults.set(id.uuidString, forKey: deviceKey)
+    return id
+  }
+  /// 换成钥匙串里那份会话的设备，并把它的号记成本机设备号：老版本留下的会话设备号是当年随手起的，
+  /// 记下之后下一次冷启动、恢复会话之前记的操作就已经是会话那台设备的。
+  private func remember(_ saved: AccountDevice) {
+    device = saved
+    deviceDefaults.set(saved.id.uuidString, forKey: Self.deviceKey)
   }
   func restore() async {
     guard let client else { releasePreloadedOwner(); return }
@@ -151,7 +190,7 @@ import KanpanData
     // 两次 `await` 之间用户可能已经退出或换了号：这次 restore 作废，一样都不装。
     guard generation == started else { return }
     do {
-      if let d = savedDevice { device = d }
+      if let d = savedDevice { remember(d) }
       let apply = try onPrepareAccount?(saved); apply?()
       user = saved; email = saved.email
       onSynchronize?()
@@ -202,7 +241,7 @@ import KanpanData
       guard generation == started else { return true }
       if saved.id == user?.id {
         // 档案早就是这个人的，只差凭据：补上设备信息，同步接上。
-        if let d = await client.savedDevice() { device = d }
+        if let d = await client.savedDevice() { remember(d) }
         onSynchronize?()
       } else {
         await adopt(saved, started: started)

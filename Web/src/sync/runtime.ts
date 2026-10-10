@@ -20,7 +20,7 @@ import { onSession, session } from '../account/session'
 import { Engine, type Transport } from './engine'
 import { type Owned, SyncStore, resumeArchive, serialize } from './store'
 import { syncKeys } from './keys'
-import { type ChangesPage, type Collection, type Page, type PushResponse, emptyArchive } from './types'
+import { type ChangesPage, type Collection, type Page, type RawPushResponse, emptyArchive, splitPush } from './types'
 import { ago } from '../util/clock'
 
 const POLL = 15e3
@@ -30,7 +30,8 @@ const PUSH_DELAY = 400
 /** 同步请求。`userId` 给了就只替这个账号发：会话换成别人之后，旧账本那一轮剩下的请求一律不发（见 authed 的 asUser） */
 export function transportFor(userId?: string): Transport {
   return {
-    push: (body, key) => authed<PushResponse>('POST', '/v1/sync/operations', body, { 'Idempotency-Key': key }, userId),
+    // `rejections=inline`（2026-10-10 起）：某一条有毛病只拒那一条、写进它那格结果，不再整批 400；老服务端不认这个参数，照旧整批 400
+    push: async (body, key) => splitPush(await authed<RawPushResponse>('POST', '/v1/sync/operations?rejections=inline', body, { 'Idempotency-Key': key }, userId)),
     bootstrap: (collection, prefix, after) => {
       const q = new URLSearchParams({ collection })
       if (prefix) q.set('prefix', prefix)

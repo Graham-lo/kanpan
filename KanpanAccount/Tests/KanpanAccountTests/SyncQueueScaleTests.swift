@@ -48,13 +48,16 @@ import Testing
           a.operations[index].generation = result.object.generation
         }
       }
-      if let local = a.local[result.object.key], local.body == result.object.body, local.deleted == result.object.deleted {
+      // 2026-10-10 起拒绝记录只看被拒的那几项（`SyncStore.settles`），记账叠回不认识的字段（`keepingUnknown`）。
+      if let record = a.rejected.last(where: { $0.key == result.object.key }),
+         SyncStore.settles(record, local: a.local[result.object.key], cloud: result.object) {
         a.rejected.removeAll { $0.key == result.object.key }
       }
       if !a.holdsLocal(result.object.collection, result.object.id) {
-        if SyncStore.differs(a.local[result.object.key], result.object) { a.unapplied?.insert(result.object.collection) }
-        a.shelve(before: result.object)
-        a.local[result.object.key] = result.object
+        let next = SyncStore.keepingUnknown(result, of: acked)
+        if SyncStore.differs(a.local[result.object.key], next) { a.unapplied?.insert(result.object.collection) }
+        a.shelve(before: next)
+        a.local[result.object.key] = next
       }
     }
     return a
@@ -97,7 +100,9 @@ import Testing
     }
     for id in ids where Int.random(in: 0..<5, using: &rng) == 0 {
       let op = SyncOperation(collection: "drawings", objectId: id, deviceId: UUID(), baseRevision: 0, generation: 0,
-                             timestamp: 1, logical: 1, action: "patch", fields: [:], importBatch: nil)
+                             timestamp: 1, logical: 1, action: Bool.random(using: &rng) ? "patch" : "delete",
+                             fields: Bool.random(using: &rng) ? ["v": .number(Double(Int.random(in: 0..<3, using: &rng)))] : [:],
+                             importBatch: nil)
       a.rejected.append(RejectedOperation(operation: op, reason: "invalid_operation", at: 0, intent: object(id, &rng)))
     }
     a.unapplied = Int.random(in: 0..<4, using: &rng) == 0 ? nil : []

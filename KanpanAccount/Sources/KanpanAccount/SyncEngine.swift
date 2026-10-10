@@ -26,6 +26,10 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
 ///   重拉一遍、按新版本重整（`realign`），接着推。一轮最多三次。
 /// - 400 / 422 / `invalid_operation` / `idempotency_mismatch`：再发一万次也不会成功 →
 ///   先改成一条一条发把坏的那条揪出来，再单独隔离。
+/// - 结果格里的单条拒绝（`SyncRejection`，新服务端）：只隔离那一条，同批其余照常入账；
+///   `invalid_device` 那一格不隔离，改记到当前设备重发（`SyncStore.reassign`）。
+/// - 整批 400 `invalid_device`（老服务端）：退回未发送、改记到当前设备重发；当前设备号本身
+///   就不对（改不动任何一条）时原样抛出，留在队列里，绝不当成坏操作隔离。
 /// - 服务端没认掉任何一条：不空转，收工。
 /// - 其它错误（断网、5xx、401、429、410…）原样抛给调用方；`demandsBootstrap` 告诉它
 ///   下一轮要不要整份重拉。
@@ -137,8 +141,11 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
       // 服务端修好之后，被它顶回来过的那几项自己补上去，不用用户再改一次。
       // **只在全量这一档。** 每次推送后都重试就是个忙循环：服务端要是真的永远不认
       // 这个字段，那就是每 500 毫秒一次跨洋往返换一次 400。这儿刚把云端那份拉回来，
-      // 正好拿它和当前本地值现做差分。
-      try store.retryRejected(device: device, owning: owning)
+      // 正好拿它和被拒那几项比。
+      let settled = try store.retryRejected(device: device, owning: owning)
+      // 被拒的那几项里按云端了结的（别的设备之后又改过）：脏标记那一层也得放手，
+      // 不然下一次装进本机时脏字段护着旧值，又记一条新操作把别人的改动盖回去。
+      if let paths = settled[trackedKey], !paths.isEmpty { onPushed(paths, []) }
       outcome.leftovers = !store.archive.operations.isEmpty
     }
     return outcome
@@ -160,6 +167,9 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
     var resyncs = Self.resyncBudget
     // 这一轮的字节上限。撞过 413 就对半砍，砍到单条也过不去时把那条隔离掉。
     var budget = batchBytes
+    // 还没发出去的操作一律记到这台设备名下（冷启动恢复会话之前记的、退出登录后离线改的、
+    // 老版本每次启动换一个设备号时记的），服务端只收会话那台设备的操作（审查 2026-10-10 第 1 项）。
+    if try store.adoptDevice(device) > 0 { onProgress() }
     while !store.archive.operations.isEmpty {
       try checkpoint()
       let batch = store.nextBatch(limit: suspects > 0 ? max(1, suspects / 2) : batchLimit, maxBytes: budget)
@@ -197,6 +207,15 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
         try store.realign()
         onProgress()
         continue
+      } catch let error as AccountError where Self.isWrongDevice(error) {
+        // 老服务端：整批 400 `invalid_device`，事务没跑到，一条都没落库。改记到当前设备、
+        // 退回未发送重来；一条都改不动，说明是会话那台设备和这台对不上——那不是操作的错，
+        // 原样抛出、队列不动，等重新登录。
+        try checkpoint()
+        try store.rollback(ids)
+        guard try store.reassign(ids, to: device) > 0 else { throw error }
+        onProgress()
+        continue
       } catch let error as AccountError where Self.isPermanent(error) {
         // 语义错误：重试只会把整条队列堵死。先揪出是哪一条，再单独隔离——
         // **本地值和脏标记一个都不动**，下次启动本地照样赢（B3）。
@@ -219,8 +238,11 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
         continue
       }
       try checkpoint()
-      let receipts = Dictionary(result.results.map { ($0.operationId, Set($0.droppedFields ?? [])) },
-                                uniquingKeysWith: { a, _ in a })
+      // 没收下的那几项里，**值不对**的（`invalidFields`）算了结：那一类重发多少次都是被丢，
+      // 脏标记清掉、本机随后装上云端那份；**不认识**的才算没落地（审查 2026-10-10 第 3 项）。
+      let receipts = Dictionary(result.results.map {
+        ($0.operationId, Set($0.droppedFields ?? []).subtracting($0.invalidFields ?? []))
+      }, uniquingKeysWith: { a, _ in a })
       var acked = Set<String>(), dropped = Set<String>()
       for op in batch where op.key == trackedKey {
         guard let missed = receipts[op.id] else { dropped.formUnion(op.fields.keys); continue }  // 没回执 = 没认掉
@@ -230,10 +252,29 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
       // 回执入账成功之后才算进这一轮：入账抛错时这一批还留在队列里，由收尾那句记成 dropped。
       try store.acknowledge(result)
       outcome.acked.formUnion(acked); outcome.dropped.formUnion(dropped)
+      // 单条拒绝（新服务端）：只动那一条。服务端只在「这一条没落库」时才给拒绝格
+      // （先查回执，再查设备与内容），所以退回未发送是安全的；`idempotency_mismatch` 那一格
+      // 说明同 id 早已落库，直接隔离，不退回。
+      var reassigned = 0
+      if !result.rejections.isEmpty {
+        let byId = Dictionary(batch.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for rejection in result.rejections {
+          guard let op = byId[rejection.operationId] else { continue }
+          if rejection.code == "invalid_device" {
+            try store.rollback([op.id])
+            reassigned += try store.reassign([op.id], to: device)
+            continue
+          }
+          if rejection.code != "idempotency_mismatch" { try store.rollback([op.id]) }
+          try store.quarantine(op.id, reason: rejection.code)
+          track(op, into: &outcome.dropped)
+        }
+        onProgress()
+      }
       // 这一段过了：坏的那条在嫌疑段剩下的部分里。
       if suspects > 0 { suspects = max(0, suspects - batch.count) }
-      // 服务端没认掉任何一条就别空转。
-      guard store.archive.operations.count < before else { break }
+      // 服务端没认掉任何一条、也没有改了设备号要重发的，就别空转。
+      guard store.archive.operations.count < before || reassigned > 0 else { break }
     }
     // 跳出循环时队列里还剩下的：也算没落地。
     for op in store.archive.operations { track(op, into: &outcome.dropped) }
@@ -283,8 +324,15 @@ public struct SyncScope: Hashable, Sendable, CustomStringConvertible {
   public static func isPermanent(_ error: AccountError) -> Bool {
     guard case .http(let code, let reason) = error else { return false }
     if reason == "idempotency_mismatch" { return true }
+    // 设备号对不上不是内容的错：改记到当前设备就能过（`isWrongDevice`），绝不隔离。
+    if reason == "invalid_device" { return false }
     if code == 401 || code == 409 || code == 429 { return false }
     return code == 400 || code == 422 || reason == "invalid_operation"
+  }
+  /// 整批 400 `invalid_device`：批里有操作记在别的设备名下（老服务端整批拒，新服务端改成单条拒绝格）。
+  public static func isWrongDevice(_ error: AccountError) -> Bool {
+    guard case .http(400, "invalid_device") = error else { return false }
+    return true
   }
   /// 请求体太大被挡在门外（413）：`DefaultBodyLimit` 在进 handler 之前就拒了，没到数据库。
   public static func isTooLarge(_ error: AccountError) -> Bool {

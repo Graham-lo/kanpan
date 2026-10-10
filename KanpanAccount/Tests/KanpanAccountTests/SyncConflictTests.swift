@@ -40,6 +40,16 @@ import Testing
   private var applied: [UUID: (digest: Data, result: SyncResult)] = [:]
   /// 这台服务器按语义顶回来的那些操作（`sync_validation` 那一层）。返回 reason。
   var refuse: (@MainActor (WireOperation) -> String?)?
+  /// 会话那台设备（`sync.rs` 的 `screen`：`op.device_id != session.device_id` 是 `invalid_device`）。`nil` 不查。
+  var device: UUID?
+  /// `?rejections=inline`：单条的毛病写进那一格结果（`status:"rejected"`），同批其余照常提交；
+  /// `false` 是老服务端，任何一条有毛病整批回滚。
+  var inline = false
+  /// 设置这类宽松集合里「认得这个字段、值不对」的判定（`sync.rs` 的 `invalid_fields`）：
+  /// 命中的字段从这条操作里拿掉，回执里同时进 `droppedFields` 与 `invalidFields`。
+  var invalidValue: (@MainActor (_ path: String, _ value: JSONValue) -> Bool)?
+  /// 这台服务器还不认识的字段：从操作里拿掉，回执里只进 `droppedFields`。
+  var unknownFields: Set<String> = []
 
   func seed(_ object: SyncObject) { objects[object.key] = object }
   func page(_ collections: Set<String>) -> SyncPage {
@@ -54,24 +64,41 @@ import Testing
     var stagedApplied = applied
     var stagedCursor = cursor
     var results: [SyncResult] = []
+    var rejections: [SyncRejection] = []
     for op in operations {
-      if let reason = refuse?(op) { throw Failure.bad(reason) }
-      let digest = try JSONEncoder.sorted.encode(op)
-      if let previous = stagedApplied[op.id] {
-        guard previous.digest == digest else { throw Failure.conflict("idempotency_mismatch") }
-        results.append(previous.result); continue
+      // 顺序照 `sync.rs` 的 `push`：先查回执（落过库的原样回放），再查设备与内容，最后合并。
+      do {
+        let digest = try JSONEncoder.sorted.encode(op)
+        if let previous = stagedApplied[op.id] {
+          guard previous.digest == digest else { throw Failure.conflict("idempotency_mismatch") }
+          results.append(previous.result); continue
+        }
+        var admitted = op
+        let invalid = op.fields.filter { invalidValue?($0.key, $0.value) ?? false }.keys.sorted()
+        for path in invalid { admitted.fields.removeValue(forKey: path) }
+        let unknown = op.fields.keys.filter(unknownFields.contains)
+        for path in unknown { admitted.fields.removeValue(forKey: path) }
+        if let reason = refuse?(admitted) { throw Failure.bad(reason) }
+        if let device, op.deviceId != device { throw Failure.bad("invalid_device") }
+        let key = op.collection + ":" + op.objectId
+        let old = staged[key] ?? SyncObject(collection: op.collection, id: op.objectId)
+        let next = try merge(old, admitted)
+        staged[key] = next
+        stagedCursor += 1
+        let result = SyncResult(operationId: op.id, object: next, cursor: stagedCursor, droppedFields: (invalid + unknown).sorted(),
+                                invalidFields: invalid.isEmpty ? nil : invalid)
+        stagedApplied[op.id] = (digest, result)
+        results.append(result)
+      } catch let failure as Failure where inline {
+        switch failure {
+        case .bad(let code), .conflict(let code) where code == "idempotency_mismatch":
+          rejections.append(SyncRejection(operationId: op.id, code: code))
+        default: throw failure
+        }
       }
-      let key = op.collection + ":" + op.objectId
-      let old = staged[key] ?? SyncObject(collection: op.collection, id: op.objectId)
-      let next = try merge(old, op)
-      staged[key] = next
-      stagedCursor += 1
-      let result = SyncResult(operationId: op.id, object: next, cursor: stagedCursor, droppedFields: [])
-      stagedApplied[op.id] = (digest, result)
-      results.append(result)
     }
     objects = staged; applied = stagedApplied; cursor = stagedCursor
-    return SyncPushResponse(results: results, serverTime: now)
+    return SyncPushResponse(results: results, serverTime: now, rejections: rejections)
   }
 
   /// `sync.rs:84–110` 的逐行复刻。

@@ -9,6 +9,9 @@
  *   一轮最多重来 3 次。
  * - 永久错误（400 / 422 / invalid_operation / idempotency_mismatch）：整批事务已回滚，退回；
  *   不止一条就标嫌疑二分，只剩一条就把它挪进被拒。
+ * - 结果格里的单条拒绝（新服务端，`?rejections=inline`）：只隔离那一条，同批其余照常入账；
+ *   invalid_device 那一格不隔离，改记到这台设备重发。整批 400 invalid_device（老服务端）同理改记重发，
+ *   一条都改不动（会话那台设备就不是这台）就原样抛出、队列不动。
  * - acknowledge 之后队列一条都没少就停（防止死循环）。
  *
  * 拉取：
@@ -21,7 +24,7 @@
  * 之后立刻 apply（云端的新值马上装进页面，中间不留 await）。
  */
 import { SyncStore, encodedSize, pushBody, type Owned } from './store'
-import { COLLECTIONS, type ChangesPage, type Collection, type Page, type PushResponse, type Scope, type SyncOperation, keyOf } from './types'
+import { COLLECTIONS, type ChangesPage, type Collection, type Page, type PushResponse, type Scope, type SyncOperation, keyOf, splitPush } from './types'
 
 export interface Transport {
   push(body: string, idempotencyKey: string): Promise<PushResponse>
@@ -53,6 +56,8 @@ const PER_OBJECT_LIMIT = 12
 
 export function isPermanent(e: Err): boolean {
   if (e.code === 'idempotency_mismatch') return true
+  // 设备号对不上不是内容的错：改记到这台设备就能过，绝不隔离
+  if (e.code === 'invalid_device') return false
   if (e.status === 401 || e.status === 409 || e.status === 429) return false
   return e.status === 400 || e.status === 422 || e.code === 'invalid_operation'
 }
@@ -96,6 +101,7 @@ export class Engine {
   async push(): Promise<void> {
     const s = this.store
     let resyncs = 0
+    s.adoptDevice()
     for (;;) {
       this.hooks.capture()
       const limit = this.suspects > 0 ? Math.max(1, Math.floor(this.suspects / 2)) : MAX_BATCH
@@ -131,6 +137,12 @@ export class Engine {
           s.realign()
           continue
         }
+        if (err.status === 400 && err.code === 'invalid_device') {
+          // 老服务端整批拒：事务没跑到，一条都没落库。改记到这台设备重来；一条都改不动就不是操作的错，原样抛出
+          s.rollback(ids)
+          if (!s.reassign(ids)) throw e
+          continue
+        }
         if (isPermanent(err)) {
           s.rollback(ids)
           if (batch.length > 1) { this.suspects = batch.length; continue }
@@ -141,12 +153,24 @@ export class Engine {
         }
         throw e
       }
+      res = splitPush(res)
       this.hooks.capture()
       const before = s.a.operations.length
       s.acknowledge(res)
       this.hooks.apply()
+      // 单条拒绝：只动那一条。服务端只在「这一条没落库」时给拒绝格（先查回执，再查设备与内容），退回未发送是安全的；
+      // idempotency_mismatch 那一格说明同 id 早已落库，直接隔离、不退回
+      let reassigned = 0
+      for (const r of res.rejections ?? []) {
+        const op = batch.find(o => o.id === r.operationId)
+        if (!op) continue
+        if (r.code === 'invalid_device') { s.rollback([op.id]); reassigned += s.reassign([op.id]); continue }
+        if (r.code !== 'idempotency_mismatch') s.rollback([op.id])
+        s.quarantine(op.id, r.code)
+        reportRejected({ op, code: r.code, reason: r.message })
+      }
       this.suspects = Math.max(0, this.suspects - batch.length)
-      if (s.a.operations.length >= before) return
+      if (s.a.operations.length >= before && !reassigned) return
     }
   }
 

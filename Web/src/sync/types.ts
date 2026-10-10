@@ -43,8 +43,24 @@ export interface RejectedOperation {
   intent: SyncObject
 }
 
-export interface SyncResult { operationId: string; object: SyncObject; cursor: number; droppedFields?: string[] }
-export interface PushResponse { results: SyncResult[]; serverTime: number }
+/** 一条操作的回执。`droppedFields`：服务端认下了这条、但这几项没收下；其中**值不对**的那几项
+ *  （设置这类宽松集合，2026-10-10 起只丢字段不拒整条）另在 `invalidFields` 里列一遍——那一类重发多少次
+ *  都是被丢，本机认云端那份；剩下的是服务端还不认识的字段，记账叠回本机的值，等服务端升级 */
+export interface SyncResult { operationId: string; object: SyncObject; cursor: number; droppedFields?: string[]; invalidFields?: string[] }
+/** 服务端**只拒了这一条**（`?rejections=inline`）：同批其余照常提交，这一格写在线上 `results` 里，
+ *  `status: 'rejected'`。`code` 是 `invalid_device`（设备号对不上，改记重发）或语义错误（隔离这一条） */
+export interface SyncRejection { operationId: string; status: 'rejected'; code: string; message?: string }
+/** 推送的回话。线上 `results` 一格要么是回执、要么是一条拒绝；`splitPush` 把后者挪进 `rejections` */
+export interface PushResponse { results: SyncResult[]; serverTime: number; rejections?: SyncRejection[] }
+/** 线上原样的那份 */
+export interface RawPushResponse { results: (SyncResult | SyncRejection)[]; serverTime: number; rejections?: SyncRejection[] }
+export function splitPush(raw: RawPushResponse | PushResponse): PushResponse {
+  const results: SyncResult[] = [], rejections: SyncRejection[] = [...(raw.rejections ?? [])]
+  for (const r of raw.results as (SyncResult | SyncRejection)[]) {
+    if ((r as SyncRejection).status === 'rejected') rejections.push(r as SyncRejection); else results.push(r as SyncResult)
+  }
+  return { results, serverTime: raw.serverTime, rejections }
+}
 export interface Page { objects: SyncObject[]; next: string | null; cursor: number; serverTime: number }
 export interface Invalidation { collection: string; id: string; deleted: boolean; revision: number }
 export interface ChangesPage { objects: SyncObject[]; invalidations: Invalidation[]; cursor: number; hasMore: boolean; serverTime: number }

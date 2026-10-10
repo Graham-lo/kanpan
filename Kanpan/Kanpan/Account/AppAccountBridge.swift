@@ -565,19 +565,32 @@ import ReviewUI
   ///
   /// 判「有东西可推」的三处：手上这份和存档 `local` 的差异、队列里对这个对象还没被
   /// 认下的操作、被服务端顶回来等着补推的那条。三处都不沾的脏字段才清。
+  ///
+  /// 第四处（审查 2026-10-10 第 3 项）：存档 `local` 和云端 `objects` 不一样的那几项。服务端还不认识的
+  /// 字段被丢掉之后，`local` 叠回了用户的值（`SyncStore.keepingUnknown`，免得每记一次账就生出一条
+  /// 新操作），可云端其实没有它——这时清脏标记，下一次全量拉回云端那份就把用户的值盖掉了。
   private func settleAgreedSettings(_ object: SyncObject) {
     guard !gate.isApplying, owner != nil, let sync, prefs.stamp.isDirty,
-          let baseline = sync.archive.local[object.key], !baseline.deleted else { return }
+          let blocked = Self.unsettledSettingsFields(object, in: sync.archive) else { return }
+    let agreed = prefs.dirtyFields.subtracting(blocked)
+    guard !agreed.isEmpty else { return }
+    prefs.syncAgreed(agreed)
+  }
+  /// `settleAgreedSettings` 那张「还有东西可推、脏标记不许清」的本地字段表。`nil` = 存档里还没有这个对象，一个都不清。
+  static func unsettledSettingsFields(_ object: SyncObject, in archive: SyncArchive) -> Set<String>? {
+    guard let baseline = archive.local[object.key], !baseline.deleted else { return nil }
     var blocked = Set<String>()
     for key in Set(object.body.keys).union(baseline.body.keys) where object.body[key] != baseline.body[key] {
       blocked.formUnion(SettingsWire.fields(for: key))
     }
-    let queued = sync.archive.operations.filter { $0.collection == object.collection && $0.objectId == object.id }.map(\.fields)
-      + sync.archive.rejected.filter { $0.intent.key == object.key }.map(\.operation.fields)
+    let cloud = archive.objects[object.key]
+    for key in baseline.body.keys where cloud?.body[key] != baseline.body[key] {
+      blocked.formUnion(SettingsWire.fields(for: key))
+    }
+    let queued = archive.operations.filter { $0.collection == object.collection && $0.objectId == object.id }.map(\.fields)
+      + archive.rejected.filter { $0.intent.key == object.key }.map(\.operation.fields)
     for fields in queued { for key in fields.keys { blocked.formUnion(SettingsWire.fields(for: key)) } }
-    let agreed = prefs.dirtyFields.subtracting(blocked)
-    guard !agreed.isEmpty else { return }
-    prefs.syncAgreed(agreed)
+    return blocked
   }
   private func captureSymbols() { capture(PersonalSyncCodec.symbols(symbols.prefs), collections: ["favorites", "groups"]) }
   /// 只编「和上次记完账那份不一样」的品种（`DrawingSyncDiff`）；记上了才把基线挪过来。

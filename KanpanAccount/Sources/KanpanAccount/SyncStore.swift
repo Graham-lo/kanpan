@@ -99,13 +99,69 @@ public struct RejectedOperation: Codable, Sendable, Identifiable {
 /// （新服务端把「未知字段」从「整条拒绝」降级成了「丢掉该字段并回报」）。
 /// 这几项的脏标记**不许清**——它其实没推上去。老服务端不回这个字段，
 /// 可选类型的合成解码会当它不存在，不会解码失败。
+///
+/// `invalidFields`（2026-10-10 起）：`droppedFields` 里**值不对**的那几项（服务端认得这个字段，
+/// 但这个值过不了它的规则，设置 / 画线工具偏好里只丢字段不拒整条）。和「不认识」不同，这一类
+/// 重发多少次都还是被丢：引擎把它们当成「已了结」交给脏标记那一层清掉，本机随后装上云端那份，
+/// 两边对上；不认识的那一类脏标记照旧留着，等服务端升级之后再落地。
 public struct SyncResult: Codable, Sendable {
   public var operationId: UUID
   public var object: SyncObject
   public var cursor: Int64
   public var droppedFields: [String]?
+  public var invalidFields: [String]? = nil
 }
-public struct SyncPushResponse: Codable, Sendable { public var results: [SyncResult]; public var serverTime: Int64 }
+/// 服务端**只拒了这一条**（`POST v1/sync/operations?rejections=inline`，2026-10-10 起）。
+///
+/// 从前任何一条有毛病都是整批 400，引擎只能对半切着重发、把坏的那条揪出来；设备号不对、
+/// 指标提醒的品种认不得这类「这一条的事」也会连坐整批。现在服务端把它写进这一条的结果格
+/// （`status:"rejected"`），同一批里其余的照常提交，引擎拿 `code` 决定隔离还是改了重发。
+public struct SyncRejection: Codable, Sendable, Equatable {
+  public var operationId: UUID
+  public var code: String
+  public var message: String?
+  public init(operationId: UUID, code: String, message: String? = nil) {
+    self.operationId = operationId; self.code = code; self.message = message
+  }
+}
+/// 推送的回话。线上 `results` 一格要么是回执、要么是一条拒绝（`status:"rejected"`）；
+/// 解码时分成 `results`（回执）与 `rejections` 两张表，老服务端没有后者。
+public struct SyncPushResponse: Codable, Sendable {
+  public var results: [SyncResult]
+  public var serverTime: Int64
+  public var rejections: [SyncRejection] = []
+  public init(results: [SyncResult], serverTime: Int64, rejections: [SyncRejection] = []) {
+    self.results = results; self.serverTime = serverTime; self.rejections = rejections
+  }
+  private enum CodingKeys: String, CodingKey { case results, serverTime, rejections }
+  /// 一格结果：带 `status:"rejected"` 的是拒绝，其余是回执。
+  private enum Entry: Decodable {
+    case result(SyncResult), rejection(SyncRejection)
+    private enum Keys: String, CodingKey { case status }
+    init(from decoder: any Decoder) throws {
+      let c = try decoder.container(keyedBy: Keys.self)
+      if try c.decodeIfPresent(String.self, forKey: .status) == "rejected" {
+        self = .rejection(try SyncRejection(from: decoder))
+      } else {
+        self = .result(try SyncResult(from: decoder))
+      }
+    }
+  }
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    serverTime = try c.decode(Int64.self, forKey: .serverTime)
+    var results: [SyncResult] = [], rejections: [SyncRejection] = []
+    for entry in try c.decode([Entry].self, forKey: .results) {
+      switch entry {
+      case .result(let r): results.append(r)
+      case .rejection(let r): rejections.append(r)
+      }
+    }
+    // 本机自己编码过的那一份（测试、诊断）把拒绝单列在 `rejections` 里。
+    rejections += try c.decodeIfPresent([SyncRejection].self, forKey: .rejections) ?? []
+    self.results = results; self.rejections = rejections
+  }
+}
 public struct SyncPage: Codable, Sendable { public var objects: [SyncObject]; public var next: String?; public var cursor: Int64; public var serverTime: Int64 }
 /// 本机**已经装进正式文件**的那一份，在云端把 `local` 往前推之前留下来的底稿（见 `SyncArchive.shelved`）。
 ///
@@ -778,6 +834,33 @@ final class ArchiveWriter: @unchecked Sendable {
     }
   }
   public func markSent(_ id: UUID) throws { try transaction { $0.sent.insert(id) } }
+  /// 把**还没发出去**的操作改记到当前这台设备名下，返回改了几条。
+  ///
+  /// 服务端只收「这条会话那台设备」的操作（`op.device_id == session.device_id`），而记账那一刻
+  /// 的设备号不一定是推送这一刻的（审查 2026-10-10 第 1 项）：冷启动恢复会话之前记下的改动、
+  /// 退出登录之后离线改的再登回同一个号、老版本每次启动换一个设备号——这些操作一律
+  /// `invalid_device`，从前还会被当成坏操作隔离掉。设备号不是用户意图的一部分，未发出的
+  /// 操作改一下没有任何风险；**已发出去（`sent`）的不动**：那一条可能已经落库，同一个 id
+  /// 换了载荷再发会撞上 `idempotency_mismatch`。引擎每次推送开头调一次。
+  @discardableResult public func adoptDevice(_ device: UUID) throws -> Int {
+    let stale = archive.operations.filter { $0.deviceId != device && !archive.sent.contains($0.id) }.map(\.id)
+    return try reassign(stale, to: device, unsending: false)
+  }
+  /// 服务端明说「这一条没落库、设备不对」（`invalid_device` 那一格拒绝）之后，把它改记到
+  /// 当前设备、退回未发送，返回改了几条。没落库是服务端先查回执再查设备保证的，所以同一个
+  /// id 换了设备号再发不会撞上幂等摘要。
+  @discardableResult public func reassign(_ ids: [UUID], to device: UUID, unsending: Bool = true) throws -> Int {
+    let wanted = Set(ids)
+    let hits = archive.operations.indices.filter { wanted.contains(archive.operations[$0].id) && archive.operations[$0].deviceId != device }
+    guard !hits.isEmpty else { return 0 }
+    try transaction { a in
+      for index in hits {
+        a.operations[index].deviceId = device
+        if unsending { a.sent.remove(a.operations[index].id) }
+      }
+    }
+    return hits.count
+  }
   /// 隔离一条**永远不会成功**的操作：把它从待发队列里拿走，连同用户当时的意图
   /// 一起记进存档的 `rejected`。
   ///
@@ -811,42 +894,90 @@ final class ArchiveWriter: @unchecked Sendable {
   /// 只在全量同步那一档调。每次推送后都重试就是个忙循环：服务端要是真的永远不认
   /// 这个字段，那就是每 500 毫秒一次跨洋往返换一次 400。全量之间至少隔五分钟。
   ///
-  /// 三种情况直接把记录了结掉，不再补推：本机已经没有这个对象了；本地值和云端
-  /// 那份已经一样了（别的路补上了 / 服务端那边被别人改成了同一个值）；这个对象
-  /// 上又有了新的待发操作（那条会带着当前值上去，不必再来一条）。
+  /// 三种情况直接把记录了结掉，不再补推：本机已经没有这个对象了；被拒的那几项已经和云端
+  /// 一样了、或者云端那一项比被拒那一刻更新（别的设备之后又改过，它赢）；这个对象上又有了
+  /// 新的待发操作（那条会带着当前值上去，不必再来一条）。
   ///
-  /// 新操作是拿**当前本地值**和**当前云端对象**现做的差分，不是把老载荷重发一遍：
-  /// 老载荷是当初那一刻的，服务端的对象早就往前走了。
+  /// ## 只补被拒的那几项（审查 2026-10-10 第 2 项）
   ///
-  /// **`ownedKeys` 必须和 `capture` 传的是同一张表。** 这儿是差分的另一个入口，
-  /// 而且是**最容易踩到外来字段的那个**：它明摆着拿云端那份当 `previous`
-  /// （下面那句 `staged.local[record.key] = remote`），云端带着的遗留字段一个不少。
-  /// 少传这张表，被拒的那条操作就会原样再差出同一个 null、再被拒一次，
-  /// 每轮全量同步换一次跨洋 400。
+  /// 从前补推是拿**整份本地值**对**整份云端值**现做差分。拒绝记录在了结之前挡着整个对象
+  /// （`holdsLocal`），这段时间别的设备对它的改动进得了 `objects`、进不了 `local`，本地值里
+  /// 留着的是冻住的旧值——整份一差，别人后来改的字段全被当成「本机要改回去」推上去，
+  /// 还沿用被拒那一刻的旧时间戳。现在只看被拒那条操作自己的字段：
+  /// - 本地这一项和云端一样：不用补；
+  /// - 云端这一项的字段戳比被拒那条（`timestamp`, `logical`）新：别的设备后来改过，云端赢，
+  ///   本机记账这一项换成云端的，并把它报给调用方清掉脏标记（不然下一次装进本机时脏字段
+  ///   护着旧值，再记一条新时间戳的操作，照样把别人的改动盖回去）；
+  /// - 剩下的才补：`baseRevision` 保持被拒那条当初看到的那一版，`timestamp` / `logical` 也沿用——
+  ///   用户改的那一刻是当初，不是这次补推的时刻。
+  /// 删除 / 恢复是整对象的动作，字段级说不清，仍走整份差分（`stage`）。
   ///
-  /// **补推那条沿用被拒那条的 `timestamp` / `logical`。** 字段级「后写赢」比的是时间戳：
-  /// 用户改的那一刻是当初，不是这次补推的时刻。拿「现在」去补，别的设备在这中间做的
-  /// 更新的改动就会被一条旧意图压下去。
+  /// **`ownedKeys` 必须和 `capture` 传的是同一张表。** 本地没有、又不是本机替它说话的字段
+  /// 不补 null（那是只活在线上的遗留字段，补了就是「被拒 → 重试 → 再被拒」的老循环）。
   ///
-  /// **已知局限：拒绝记录是按对象锁的，不是按字段。** 一条拒绝记录挡住的是整个对象
-  /// （`holdsLocal`），期间云端别的设备对这个对象**别的字段**的改动进得了 `objects`、
-  /// 进不了 `local`，要等这条记录了结（补推成功 / 本地和云端对上）之后的下一次拉取才落到本机。
-  /// 补推的差分拿的是整份本地值对整份云端值，只要本地值里还留着旧的那几项，
-  /// 也会一并差出来——要做到字段级，得把 `RejectedOperation` 改成只记被拒的那几个字段。
-  public func retryRejected(device: UUID, owning ownedKeys: [String: Set<String>] = [:]) throws {
-    guard !archive.rejected.isEmpty else { return }
+  /// 返回：每个对象（`collection:id`）上**按云端了结**的那几个线上路径——引擎把跟踪对象的那一份
+  /// 交给脏标记那一层清掉。
+  @discardableResult
+  public func retryRejected(device: UUID, owning ownedKeys: [String: Set<String>] = [:]) throws -> [String: Set<String>] {
+    guard !archive.rejected.isEmpty else { return [:] }
     var staged = archive
     var resolved = false
+    var settled: [String: Set<String>] = [:]
     var keep: [RejectedOperation] = []
     // 队列里已经有操作的键、各键的本地前驱：一次建好，别每条记录扫一遍队列。
     var queued = Set(staged.operations.map(\.key))
     var predecessors: [String: UUID]? = staged.lastOperations()
     for record in staged.rejected {
-      guard let local = staged.local[record.key] else { resolved = true; continue }
+      guard var local = staged.local[record.key] else { resolved = true; continue }
       let remote = staged.objects[record.key] ?? SyncObject(collection: record.collection, id: record.objectId)
       guard local.body != remote.body || local.deleted != remote.deleted else { resolved = true; continue }
       guard !queued.contains(record.key) else { keep.append(record); continue }
-      // `stage` 是拿 `local` 做差分的，而这儿 `local` 就是用户的值本身——先把记账
+      let rejectedOp = record.operation
+      if rejectedOp.action == "patch" && !local.deleted && !remote.deleted {
+        let owned = ownedKeys[record.collection]
+        var fields: [String: JSONValue] = [:]
+        var cloudWins: Set<String> = []
+        for path in rejectedOp.fields.keys {
+          if local.body[path] == remote.body[path] { cloudWins.insert(path); continue }
+          if Self.stamp(remote.fields[path], isNewerThan: rejectedOp) {
+            cloudWins.insert(path)
+            if let value = remote.body[path] { local.body[path] = value } else { local.body.removeValue(forKey: path) }
+            continue
+          }
+          if local.body[path] == nil, let owned, !owned.contains(path) {
+            // 外来字段：本机不替它说话，不补 null，记账里带回云端那一项。
+            if let value = remote.body[path] { local.body[path] = value }
+            continue
+          }
+          fields[path] = local.body[path] ?? .null
+        }
+        if !cloudWins.isEmpty { settled[record.key, default: []].formUnion(cloudWins) }
+        if fields.isEmpty {
+          // 被拒的那几项都了结了：记录作废，记账跟上云端那份（别的字段这段时间被挡在 `local` 外面，
+          // 现在放进来），下一次装进本机时落到用户眼前。
+          resolved = true
+          if SyncStore.differs(staged.local[record.key], remote) { staged.unapplied?.insert(record.collection) }
+          staged.shelve(before: remote)
+          staged.local[record.key] = remote
+          continue
+        }
+        if local != staged.local[record.key] {
+          // 有几项按云端了结了：记账里那几项换成云端的，装进本机时跟上。
+          staged.unapplied?.insert(record.collection)
+          staged.shelve(before: local)
+          staged.local[record.key] = local
+        }
+        let op = SyncOperation(collection: record.collection, objectId: record.objectId, deviceId: device,
+          baseRevision: min(rejectedOp.baseRevision, remote.revision), generation: remote.generation,
+          timestamp: rejectedOp.timestamp, logical: rejectedOp.logical, action: "patch", fields: fields,
+          importBatch: nil, dependsOn: predecessors?[record.key])
+        staged.operations.append(op)
+        predecessors?[record.key] = op.id
+        queued.insert(record.key)
+        keep.append(record)
+        continue
+      }
+      // 删除 / 恢复：`stage` 是拿 `local` 做差分的，而这儿 `local` 就是用户的值本身——先把记账
       // 退回云端那份，`stage` 才能重新差出「本地和云端不一样的那几项」。这一下只动
       // 存档里的记账，用户眼前的值（prefs / draws.json）一个字都没碰。底稿（`shelved`）
       // 同理先挪开：这里要的就是对云端那份的差分，不是对用户眼前那一版的。
@@ -854,7 +985,7 @@ final class ArchiveWriter: @unchecked Sendable {
       let shelf = staged.shelved.removeValue(forKey: record.key)
       let restaged = stage(local, device: device, importing: nil, owning: ownedKeys, into: &staged,
                            predecessors: &predecessors,
-                           stamp: (record.operation.timestamp, record.operation.logical))
+                           stamp: (rejectedOp.timestamp, rejectedOp.logical))
       if let shelf { staged.shelved[record.key] = shelf }
       if restaged {
         queued.insert(record.key)
@@ -864,9 +995,27 @@ final class ArchiveWriter: @unchecked Sendable {
         resolved = true
       }
     }
-    guard resolved || keep.count != staged.rejected.count || staged.operations.count != archive.operations.count else { return }
+    guard resolved || keep.count != staged.rejected.count || staged.operations.count != archive.operations.count
+      || staged.local != archive.local else { return settled }
     staged.rejected = keep
     try transaction { $0 = staged }
+    return settled
+  }
+  /// 云端那一项的字段戳是不是比这条操作**更新**（服务端 `merge()` 比的那一对：时间戳，再逻辑钟）。
+  /// 读不出戳（老对象、测试替身）就当不比它新。
+  nonisolated static func stamp(_ value: JSONValue?, isNewerThan op: SyncOperation) -> Bool {
+    guard case .object(let o)? = value, case .number(let t)? = o["timestamp"] else { return false }
+    let logical: Double = { if case .number(let l)? = o["logical"] { return l }; return 0 }()
+    return (Int64(t), UInt64(max(0, logical))) > (op.timestamp, op.logical)
+  }
+  /// 这条拒绝记录被这份云端对象了结了没有：被拒那几项要么本机和云端一样了，要么云端那一项比被拒那一刻新。
+  /// 删除 / 恢复看整份。
+  nonisolated static func settles(_ record: RejectedOperation, local: SyncObject?, cloud: SyncObject) -> Bool {
+    guard let local, local.deleted == cloud.deleted else { return false }
+    guard record.operation.action == "patch" else { return local.body == cloud.body }
+    return record.operation.fields.keys.allSatisfy {
+      local.body[$0] == cloud.body[$0] || stamp(cloud.fields[$0], isNewerThan: record.operation)
+    }
   }
   /// 一批已发操作一次记完，别一条一条来。
   public func markSent(_ ids: [UUID]) throws {
@@ -948,15 +1097,18 @@ final class ArchiveWriter: @unchecked Sendable {
         }
         latest[key] = result.object
         if acked?.action == "restore" { latestRestore[key] = result.object }
-        // 这一条终于推上去了，而且云端那份已经和本机一样：那条拒绝记录可以了结。
-        if let local = a.local[key], local.body == result.object.body, local.deleted == result.object.deleted,
-           rejectedKeys.remove(key) != nil {
+        // 这一条终于推上去了，被拒的那几项云端已经和本机一样（或者云端那一项更新）：那条拒绝记录可以了结。
+        // 只看被拒的那几项，不看整份：这段时间别的设备改过别的字段，整份永远对不上（审查 2026-10-10 第 2 项）。
+        if rejectedKeys.contains(key), let record = a.rejected.last(where: { $0.key == key }),
+           Self.settles(record, local: a.local[key], cloud: result.object) {
+          rejectedKeys.remove(key)
           rejectedCleared = true
         }
         if (queued[key] ?? 0) == 0 && !rejectedKeys.contains(key) {
-          if Self.differs(a.local[key], result.object) { a.unapplied?.insert(result.object.collection) }
-          a.shelve(before: result.object)
-          a.local[key] = result.object
+          let next = Self.keepingUnknown(result, of: acked)
+          if Self.differs(a.local[key], next) { a.unapplied?.insert(result.object.collection) }
+          a.shelve(before: next)
+          a.local[key] = next
         }
       }
       // 还没发出去的同对象操作：
@@ -980,6 +1132,24 @@ final class ArchiveWriter: @unchecked Sendable {
       }
       if rejectedCleared { a.rejected.removeAll { !rejectedKeys.contains($0.key) } }
     }
+  }
+  /// 回执里的对象，叠回这条操作里**服务端不认识、没收下**的那几项（`droppedFields` 减去 `invalidFields`）。
+  ///
+  /// 不叠的话 `local` 就成了「没有这一项」的云端那份，和用户手上那份一比又差出同一项：
+  /// 设置那一档装进本机时脏字段护着本地值，接着再记一条一模一样的操作、500 毫秒后推上去、
+  /// 再被丢——一个服务端还不认识的字段就能让这台手机每半秒一趟跨洋请求（审查 2026-10-10 第 3 项）。
+  /// 叠回去之后记账和用户手上一致，不再生出新操作；脏标记照旧留着（引擎把它报成 dropped），
+  /// 下一次全量拉回云端那份时再补推一次，服务端升级之后就落地了。
+  /// **值不对**的那几项不叠：那一类发多少次都是被丢，本机认云端那份（引擎把它当成了结清掉脏标记）。
+  nonisolated static func keepingUnknown(_ result: SyncResult, of op: SyncOperation?) -> SyncObject {
+    var object = result.object
+    guard let op, !object.deleted else { return object }
+    let invalid = Set(result.invalidFields ?? [])
+    for path in result.droppedFields ?? [] where !invalid.contains(path) {
+      guard let value = op.fields[path] else { continue }
+      if value == .null { object.body.removeValue(forKey: path) } else { object.body[path] = value }
+    }
+    return object
   }
   /// 云端这份和本机记账里那份是不是两样内容（版本号不算）。每条回执都会抬版本号，
   /// 那不是新内容；只有内容不同，这张表才记进 `unapplied`。
