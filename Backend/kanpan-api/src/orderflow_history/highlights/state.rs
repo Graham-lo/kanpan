@@ -27,6 +27,9 @@ pub(super) const WALL_MIN_SAMPLES:u64=50;
 pub(super) const STALE_MS:i64=3*M;
 /// 首页：近度按 2 小时的指数衰减；墙价位离现价 ≤ 2% 才上首页。
 const RECENCY_MS:f64=2.0*3_600_000.0;
+
+/// 首页异动一列的近度系数：每过 2 小时乘 1/e。
+pub(super) fn recency(now:i64,at:i64)->f64 {(-((now-at).max(0) as f64)/RECENCY_MS).exp()}
 const BOARD_LEVEL_DIST:f64=2.0;
 /// 净主动的数要盖到窗口起点前后这么近才算整窗（否则 `netUsd` 为 null）。
 const FLOW_SLACK_MS:i64=10*M;
@@ -592,7 +595,7 @@ impl State {
  /// 首页那一行：每条要点的权重 = 规模分位 × 近度 × 叠加系数（只用于排序）。
  #[allow(clippy::too_many_arguments)]
  fn board_item(&self,now:i64,price:f64,levels:&[ledger::Level],evs:&[Ev],show:bool,strongest:Option<(&'static str,f64)>,position:&Value,position_at:i64,wall_floor:f64,sizes:&Sizes)->Option<BoardItem> {
-  let recency=|at:i64|(-((now-at).max(0) as f64)/RECENCY_MS).exp();
+  let recency=|at:i64|recency(now,at);
   let size=|usd:f64|if sizes.count()>=WALL_MIN_SAMPLES {sizes.rank(usd).map_or(0.9,|r|f64::from(r)/100.0)} else {0.9};
   let mut items:Vec<(f64,&'static str,Value,i64)>=Vec::new();
   for e in evs {

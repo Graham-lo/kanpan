@@ -2,6 +2,10 @@
 //!
 //! 只读每分钟算好的那一份（[`super::snapshot`]），不在这里起跟：登录用户的自选由服务端的自选层补跟，热点层本来就在跟；
 //! 没在跟或这一分钟没有要点的不出行。强度三格按这一份答复里各行权重的三分位点亮（最强的三分之一为 3）。
+//!
+//! 波动异动（[`super::moves`]，全市场永续）也并进来：每只取它权重最高的那一条（权重 = 涨跌幅 ÷ 阈值 × 近度），
+//! `cat:"move"`，和这只的要点那一行各占一行；游客与登录用户看到的一样。
+use super::moves::Move;
 use super::state::Snap;
 use super::instruments;
 use serde_json::{Value,json};
@@ -22,7 +26,7 @@ pub(super) fn parse(bases:Option<&str>)->Vec<String> {
 }
 
 /// 拼一份答复：`favorites` 是客户端带的自选，`hot` 是热点层名单，`snap` 取一只此刻的那一份。
-pub(super) fn answer(favorites:&[String],hot:&[String],snap:impl Fn(&str)->Option<Arc<Snap>>,now:i64)->Value {
+pub(super) fn answer(favorites:&[String],hot:&[String],snap:impl Fn(&str)->Option<Arc<Snap>>,moves:&[Move],now:i64)->Value {
  let fav:HashSet<&str>=favorites.iter().map(String::as_str).collect();
  let mut seen=HashSet::new();
  let mut rows:Vec<(f64,Value)>=Vec::new();
@@ -34,6 +38,16 @@ pub(super) fn answer(favorites:&[String],hot:&[String],snap:impl Fn(&str)->Optio
   rows.push((item.weight,json!({"base":base,"favorite":fav.contains(base.as_str()),"count":item.count,"cat":item.cat,"tier":0,
    "top":item.top,"price":s.price,"changePct":s.change_pct,"atMs":item.at})));
  }
+ let mut best:std::collections::HashMap<&str,(f64,&Move)>=std::collections::HashMap::new();
+ for m in moves {
+  let w=m.weight(now);
+  if best.get(m.base.as_str()).is_none_or(|b|w>b.0) {best.insert(m.base.as_str(),(w,m));}
+ }
+ for (base,(w,m)) in best {
+  let mut v=m.json(0);
+  v["favorite"]=json!(fav.contains(base));
+  rows.push((w,v));
+ }
  rows.sort_by(|a,b|b.0.total_cmp(&a.0).then_with(||a.1["base"].as_str().cmp(&b.1["base"].as_str())));
  let n=rows.len();
  let rows:Vec<Value>=rows.into_iter().enumerate().map(|(i,(_,mut v))|{v["tier"]=json!(tier(i,n));v}).collect();
@@ -41,7 +55,7 @@ pub(super) fn answer(favorites:&[String],hot:&[String],snap:impl Fn(&str)->Optio
 }
 
 /// 按权重从高到低第 `i` 行（共 `n` 行）的强度：前三分之一 3、中间 2、后三分之一 1。
-fn tier(i:usize,n:usize)->u8 {if n==0 {return 1} 3-((3*i)/n).min(2) as u8}
+pub(super) fn tier(i:usize,n:usize)->u8 {if n==0 {return 1} 3-((3*i)/n).min(2) as u8}
 
 #[cfg(test)]
 mod tests {
@@ -71,7 +85,7 @@ mod tests {
  fn rows_union_favorites_and_hot_ranked_by_weight() {
   let favs=vec!["AXS".to_string(),"BTC".to_string(),"NOPE".to_string()];
   let hot=vec!["BTC".to_string(),"HO".to_string(),"OFF".to_string()];
-  let v=answer(&favs,&hot,|b|match b {"AXS"=>Some(snap(0.2,true)),"BTC"=>Some(snap(0.9,true)),"HO"=>Some(snap(0.5,true)),"OFF"=>Some(snap(0.99,false)),_=>None},5);
+  let v=answer(&favs,&hot,|b|match b {"AXS"=>Some(snap(0.2,true)),"BTC"=>Some(snap(0.9,true)),"HO"=>Some(snap(0.5,true)),"OFF"=>Some(snap(0.99,false)),_=>None},&[],5);
   let rows=v["rows"].as_array().unwrap();
   let bases:Vec<&str>=rows.iter().map(|r|r["base"].as_str().unwrap()).collect();
   assert_eq!(bases,vec!["BTC","HO","AXS"],"untracked and missing bases have no row; each base once");
@@ -80,5 +94,22 @@ mod tests {
   assert_eq!(rows.iter().map(|r|r["tier"].as_u64().unwrap()).collect::<Vec<_>>(),vec![3,2,1]);
   for k in ["base","favorite","count","cat","tier","top","price","changePct","atMs"] {assert!(rows[0].get(k).is_some(),"{k}");}
   assert_eq!(v["generatedAtMs"],5);
+ }
+
+ #[test]
+ fn moves_join_the_ranking_one_row_per_base() {
+  let mv=|base:&str,up:bool,ratio:f64,at:i64|Move{base:base.into(),up,window:0,pct:if up {ratio} else {-ratio},price:1.0,vol:2e6,first:at,at,ratio};
+  let now=10*3_600_000;
+  // ZZ 两条：取权重大的（近的那条）；BTC 有要点又有异动，各一行。
+  let moves=vec![mv("ZZ",true,1.5,now),mv("ZZ",false,3.0,now-6*3_600_000),mv("BTC",false,1.0,now-3_600_000)];
+  let v=answer(&["BTC".to_string()],&[],|b|(b=="BTC").then(||snap(0.9,true)),&moves,now);
+  let rows=v["rows"].as_array().unwrap();
+  let short:Vec<(&str,&str)>=rows.iter().map(|r|(r["base"].as_str().unwrap(),r["cat"].as_str().unwrap())).collect();
+  assert_eq!(short,vec![("ZZ","move"),("BTC","book"),("BTC","move")]);
+  assert_eq!(rows[0]["kind"],"moveUp");
+  assert_eq!(rows[0]["favorite"],false);
+  assert_eq!(rows[2]["favorite"],true);
+  assert_eq!(rows.iter().map(|r|r["tier"].as_u64().unwrap()).collect::<Vec<_>>(),vec![3,2,1]);
+  for k in ["base","cat","kind","window","pct","price","volUsd","atMs","tier","id"] {assert!(rows[0].get(k).is_some(),"{k}");}
  }
 }

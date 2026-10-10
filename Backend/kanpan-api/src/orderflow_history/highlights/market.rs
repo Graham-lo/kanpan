@@ -1,4 +1,4 @@
-//! 首页榜单（原型 §12 `/v1/market/board`）：持仓变化 / 涨幅 / 跌幅 × 1 时 / 4 时 / 24 时，全市场永续、四家合并到基础币。
+//! 首页榜单（原型 §12 `/v1/market/board`）：持仓增加 / 持仓减少 / 涨幅 / 跌幅 × 1 时 / 4 时 / 24 时，全市场永续、四家合并到基础币。
 //!
 //! 每 5 分钟扫一次全市场（不起跟踪、不开流）：
 //! * 币安 U 本位：合约表 + 24h 行情全表各一次（与山寨 / 热点层共用 5 分钟缓存）；持仓没有全表接口，只对成交额前 150
@@ -207,15 +207,16 @@ fn oi_change(now:&[Option<f64>;4],then:&[Option<f32>;4])->Option<f64> {
 }
 
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
-pub(super) enum Kind {Oi,Gainers,Losers}
+pub(super) enum Kind {Oi,OiDown,Gainers,Losers}
 const WINDOWS:[(&str,i64);3]=[("1h",HOUR_MS),("4h",4*HOUR_MS),("24h",24*HOUR_MS)];
 
 /// 拼一份榜：`then` 是窗口起点附近的快照、近的在前（24 时涨跌不用它）。
 pub(super) fn rank(kind:Kind,window:usize,latest:&HashMap<String,Cur>,then:&[&Snapshot],now:i64)->Value {
+ let falling=matches!(kind,Kind::Losers|Kind::OiDown);
  let mut rows:Vec<(f64,&String,&Cur)>=latest.iter().filter_map(|(b,c)| {
   let total:Option<f64>=c.oi.iter().flatten().copied().reduce(|a,b|a+b);
   let change=match kind {
-   Kind::Oi=>{
+   Kind::Oi|Kind::OiDown=>{
     if total.unwrap_or(0.0)<MIN_OI_USD {return None}
     oi_change(&c.oi,&cell(then,b)?.oi)?
    },
@@ -228,13 +229,13 @@ pub(super) fn rank(kind:Kind,window:usize,latest:&HashMap<String,Cur>,then:&[&Sn
     }
    },
   };
-   // 持仓榜看「钱往哪建仓」、涨幅榜只放涨的、跌幅榜只放跌的：方向不对的不拿来凑满 100 行。
+   // 持仓增加榜看「钱往哪建仓」、持仓减少榜看「钱从哪撤」，涨幅榜只放涨的、跌幅榜只放跌的：方向不对的不拿来凑满 100 行。
   // 按写出去的两位小数判：0.00 / -0.00 不进榜。
   let change=(change*100.0).round()/100.0+0.0;
-  let right_way=if kind==Kind::Losers {change<0.0} else {change>0.0};
+  let right_way=if falling {change<0.0} else {change>0.0};
   (change.is_finite()&&right_way).then_some((change,b,c))
  }).collect();
- rows.sort_by(|a,b|{let o=b.0.total_cmp(&a.0);(if kind==Kind::Losers {o.reverse()} else {o}).then_with(||a.1.cmp(b.1))});
+ rows.sort_by(|a,b|{let o=b.0.total_cmp(&a.0);(if falling {o.reverse()} else {o}).then_with(||a.1.cmp(b.1))});
  let rows:Vec<Value>=rows.into_iter().take(MAX_ROWS).map(|(change,b,c)|{
   let total:Option<f64>=c.oi.iter().flatten().copied().reduce(|a,b|a+b);
   json!({"base":b,"oiUsd":total.map(|v|v.round()),"changePct":change,"price":super::state::sig(c.px)})
@@ -320,6 +321,40 @@ pub(super) fn hist_cells(rows:&Value,listed:&str)->Vec<(i64,Cell)> {
  }).collect()
 }
 
+// ------------------------------------------------------------------ 每分钟的价（波动异动）
+
+const PRICES_BN:&str="https://www.binance.com/fapi/v1/ticker/price";
+
+/// 币安价格全表 `[{symbol, price}]` 按合约表筛出永续。
+pub(super) fn binance_price_quotes(listing:&[(String,String)],body:&Value)->Vec<Quote> {
+ let rows:HashMap<&str,f64>=body.as_array().map(Vec::as_slice).unwrap_or_default().iter()
+  .filter_map(|r|Some((r["symbol"].as_str()?,num(&r["price"]).filter(|p|*p>0.0)?))).collect();
+ listing.iter().filter_map(|(symbol,listed)|Some(Quote{listed:listed.clone(),px:Some(*rows.get(symbol.as_str())?),change24:None,oi_usd:None,turnover:0.0})).collect()
+}
+
+async fn binance_prices()->Vec<Quote> {
+ if crate::binance_gate::blocked() {return Vec::new()}
+ let (Ok(info),Some(body))=(crate::market_meta::exchange_info().await,get(PRICES_BN).await) else {return Vec::new()};
+ binance_price_quotes(&layers::perp_listing(&info),&body)
+}
+
+/// 此刻全市场永续的价（四家合并、价按同一优先级取一家）：币安只取价格全表（权重低），其余三家同榜单的行情全表；不取持仓。
+pub(super) async fn prices()->HashMap<String,Cur> {
+ let (bn,bybit,okx,hl)=tokio::join!(
+  binance_prices(),
+  async {get(TICKERS_BYBIT).await.map(|v|bybit_quotes(&v)).unwrap_or_default()},
+  async {get(TICKERS_OKX).await.map(|t|okx_quotes(&t,&Value::Null)).unwrap_or_default()},
+  hyperliquid(),
+ );
+ merge([bn,bybit,okx,hl])
+}
+
+/// 榜单最近一次扫到的四家 24h 成交额相加（USD），按基础币。
+pub(super) fn turnover()->HashMap<String,f64> {
+ let b=BOARD.read().unwrap_or_else(|e|e.into_inner());
+ b.latest.as_ref().map(|(_,cur)|cur.iter().map(|(k,c)|(k.clone(),c.turnover)).collect()).unwrap_or_default()
+}
+
 // ------------------------------------------------------------------ 落盘
 
 pub(super) fn payload(ring:&VecDeque<Snapshot>)->Value {
@@ -389,9 +424,9 @@ pub(super) async fn run(pool:PgPool) {
 #[serde(deny_unknown_fields)]
 pub(in super::super) struct BoardQuery {kind:String,window:Option<String>}
 
-fn kind_of(s:&str)->Option<Kind> {match s {"oi"=>Some(Kind::Oi),"gainers"=>Some(Kind::Gainers),"losers"=>Some(Kind::Losers),_=>None}}
+fn kind_of(s:&str)->Option<Kind> {match s {"oi"=>Some(Kind::Oi),"oidown"=>Some(Kind::OiDown),"gainers"=>Some(Kind::Gainers),"losers"=>Some(Kind::Losers),_=>None}}
 
-/// 榜单：`kind=oi|gainers|losers`，`window=1h|4h|24h`（缺省 4h，原型出厂档）。
+/// 榜单：`kind=oi|oidown|gainers|losers`，`window=1h|4h|24h`（缺省 4h，原型出厂档）。
 pub(in super::super) async fn market_board(Axum(_s):Axum<AppState>,headers:axum::http::HeaderMap,Params(q):Params<BoardQuery>)->Result<Response> {
  let kind=kind_of(&q.kind).ok_or_else(||ApiError::bad("invalid_kind"))?;
  let window=WINDOWS.iter().position(|(w,_)|*w==q.window.as_deref().unwrap_or("4h")).ok_or_else(||ApiError::bad("invalid_window"))?;
@@ -454,6 +489,8 @@ mod tests {
   let rows=binance_quotes(&listing,&tickers,&oi);
   assert_eq!(rows.len(),2);
   assert_eq!(rows[1].oi_usd,Some(300.0));
+  let px=binance_price_quotes(&listing,&json!([{"symbol":"BTCUSDT","price":"101.5"},{"symbol":"XUSDT","price":"1"},{"symbol":"1000PEPEUSDT","price":"0"}]));
+  assert_eq!(px,vec![Quote{listed:"BTC".into(),px:Some(101.5),change24:None,oi_usd:None,turnover:0.0}]);
   assert_eq!(rows[0].oi_usd,None);
   assert_eq!(top_symbols(&listing,&tickers),vec!["BTCUSDT","1000PEPEUSDT"]);
  }
@@ -504,6 +541,10 @@ mod tests {
   let bases=|v:&Value|v["rows"].as_array().unwrap().iter().map(|r|r["base"].as_str().unwrap().to_string()).collect::<Vec<_>>();
   let oi=rank(Kind::Oi,0,&latest,&[&then],5);
   assert_eq!(bases(&oi),vec!["D","A"],"C below the OI floor; B lost open interest");
+  let down=rank(Kind::OiDown,0,&latest,&[&then],5);
+  assert_eq!(bases(&down),vec!["B"],"only bases that lost open interest");
+  assert_eq!(down["rows"][0]["changePct"],-9.09);
+  assert_eq!(kind_of("oidown"),Some(Kind::OiDown));
   assert_eq!(oi["rows"][1]["changePct"],100.0);
   assert_eq!(oi["rows"][1]["oiUsd"],2e6);
   assert_eq!(bases(&rank(Kind::Gainers,1,&latest,&[&then],5)),vec!["C","A"],"D below turnover floor; B fell");
