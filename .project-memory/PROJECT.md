@@ -2161,4 +2161,13 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
 - **保留**：iOS `OrderFlowInsightsFeed` / `OrderFlowInsightLabels` / `OrderFlowInsights`（Core）/ `OrderFlowCatalog+Insights` / `placeCrosshair(atTime:price:)`（`price` 默认 nil，原互斥行为不变）；网页 `insights.ts` / `insightLabels.ts` / `InsightPoller` 代码。两端轮询都关住（iOS `MarketModel.syncLiquidations` 那段注释掉，网页 `INSIGHTS_ENABLED=false`），旧页不白拉 /insights 与 1m K 线。iOS `LiquidationFeed` 恢复「从没拿到过才算不可用」；网页今日起点、stale 断流、价位梯 1m 典型价回退恢复旧算法，去掉旧弹层没有的 `showSelected` / `onLocate`。
 - **点击修复仍在**：iOS `ChartView+Gesture.swift` 自 `4c76872d` 未改，`ChartView+BigTrades.swift` 只多了可选 `price`；网页 f9e85239 的金额签实际矩形命中、`source === 'bigTrade'` 不触发挂单悬停、`crosshairTo(…, 'bigTrade')` 均在，旧弹层 `GHOST_MS = 400` 吞补发 click 随文件恢复。
 - **验证**：网页 tsc / 发布构建、`m-bigtrade-sheet` + `m-orderflow-insights` + `m-chart-gesture-view` 62 项、连同订单流 / 气泡签 / 用词共 6 文件 135 项通过；本机 dev 实开两尺寸入口手势冒烟 12 项通过、入口与面板文案「大单与爆仓」、打开后 0 次 /insights 请求、无页面异常。iOS iPhone 16 Pro 模拟器 `BigTradeSheetUITests` 9 项 + `OrderFlowInsightsUITests` 入口 1 项全过（含点金额签只出挂单详情、点气泡只开大单页、关页无残留卡）；已提交树在干净 worktree 里 app 目标编译通过。截图 [气泡页回退](../docs/acceptance/气泡页回退-2026-10-10/)。
-- **未做**：没有部署网页、没有装真机（由主窗口统一做）；没有跑全量测试；上滑「盘口要点」半页未设计。
+- **已部署网页（主窗口，10-10 14:10）**：`Web/scripts/deploy.sh` 发布 PC `assets/index-C_T4h2dt.js`、手机 `assets/m-B0ohAaB2.js`（同时带上 `14c09aea` / `f57ec021` 的公允价值缺口层）；线上手机入口与本机一致。备份 `/opt/kanpan-backups/web-bubble-revert-20261010/`。未装真机、未跑全量测试。
+- **上滑「盘口要点」半页 + 首页**：原型见 §79。
+
+## 79. 2026-10-10：首页「异动 · 榜单」+ 行情页上滑「盘口要点」原型（待用户定板）
+
+- **讨论定下的方向**（10-10，主窗口）：气泡页保持 10-08 定版；上滑另加**半页「盘口要点」**，升到行情头下沿停（价格 / 涨跌 / 两列六格露着）；只展示这只品种近期真正重要的 ≤ 5 条（价区 / 时段 / 事件），噪音由服务端按品种自身 P95 过滤，不打分、不写多空、不重复气泡页的总量。新增**第五格「首页」**（最左、启动落地）：「异动」按权重混排自选 + 热门（服务端按登录用户自选自动补跟），胶囊筛盘口 / 持仓 / 费率，点一行直达行情页并自动展开那条 + 图上带子；「榜单」只留持仓变化 / 涨幅 / 跌幅（1H / 4H / 24H，默认 4H，跟人走）。不做：多空比、山寨指数、BTC 占比、贪婪恐惧、全市场爆仓总额 / 排行 / 热力、异常分数、偏多偏空、推送（本轮）。
+- **原型**：[docs/原型-手机首页异动与盘口要点-2026-10-10.html](../docs/原型-手机首页异动与盘口要点-2026-10-10.html)，线上 <https://kanpan.43-160-232-253.sslip.io/ui/mobile-home-highlights-2026-10-10.html>（/ui/ 首卡）。23 个图态（三皮肤 × 深浅、加载 / 平静 / 未登录 / 断网 / 半页加载 / 暂无要点 / 未跟踪 / 数据停了）+ 功能分层表 + 导航规则 + 交互清单 + 尺寸令牌 + 要点引擎口径 + 接口 JSON + 三视角审查 + 动效触觉表 + 施工说明。
+- **第二轮审查改动**（用户：字体太大不精致、换首页 icon、按视觉设计师 / 交易员 / 产品设计师三视角对照 app 风格）：底栏五颗记号改成照 `TabBar.swift` 釉面实心（初版线描不合规），首页记号 = 雷达（主色釉环 + 金扫描扇 + 浅主色中心点）；涨跌药丸改自选行同款淡色（14% 底 + 0.5 pt 描边）；字阶收一档对齐 DesignTokens（名 13/semibold、价 14、事实 11、分段 12、胶囊 11.5，徽章 28，行高 58）；半页顶边从 156 改到 177（原来盖住涨跌行和第三行六格）；首页行改两行结构（事实整行不截断）。
+- **下一步**：用户定板后实现——服务端要点引擎（`highlights.rs` + 自选跟踪层 + `board.rs`），iOS（`Tab.home` / `HomeScreen` / `PanelHost` 高度档半页 / 入口条 / `RangeOverlayView` 多画笔），手机网页（`PAGES.home` / `pages/home.ts` / 半页）；先推能用的增量，整批做完做全面回归并带画线交叉验证。
+
