@@ -1731,6 +1731,7 @@ pub fn routes()->Router<AppState> {
   .route(liq::PATH,get(liq::liq))
   .route(highlights::PATH,get(highlights::highlights))
   .route(highlights::BOARD_PATH,get(highlights::highlights_board))
+  .route(highlights::MARKET_BOARD_PATH,get(highlights::market_board))
   .route(insights::PATH,get(insights::insights))
   .route(footprint::PATH,get(footprint::footprint)).route(seconds::PATH,get(seconds::seconds))
   .route_layer(axum::middleware::from_fn(per_client))

@@ -18,6 +18,7 @@ mod board;
 mod events;
 mod fetch;
 mod ledger;
+mod market;
 mod range;
 mod state;
 mod stats;
@@ -44,6 +45,8 @@ use tokio::sync::mpsc;
 
 pub(super) const PATH:&str="/v1/market/orderflow/highlights";
 pub(super) const BOARD_PATH:&str=board::PATH;
+pub(super) const MARKET_BOARD_PATH:&str=market::PATH;
+pub(super) use market::market_board;
 const TTL:Duration=Duration::from_secs(20);
 const CACHE_CONTROL:&str="public, max-age=20";
 const M:i64=60_000;
@@ -175,6 +178,8 @@ enum Done {
 /// 起引擎（serve 起订单流时一次）。
 pub(super) fn start(pool:PgPool) {
  if ON.swap(true,Ordering::SeqCst) {return}
+ let board_pool=pool.clone();
+ crate::supervise::spawn_restarting("market-board",move ||market::run(board_pool.clone()));
  crate::supervise::spawn_restarting("orderflow-highlights",move ||run(pool.clone()));
 }
 

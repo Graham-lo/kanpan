@@ -100,6 +100,18 @@ fn perps(info:&Value)->Vec<Perp<'_>> {
  }).collect()
 }
 
+/// 全部 USDT 本位、正在交易的永续（含美股等 TRADIFI），去掉稳定币：`(合约, 表里的 base)`，base 带「N 个币」前缀原样
+/// （`1000PEPE`），全市场榜单按它换算到每个币。
+pub fn perp_listing(info:&Value)->Vec<(String,String)> {
+ info["symbols"].as_array().map(Vec::as_slice).unwrap_or_default().iter().filter_map(|s| {
+  if s["status"].as_str()!=Some("TRADING")||s["quoteAsset"].as_str()!=Some("USDT") {return None}
+  if !matches!(s["contractType"].as_str(),Some("PERPETUAL"|"TRADIFI_PERPETUAL")) {return None}
+  let listed=s["baseAsset"].as_str()?;
+  if STABLES.contains(&unscaled(listed)) {return None}
+  Some((s["symbol"].as_str()?.to_string(),listed.to_string()))
+ }).collect()
+}
+
 /// 固定层里币安此刻真有的，和没有的（按表的顺序）。
 pub fn fixed_bases(info:&Value)->(Vec<String>,Vec<String>) {
  let listed:HashSet<&str>=perps(info).into_iter().filter(|p|p.underlying!="COIN").map(|p|p.base).collect();
