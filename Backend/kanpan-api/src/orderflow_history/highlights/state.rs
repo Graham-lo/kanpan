@@ -28,6 +28,8 @@ pub(super) const STALE_MS:i64=3*M;
 /// 首页：近度按 2 小时的指数衰减；墙价位离现价 ≤ 2% 才上首页。
 const RECENCY_MS:f64=2.0*3_600_000.0;
 const BOARD_LEVEL_DIST:f64=2.0;
+/// 净主动的数要盖到窗口起点前后这么近才算整窗（否则 `netUsd` 为 null）。
+const FLOW_SLACK_MS:i64=10*M;
 /// 北京时间日界（当日高低、VWAP）。
 const DAY_OFFSET:i64=8*HOUR_MS;
 
@@ -156,7 +158,8 @@ fn finite(x:f64)->Option<f64> {x.is_finite().then_some(x)}
 fn pct(a:f64,b:f64)->Option<f64> {(a>0.0&&b>0.0).then(||(b/a-1.0)*100.0).and_then(finite)}
 /// 价保留 6 位有效数字。
 pub(super) fn sig(p:f64)->f64 {
- if !(p.is_finite()&&p!=0.0) {return p}
+ if p==0.0 {return 0.0} // 不发 -0
+ if !p.is_finite() {return p}
  let d=6-p.abs().log10().floor() as i32-1;
  let f=10f64.powi(d);
  (p*f).round()/f
@@ -333,8 +336,10 @@ impl State {
 
  /// 整点取一次样：窗口都以这个整点为终点。
  fn sample(&mut self,at:i64) {
-  if !self.flow.is_empty()&&at-15*M>=self.flow.t0&&at<=self.flow.end() {let v=self.flow.sum(0,at-15*M,at);self.samples.n15.put(at,v);}
-  let covered=|from:i64|(!self.flow.is_empty()&&from>=self.flow.t0)||self.hours.contains_key(&from);
+  // 只在净主动真的盖到窗口起点时取样：REST 补的小时线净额是 0，拿来取样会让 30 天里大半是 0、P60 塌成 0。
+  let start=self.flow_start();
+  let covered=|from:i64|start.is_some_and(|t|t<=from+FLOW_SLACK_MS);
+  if covered(at-15*M)&&at<=self.flow.end() {let v=self.flow.sum(0,at-15*M,at);self.samples.n15.put(at,v);}
   if at<=self.flow.end().max(self.last_bar+M) {
    for (w,which) in [(HOUR_MS,1),(4*HOUR_MS,2),(DAY_MS,3)] {
     if !covered(at-w) {continue}
@@ -397,16 +402,25 @@ impl State {
   out
  }
 
+ /// 净主动最早从哪一分钟起有数（分钟序列里成交额 > 0 的第一格，或更早的小时线里净额非 0 的第一小时）。
+ /// 刚起跟、库里又没有这只的足迹时只有这一任收的几分钟，长窗口不能拿它当整窗的净额。
+ pub fn flow_start(&self)->Option<i64> {
+  let minute=self.flow.v.iter().position(|r|r[1]>0.0).map(|j|self.flow.t0+j as i64*M);
+  let hour=self.hours.iter().find(|(_,h)|h.net!=0.0).map(|(t,_)|*t);
+  match (minute,hour) {(Some(a),Some(b))=>Some(a.min(b)),(a,b)=>a.or(b)}
+ }
+
  fn flow_row(&self,w:&str,from:i64,end:i64,samples:&Samples)->Value {
+  let covered=self.flow_start().is_some_and(|t|t<=from+FLOW_SLACK_MS);
   let net=self.net_between(from,end);
   let px=match (self.close_at(from),self.close_at(end)) {(Some(a),Some(b))=>pct(a,b),_=>None};
   let oi=match (self.oi_at(from),self.oi_at(end)) {(Some(a),Some(b))=>pct(a,b),_=>None};
   let floor=samples.abs_quantile(DIVERGE_Q);
   let diverge=match (px,floor) {
-   (Some(p),Some(f))=>net!=0.0&&p!=0.0&&net.signum()!=p.signum()&&net.abs()>=f&&p.abs()>=DIVERGE_PX,
+   (Some(p),Some(f))=>covered&&net!=0.0&&p!=0.0&&net.signum()!=p.signum()&&net.abs()>=f&&p.abs()>=DIVERGE_PX,
    _=>false,
   };
-  let mut row=json!({"w":w,"netUsd":net.round(),"pxPct":px.map(|v|round(v,2)),"oiPct":oi.map(|v|round(v,2)),"diverge":diverge});
+  let mut row=json!({"w":w,"netUsd":covered.then(||net.round()),"pxPct":px.map(|v|round(v,2)),"oiPct":oi.map(|v|round(v,2)),"diverge":diverge});
   if w=="range" {row["sinceMs"]=json!(from);}
   row
  }
@@ -574,7 +588,9 @@ impl State {
   }
   let pairs=|x:&Value|->Samples {Samples::from_pairs(&x.as_array().map(|a|a.iter().filter_map(|p|Some((p[0].as_i64()?,p[1].as_f64()? as f32))).collect::<Vec<_>>()).unwrap_or_default())};
   let sm=&v["samples"];
-  s.samples=Sampled{n15:pairs(&sm["n15"]),n1h:pairs(&sm["n1h"]),n4h:pairs(&sm["n4h"]),n24:pairs(&sm["n24"]),oi:pairs(&sm["oi"]),funding:pairs(&sm["funding"]),premium:pairs(&sm["premium"])};
+  // 净主动样本里的 0 是 10-10 第一版拿 REST 小时线（净额 0）取的，读回时丢掉。
+  let nets=|x:&Value|{let mut p=pairs(x);p.0.retain(|_,v|*v!=0.0);p};
+  s.samples=Sampled{n15:nets(&sm["n15"]),n1h:nets(&sm["n1h"]),n4h:nets(&sm["n4h"]),n24:nets(&sm["n24"]),oi:pairs(&sm["oi"]),funding:pairs(&sm["funding"]),premium:pairs(&sm["premium"])};
   for r in v["hours"].as_array()? {
    let (Some(t),Some(o),Some(h),Some(l),Some(c),Some(net))=(i(&r[0]),f(&r[1]),f(&r[2]),f(&r[3]),f(&r[4]),f(&r[5])) else {continue};
    s.hours.insert(t,Hour{o,h,l,c,net});
@@ -667,6 +683,9 @@ mod tests {
   assert_eq!(rows[0]["w"],"15m");
   assert_eq!(rows[0]["netUsd"],json!(15_000.0));
   assert_eq!(rows[3]["w"],"24h","five hours of box is shorter than six");
+  assert_eq!(rows[2]["netUsd"],json!(240_000.0),"four hours of flow cover the 4h row");
+  assert_eq!(rows[3]["netUsd"],Value::Null,"five hours of flow do not cover a day: no partial sum");
+  assert_eq!(rows[3]["diverge"],false);
   assert_eq!(j["position"]["oi"]["pctile"],Value::Null);
   assert_eq!(j["position"]["show"],false);
   assert!(j["events"].as_array().unwrap().is_empty());
