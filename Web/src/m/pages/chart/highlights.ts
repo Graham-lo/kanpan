@@ -1,6 +1,6 @@
 /* Hkline 手机网页 · 行情页的「盘口要点」：入口条 + 半页 + 图上带子
  *
- * 入口条（图下方那一行）：有价位或事件时 44 高，「⌃ 要点  下方 86,120 买区 35M · 挂 48 分 · 测 2 次」；
+ * 入口条（图下方那一行）：有价位或事件时 44 高，「⌃ 要点  下方 86,120 买区 35M · 挂 48 分」；
  *   没有要点（或还没取到、服务端还没跟这只）缩成 16 高的抓手。高度变化 200 ms，图跟着伸缩。
  *   点它或在它上面往上滑开半页。宏观品种、横屏画线台、复盘回放里整条不出现。
  * 取数：页面开着时每 60 秒一次，半页开着时 30 秒一次；换品种立刻重取并收半页。
@@ -234,7 +234,7 @@ export class HighlightsController {
     }
     const e = t.event
     const [from, to] = eventSpan(e)
-    if (e.t === 'levelBroken') this.band.set({ kind: 'price', low: e.low, high: e.high, label: `${eventTime(e)} ${HL.wallBroken}` })
+    if (e.t === 'levelBroken') this.band.set({ kind: 'price', low: e.low, high: e.high, label: `${eventTime(e)} ${e.side === 'ask' ? HL.brokenUp : HL.brokenDown}` })
     else this.band.set({ kind: 'time', from, to, label: eventTime(e) })
     this.sheet?.close()
     if (series?.count) {

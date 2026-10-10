@@ -5,7 +5,7 @@ import SwiftUI
 /// 首页（底栏最左一格，PROJECT.md §79）：「异动 · 涨跌 · 持仓 · 板块」四段，顶上一排胶囊（照自选页分类条）。
 /// 「板块」就是原底栏「板块分类」那一整页（`SectorPage`，宿主传进来），下钻进品种列表时顶上这排胶囊收起。
 ///
-/// - 异动：自选（登录后带上）∪ 服务端热点层里此刻值得看一眼的品种，每只一行、按服务端权重排，打开时定序。
+/// - 异动：自选（登录后带上）∪ 服务端热点层里此刻值得看一眼的品种，每只一行、按服务端权重排，自动采用最新列表。
 ///   点一行 → 去行情页、换到这只、自动升起「盘口要点」半页并展开那一条、图上画带子。
 /// - 涨跌：涨幅榜 / 跌幅榜；持仓：增仓榜 / 减仓榜。各 6 行，「全部」展开；两段各有自己的
 ///   1 时 / 4 时 / 24 时小胶囊（只记本机）。点一行只开图，不自动升半页。波动行同样只开图。
@@ -148,6 +148,7 @@ private struct HomeMovesView: View {
   let onStar: (String) -> Void
   let onOpen: (HighlightsBoard.Row) -> Void
   let reload: () async -> Void
+  @State private var visibleRow: String?
   @Environment(\.panelTheme) private var t
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -155,11 +156,7 @@ private struct HomeMovesView: View {
     VStack(spacing: 0) {
       chips
       if let shown = model.shown, !shown.isEmpty { sub(shown) }
-      ZStack(alignment: .top) {
-        list
-        if model.fresh > 0 { pill.padding(.top, Space.s).transition(.move(edge: .top).combined(with: .opacity)) }
-      }
-      .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: model.fresh > 0)
+      list
     }
   }
 
@@ -234,13 +231,16 @@ private struct HomeMovesView: View {
                 if i > 0 { Rectangle().fill(LiuliMaterial(t).rule).frame(height: 0.5).padding(.leading, 61).pageHorizontalInset() }
                 HomeMoveRow(row: row, zone: zone, now: now, favorite: row.favorite || isFavorite(row.base),
                             onStar: { onStar(row.base) }, onOpen: { onOpen(row) })
+                  .id(row.id)
               }
             }
           }
+          .scrollTargetLayout()
           .padding(.bottom, bottomInset)
           .grayscale(model.failed ? 1 : 0)
           .opacity(model.failed ? 0.62 : 1)
         }
+        .scrollPosition(id: $visibleRow, anchor: .top)
         .scrollIndicators(.hidden)
         .refreshable { await reload() }
         .onChange(of: model.reorderToken) { _, _ in
@@ -262,26 +262,7 @@ private struct HomeMovesView: View {
     }
   }
 
-  private var pill: some View {
-    Button {
-      Haptics.tap()
-      withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85)) { model.reorderNow() }
-    } label: {
-      HStack(spacing: Space.xs) {
-        Image(systemName: "arrow.up").font(TypeScale.caption2Emph)
-        Text(HighlightTerm.newMoves.fill(["n": "\(model.fresh)"])).font(TypeScale.controlOn).monospacedDigit()
-      }
-      .foregroundStyle(t.badgeInk)
-      .padding(.horizontal, Space.m)
-      .frame(height: 32)
-      .background(t.amber, in: Capsule())
-      .shadow(color: .black.opacity(0.14), radius: 6, y: 2)
-      .frame(minHeight: Hit.min)
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .accessibilityIdentifier("home.newMoves")
-  }
+
 }
 
 /// 分类的那一点颜色：盘口走强调色、持仓走暖金、费率走次墨。色相不多开。

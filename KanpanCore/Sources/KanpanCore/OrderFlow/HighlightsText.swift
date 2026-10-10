@@ -156,15 +156,18 @@ public enum HighlightsText {
 
   // MARK: 价位
 
-  /// 墙的状态词：挂单中 / 撤单中 / 已破。
-  public static func wallState(_ state: HighlightLevel.WallState?) -> String? {
+  /// 墙的状态词：挂单中 / 撤单中 / 按买卖方向区分破位。
+  public static func wallState(_ state: HighlightLevel.WallState?, side: HighlightSide) -> String? {
     switch state {
     case .live: return T.wallLive.text
     case .reducing: return T.wallReducing.text
-    case .broken: return T.wallBroken.text
+    case .broken: return brokenWord(side)
     case nil: return nil
     }
   }
+
+  /// 卖区向上突破、买区向下跌破。
+  public static func brokenWord(_ side: HighlightSide) -> String { (side == .ask ? T.brokenUp : T.brokenDown).text }
 
   /// 结构参照位的名字（`dayHigh` → 今日高点）；不认识的键不写。
   public static func refName(_ key: String) -> String? {
@@ -180,15 +183,7 @@ public enum HighlightsText {
     }
   }
 
-  /// 价位行左边第二行：`距 0.4%`，叠了结构位时再加 ` · = 今日低点`（只写第一个）。
-  /// 价区包住现价时写「现价内」（`price` 按每枚币）。
-  public static func levelDistance(_ level: HighlightLevel, price: Double? = nil) -> String {
-    var s = level.straddles(price) ? T.atPrice.text : T.dist.fill(["v": distance(level.distPct)])
-    if let ref = level.refs.lazy.compactMap(refName).first { s += " · = " + ref }
-    return s
-  }
-
-  /// 价位行右边两行：`墙 35M · 挂 48 分` 或 `吃单 120M`；第二行 `爆仓 18M · 测 5 次` 或 `测 2 次`。
+  /// 价位行右边两行：`墙 35M · 挂 48 分` 或 `吃单 120M`；有爆仓时第二行写 `爆仓 18M`。
   public static func levelMeta(_ level: HighlightLevel) -> (top: [HighlightRun], bottom: String) {
     let top: [HighlightRun]
     if level.wallUsd > 0 {
@@ -197,13 +192,9 @@ public enum HighlightsText {
     } else {
       top = [HighlightRun(T.fill.text + " "), HighlightRun(usd(level.fillUsd), strong: true)]
     }
-    let bottom = [level.liqUsd > 0 ? T.liqMeta.fill(["v": usd(level.liqUsd)]) : nil, testsText(level.tests)]
-      .compactMap { $0 }.joined(separator: " · ")
+    let bottom = level.liqUsd > 0 ? T.liqMeta.fill(["v": usd(level.liqUsd)]) : ""
     return (top, bottom)
   }
-
-  /// 「测 N 次」：0 次不写（给 `nil`）。
-  static func testsText(_ n: Int) -> String? { n > 0 ? T.tests.fill(["n": "\(n)"]) : nil }
 
   /// 「 · 挂 48 分」：没挂过（0）不写。
   static func heldTail(_ ms: Int64) -> String? { ms > 0 ? " · " + T.heldFor.fill(["d": duration(ms)]) : nil }
@@ -220,16 +211,16 @@ public enum HighlightsText {
     }
     if level.wallUsd > 0 {
       var tail = heldTail(level.wallHeldMs) ?? ""
-      if let w = wallState(level.wallState) { tail += " · " + w }
+      if let w = wallState(level.wallState, side: level.side) { tail += " · " + w }
       out.append((T.wall.text, [HighlightRun(usd(level.wallUsd), strong: true), HighlightRun(tail)]))
     } else if level.wallState == .broken {
-      out.append((T.wall.text, [HighlightRun(T.wallBroken.text)]))
+      out.append((T.wall.text, [HighlightRun(brokenWord(level.side))]))
     }
     let touches = level.touchMs.compactMap { $0 }
     if level.tests > 0 || !touches.isEmpty {
       var parts: [String] = []
       for t in touches { let c = clock(t, zone: zone); if parts.last != c { parts.append(c) } }
-      parts.append(level.wallState == .broken ? T.wallBroken.text : T.unbroken.text)
+      parts.append(level.wallState == .broken ? brokenWord(level.side) : T.unbroken.text)
       out.append((T.touch.text, [HighlightRun(parts.joined(separator: " · "))]))
     }
     let refs = level.refs.compactMap(refName)
@@ -250,7 +241,7 @@ public enum HighlightsText {
             HighlightRun(price(l.low * scale, decimals: decimals), strong: true)]
   }
 
-  /// 入口条那一句：`下方 86,120 买区 35M · 挂 48 分 · 测 2 次`（包住现价的写 `现价内 a–b 卖区 …`，且优先取它）；
+  /// 入口条那一句：`下方 86,120 买区 35M · 挂 48 分`（包住现价的写 `现价内 a–b 卖区 …`，且优先取它）；
   /// 没价位时写 `1 时净主动 +46M`；都没有给 `nil`。`price` 是每枚币的现价。
   public static func entrySentence(_ page: HighlightsPage, decimals: Int?, scale: Double = 1, price p: Double? = nil) -> [HighlightRun]? {
     if let l = page.nearestLevel(price: p) {
@@ -261,7 +252,6 @@ public enum HighlightsText {
       } else {
         runs.append(HighlightRun(T.fillMeta.fill(["v": usd(l.fillUsd)])))
       }
-      if let tests = testsText(l.tests) { runs.append(HighlightRun(" · " + tests)) }
       return runs
     }
     if let row = page.flow?.rows.first(where: { $0.w == .h1 }), let v = row.netUsd, v.isFinite {
@@ -277,11 +267,7 @@ public enum HighlightsText {
     let runs = [HighlightRun(T.range.text + " "),
                 HighlightRun(band(low: r.low * scale, high: r.high * scale, decimals: decimals), strong: true),
                 HighlightRun(" · " + T.rangeAge.fill(["h": "\(hours)"]))]
-    // 两沿各自：累计吃单 + 测几次（0 次不写），和手机网页 rangeEdgesText 同口径。
-    func edge(_ term: HighlightTerm, _ v: Double, _ n: Int) -> String {
-      ([term.fill(["v": usd(v)])] + [testsText(n)].compactMap { $0 }).joined(separator: " · ")
-    }
-    let edges = edge(.rangeLowEdge, r.lowFillUsd, r.lowTests) + " ｜ " + edge(.rangeHighEdge, r.highFillUsd, r.highTests)
+    let edges = T.rangeLowEdge.fill(["v": usd(r.lowFillUsd)]) + " ｜ " + T.rangeHighEdge.fill(["v": usd(r.highFillUsd)])
     return (runs, edges)
   }
 
@@ -352,7 +338,6 @@ public enum HighlightsText {
       runs.append(HighlightRun((e.t == .wallEaten ? T.wallEaten : T.wallCancel).fill(["w": w]) + " "))
       runs.append(HighlightRun(usd(e.usd ?? 0), strong: true))
       if withPrice, let p = e.price { runs.append(HighlightRun(" @ " + px(p))) }
-      if let d = e.distPct { runs.append(HighlightRun(" · " + T.distPrice.fill(["v": distance(d)]))) }
     case .flowBurst:
       let net = e.netUsd ?? 0
       runs.append(HighlightRun((net >= 0 ? T.takerBuy : T.takerSell).text + " "))
@@ -371,7 +356,7 @@ public enum HighlightsText {
         runs.append(HighlightRun(band(low: lo * scale, high: hi * scale, decimals: decimals), strong: true))
         runs.append(HighlightRun(" "))
       }
-      runs.append(HighlightRun(T.broken.text))
+      runs.append(HighlightRun(brokenWord(e.side == "ask" ? .ask : .bid)))
     }
     return runs
   }

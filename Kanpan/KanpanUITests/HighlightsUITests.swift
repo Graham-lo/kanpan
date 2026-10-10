@@ -36,6 +36,17 @@ final class HighlightsUITests: KanpanUICase {
     row.tap()
     let sheet = el("highlights.sheet")
     expectExists(sheet, Self.long)
+    func assertSimplifiedCopy() {
+      let text = sheet.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " ")
+      XCTAssertNil(text.range(of: "测\\s*\\d+\\s*次", options: .regularExpression))
+      XCTAssertFalse(text.contains("距价"))
+      XCTAssertFalse(text.contains("已破"))
+    }
+    assertSimplifiedCopy()
+    let level = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "highlights.level.")).firstMatch
+    if level.exists { level.tap(); assertSimplifiedCopy() }
+    let simplified = XCTAttachment(screenshot: app.screenshot())
+    simplified.name = "盘口要点精简文案"; simplified.lifetime = .keepAlways; add(simplified)
     app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.12)).tap()
     expectGone(sheet, Self.short)
     let band = app.staticTexts["highlights.chartBand"]

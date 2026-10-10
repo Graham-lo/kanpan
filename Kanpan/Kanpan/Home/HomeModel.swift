@@ -5,8 +5,7 @@ import KanpanNetwork
 /// 首页（PROJECT.md §79）：「异动」一列 +「涨跌」「持仓」两段榜单（各两张、各自记窗口）+「板块」（原底栏「板块分类」那一页，2026-10-10 并进来）。挂在 `MainScreen` 的 `@State` 上——
 /// 首页每切走一次整页拆掉重建，列表的顺序、拉到的数、选的窗口都得活在页外面。
 ///
-/// 「异动」打开时定序，之后每 60 秒拉一次：已在列表里的行就地换数、不换位；新出现的、或同一只又有了更新的
-/// 只计数（浮「有 N 条新异动」药丸），点药丸 / 下拉刷新才按服务端顺序重排（和手机网页 `highlights/home.ts` 同一套）。
+/// 「异动」每 60 秒自动更新，直接展示最新数据；后台更新不要求确认，也不触发滚回顶部。
 @MainActor
 @Observable
 final class HomeModel {
@@ -44,40 +43,19 @@ final class HomeModel {
 
   // MARK: 异动
 
-  /// 正在显示的那一列（定序后的）。nil = 还没拉到过。
+  /// 正在显示的最新一列。nil = 还没拉到过。
   private(set) var shown: [HighlightsBoard.Row]?
-  private(set) var latest: [HighlightsBoard.Row]?
   private(set) var generatedAtMs: Int64 = 0
   /// 最近一次没取到。手里有旧的就照摆、写「停于」。
   private(set) var failed = false
-  /// 每次重排加一：列表滚回顶。
+  /// 手动下拉刷新加一：列表滚回顶。
   private(set) var reorderToken = 0
-  /// 上一次带去的自选币名（换人、加减自选之后第一轮直接重排）。
-  @ObservationIgnored private var lastBases: [String]?
-
-  /// 还没算进列表的新异动条数。
-  var fresh: Int {
-    guard let shown, let latest else { return 0 }
-    return Self.merge(shown: shown, latest: latest).fresh
-  }
-
   var visibleRows: [HighlightsBoard.Row] {
     let rows = shown ?? []
     switch chip {
     case .all: return rows
     case .cat(let c): return rows.filter { $0.cat == c }
     }
-  }
-
-  /// 新拉到的并进正在显示的：顺序不动，已有的换成新数据；没了的留着旧数据；新来的（或同一只更新了的）只计数。
-  static func merge(shown: [HighlightsBoard.Row], latest: [HighlightsBoard.Row]) -> (rows: [HighlightsBoard.Row], fresh: Int) {
-    let byBase = Dictionary(latest.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    let had = Dictionary(shown.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    let fresh = latest.reduce(0) { n, r in
-      guard let old = had[r.id] else { return n + 1 }
-      return r.atMs > old.atMs ? n + 1 : n
-    }
-    return (shown.map { byBase[$0.id] ?? $0 }, fresh)
   }
 
   /// 自选里的币名（去掉缩放前缀、去重、保序，最多 60 只）。
@@ -94,27 +72,13 @@ final class HomeModel {
   /// 点异动行要不要自动升「盘口要点」半页：波动行只开图（它说的是价格本身，半页里没有对应的那条）。
   static func opensSheet(_ row: HighlightsBoard.Row) -> Bool { row.cat != .move }
 
-  /// 拉一份。`reorder` = 按服务端顺序重排（首次、点药丸、下拉刷新、换了自选）。
+  /// 拉一份最新列表。只有手动刷新（reorder）才通知界面滚回顶。
   func load(bases: [String], reorder: Bool, fetch: BoardFetch) async {
-    let changed = lastBases != nil && lastBases != bases
-    lastBases = bases
     guard let board = await fetch(bases) else { failed = true; return }
     failed = false
     generatedAtMs = board.generatedAtMs
-    latest = board.rows
-    if reorder || changed || shown == nil {
-      shown = board.rows
-      reorderToken += 1
-    } else if let shown {
-      self.shown = Self.merge(shown: shown, latest: board.rows).rows
-    }
-  }
-
-  /// 点「有 N 条新异动」：按服务端顺序重排、滚回顶。
-  func reorderNow() {
-    guard let latest else { return }
-    shown = latest
-    reorderToken += 1
+    shown = board.rows
+    if reorder { reorderToken += 1 }
   }
 
   /// 一轮一轮拉，直到任务取消（离开首页、换段、换自选）。

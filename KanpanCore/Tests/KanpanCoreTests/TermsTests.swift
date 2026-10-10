@@ -34,7 +34,7 @@ struct TermsTests {
     // 这一组手机网页也读，网页独有的键（重试、搜索这类）可以只在 JSON 里有；反过来 iOS 用到的每个键必须在。
     #expect(Set(HighlightTerm.allCases.map(\.rawValue)).isSubset(of: Set(table.keys)))
     #expect(HighlightTerm.title.text == "盘口要点")
-    #expect(HighlightTerm.tests.fill(["n": "2"]) == "测 2 次")
+    #expect(HighlightTerm.minutes.fill(["n": "2"]) == "2 分")
     #expect(HighlightTerm.wRange.fill(["h": "31"]) == "区间 31 时")
     let banned = ["挂着", "在场", "在减", "这只品种", "偏多", "偏空", "看涨", "看跌"]
     for (k, v) in table {

@@ -123,16 +123,6 @@ html[data-theme="dark"] .hm-pill { background: color-mix(in srgb, var(--pc) 20%,
 .hm-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 96px; color: var(--ink3); font: 400 13px/1.4 var(--font-ui) }
 .hm-retry { height: 32px; padding: 0 16px; border-radius: 16px; font: 600 12px/1 var(--font-ui); color: var(--accent); background: var(--lg-glass); box-shadow: inset 0 0 0 .5px var(--lg-edge-soft) }
 
-/* 有新异动 */
-.hm-newpill {
-  position: absolute; top: 8px; left: 50%; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px;
-  font: 600 12px/1 var(--font-ui); color: var(--badge-ink); background: var(--accent);
-  box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--accent) 70%, transparent);
-  transform: translateX(-50%); animation: hm-drop 350ms cubic-bezier(.34, 1.4, .64, 1);
-}
-.hm-newpill svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
-@keyframes hm-drop { from { transform: translate(-50%, -40px); opacity: 0 } to { transform: translate(-50%, 0); opacity: 1 } }
-
 /* ───────── 涨跌 / 持仓 ─────────
  * 不再是大方框卡（用户 2026-10-10）：标题行（13 semibold 次墨，行尾窗口小胶囊 /「全部 · 收起」纯文字链）
  * + 照自选页的行（名次小字 · 徽章 28 · 名字 13 semibold · 等宽数 · 涨跌药丸，行高 58，发丝分隔）；

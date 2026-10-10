@@ -1,8 +1,7 @@
 /* 手机网页版 · 首页（照 docs/原型-手机首页异动与盘口要点-2026-10-10.html §01 / §02，iOS Home/）
  *
  * 底栏最左一格、启动默认。头部一行：分段胶囊「异动 · 涨跌 · 持仓 · 板块」（照自选页分类胶囊，左对齐）+ 放大镜圆片。
- * 异动：分类胶囊（全部 / 盘口 / 持仓 / 费率 / 波动）+ 一行范围与更新时刻 + 列表。打开时定序，之后每 60 s 拉一次，
- *   已有的行就地换数不换位，有新的只浮「有 N 条新异动」药丸；点药丸滚到顶重排，下拉刷新立即重排。
+ * 异动：分类胶囊（全部 / 盘口 / 持仓 / 费率 / 波动）+ 一行范围与更新时刻 + 列表。每 60 s 无提示更新到最新数据，保留正在看的行与屏内位置。
  *   点一行：放一份意图（展开哪张卡）再进行情页，行情页 240 ms 后自己升半页；波动行只进图、不升半页。
  *   横滑扫图名单 = 当时列表顺序。未登录只扫热门（不带自选）；登录后带上自选的币名，服务端自选层补跟。
  * 涨跌：涨幅榜 / 跌幅榜；持仓：增仓榜 / 减仓榜。两页各自一个窗口（1 时 / 4 时 / 24 时，出厂 4 时），小胶囊摆在
@@ -31,7 +30,7 @@ import { baseOfSymbol } from '../../orderflow/settings'
 import { HL, fill } from '../../terms'
 import { fetchBoard, fetchMarketBoard, type BoardRow, type BoardCat, type MarketKind, type MarketRow, type MarketWindow } from '../../highlights/api'
 import { agoText, boardFact, hhmm, levelPx, movePill, signedPct, usd } from '../../highlights/format'
-import { RANK_KINDS, favoriteBases, filterRows, focusOf, mergeBoard, parseHomeLocal, symbolFor, type Chip, type HomeLocal, type RankPage } from '../../highlights/home'
+import { RANK_KINDS, favoriteBases, filterRows, focusOf, parseHomeLocal, symbolFor, type Chip, type HomeLocal, type RankPage } from '../../highlights/home'
 
 const LS_KEY = 'hkline-m-home-v1'
 const POLL_MS = 60_000
@@ -74,7 +73,6 @@ const meter = (t: 1 | 2 | 3): string =>
   `<span class="mt" aria-hidden="true"><i class="${t >= 1 ? 'on' : ''}" style="height:4px"></i><i class="${t >= 2 ? 'on' : ''}" style="height:7px"></i><i class="${t >= 3 ? 'on' : ''}" style="height:10px"></i></span>`
 
 const STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.85 1.03-6L3.3 9.6l6-.9z"/></svg>'
-const ARROW_UP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>'
 const CALM = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-3 3 6 2-3h7"/></svg>'
 
 /** 一行异动的标签与颜色：波动按方向（急涨涨色 / 急跌跌色），其余按类 */
@@ -129,7 +127,6 @@ export function initHome(root: HTMLElement): PageHandle {
       <div class="hm-body">
         <div class="hm-ptr" aria-hidden="true">${icon('refresh', 16)}</div>
         <div class="hm-scroll"><div class="hm-list" role="list"></div></div>
-        <button type="button" class="hm-newpill" hidden>${ARROW_UP}<span></span></button>
       </div>
     </section>
     ${rankSection('change')}${rankSection('oi')}
@@ -141,13 +138,11 @@ export function initHome(root: HTMLElement): PageHandle {
   const ranksEl: Record<RankPage, HTMLElement> = { change: q('.hm-rank[data-page="change"] .hm-ranks'), oi: q('.hm-rank[data-page="oi"] .hm-ranks') }
   const chipsEl = q('.hm-chips'), subL = q('.hm-sub .l'), subR = q('.hm-sub .r')
   const body = q('.hm-body'), ptr = q('.hm-ptr'), scroll = q('.hm-moves .hm-scroll'), list = q('.hm-list')
-  const newPill = q<HTMLButtonElement>('.hm-newpill')
   const sectors = initSectors(sectorsEl)
   let sectorsOn = false
 
   let active = false
-  let shown: BoardRow[] | null = null    // 正在显示的那份（定了序）
-  let latest: BoardRow[] | null = null   // 最近一次拉到的
+  let shown: BoardRow[] | null = null    // 正在显示的最新数据
   let generatedAt = 0
   let failed = false
   let loading = false
@@ -190,17 +185,10 @@ export function initHome(root: HTMLElement): PageHandle {
     list.innerHTML = rows.length ? rows.map(r => moveRowHTML(r, now)).join('') : `<div class="hm-empty"><span>${esc(HL.noRows)}</span></div>`
   }
 
-  function renderPill(): void {
-    if (!shown || !latest) { newPill.hidden = true; return }
-    const { fresh } = mergeBoard(shown, latest)
-    newPill.hidden = fresh === 0
-    if (fresh) newPill.querySelector('span')!.textContent = fill(HL.newMoves, { n: fresh })
-  }
+  function renderMoves(): void { renderChips(); renderSub(); renderList() }
 
-  function renderMoves(): void { renderChips(); renderSub(); renderList(); renderPill() }
-
-  /** 拉一份；reorder = 按服务端顺序重排（首次、点药丸、下拉刷新、换账号） */
-  async function load(reorder: boolean): Promise<void> {
+  /** 拉一份；自动采用最新列表，后台刷新保留正在看的行与屏内位置 */
+  async function load(): Promise<void> {
     const seq = ++reqSeq
     loading = true
     const bases = session.userId ? favoriteBases(st.symbols.favorites, baseOf) : []
@@ -210,18 +198,18 @@ export function initHome(root: HTMLElement): PageHandle {
     if (!r.ok) { failed = true; if (active) renderMoves(); return }
     failed = false
     generatedAt = r.data.generatedAtMs
-    latest = r.data.rows
-    if (reorder || !shown) shown = latest
-    else shown = mergeBoard(shown, latest).rows
-    if (active) renderMoves()
-  }
-
-  function reorderNow(): void {
-    if (!latest) return
-    shown = latest
-    newPill.hidden = true
-    scroll.scrollTo({ top: 0, behavior: 'smooth' })
-    renderMoves()
+    const anchors = scroll.scrollTop > 0 ? [...list.querySelectorAll<HTMLElement>('.hm-row[data-key]')]
+      .filter(el => el.getBoundingClientRect().bottom > scroll.getBoundingClientRect().top)
+      .map(el => ({ key: el.dataset.key, top: el.getBoundingClientRect().top })) : []
+    shown = r.data.rows
+    if (active) {
+      renderMoves()
+      // 优先保住刷新前屏内第一条仍存在的行；它消失时用下一条。
+      for (const anchor of anchors) {
+        const row = [...list.querySelectorAll<HTMLElement>('.hm-row[data-key]')].find(el => el.dataset.key === anchor.key)
+        if (row) { scroll.scrollTop += row.getBoundingClientRect().top - anchor.top; break }
+      }
+    }
   }
 
   // ───────── 涨跌 / 持仓 ─────────
@@ -286,7 +274,7 @@ export function initHome(root: HTMLElement): PageHandle {
   function tick(): void {
     if (!active || document.hidden) return
     const seg = homeSeg()
-    if (seg === 'moves') void load(false)
+    if (seg === 'moves') void load()
     else if (isRank(seg)) loadRank(seg)
   }
   function startPoll(): void { stopPoll(); timer = window.setInterval(tick, POLL_MS) }
@@ -296,14 +284,13 @@ export function initHome(root: HTMLElement): PageHandle {
     applySeg()
     syncSectors()
     const seg = homeSeg()
-    if (seg === 'moves') { renderMoves(); if (!loading) void load(!shown) }
+    if (seg === 'moves') { renderMoves(); if (!loading) void load() }
     else if (isRank(seg)) { renderRank(seg); loadRank(seg) }
   }
 
   function reselect(): void {
     const seg = homeSeg()
     if (seg === 'sectors') { sectors.reselect?.(); return }
-    if (seg === 'moves' && latest && !newPill.hidden) { reorderNow(); return }
     const sc = seg === 'moves' ? scroll : ranksEl[seg]
     sc.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -331,7 +318,7 @@ export function initHome(root: HTMLElement): PageHandle {
 
   list.addEventListener('click', e => {
     const t = e.target as HTMLElement
-    if (t.closest('.hm-retry')) { failed = false; renderList(); void load(true); return }
+    if (t.closest('.hm-retry')) { failed = false; renderList(); void load(); return }
     const star = t.closest<HTMLElement>('[data-star]')
     if (star) {
       e.stopPropagation()
@@ -353,8 +340,6 @@ export function initHome(root: HTMLElement): PageHandle {
     if (focus) setHighlightIntent(sym, focus)
     openSymbol(sym, order)
   })
-
-  newPill.addEventListener('click', reorderNow)
 
   for (const pg of ['change', 'oi'] as const) {
     ranksEl[pg].addEventListener('click', e => {
@@ -406,15 +391,14 @@ export function initHome(root: HTMLElement): PageHandle {
     if (pulled >= PULL_PX) {
       body.classList.add('refreshing')
       setPull(44, true)
-      newPill.hidden = true
-      void load(true).finally(() => { body.classList.remove('refreshing'); setPull(0, true) })
+      void load().finally(() => { body.classList.remove('refreshing'); setPull(0, true) })
     } else setPull(0, true)
   }
   scroll.addEventListener('touchend', endPull)
   scroll.addEventListener('touchcancel', endPull)
 
-  // 账号变了：重新拉、重新定序；自选变了：星与范围跟着改（不打断当前顺序）
-  onSession(() => { shown = null; latest = null; if (active && homeSeg() === 'moves') { renderMoves(); void load(true) } })
+  // 账号变了：重新拉；自选变了：星与范围跟着更新
+  onSession(() => { shown = null; if (active && homeSeg() === 'moves') { renderMoves(); void load() } })
   let favSig = st.symbols.favorites.join(',')
   subscribe(() => {
     const sig = st.symbols.favorites.join(',')

@@ -78,7 +78,7 @@ struct HighlightsTests {
     let ev = #"{"generatedAtMs":1,"rows":[{"atMs":1,"base":"ETH","cat":"book","changePct":0.6,"count":1,"favorite":true,"price":3812.4,"tier":1,"top":{"kind":"event","id":"E:wallCancel:1","t":"wallCancel","atMs":1791606780000,"price":3820,"usd":19600000,"side":"sell","distPct":0.05}},{"base":"BAD","cat":"book","top":{"kind":"mystery"}}]}"#
     let b2 = try JSONDecoder().decode(HighlightsBoard.self, from: Data(ev.utf8))
     #expect(b2.rows.count == 1)
-    #expect(HighlightsText.homeFact(b2.rows[0], zone: Self.utc8).plain == "卖墙撤单 19.6M · 距价 0.05%")
+    #expect(HighlightsText.homeFact(b2.rows[0], zone: Self.utc8).plain == "卖墙撤单 19.6M")
     #expect(HighlightsText.focusID(b2.rows[0]) == "E:wallCancel:1")
   }
 
@@ -152,7 +152,7 @@ struct HighlightsTests {
   func entrySentence() throws {
     let p = try Self.page("highlights-btc")
     let s = try #require(HighlightsText.entrySentence(p, decimals: 1))
-    #expect(s.plain == "下方 82,609 买区 406M · 挂 16 时 · 测 26 次")
+    #expect(s.plain == "下方 82,609 买区 406M · 挂 16 时")
     #expect(s.first(where: \.strong)?.text == "82,609")
 
     let bare = HighlightsPage(base: "X", generatedAtMs: 1, tracked: true,
@@ -163,7 +163,7 @@ struct HighlightsTests {
       HighlightLevel(id: "a", low: 85_400, high: 85_400, side: .bid, distPct: -1.3, fillBuyUsd: 70e6, fillSellUsd: 50e6, tests: 5),
       HighlightLevel(id: "b", low: 87_450, high: 87_450, side: .ask, distPct: 1.1, fillBuyUsd: 20e6, fillSellUsd: 28e6, tests: 3),
     ])
-    #expect(HighlightsText.entrySentence(fill, decimals: 1)?.plain == "上方 87,450 卖区 吃单 48M · 测 3 次")
+    #expect(HighlightsText.entrySentence(fill, decimals: 1)?.plain == "上方 87,450 卖区 吃单 48M")
   }
 
   @Test("流向表：窗口名、第四行加粗")
@@ -182,16 +182,16 @@ struct HighlightsTests {
     let p = try Self.page("highlights-btc")
     #expect(p.above().map(\.id) == ["L:14163"])
     #expect(p.below().map(\.id) == ["L:14158", "L:14153"])
-    #expect(HighlightsText.wallState(.live) == "挂单中")
-    #expect(HighlightsText.wallState(.reducing) == "撤单中")
-    #expect(HighlightsText.wallState(.broken) == "已破")
-    #expect(HighlightsText.wallState(nil) == nil)
+    #expect(HighlightsText.wallState(.live, side: .bid) == "挂单中")
+    #expect(HighlightsText.wallState(.reducing, side: .bid) == "撤单中")
+    #expect(HighlightsText.wallState(.broken, side: .bid) == "已跌破")
+    #expect(HighlightsText.wallState(.broken, side: .ask) == "已突破")
+    #expect(HighlightsText.wallState(nil, side: .bid) == nil)
 
     let l = p.levels[0]
-    #expect(HighlightsText.levelDistance(l) == "距 0.3% · = 今日高点")
     let meta = HighlightsText.levelMeta(l)
     #expect(meta.top.plain == "墙 50M · 挂 16 时")
-    #expect(meta.bottom == "爆仓 8.8M · 测 13 次")
+    #expect(meta.bottom == "爆仓 8.8M")
 
     let ev = HighlightsText.evidence(l, zone: Self.utc8)
     #expect(ev.map(\.label) == ["吃单", "墙", "触及", "叠加"])
@@ -211,7 +211,7 @@ struct HighlightsTests {
     let r = try #require(p.range)
     let line = HighlightsText.rangeLine(r, nowMs: p.generatedAtMs, decimals: 1)
     #expect(line.runs.plain == "区间 81,386–83,500 · 已走 37 时")
-    #expect(line.edges == "下沿累计吃单 6.9B · 测 4 次 ｜ 上沿 10.7B · 测 9 次")
+    #expect(line.edges == "下沿累计吃单 6.9B ｜ 上沿 10.7B")
     #expect(HighlightsText.rangePosition(r, price: 81_386.2) == 0)
     #expect(HighlightsText.rangePosition(r, price: 90_000) == 1)
   }
@@ -237,7 +237,7 @@ struct HighlightsTests {
   func events() throws {
     let p = try Self.page("highlights-btc")
     let s = HighlightsText.eventSentence(p.events[0], decimals: 1)
-    #expect(s.plain == "卖墙被吃 11.3M @ 82,780 · 距价 0.01%")
+    #expect(s.plain == "卖墙被吃 11.3M @ 82,780")
     #expect(HighlightsText.eventTime(p.events[0], zone: Self.utc8) == HighlightsText.clock(p.events[0].atMs!, zone: Self.utc8))
 
     let zro = try Self.page("highlights-zro")
@@ -246,7 +246,15 @@ struct HighlightsTests {
     let oi = HighlightEvent(id: "o", t: .oiJump, atMs: 1, pct: 1.4)
     #expect(HighlightsText.eventSentence(oi, decimals: 2).plain == "持仓 5 分钟 +1.4%")
     let broken = HighlightEvent(id: "k", t: .levelBroken, atMs: 1, low: 82_500, high: 82_560, side: "bid")
-    #expect(HighlightsText.eventSentence(broken, decimals: 1).plain == "买区 82,500–82,560 已破")
+    #expect(HighlightsText.eventSentence(broken, decimals: 1).plain == "买区 82,500–82,560 已跌破")
+    let breakthrough = HighlightEvent(id: "up", t: .levelBroken, atMs: 1, low: 82_500, high: 82_560, side: "ask")
+    #expect(HighlightsText.eventSentence(breakthrough, decimals: 1).plain == "卖区 82,500–82,560 已突破")
+    for side: HighlightSide in [.bid, .ask] {
+      let level = HighlightLevel(id: "broken", low: 100, high: 101, side: side, distPct: 0, wallUsd: 0, wallState: .broken, tests: 9)
+      let copy = HighlightsText.evidence(level, zone: Self.utc8).map { $0.runs.plain }.joined(separator: " ")
+      #expect(copy.contains(side == .ask ? "已突破" : "已跌破"))
+      #expect(!copy.contains("测 "))
+    }
   }
 
   @Test("首页事实句：价位 / 三格")
@@ -281,14 +289,12 @@ struct HighlightsTests {
     #expect(p.nearestLevel(price: price)?.id == "in")
     #expect(p.nearestLevel()?.id == "dn")
     let s = HighlightsText.entrySentence(p, decimals: 3, price: price)
-    #expect(s?.plain == "现价内 63.405–63.659 卖区 2.3M · 挂 1 时 · 测 2 次")
+    #expect(s?.plain == "现价内 63.405–63.659 卖区 2.3M · 挂 1 时")
     #expect(s?.first(where: \.strong)?.text == "63.405–63.659")
 
     #expect(p.atPrice(price).map(\.id) == ["in"])
     #expect(p.above(price: price).map(\.id) == ["up"])
     #expect(p.below(price: price).map(\.id) == ["dn"])
-    #expect(HighlightsText.levelDistance(inside, price: price) == "现价内")
-    #expect(HighlightsText.levelDistance(inside) == "距 0.05%")
 
     let row = HighlightsBoard.Row(base: "HYPE", favorite: false, count: 1, cat: .book, tier: 2, top: .level(inside),
                                   price: price, changePct: 1.2, atMs: 0)
@@ -310,13 +316,13 @@ struct HighlightsTests {
     let liq = HighlightLevel(id: "l", low: 90, high: 91, side: .bid, distPct: 1, fillBuyUsd: 1_000_000, liqUsd: 500_000)
     #expect(HighlightsText.levelMeta(liq).bottom == "爆仓 500K")
     let tested = HighlightLevel(id: "t", low: 90, high: 91, side: .bid, distPct: 1, fillBuyUsd: 1_000_000, tests: 3)
-    #expect(HighlightsText.levelMeta(tested).bottom == "测 3 次")
+    #expect(HighlightsText.levelMeta(tested).bottom == "")
     let q = HighlightsPage(base: "X", generatedAtMs: 1, tracked: true, levels: [liq])
     #expect(HighlightsText.entrySentence(q, decimals: 0)?.plain == "下方 90 买区 吃单 1M")
 
     // 区间两沿：测 0 次那一沿只写累计吃单。
     let r = HighlightRange(low: 80, high: 90, sinceMs: 0, lowFillUsd: 47_200_000, lowTests: 2, highFillUsd: 94_300_000, highTests: 0)
-    #expect(HighlightsText.rangeLine(r, nowMs: 7_200_000, decimals: 0).edges == "下沿累计吃单 47.2M · 测 2 次 ｜ 上沿 94.3M")
+    #expect(HighlightsText.rangeLine(r, nowMs: 7_200_000, decimals: 0).edges == "下沿累计吃单 47.2M ｜ 上沿 94.3M")
   }
 
   @Test("波动行：包在 top 里或平铺都收；认不出的 cat 只丢那一行")

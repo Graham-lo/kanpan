@@ -1,14 +1,11 @@
-/* Hkline Web · 首页「异动」列表的纯逻辑（测试直接测）
- *
- * 列表打开时定序，之后每 60 s 拉一次：已在列表里的行就地换数、不换位；新出现的、或同一只又有了更新的异动
- * 只计数（浮「有 N 条新异动」药丸），点药丸 / 下拉刷新才按服务端顺序重排。
- */
+/* Hkline Web · 首页异动筛选、定位与本机偏好。 */
 import type { BoardCat, BoardRow, BoardTop, MarketKind, MarketWindow } from './api'
 
 export type Chip = 'all' | BoardCat
 /** 行情页半页要展开的那张卡（与 m/pages/chart/highlightsSheet 的 Focus 同形） */
 export type RowFocus = { kind: 'level'; id: string } | { kind: 'event'; id: string } | { kind: 'position' }
 
+// 电脑首页仍使用待确认重排；手机首页直接采用最新列表。
 /** 新拉到的一份并进正在显示的列表：顺序不动，已有的换成新数据；没了的留着旧数据；新来的只计数 */
 export function mergeBoard(shown: readonly BoardRow[], latest: readonly BoardRow[]): { rows: BoardRow[]; fresh: number } {
   const byKey = new Map(latest.map(r => [r.key, r]))

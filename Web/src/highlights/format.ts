@@ -80,9 +80,9 @@ export function agoText(at: number, now: number): string {
   return fill(HL.hoursAgo, { n: Math.floor(d / H) })
 }
 
-export function wallStateWord(s: WallState | null, cancelPct: number | null): string {
+export function wallStateWord(s: WallState | null, cancelPct: number | null, side: 'bid' | 'ask'): string {
   if (s === 'live') return HL.wallLive
-  if (s === 'broken') return HL.wallBroken
+  if (s === 'broken') return brokenWord(side)
   if (s === 'reducing') return cancelPct != null ? fill(HL.wallReducingPct, { p: Math.round(cancelPct * 100) + '%' }) : HL.wallReducing
   return ''
 }
@@ -92,6 +92,8 @@ const REF_WORD: Record<LevelRef, string> = {
   vwap: HL.refVwap, rangeHigh: HL.refRangeHigh, rangeLow: HL.refRangeLow,
 }
 export const refWord = (r: LevelRef): string => REF_WORD[r]
+
+export const brokenWord = (side: 'bid' | 'ask'): string => side === 'ask' ? HL.brokenUp : HL.brokenDown
 
 export const zoneWord = (side: 'bid' | 'ask'): string => (side === 'bid' ? HL.buyZone : HL.sellZone)
 export const levelFill = (l: Level): number => l.fillBuyUsd + l.fillSellUsd
@@ -103,16 +105,15 @@ export function straddles(l: Level, price: number | null | undefined): boolean {
   return l.distPct === 0
 }
 
-/** 价位一句话（入口条、首页行）：下方 <b>86,120</b> 买区 35M · 挂 48 分 · 测 2 次；
+/** 价位一句话（入口条、首页行）：下方 <b>86,120</b> 买区 35M · 挂 48 分；
  *  价区包住现价时：现价内 <b>63.405–63.659</b> 卖区 12M · 挂 9 分 */
-export function levelSentence(l: Level, opts: { held?: boolean; tests?: boolean; price?: number | null } = {}): string {
+export function levelSentence(l: Level, opts: { held?: boolean; price?: number | null } = {}): string {
   const amount = l.wallUsd > 0 ? b(usd(l.wallUsd)) : `${HL.fill} ${b(usd(levelFill(l)))}`
   const head = straddles(l, opts.price)
     ? `${HL.atPrice} ${b(bandPx(l.low, l.high))}`
     : `${l.distPct < 0 ? HL.below : HL.above} ${b(levelPx(l.low))}`
   const parts = [`${head} ${zoneWord(l.side)} ${amount}`]
   if (opts.held !== false && l.wallUsd > 0 && l.wallHeldMs > 0) parts.push(fill(HL.heldFor, { d: heldText(l.wallHeldMs) }))
-  if (opts.tests !== false && l.tests > 0) parts.push(fill(HL.tests, { n: l.tests }))
   return parts.join(' · ')
 }
 
@@ -142,7 +143,7 @@ export function eventIcon(e: HlEvent): EventIcon {
   }
 }
 
-/** 事件正文（HTML，数值加粗）：卖墙撤单 <b>19.6M</b> @ 86,880 · 距价 0.05% */
+/** 事件正文（HTML，数值加粗）：卖墙撤单 <b>19.6M</b> @ 86,880 */
 export function eventSentence(e: HlEvent): string {
   const wall = (side: 'buy' | 'sell'): string => (side === 'buy' ? HL.buyWall : HL.sellWall)
   const px = (v: number): string => esc(fill(HL.pricePct, { v: signedPct(v) }))
@@ -150,7 +151,7 @@ export function eventSentence(e: HlEvent): string {
     case 'wallEaten':
       return `${esc(fill(HL.wallEaten, { w: wall(e.side) }))} ${b(usd(e.usd))} @ ${esc(levelPx(e.price))}`
     case 'wallCancel':
-      return `${esc(fill(HL.wallCancel, { w: wall(e.side) }))} ${b(usd(e.usd))} @ ${esc(levelPx(e.price))} · ${esc(fill(HL.distPrice, { v: distText(e.distPct) }))}`
+      return `${esc(fill(HL.wallCancel, { w: wall(e.side) }))} ${b(usd(e.usd))} @ ${esc(levelPx(e.price))}`
     case 'flowBurst':
       return `${e.netUsd >= 0 ? HL.takerBuy : HL.takerSell} ${b(signedUsd(e.netUsd))} · ${px(e.pxPct)}`
     case 'liqWave':
@@ -158,7 +159,7 @@ export function eventSentence(e: HlEvent): string {
     case 'oiJump':
       return `${HL.oi5m} ${b(signedPct(e.pct))}`
     case 'levelBroken':
-      return `${zoneWord(e.side)} ${esc(bandPx(e.low, e.high))} ${HL.broken}`
+      return `${zoneWord(e.side)} ${esc(bandPx(e.low, e.high))} ${brokenWord(e.side)}`
   }
 }
 
@@ -197,15 +198,14 @@ export function positionCells(p: Position): TriCell[] {
   ]
 }
 
-/** 区间两沿：下沿累计吃单 47.2M · 测 2 次 ｜ 上沿 94.3M（测 0 次不写） */
+/** 区间两沿只展示累计吃单。 */
 export function rangeEdgesText(r: RangeBox): string {
-  const side = (tpl: string, v: number, n: number): string => [fill(tpl, { v: usd(v) }), n > 0 ? fill(HL.tests, { n }) : ''].filter(Boolean).join(' · ')
-  return `${side(HL.rangeLowEdge, r.lowFillUsd, r.lowTests)} ｜ ${side(HL.rangeHighEdge, r.highFillUsd, r.highTests)}`
+  return `${fill(HL.rangeLowEdge, { v: usd(r.lowFillUsd) })} ｜ ${fill(HL.rangeHighEdge, { v: usd(r.highFillUsd) })}`
 }
 
-/** 价位行右边第二行：爆仓 120K · 测 6 次；爆仓 0 不写、测 0 次不写，都没有就是空串 */
+/** 有爆仓时在价位右侧补一行。 */
 export function levelMeta2(l: Level): string {
-  return [l.liqUsd > 0 ? fill(HL.liqMeta, { v: usd(l.liqUsd) }) : '', l.tests > 0 ? fill(HL.tests, { n: l.tests }) : ''].filter(Boolean).join(' · ')
+  return l.liqUsd > 0 ? fill(HL.liqMeta, { v: usd(l.liqUsd) }) : ''
 }
 
 export function rangeHead(r: RangeBox, now: number): { band: string; hours: number } {
@@ -226,7 +226,7 @@ export function movePill(m: Move): { text: string; cls: 'up' | 'down' } {
 
 export function boardFact(r: BoardRow): string {
   const t = r.top
-  if (t.kind === 'level') return levelSentence(t, { held: false, tests: false, price: r.price })
+  if (t.kind === 'level') return levelSentence(t, { held: false, price: r.price })
   if (t.kind === 'event') return eventSentence(t)
   if (t.kind === 'move') return moveFact(t)
   if (r.cat === 'funding') {

@@ -107,7 +107,7 @@ struct HighlightsLevelsBlock: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    // 现价按每枚币（价位都是每枚币的）。价区包住现价的那几条紧贴现价线下面，写「现价内」。
+    // 现价按每枚币（价位都是每枚币的）。价区包住现价的那几条紧贴现价线下面。
     let price = market.ticker.map { $0.last / max(model.scale, 1e-12) }
     let above = Array(page.above(price: price).reversed()), inside = page.atPrice(price), below = page.below(price: price)
     let shown = above + inside + below
@@ -117,10 +117,10 @@ struct HighlightsLevelsBlock: View {
     } content: {
       VStack(spacing: 0) {
         if let r = page.range { rangeRow(r).padding(.bottom, Space.xs) }
-        ForEach(above) { row($0, peak: peak, price: price) }
+        ForEach(above) { row($0, peak: peak) }
         nowDivider
-        ForEach(inside) { row($0, peak: peak, price: price) }
-        ForEach(below) { row($0, peak: peak, price: price) }
+        ForEach(inside) { row($0, peak: peak) }
+        ForEach(below) { row($0, peak: peak) }
       }
     }
   }
@@ -183,12 +183,12 @@ struct HighlightsLevelsBlock: View {
     Line().stroke(t.ink3.opacity(0.5), style: StrokeStyle(lineWidth: 0.5, dash: [3, 3])).frame(height: 1)
   }
 
-  private func row(_ l: HighlightLevel, peak: Double, price: Double?) -> some View {
+  private func row(_ l: HighlightLevel, peak: Double) -> some View {
     let open = model.expanded == l.id
     let side = l.side == .bid ? t.up : t.down
     let meta = HighlightsText.levelMeta(l)
     return VStack(spacing: 0) {
-      // 两行：上行 价区 · 叠条 · 墙/吃单；下行 距现价（叠了结构位写在后面）· 爆仓/测几次。下行不受左栏宽度限制。
+      // 价区 · 叠条 · 墙/吃单；有爆仓时在右侧补一行。
       VStack(spacing: 2) {
         HStack(spacing: Space.s) {
           Text(HighlightsText.band(low: l.low * model.scale, high: l.high * model.scale, decimals: model.decimals))
@@ -199,12 +199,11 @@ struct HighlightsLevelsBlock: View {
           highlightText(meta.top, strong: t.ink).foregroundStyle(t.ink2)
             .font(TypeScale.caption2).monospacedDigit().lineLimit(1).fixedSize()
         }
-        HStack(spacing: Space.s) {
-          Text(HighlightsText.levelDistance(l, price: price)).foregroundStyle(t.ink3)
-          Spacer(minLength: Space.s)
+        if !meta.bottom.isEmpty {
           Text(meta.bottom).foregroundStyle(t.ink3)
+            .font(TypeScale.caption2).monospacedDigit().lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .font(TypeScale.caption2).monospacedDigit().lineLimit(1)
       }
       .padding(.vertical, 3)
       .frame(minHeight: 38)

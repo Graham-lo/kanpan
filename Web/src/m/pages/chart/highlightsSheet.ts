@@ -13,7 +13,7 @@ import { liuliBackdropHTML } from '../../ui/liuli'
 import { HL, fill } from '../../../terms'
 import type { Highlights, HlEvent, Level } from '../../../highlights/api'
 import {
-  usd, signedUsd, signedPct, distText, bandPx, levelPx, hhmm, heldText, wallStateWord, refWord, levelFill, levelTotal,
+  usd, signedUsd, signedPct, brokenWord, bandPx, levelPx, hhmm, heldText, wallStateWord, refWord, levelFill, levelTotal,
   eventTime, eventSentence, eventIcon, flowLabel, positionCells, rangeHead, rangeEdgesText, levelMeta2, straddles, type EventIcon,
 } from '../../../highlights/format'
 import '../../styles/highlights.css'
@@ -72,16 +72,15 @@ export function flowBlockHTML(d: Highlights, now: number): string {
     + `<div class="hl-flow"><span class="th"></span><span class="th">${HL.netTaker}</span><span class="th r">${HL.price}</span><span class="th r">${HL.oi}</span>${body}</div></div>`
 }
 
-function levelRowHTML(l: Level, mx: number, open: boolean, price: number | null): string {
+function levelRowHTML(l: Level, mx: number, open: boolean): string {
   const seg = (v: number, cls: string): string => (v > 0 ? `<i class="${cls}" style="width:${Math.max(1.5, (v / mx) * 100).toFixed(1)}%"></i>` : '')
-  const ref = l.refs.length ? ` · = ${refWord(l.refs[0])}` : ''
   const fillUsd = levelFill(l)
   const meta1 = l.wallUsd > 0
     ? `${escA(HL.wall)} <b>${usd(l.wallUsd)}</b>${l.wallHeldMs > 0 ? ` · ${escA(fill(HL.heldFor, { d: heldText(l.wallHeldMs) }))}` : ''}`
     : `${escA(HL.fill)} <b>${usd(fillUsd)}</b>`
   const meta2 = escA(levelMeta2(l))
   const row = `<button type="button" class="row${open ? ' open' : ''} ${l.side}" data-lv="${escA(l.id)}" aria-expanded="${open}">`
-    + `<span class="px">${bandPx(l.low, l.high)}<small>${escA(straddles(l, price) ? HL.atPrice : fill(HL.dist, { v: distText(l.distPct) }))}${escA(ref)}</small></span>`
+    + `<span class="px">${bandPx(l.low, l.high)}</span>`
     + `<span class="bar">${seg(l.wallUsd, 'w')}${seg(fillUsd, 'f')}${seg(l.liqUsd, 'q')}</span>`
     + `<span class="meta">${meta1}${meta2 ? `<br>${meta2}` : ''}</span></button>`
   if (!open) return row
@@ -90,7 +89,7 @@ function levelRowHTML(l: Level, mx: number, open: boolean, price: number | null)
   if (l.wallUsd > 0 || l.wallState) {
     const parts = [l.wallUsd > 0 ? `<b>${usd(l.wallUsd)}</b>` : '']
     if (l.wallHeldMs > 0) parts.push(escA(fill(HL.heldFor, { d: heldText(l.wallHeldMs) })))
-    const word = wallStateWord(l.wallState, l.cancelPct)
+    const word = wallStateWord(l.wallState, l.cancelPct, l.side)
     if (word) parts.push(escA(word))
     ev.push([HL.wall, parts.filter(Boolean).join(' · ')])
   }
@@ -98,7 +97,7 @@ function levelRowHTML(l: Level, mx: number, open: boolean, price: number | null)
   const touches = l.touchMs.filter((t): t is number => t != null)
   const uniq = [...new Set(touches.map(hhmm))]
   const broken = l.wallState === 'broken'
-  ev.push([HL.touch, [...uniq, broken ? HL.wallBroken : HL.unbroken].map(escA).join(' · ')])
+  ev.push([HL.touch, [...uniq, broken ? brokenWord(l.side) : HL.unbroken].map(escA).join(' · ')])
   if (l.refs.length) ev.push([HL.overlap, l.refs.map(r => `= ${escA(refWord(r))}`).join(' · ')])
   return row + `<div class="lev">${ev.map(([k, v]) => `<s>${escA(k)}</s><span>${v}</span>`).join('')}`
     + `<button type="button" class="go" data-back="${escA(l.id)}">${svg(LOCATE, 'loc')}${HL.back}</button></div>`
@@ -123,7 +122,7 @@ export function levelsBlockHTML(d: Highlights, price: number | null, open: strin
   }
   const nowRow = `<div class="now"><i></i>${escA(fill(HL.now, { p: price != null ? levelPx(price) : '—' }))}<i></i></div>`
   return `<div class="hl-blk" data-blk="levels"><div class="bt"><h5>${HL.levels}</h5><span class="cap"><i></i>${HL.wall}<i class="f"></i>${HL.fill}<i class="q"></i>${HL.liq}</span></div>`
-    + `<div class="hl-lv">${rng}${above.map(l => levelRowHTML(l, mx, l.id === open, price)).join('')}${nowRow}${below.map(l => levelRowHTML(l, mx, l.id === open, price)).join('')}</div></div>`
+    + `<div class="hl-lv">${rng}${above.map(l => levelRowHTML(l, mx, l.id === open)).join('')}${nowRow}${below.map(l => levelRowHTML(l, mx, l.id === open)).join('')}</div></div>`
 }
 
 export function positionBlockHTML(d: Highlights): string {

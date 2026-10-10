@@ -99,23 +99,24 @@ describe('盘口要点 · 拼字', () => {
     expect([agoText(t, t + 30_000), agoText(t, t + 12 * 60_000), agoText(t, t + 3 * 3_600_000)]).toEqual([HL.justNow, '12 分前', '3 小时前'])
   })
   it('墙状态词只有三个；撤单百分比服务端给了才写', () => {
-    expect(wallStateWord('live', null)).toBe('挂单中')
-    expect(wallStateWord('reducing', null)).toBe('撤单中')
-    expect(wallStateWord('reducing', 0.42)).toBe('撤单 42%')
-    expect(wallStateWord('broken', null)).toBe('已破')
-    expect(wallStateWord(null, null)).toBe('')
+    expect(wallStateWord('live', null, 'bid')).toBe('挂单中')
+    expect(wallStateWord('reducing', null, 'bid')).toBe('撤单中')
+    expect(wallStateWord('reducing', 0.42, 'bid')).toBe('撤单 42%')
+    expect(wallStateWord('broken', null, 'bid')).toBe('已跌破')
+    expect(wallStateWord('broken', null, 'ask')).toBe('已突破')
+    expect(wallStateWord(null, null, 'bid')).toBe('')
   })
   it('价位一句话、最近那条、入口条', () => {
     const d = parseHighlights(SAMPLE, 'BTC')!
     const near = nearestLevel(d.levels)!
     expect(near.id).toBe('L:14158')
-    expect(levelSentence(near)).toBe('下方 <b>82,609</b> 买区 <b>35M</b> · 挂 48 分 · 测 27 次')
+    expect(levelSentence(near)).toBe('下方 <b>82,609</b> 买区 <b>35M</b> · 挂 48 分')
     expect(stripSentence(d.levels, d.events, d.flow)).toBe(levelSentence(near))
     // 没有价位、有事件：写 1 时净主动；连事件都没有：抓手
     expect(stripSentence([], d.events, d.flow)).toBe('1 时净主动 <b>+5.7M</b>')
     expect(stripSentence([], [], d.flow)).toBeNull()
     const noWall = { ...near, wallUsd: 0, fillBuyUsd: 30e6, fillSellUsd: 18e6, distPct: 1.1, side: 'ask' as const }
-    expect(levelSentence(noWall)).toBe('上方 <b>82,609</b> 卖区 吃单 <b>48M</b> · 测 27 次')
+    expect(levelSentence(noWall)).toBe('上方 <b>82,609</b> 卖区 吃单 <b>48M</b>')
   })
   it('价区包住现价：不说上方 / 下方，写「现价内」和整段价区', () => {
     const d = parseHighlights(SAMPLE, 'BTC')!
@@ -133,14 +134,15 @@ describe('盘口要点 · 拼字', () => {
     // 首页行（服务端带 price）
     expect(boardFact({ key: 'LTC', atMs: 1, base: 'LTC', cat: 'book', changePct: -1, count: 1, favorite: false, price: 63.5, tier: 3, top: { kind: 'level', ...at } })).toMatch(/^现价内 <b>63.405–63.659<\/b> 卖区/)
   })
-  it('关键价位：包住现价的那条紧贴现价线下面，距那格写「现价内」', () => {
+  it('关键价位：保留现价分组，价格下不再展示距离或结构位', () => {
     const d = parseHighlights(SAMPLE, 'BTC')!
     const lv = d.levels.map(l => (l.id === 'L:14163' ? { ...l, low: 82650, high: 82750, distPct: 0.02 } : l))
     const h = levelsBlockHTML({ ...d, levels: lv }, 82700, null, GEN)
     const iNow = h.indexOf('class="now"'), iAt = h.indexOf('data-lv="L:14163"')
     expect(iAt).toBeGreaterThan(iNow)
     const row = h.slice(iAt, h.indexOf('</button>', iAt))
-    expect(row).toContain('<small>现价内')
+    expect(row).not.toContain('<small>')
+    expect(row).not.toContain('今日高点')
     expect(row).not.toContain('距 ')
   })
   it('测 0 次、爆仓 0、挂 0 不写，分隔符不悬空', () => {
@@ -149,13 +151,13 @@ describe('盘口要点 · 拼字', () => {
     const bare = { ...near, tests: 0, liqUsd: 0, wallHeldMs: 0 }
     expect(levelMeta2(bare)).toBe('')
     expect(levelMeta2({ ...bare, liqUsd: 120e3 })).toBe('爆仓 120K')
-    expect(levelMeta2({ ...bare, tests: 6 })).toBe('测 6 次')
-    expect(levelMeta2({ ...bare, liqUsd: 127e3, tests: 6 })).toBe('爆仓 127K · 测 6 次')
+    expect(levelMeta2({ ...bare, tests: 6 })).toBe('')
+    expect(levelMeta2({ ...bare, liqUsd: 127e3, tests: 6 })).toBe('爆仓 127K')
     expect(levelSentence(bare)).toBe('下方 <b>82,609</b> 买区 <b>35M</b>')
     expect(rangeEdgesText({ ...d.range!, lowTests: 0, highTests: 0, lowFillUsd: 47.2e6, highFillUsd: 94.3e6 })).toBe('下沿累计吃单 47.2M ｜ 上沿 94.3M')
-    expect(rangeEdgesText({ ...d.range!, lowTests: 2, highTests: 0, lowFillUsd: 47.2e6, highFillUsd: 94.3e6 })).toBe('下沿累计吃单 47.2M · 测 2 次 ｜ 上沿 94.3M')
+    expect(rangeEdgesText({ ...d.range!, lowTests: 2, highTests: 0, lowFillUsd: 47.2e6, highFillUsd: 94.3e6 })).toBe('下沿累计吃单 47.2M ｜ 上沿 94.3M')
     const h = levelsBlockHTML({ ...d, levels: d.levels.map(l => ({ ...l, tests: 0, liqUsd: 0, wallHeldMs: 0 })), range: { ...d.range!, lowTests: 0, highTests: 0 } }, 82700, null, GEN)
-    expect(h).not.toContain('测 0 次')
+    expect(h).not.toMatch(/测\s*\d+\s*次/)
     const metas = h.split('class="meta">').slice(1).map(x => x.split('</span>')[0])
     expect(metas.length).toBe(3)
     expect(metas.some(m => m.includes('爆仓'))).toBe(false)
@@ -167,9 +169,9 @@ describe('盘口要点 · 拼字', () => {
     expect(eventSentence(d.events[0])).toBe('卖墙被吃 <b>16.3M</b> @ 82,781')
     expect(eventSentence(d.events[1])).toBe('多单爆仓 <b>18M</b> · 价格 −1.1%')
     expect(eventTime(d.events[1])).toBe(spanText(1791620100000, 1791621000000))
-    expect(eventSentence({ id: 'c', t: 'wallCancel', atMs: 1, price: 86880, usd: 19.6e6, side: 'sell', distPct: 0.05 })).toBe('卖墙撤单 <b>19.6M</b> @ 86,880 · 距价 0.05%')
+    expect(eventSentence({ id: 'c', t: 'wallCancel', atMs: 1, price: 86880, usd: 19.6e6, side: 'sell', distPct: 0.05 })).toBe('卖墙撤单 <b>19.6M</b> @ 86,880')
     expect(eventSentence({ id: 'f', t: 'flowBurst', fromMs: 1, toMs: 2, netUsd: 46e6, pxPct: 1.4 })).toBe('主动买入 <b>+46M</b> · 价格 +1.4%')
-    expect(eventSentence({ id: 'b', t: 'levelBroken', atMs: 1, low: 85400, high: 85460, side: 'bid', distPct: -1 })).toBe('买区 85,400–85,460 已破')
+    expect(eventSentence({ id: 'b', t: 'levelBroken', atMs: 1, low: 85400, high: 85460, side: 'bid', distPct: -1 })).toBe('买区 85,400–85,460 已跌破')
   })
   it('流向第一列与三格', () => {
     const d = parseHighlights(SAMPLE, 'BTC')!
@@ -204,11 +206,13 @@ describe('盘口要点 · 半页片段', () => {
     expect(iBid).toBeGreaterThan(iNow)
     expect(h).toContain('现价 82,700')
     expect(h).toContain('区间 <b>81,386–83,500</b> · 已走 38 时')
-    expect(h).toContain('下沿累计吃单 6.9B · 测 4 次 ｜ 上沿 10.7B · 测 9 次')
+    expect(h).toContain('下沿累计吃单 6.9B ｜ 上沿 10.7B')
     expect(h.match(/class="lev"/g)?.length).toBe(1)
     expect(h).toContain('data-back="L:14158"')
     expect(h).toContain('<s>墙</s><span><b>35M</b> · 挂 48 分 · 挂单中</span>')
-    expect(h).toContain('= 今日高点')
+    expect(h).not.toContain('= 今日高点')
+    expect(levelsBlockHTML(d, 82700, 'L:14163', GEN)).toContain('<s>叠加</s><span>= 今日高点</span>')
+    expect(h).not.toMatch(/测\s*\d+\s*次/)
     expect(levelsBlockHTML(d, 82700, null, GEN)).not.toContain('class="lev"')
   })
   it('三格只在 show 时出；事件至多 4 条', () => {

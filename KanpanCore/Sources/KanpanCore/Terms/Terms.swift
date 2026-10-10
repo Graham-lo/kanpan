@@ -178,7 +178,6 @@ public enum HighlightTerm: String, CaseIterable, Sendable {
   case wallMeta
   case fillMeta
   case liqMeta
-  case tests
   case heldFor
   case minutes
   case hours
@@ -190,7 +189,6 @@ public enum HighlightTerm: String, CaseIterable, Sendable {
   case atPrice
   case wallLive
   case wallReducing
-  case wallBroken
   case back
   case refDayHigh
   case refDayLow
@@ -221,7 +219,8 @@ public enum HighlightTerm: String, CaseIterable, Sendable {
   case longLiq
   case shortLiq
   case oi5m
-  case broken
+  case brokenUp
+  case brokenDown
   case pricePct
   case oiPct
   case window4h
@@ -232,7 +231,7 @@ public enum HighlightTerm: String, CaseIterable, Sendable {
   /// 这一项的字。
   public var text: String { Terms.table["highlights"]?[rawValue] ?? rawValue }
 
-  /// 填好占位符的字：`HighlightTerm.tests.fill(["n": "2"])` →「测 2 次」。
+  /// 填好占位符的字：`HighlightTerm.minutes.fill(["n": "2"])` →「2 分」。
   public func fill(_ args: [String: String]) -> String {
     args.reduce(text) { $0.replacingOccurrences(of: "{" + $1.key + "}", with: $1.value) }
   }
