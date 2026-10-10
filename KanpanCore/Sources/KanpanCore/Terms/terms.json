@@ -183,6 +183,8 @@
     "oiUpPxDown": "增仓下跌",
     "oiDownPxDown": "减仓下跌",
     "pctile": "30 天第 {n} 位",
+    "pctileUp": "↑{n}",
+    "pctileDown": "↓{n}",
     "events": "近 4 小时",
     "eventsCaption": "点一条回图",
     "buyWall": "买墙",

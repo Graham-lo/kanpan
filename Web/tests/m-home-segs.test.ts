@@ -4,9 +4,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseBoard, parseMarketBoard, marketBoardUrl, type BoardRow } from '../src/highlights/api'
 import { boardFact, moveFact, movePill } from '../src/highlights/format'
-import { RANK_KINDS, chipCounts, filterRows, focusOf, mergeBoard, parseHomeLocal } from '../src/highlights/home'
+import { RANK_KINDS, filterRows, focusOf, mergeBoard, parseHomeLocal } from '../src/highlights/home'
 import { HL } from '../src/terms'
 import shellSource from '../src/m/app/shell.ts?raw'
+import homeSource from '../src/m/pages/home.ts?raw'
+import homeCss from '../src/m/styles/home.css?raw'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules() })
 
@@ -118,19 +120,24 @@ describe('波动行（急涨 / 急跌）', () => {
     expect(m.fresh).toBe(1)                                         // 波动那行有了更新
     expect((m.rows[1].top as { pct: number }).pct).toBe(3.1)
   })
-  it('胶囊计数、筛选、点行只进图（不升半页）', () => {
+  it('筛选、点行只进图（不升半页）', () => {
     const b = parseBoard({ generatedAtMs: 99, rows: [move(), move({ base: 'WIF' }), { base: 'BTC', cat: 'funding', top: { kind: 'event', id: 'E:2', t: 'oiJump', atMs: 1, pct: 2 } }] })!
-    expect(chipCounts(b.rows)).toEqual({ all: 3, book: 0, oi: 0, funding: 1, move: 2 })
     expect(filterRows(b.rows, 'move').map(r => r.base)).toEqual(['PEPE', 'WIF'])
     expect(focusOf(b.rows[0].top)).toBeNull()
     expect(focusOf(b.rows[2].top)).toEqual({ kind: 'event', id: 'E:2' })
   })
 })
 
+describe('顶部胶囊条不带计数', () => {
+  it('首页胶囊只写类名：不再算计数、不出数字徽记', () => {
+    expect(homeSource).not.toMatch(/chipCounts/)
+    expect(homeCss).not.toMatch(/\.hm-chips b\b/)
+  })
+})
+
 describe('服务端还没上新字段', () => {
-  it('看板里没有波动行：照旧三类，「波动」计 0', () => {
+  it('看板里没有波动行：照旧三类，「波动」筛出来是空', () => {
     const b = parseBoard({ generatedAtMs: 9, rows: [{ base: 'BTC', cat: 'oi', top: { kind: 'event', id: 'E:1', t: 'oiJump', atMs: 1, pct: 2 } }] })!
-    expect(chipCounts(b.rows).move).toBe(0)
     expect(filterRows(b.rows, 'move')).toEqual([])
   })
   it('减仓榜 400（invalid_kind）/ 形状不对：解析给 null，页面只走「取不到 · 重试」', () => {

@@ -31,7 +31,7 @@ import { baseOfSymbol } from '../../orderflow/settings'
 import { HL, fill } from '../../terms'
 import { fetchBoard, fetchMarketBoard, type BoardRow, type BoardCat, type MarketKind, type MarketRow, type MarketWindow } from '../../highlights/api'
 import { agoText, boardFact, hhmm, levelPx, movePill, signedPct, usd } from '../../highlights/format'
-import { RANK_KINDS, chipCounts, favoriteBases, filterRows, focusOf, mergeBoard, parseHomeLocal, symbolFor, type Chip, type HomeLocal, type RankPage } from '../../highlights/home'
+import { RANK_KINDS, favoriteBases, filterRows, focusOf, mergeBoard, parseHomeLocal, symbolFor, type Chip, type HomeLocal, type RankPage } from '../../highlights/home'
 
 const LS_KEY = 'hkline-m-home-v1'
 const POLL_MS = 60_000
@@ -159,9 +159,8 @@ export function initHome(root: HTMLElement): PageHandle {
   // ───────── 异动 ─────────
 
   function renderChips(): void {
-    const c = chipCounts(shown ?? [])
     const chip = (id: Chip, label: string, dot: string | null): string =>
-      `<button type="button" role="tab" data-chip="${id}" class="${L.chip === id ? 'on' : ''}"${dot ? ` style="--c:${dot}"` : ''}>${dot ? '<i></i>' : ''}${esc(label)}${shown ? `<b>${c[id]}</b>` : ''}</button>`
+      `<button type="button" role="tab" data-chip="${id}" class="${L.chip === id ? 'on' : ''}"${dot ? ` style="--c:${dot}"` : ''}>${dot ? '<i></i>' : ''}${esc(label)}</button>`
     // 波动：圆点一半涨色一半跌色（急涨 / 急跌都在这一类里）
     chipsEl.innerHTML = chip('all', HL.all, null) + chip('book', HL.catBook, CAT_COLOR.book) + chip('oi', HL.catOi, CAT_COLOR.oi)
       + chip('funding', HL.catFunding, CAT_COLOR.funding) + chip('move', HL.catMove, 'linear-gradient(135deg, var(--up) 50%, var(--down) 50%)')

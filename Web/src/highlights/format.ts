@@ -181,13 +181,19 @@ export function fundingText(rate: number | null): string {
   return (rate < 0 && !zero ? MINUS : '') + s + '%'
 }
 
+/** 30 天百分位：N 取整、夹在 1–100，N ≥ 50 写「↑N」，< 50 写「↓N」；没有就空 */
+export function pctileText(n: number | null): string {
+  if (n == null || !Number.isFinite(n)) return ''
+  const v = Math.max(1, Math.min(100, Math.round(n)))
+  return fill(v >= 50 ? HL.pctileUp : HL.pctileDown, { n: v })
+}
+
 export interface TriCell { label: string; value: string; note: string; pctile: number | null }
 export function positionCells(p: Position): TriCell[] {
-  const pn = (n: number | null): string => (n == null ? '' : fill(HL.pctile, { n: Math.round(n) }))
   return [
-    { label: HL.oi1h, value: signedPct(p.oi.pct1h), note: p.oi.combo ? HL[p.oi.combo] : pn(p.oi.pctile), pctile: p.oi.pctile },
-    { label: HL.funding, value: fundingText(p.funding.rate), note: pn(p.funding.pctile), pctile: p.funding.pctile },
-    { label: HL.spotPremium, value: signedPct(p.spotPremium.pct, 2), note: pn(p.spotPremium.pctile), pctile: p.spotPremium.pctile },
+    { label: HL.oi1h, value: signedPct(p.oi.pct1h), note: p.oi.combo ? HL[p.oi.combo] : pctileText(p.oi.pctile), pctile: p.oi.pctile },
+    { label: HL.funding, value: fundingText(p.funding.rate), note: pctileText(p.funding.pctile), pctile: p.funding.pctile },
+    { label: HL.spotPremium, value: signedPct(p.spotPremium.pct, 2), note: pctileText(p.spotPremium.pctile), pctile: p.spotPremium.pctile },
   ]
 }
 
@@ -224,8 +230,8 @@ export function boardFact(r: BoardRow): string {
   if (t.kind === 'event') return eventSentence(t)
   if (t.kind === 'move') return moveFact(t)
   if (r.cat === 'funding') {
-    const n = t.funding.pctile
-    return `${HL.funding} ${b(fundingText(t.funding.rate))}${n != null ? ' · ' + esc(fill(HL.pctile, { n: Math.round(n) })) : ''}`
+    const n = pctileText(t.funding.pctile)
+    return `${HL.funding} ${b(fundingText(t.funding.rate))}${n ? ' · ' + esc(n) : ''}`
   }
   return `${HL.oi1h} ${b(signedPct(t.oi.pct1h))}${t.oi.combo ? ' · ' + HL[t.oi.combo] : ''}`
 }

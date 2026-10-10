@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { parseHighlights, parseBoard, parseMarketBoard, boardUrl, highlightsUrl, marketBoardUrl } from '../src/highlights/api'
 import {
   usd, signedUsd, signedPct, levelPx, bandPx, distText, hhmm, spanText, heldText, agoText, wallStateWord,
-  levelSentence, nearestLevel, straddles, levelMeta2, rangeEdgesText, eventSentence, eventTime, stripSentence, boardFact, positionCells, fundingText, flowLabel,
+  levelSentence, nearestLevel, straddles, levelMeta2, rangeEdgesText, eventSentence, eventTime, stripSentence, boardFact, positionCells, fundingText, flowLabel, pctileText,
 } from '../src/highlights/format'
 import { bodyHTML, quietState, flowBlockHTML, levelsBlockHTML, positionBlockHTML, eventsBlockHTML } from '../src/m/pages/chart/highlightsSheet'
 import { setHighlightIntent, takeHighlightIntent } from '../src/m/pages/chart/highlightIntent'
@@ -64,7 +64,7 @@ describe('盘口要点 · 接口解析', () => {
     expect(b.rows.map(r => r.base)).toEqual(['BTC', 'ARPA', 'CAP'])
     expect(b.rows[1].tier).toBe(3)
     expect(boardFact(b.rows[0])).toBe('下方 <b>82,279</b> 买区 <b>98.1M</b>')
-    expect(boardFact(b.rows[1])).toBe('费率 <b>−0.0501%</b> · 30 天第 0 位')
+    expect(boardFact(b.rows[1])).toBe('费率 <b>−0.0501%</b> · ↓1')
     expect(boardFact(b.rows[2])).toBe('持仓 5 分钟 <b>−5.0%</b>')
   })
   it('全市场榜单与地址', () => {
@@ -176,7 +176,13 @@ describe('盘口要点 · 拼字', () => {
     expect(d.flow!.map(r => flowLabel(r, GEN))).toEqual(['15 分', '1 时', '4 时', '区间 38 时'])
     const c = positionCells(d.position!)
     expect(c.map(x => x.value)).toEqual(['+3.1%', '−0.0015%', '+0.05%'])
-    expect(c.map(x => x.note)).toEqual(['增仓上涨', '30 天第 5 位', '30 天第 61 位'])
+    expect(c.map(x => x.note)).toEqual(['增仓上涨', '↓5', '↑61'])
+  })
+  it('30 天百分位写成箭头 + 数字：≥ 50 ↑N、< 50 ↓N，取整夹在 1–100，没有就空', () => {
+    expect([pctileText(50), pctileText(49.6), pctileText(49.4), pctileText(99), pctileText(100), pctileText(0), pctileText(1)]).toEqual(['↑50', '↑50', '↓49', '↑99', '↑100', '↓1', '↓1'])
+    expect(pctileText(null)).toBe('')
+    expect(pctileText(NaN)).toBe('')
+    expect([HL.pctileUp, HL.pctileDown]).toEqual(['↑{n}', '↓{n}'])
   })
 })
 
@@ -206,7 +212,7 @@ describe('盘口要点 · 半页片段', () => {
     expect(levelsBlockHTML(d, 82700, null, GEN)).not.toContain('class="lev"')
   })
   it('三格只在 show 时出；事件至多 4 条', () => {
-    expect(positionBlockHTML(d)).toContain('30 天第 5 位')
+    expect(positionBlockHTML(d)).toContain('↓5')
     expect(positionBlockHTML({ ...d, position: { ...d.position!, show: false } })).toBe('')
     const many = { ...d, events: [...d.events, ...d.events, ...d.events] }
     expect(eventsBlockHTML(many).match(/class="it"/g)?.length).toBe(4)

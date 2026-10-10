@@ -46,7 +46,6 @@ html[data-theme="dark"] .hm-cap.on { box-shadow: 0 3px 12px color-mix(in srgb, v
 }
 .hm-chips button::after { content: ''; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px } /* 命中 36 */
 .hm-chips button.on { background: var(--accent); color: var(--badge-ink); font-weight: 600; box-shadow: none }
-.hm-chips b { font-size: 10px; font-weight: 600; opacity: .8; font-variant-numeric: tabular-nums }
 .hm-chips i { width: 5px; height: 5px; border-radius: 50%; background: var(--c) }
 .hm-chips button[data-chip="move"].on i { box-shadow: 0 0 0 1px var(--badge-ink) }
 .hm-chips button.on i { background: var(--badge-ink) }
