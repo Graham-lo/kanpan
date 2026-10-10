@@ -134,7 +134,8 @@ struct HighlightsSheet: View {
       .scrollIndicators(.hidden)
       .onChange(of: model.scrollTarget, initial: true) { _, id in
         guard let id else { return }
-        withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85)) { reader.scrollTo(id, anchor: .center) }
+        // 不给锚点 = 只挪到刚好露出来：已经在眼前就不动，免得把第一块「流向」的标题推到头底下。
+        withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85)) { reader.scrollTo(id) }
         model.consumedScroll()
       }
     }

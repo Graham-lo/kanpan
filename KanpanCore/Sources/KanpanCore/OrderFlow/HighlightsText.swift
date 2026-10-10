@@ -192,15 +192,21 @@ public enum HighlightsText {
   public static func levelMeta(_ level: HighlightLevel) -> (top: [HighlightRun], bottom: String) {
     let top: [HighlightRun]
     if level.wallUsd > 0 {
-      top = [HighlightRun(T.wall.text + " "), HighlightRun(usd(level.wallUsd), strong: true),
-             HighlightRun(" · " + T.heldFor.fill(["d": duration(level.wallHeldMs)]))]
+      top = [HighlightRun(T.wall.text + " "), HighlightRun(usd(level.wallUsd), strong: true)]
+        + (heldTail(level.wallHeldMs).map { [HighlightRun($0)] } ?? [])
     } else {
       top = [HighlightRun(T.fill.text + " "), HighlightRun(usd(level.fillUsd), strong: true)]
     }
-    let tests = T.tests.fill(["n": "\(level.tests)"])
-    let bottom = level.liqUsd > 0 ? T.liqMeta.fill(["v": usd(level.liqUsd)]) + " · " + tests : tests
+    let bottom = [level.liqUsd > 0 ? T.liqMeta.fill(["v": usd(level.liqUsd)]) : nil, testsText(level.tests)]
+      .compactMap { $0 }.joined(separator: " · ")
     return (top, bottom)
   }
+
+  /// 「测 N 次」：0 次不写（给 `nil`）。
+  static func testsText(_ n: Int) -> String? { n > 0 ? T.tests.fill(["n": "\(n)"]) : nil }
+
+  /// 「 · 挂 48 分」：没挂过（0）不写。
+  static func heldTail(_ ms: Int64) -> String? { ms > 0 ? " · " + T.heldFor.fill(["d": duration(ms)]) : nil }
 
   /// 价位展开后的证据行（`吃单` / `墙` / `触及` / `叠加`，没有的不出）。
   public static func evidence(_ level: HighlightLevel, zone: TZOffset) -> [(label: String, runs: [HighlightRun])] {
@@ -213,7 +219,7 @@ public enum HighlightsText {
       ]))
     }
     if level.wallUsd > 0 {
-      var tail = " · " + T.heldFor.fill(["d": duration(level.wallHeldMs)])
+      var tail = heldTail(level.wallHeldMs) ?? ""
       if let w = wallState(level.wallState) { tail += " · " + w }
       out.append((T.wall.text, [HighlightRun(usd(level.wallUsd), strong: true), HighlightRun(tail)]))
     } else if level.wallState == .broken {
@@ -251,11 +257,11 @@ public enum HighlightsText {
       var runs = levelHead(l, price: p, decimals: decimals, scale: scale) + [HighlightRun(" " + zoneName(l.side) + " ")]
       if l.wallUsd > 0 {
         runs.append(HighlightRun(usd(l.wallUsd)))
-        runs.append(HighlightRun(" · " + T.heldFor.fill(["d": duration(l.wallHeldMs)])))
+        if let held = heldTail(l.wallHeldMs) { runs.append(HighlightRun(held)) }
       } else {
         runs.append(HighlightRun(T.fillMeta.fill(["v": usd(l.fillUsd)])))
       }
-      runs.append(HighlightRun(" · " + T.tests.fill(["n": "\(l.tests)"])))
+      if let tests = testsText(l.tests) { runs.append(HighlightRun(" · " + tests)) }
       return runs
     }
     if let row = page.flow?.rows.first(where: { $0.w == .h1 }), let v = row.netUsd, v.isFinite {
@@ -271,7 +277,11 @@ public enum HighlightsText {
     let runs = [HighlightRun(T.range.text + " "),
                 HighlightRun(band(low: r.low * scale, high: r.high * scale, decimals: decimals), strong: true),
                 HighlightRun(" · " + T.rangeAge.fill(["h": "\(hours)"]))]
-    let edges = T.rangeEdges.fill(["a": usd(r.lowFillUsd), "n": "\(r.lowTests)", "b": usd(r.highFillUsd), "m": "\(r.highTests)"])
+    // 两沿各自：累计吃单 + 测几次（0 次不写），和手机网页 rangeEdgesText 同口径。
+    func edge(_ term: HighlightTerm, _ v: Double, _ n: Int) -> String {
+      ([term.fill(["v": usd(v)])] + [testsText(n)].compactMap { $0 }).joined(separator: " · ")
+    }
+    let edges = edge(.rangeLowEdge, r.lowFillUsd, r.lowTests) + " ｜ " + edge(.rangeHighEdge, r.highFillUsd, r.highTests)
     return (runs, edges)
   }
 

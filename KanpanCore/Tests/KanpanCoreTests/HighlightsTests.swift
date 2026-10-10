@@ -291,4 +291,28 @@ struct HighlightsTests {
                                   price: price, changePct: 1.2, atMs: 0)
     #expect(HighlightsText.homeFact(row, zone: Self.utc8).plain == "现价内 63.405–63.659 卖区 · 2.3M")
   }
+
+  @Test("0 次 / 0 时长 / 0 爆仓不写")
+  func zeroCountsOmitted() {
+    // 新起跟的墙：挂了 0 分、没测过、没爆仓。
+    let fresh = HighlightLevel(id: "f", low: 100, high: 101, side: .ask, distPct: 0.4, wallUsd: 2_300_000)
+    let meta = HighlightsText.levelMeta(fresh)
+    #expect(meta.top.plain == "墙 2.3M")
+    #expect(meta.bottom == "")
+    #expect(HighlightsText.evidence(fresh, zone: Self.utc8).first { $0.label == "墙" }?.runs.plain == "2.3M")
+    let p = HighlightsPage(base: "X", generatedAtMs: 1, tracked: true, levels: [fresh])
+    #expect(HighlightsText.entrySentence(p, decimals: 0)?.plain == "上方 100 卖区 2.3M")
+
+    // 只有爆仓没测过；只有测过没爆仓。
+    let liq = HighlightLevel(id: "l", low: 90, high: 91, side: .bid, distPct: 1, fillBuyUsd: 1_000_000, liqUsd: 500_000)
+    #expect(HighlightsText.levelMeta(liq).bottom == "爆仓 500K")
+    let tested = HighlightLevel(id: "t", low: 90, high: 91, side: .bid, distPct: 1, fillBuyUsd: 1_000_000, tests: 3)
+    #expect(HighlightsText.levelMeta(tested).bottom == "测 3 次")
+    let q = HighlightsPage(base: "X", generatedAtMs: 1, tracked: true, levels: [liq])
+    #expect(HighlightsText.entrySentence(q, decimals: 0)?.plain == "下方 90 买区 吃单 1M")
+
+    // 区间两沿：测 0 次那一沿只写累计吃单。
+    let r = HighlightRange(low: 80, high: 90, sinceMs: 0, lowFillUsd: 47_200_000, lowTests: 2, highFillUsd: 94_300_000, highTests: 0)
+    #expect(HighlightsText.rangeLine(r, nowMs: 7_200_000, decimals: 0).edges == "下沿累计吃单 47.2M · 测 2 次 ｜ 上沿 94.3M")
+  }
 }

@@ -158,6 +158,8 @@ public enum HighlightTerm: String, CaseIterable, Sendable {
   case `range`
   case rangeAge
   case rangeEdges
+  case rangeLowEdge
+  case rangeHighEdge
   case above
   case below
   case buyZone
