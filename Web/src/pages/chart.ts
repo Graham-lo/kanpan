@@ -18,7 +18,7 @@ import { sizes, saveSizes } from '../app/sizes'
 import { cellClasses, degradeFor } from '../chart/panes'
 import { UndoBySymbol } from './undoStacks'
 import { applyPageSizes, placePageSplits, applyGrid, placeGridSplits, inZoomStrip, nextZoom } from './chartLayout'
-import { installOrderFlow, mountLadder, mountDrawer, widgetHTML, mountWidgets, flowPanel, heatButtonHTML, toggleHeat, indicatorRowHTML, indicatorRowClick, isCollapsed } from '../orderflow'
+import { installOrderFlow, mountLadder, mountDrawer, widgetHTML, mountWidgets, flowPanel, indicatorRowHTML, indicatorRowClick, isCollapsed } from '../orderflow'
 import { deleteAlert } from '../alerts/model'
 import { alertDesc } from '../alerts/panel'
 import { activeAlerts, createAlertAt, moveAlert, onAlertsChange, reconcileDrawingAlerts, migrateDrawingFlags, alertLevel, drawingIdOf } from '../alerts/model'
@@ -821,7 +821,6 @@ export function renderToolbar(): void {
     <button class="tb-btn${st.compareSymbols.length ? ' on' : ''}" id="tbCompare" aria-label="对比" data-tip="叠加别的品种，按百分比比涨跌">${I('compare')}<span class="tb-label">对比</span>${st.compareSymbols.length ? `<span class="num tb-count">${st.compareSymbols.length}</span>` : ''}</button>
     <button class="tb-btn" id="tbAlert" aria-label="提醒" data-tip="在现价创建提醒" data-kbd="Alt A">${I('bell')}<span class="tb-label">提醒</span></button>
     <button class="tb-btn" id="tbNote" aria-label="记一笔" data-tip="把这一刻记下来">${I('note')}<span class="tb-label">记一笔</span></button>
-    ${heatButtonHTML()}
     <div class="tb-right">
       <button class="ibtn sm" id="tbUndo" aria-label="撤销" data-tip="撤销" data-kbd="⌘ Z" ${undoDepth().undo ? '' : 'disabled style="opacity:.4"'}>${I('undo')}</button>
       <button class="ibtn sm" id="tbRedo" aria-label="重做" data-tip="重做" data-kbd="⌘ Y" ${undoDepth().redo ? '' : 'disabled style="opacity:.4"'}>${I('redo')}</button>
@@ -844,7 +843,6 @@ function onToolbarClick(e: MouseEvent): void {
     case 'tbCompare': return openCompare()
     case 'tbAlert': return openAlert()
     case 'tbNote': return openNote()
-    case 'tbHeat': return toggleHeat()
     case 'tbUndo': return undo()
     case 'tbRedo': return redo()
     case 'tbLayout': return layoutMenu(b)

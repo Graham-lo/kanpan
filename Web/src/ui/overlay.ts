@@ -1,5 +1,6 @@
 /* Hkline Web · 浮层：悬停提示、术语解释、轻提示、菜单、对话框 */
 import { $, $$, I, esc, tgt } from './dom'
+import { isTipSide, placeTip } from './tipPlace'
 
 // ------------------------------------------------------------ 术语
 export const GLOSSARY: Record<string, string> = {
@@ -29,15 +30,15 @@ function showTip(target: HTMLElement): void {
   t.innerHTML = html
   t.style.maxWidth = target.dataset.term ? '280px' : '360px'
   const r = target.getBoundingClientRect()
+  // 先挪回左上角再量：停在右缘的上一次位置会让宽度按剩余空间收窄、多折一行，量出来的尺寸就不对了
+  t.style.left = '0px'; t.style.top = '0px'
   t.classList.add('show')
-  const tw = t.offsetWidth, th = t.offsetHeight
-  let x = r.left + r.width / 2 - tw / 2, y = r.bottom + 8
+  // 摆位规则见 ui/tipPlace.ts：不盖目标、首选边放不下就翻面、夹进视口
   const side = target.dataset.tipSide
-  if (side === 'right') { x = r.right + 8; y = r.top + r.height / 2 - th / 2 }
-  else if (side === 'left') { x = r.left - tw - 8; y = r.top + r.height / 2 - th / 2 }
-  else if (y + th > innerHeight - 8) y = r.top - th - 8
-  t.style.left = Math.max(8, Math.min(innerWidth - tw - 8, x)) + 'px'
-  t.style.top = Math.max(8, y) + 'px'
+  const p = placeTip(r, t.offsetWidth, t.offsetHeight, isTipSide(side) ? side : undefined, innerWidth, innerHeight)
+  t.dataset.side = p.side
+  t.style.left = p.x + 'px'
+  t.style.top = p.y + 'px'
 }
 export function hideTip(): void { clearTimeout(tip.timer); tip.target = null; $('#tooltip')?.classList.remove('show') }
 

@@ -1,13 +1,12 @@
 /* Hkline Web · 图表设置（照 TradingView「图表设置」：商品 / 状态栏 / 比例尺与线 / 画布 四页）
  * 改了立即生效、十六格同一份、跟人走（store + 账号同步 webChart）；底部只有「恢复默认」，Esc 关 */
 import { st, save } from '../app/store'
-import { applyTheme } from '../app/shell'
 import { I, esc, tgt } from '../ui/dom'
 import { dialog, head, menuFrom, type MenuItem } from '../ui/overlay'
 import type { ThemeColors } from '../chart/chart'
 import {
   DATE_FMTS, DEFAULTS, GRID_MODES, LIMITS, LINE_STYLES, TITLE_MODES,
-  clean, dateText, withUpDownReset, type ChartSettings,
+  clean, dateText, type ChartSettings,
 } from '../chart/chartSettings'
 
 type Tab = 'symbol' | 'status' | 'scales' | 'canvas'
@@ -31,10 +30,6 @@ export function openChartSettings(host: ChartSettingsHost): void {
   const set = (patch: Partial<ChartSettings>, redraw = true): void => {
     st.chartSettings = clean({ ...st.chartSettings, ...patch }); save(); host.apply()
     if (redraw) render()
-  }
-  const setUpDown = (v: typeof st.updown): void => {
-    if (st.updown === v) return
-    st.updown = v; st.chartSettings = withUpDownReset(st.chartSettings); save(); applyTheme(); host.apply(); render()
   }
   // 色块：没改过的显示当前皮肤下实际用的颜色
   const shown = (k: ColorK): string => {
@@ -70,7 +65,6 @@ export function openChartSettings(host: ChartSettingsHost): void {
   function body(): string {
     const s = S()
     if (tab === 'symbol') return gh('K 线')
-      + row('涨跌颜色', seg('updown', st.updown, [['green-up', '绿涨红跌'], ['red-up', '红涨绿跌']]))
       + chk('prevCloseColor', '按前一根收盘价着色')
       + chk('body', '实体', color('bodyUp', '实体 · 涨') + color('bodyDown', '实体 · 跌'))
       + chk('border', '边框', color('borderUp', '边框 · 涨') + color('borderDown', '边框 · 跌'))
@@ -170,7 +164,6 @@ export function openChartSettings(host: ChartSettingsHost): void {
     const c = t.closest<HTMLElement>('[data-chk]'); if (c) { const k = c.dataset.chk as BoolK; set({ [k]: !S()[k] }); return }
     const sg = t.closest<HTMLElement>('[data-seg]')
     if (sg) {
-      if (sg.dataset.seg === 'updown') setUpDown(sg.dataset.v as typeof st.updown)
       if (sg.dataset.seg === 'hour12') set({ hour12: sg.dataset.v === '12' })
       return
     }

@@ -360,6 +360,7 @@ export function setOrderFlowHistory(on: boolean): void {
   renderFlowPanel()
 }
 
+/** 深度热力的唯一开关在主力订单流面板「深度热力」一行（2026-10-10 起工具条不再放「热力」按钮：一个动作一个入口） */
 export function toggleHeat(): void {
   OF.prefs.heat = !OF.prefs.heat
   savePrefs()
@@ -367,14 +368,7 @@ export function toggleHeat(): void {
   OF.version++
   api?.charts().forEach(c => { c.chart.dirty = true })
   sync()
-  api?.renderToolbar()
   renderFlowPanel()
-}
-
-/** 工具栏上「热力」按钮（放在「记一笔」后面）。 */
-export function heatButtonHTML(): string {
-  const on = OF.prefs.heat
-  return `<button class="tb-btn ${on ? 'on' : ''}" id="tbHeat" aria-label="热力" aria-pressed="${on}" data-tip="${on ? '关掉' : '打开'}深度热力：各家挂单按价位的浓淡铺在 K 线下面">${I('heat')}<span class="tb-label">热力</span></button>`
 }
 
 // ------------------------------------------------------------------ 指标面板里的一行
@@ -433,8 +427,9 @@ const TILE: Record<string, () => string> = {
     rr(1 + c * 4.2, 1 + r * 4.2, 3.4, 3.4, .8, (c + r) % 3 ? QA : QH, +(.25 + ((c * 3 + r * 5) % 7) / 9).toFixed(2))).join('')).join(''))}</span>`,
 }
 
+/** 面板贴在屏幕右缘：提示出在行的左侧（data-tip-side="left"），不盖本行开关、不压下一行；左边放不下时自动翻面（ui/tipPlace.ts） */
 const sw = (id: string, label: string, on: boolean, tip: string): string =>
-  `<div class="of-p-row" data-tip="${tip}">${TILE[id]?.() ?? ''}<span class="l">${label}</span><button class="switch" role="switch" data-ofp="${id}" aria-checked="${on}" aria-label="${label}"></button></div>`
+  `<div class="of-p-row" data-tip="${tip}" data-tip-side="left">${TILE[id]?.() ?? ''}<span class="l">${label}</span><button class="switch" role="switch" data-ofp="${id}" aria-checked="${on}" aria-label="${label}"></button></div>`
 
 /** 图表页 panelFlow 调：整块重画。 */
 export function flowPanel(el: HTMLElement): void {

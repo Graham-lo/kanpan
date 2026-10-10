@@ -347,8 +347,9 @@ async function partEdge() {
   } else ok('60 只自选', false, '取不到币安成交额排行')
   // 没跟踪的品种开主力订单流：热力层空、不报错
   const e1 = errors.length
-  await open('s=1000BONKUSDT&i=15m&layout=1&panel=watch&ladder=0&drawer=0')
-  const heat = page.locator('#toolbar button', { hasText: '热力' })
+  await open('s=1000BONKUSDT&i=15m&layout=1&panel=flow&ladder=0&drawer=0')
+  // 深度热力只在主力订单流面板里有开关（2026-10-10 工具条不再放「热力」）
+  const heat = page.locator('[data-ofp="heat"]')
   if (await heat.count()) { await heat.first().click(); await wait(4000) }
   await shot('订单流-未跟踪品种')
   ok('未跟踪品种开热力：不报错', sectionErrors(e1).length === 0, sectionErrors(e1).slice(0, 3).join(' | '))
@@ -423,7 +424,7 @@ async function partSectors() {
   const rowsOf = () => page.evaluate(() => [...document.querySelectorAll('#secBody tr[data-sec]')].map(tr => ({
     id: tr.dataset.sec, name: tr.querySelector('.sec-name')?.textContent, beat: tr.children[2].textContent.trim(), thin: tr.dataset.thin === '1',
     thinTip: tr.querySelector('.sec-thin')?.dataset.tip || '',
-    pct: parseFloat((tr.querySelector('.sec-pct')?.textContent || '').replace('%', '')), spark: !!tr.querySelector('.sec-spark polyline'),
+    pct: parseFloat((tr.querySelector('.sec-pct')?.textContent || '').replace('%', ''))
   })))
   let rows = await rowsOf()
   const fat = rows.filter(r => !r.thin), thin = rows.filter(r => r.thin)
@@ -441,8 +442,6 @@ async function partSectors() {
     await shotN('板块-不到三家写横杠')
     await page.mouse.move(10, 10); await wait(300)
   }
-  const noSpark = rows.filter(r => !r.spark).map(r => r.name)
-  ok('15 秒内每个板块都有走势线', !noSpark.length, noSpark.join('、'))
   const beatOk = fat.every(r => /^\d+ \/ \d+$/.test(r.beat) && +r.beat.split('/')[0] <= +r.beat.split('/')[1])
   ok('跑赢大盘 = x / N（x ≤ N）', beatOk, fat.slice(0, 3).map(r => `${r.name} ${r.beat}`).join('，'))
   await page.locator('#secThead .term').first().hover(); await wait(900)

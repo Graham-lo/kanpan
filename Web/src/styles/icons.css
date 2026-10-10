@@ -79,6 +79,16 @@ button:hover > svg.q.q-del { --q1: var(--qdn); }
   box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .18), inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 6px var(--qsg);
 }
 
+/* 十字光标：没选画线工具时它一直是「按下」的，是常态不是动作，用不着整屏最重的强调色玻璃块（2026-10-10 审查 B5）。
+ * 按下时 = 普通磨砂块 + 一层强调软底 + 强调色字形（规范第 3 节画线栏「选中：强调软底 + 强调色图标」）；
+ * 真去画线时，画线工具那颗才是玻璃块，光标块回到普通块 */
+.drawbar .ibtn[data-tool="cursor"][aria-pressed="true"] > svg.q,
+.drawbar .ibtn[data-tool="cursor"][aria-pressed="true"]:is(:hover, :focus-visible) > svg.q {
+  --q1: var(--qac); --qa: var(--qac); --qw: var(--qtm);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, var(--qt0)), color-mix(in srgb, var(--accent) 14%, var(--qt1)));
+  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--accent) 22%, transparent), inset 0 1px 0 var(--qhi), 0 1px 1.5px var(--qsh);
+}
+
 /* 按钮本身不再铺底：块就是状态 */
 .drawbar .ibtn, .drawbar .ibtn:hover, .drawbar .ibtn[aria-pressed="true"],
 .rail .ibtn, .rail .ibtn:hover, .rail .ibtn.on,

@@ -6,11 +6,15 @@
  * 照 TradingView 的做法：外壳（名称、参数、工具按钮）按「结构键」复用，读数格子按位置复用、只改字；
  * 显示 / 隐藏也就地改（行的类、眼睛图标），不重建。 */
 import { icon } from '../ui/icons'
+import { legendTextColor } from './legendColor'
 
 /** 一格读数：[颜色（空 = 跟随样式）, 前缀标签（空 = 无）, 文字, 类名（up / down / faint，可省）] */
 export type LegVal = readonly [col: string, lab: string, txt: string, cls?: string]
 
 type Memo = HTMLElement & { _k?: string; _c?: string; _x?: string; _l?: string; _h?: boolean }
+
+/** 当前是不是深色主题（html[data-theme]，app/shell.ts applyTheme 写） */
+function isDark(): boolean { return typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark' }
 
 /** 读数格子的外壳 HTML（每格 `<span><i>标签</i><b>字</b></span>`，字由 patchVals 填） */
 function cellsHtml(vals: readonly LegVal[]): string {
@@ -19,8 +23,12 @@ function cellsHtml(vals: readonly LegVal[]): string {
 
 /** 把一组读数写进读数盒：格数与标签不变时只改文字节点的字（不换节点）、颜色 / 类变了才改；
  *  格数或标签变了（带前缀的线这一根没值、分形上下切换）才重建这一个读数盒——工具按钮在读数之前，不受影响 */
-export function patchVals(box: HTMLElement, vals: readonly LegVal[]): void {
+export function patchVals(box: HTMLElement, raw: readonly LegVal[]): void {
   const m = box as Memo
+  // 颜色换成「文字版」（chart/legendColor.ts）：画布上的线色不动，图例字同色相压暗 / 提亮到对 --surface ≥ 4.5:1。
+  // 换完再算键——切深浅色时线色没变、文字版变了，也要重刷
+  const dark = isDark()
+  const vals = raw.map(v => v[0] ? [legendTextColor(v[0], dark), v[1], v[2], v[3]] as LegVal : v)
   const vk = vals.map(v => v.join('\u0001')).join('\u0002')
   if (m._k === vk) return
   m._k = vk

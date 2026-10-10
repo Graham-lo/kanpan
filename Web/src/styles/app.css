@@ -28,7 +28,7 @@
   --t11: 11px; --t12: 12px; --t13: 13px; --t14: 14px; --t16: 16px; --t20: 20px; --t24: 24px; --t32: 32px;
 
   --header-h: 48px;
-  --toolbar-h: 40px;
+  --toolbar-h: 38px;
   --drawbar-w: 52px;
   --rail-w: 48px;
   --panel-w: 320px;
@@ -470,7 +470,7 @@ kbd {
 }
 .tb-sep { width: 1px; height: 20px; background: var(--line); margin: 0 var(--s1); flex: none; }
 .tb-btn {
-  height: var(--h-sm); padding: 0 var(--s2); border-radius: var(--r-sm);
+  height: var(--h-md); padding: 0 var(--s2); border-radius: var(--r-sm);
   display: inline-flex; align-items: center; gap: 6px; color: var(--text-1); font-weight: 500; white-space: nowrap;
   transition: background var(--d-fast) var(--ease), color var(--d-fast) var(--ease);
 }
@@ -769,9 +769,6 @@ kbd {
 .page-head { display: flex; align-items: center; gap: var(--s3); height: 56px; padding: 0 var(--s4); flex: none; }
 .page-head h2 { margin: 0; font-size: var(--t20); font-weight: 600; line-height: 28px; }
 .page-head .sub { color: var(--text-2); }
-.sec-bar { width: 72px; height: var(--stroke-bar); border-radius: 2px; background: var(--surface-3); position: relative; overflow: hidden; display: inline-block; vertical-align: middle; }
-.sec-bar i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 2px; background: var(--text-3); }
-.spark { width: 96px; height: 24px; display: block; margin-left: auto; }
 
 /* ---------------------------------------------------------------- 复盘页 */
 #page-review { grid-template-columns: 1fr 880px; grid-template-rows: auto 1fr; gap: var(--gutter); padding: var(--gutter); }
@@ -1032,26 +1029,28 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; }
 /* 一级：品种 16 / 650；周期是一条分段控件，选中项实底 */
 .chart-toolbar #tbSymbol { font-size: var(--t16); font-weight: 650; letter-spacing: -.01em; }
 .chart-toolbar .intervals {
-  gap: 0; padding: 2px; border-radius: var(--r-sm);
-  background: var(--frame-hover);
+  gap: 0; padding: 0; border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--frame-hover) 55%, var(--frame));
 }
-.chart-toolbar .intervals button { height: 24px; min-width: 34px; border-radius: 4px; color: var(--text-2); }
-.chart-toolbar .intervals button:hover { background: transparent; color: var(--text-1); }
-.chart-toolbar .intervals button[aria-pressed="true"] {
-  background: var(--surface); color: var(--accent-text); font-weight: 600;
-  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.06);
-}
-.chart-toolbar #tbMoreIv { height: 24px; border-radius: 4px; color: var(--text-2); }
-.chart-toolbar #tbMoreIv:hover { background: transparent; color: var(--text-1); }
+/* 工具条 38 高、上面每颗按钮 32 高（规范第 4 节），点按面积 ≥ 32 × 32；字号仍是正文 13 */
+.chart-toolbar .intervals button { height: var(--h-md); min-width: 34px; border-radius: var(--r-sm); color: var(--text-2); }
+.chart-toolbar .intervals button:hover { background: var(--frame-hover); color: var(--text-1); }
+/* 选中项：强调软底 + 强调字 600（规范第 3 节一级） */
+.chart-toolbar .intervals button[aria-pressed="true"],
+.chart-toolbar .intervals button[aria-pressed="true"]:hover { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.chart-toolbar #tbMoreIv { height: var(--h-md); border-radius: var(--r-sm); color: var(--text-2); }
+.chart-toolbar #tbMoreIv:hover { background: var(--frame-hover); color: var(--text-1); }
+/* 右侧撤销 / 重做 / 布局 / 截图 / 分享 / 全屏 / 设置：32 见方（字形仍 18，styles/icons.css） */
+.chart-toolbar .tb-right .ibtn { width: var(--h-md); height: var(--h-md); }
 
 /* 二级：指标、提醒——字是 --text-1（图标是 22 磨砂块，颜色走 styles/icons.css） */
 .chart-toolbar #tbInd, .chart-toolbar #tbAlert { color: var(--text-1); }
-/* 三级：对比、记一笔、热力——排到提醒后面（flex 次序），字退到 --text-2，前面一道分隔 */
-.chart-toolbar #tbCompare, .chart-toolbar #tbNote, .chart-toolbar #tbHeat { order: 1; }
+/* 三级：对比、记一笔——排到提醒后面（flex 次序），字退到 --text-2，前面一道分隔 */
+.chart-toolbar #tbCompare, .chart-toolbar #tbNote { order: 1; }
 .chart-toolbar .tb-right { order: 2; }
 .chart-toolbar #tbCompare { position: relative; margin-left: 9px; }
 .chart-toolbar #tbCompare::before { content: ""; position: absolute; left: -6px; top: 4px; bottom: 4px; width: 1px; background: var(--frame-line); }
-.chart-toolbar #tbCompare, .chart-toolbar #tbNote, .chart-toolbar #tbHeat:not(.on) { color: var(--text-2); }
-.chart-toolbar #tbCompare:hover, .chart-toolbar #tbNote:hover, .chart-toolbar #tbHeat:not(.on):hover { color: var(--text-1); }
+.chart-toolbar #tbCompare, .chart-toolbar #tbNote { color: var(--text-2); }
+.chart-toolbar #tbCompare:hover, .chart-toolbar #tbNote:hover { color: var(--text-1); }
 /* 四级：右侧纯图标组不垫块（styles/icons.css） */
 .chart-toolbar .tb-btn.on { color: var(--accent-text); }
