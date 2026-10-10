@@ -2226,6 +2226,8 @@ E 提醒 · 复盘 · 交易所账户 · 小组件 · 诊断），每条线先�
   - **测试**：Core `HighlightsTests|TermsTests` 26 过（波动两种形态、急跌行药丸不跟 24 小时、未知类别容错、四种榜）；`make main-ios-test` 196 过（分段路由含减仓榜失败另一张照常、两段窗口互不影响且落盘、波动行不升半页、板块段无榜无窗口键）；UI `MainScreenUITests` 板块下钻往返 + 价格精度、`TabBarHomeStripUITests` 在 17 Pro Max 上过。`ReviewBadgeIsolationTests` 原来数的是全局总数，首页成冷启动落点后 app 宿主自己那条底栏的角标落定时多画几趟被算进来（关掉首页落点即绿，已证），改成按复盘本对象分开数。
   - **模拟器验收（iPhone 17 Pro Max，D4A341CA，浅色；16 Pro 被其他窗口测试占着）**：异动含真实波动行（BULLA 急跌 −6.8%、CAP 急涨 +4.8% 等，ARPA 波动 + 费率两行并存不再空一块）、涨跌两张榜、持仓增仓 / 减仓两张榜（服务端 oidown 已上）、板块段列表、下钻元宇宙 → 点 AXS 开图 → 返回回列表 → 再点首页回根。截图 `docs/acceptance/首页与盘口要点-2026-10-10/iPhone17ProMax-首页-{异动-波动,涨跌,持仓,板块,板块-下钻}.png`。
 
+- **iOS 半页「观察中」（10-10 晚，主窗口转来；服务端 `eee66179` 起没盯过的币第一次问就当场补出流向与持仓 · 费率 · 现货溢价，回 `tracked:true` + `observingSinceMs`，可能 `partial:true`）**——已推送 main（见下一个提交）：`HighlightsPage` 收 `observingSinceMs`（0 当没给）/ `partial`，`quietState(nowMs:)` 与手机网页同口径——有价位不写；开盯不到 15 分钟写「关键价位与事件观察中 · 约 N 分钟」（N = 离 15 分钟还剩几分钟，至少 1，紧跟在流向下面）；盯满或没给开盯时刻、且无区间无事件才写「近 4 小时没有值得注意的价位与事件」。「打开后开始观察」只留给 `tracked:false` 兜底。Core 单测一条（观察中 / 剩 1 分 / 满 15 分平静 / 旧服务端 / 有价位 / 有事件）；`make main-ios-test` 196 过。模拟器上没点到搜索页去开一只刚开盯的币（17 Pro Max 顶栏放大镜两次没点开，没再耗），这条只有单测与接口实测（ZRX / CELR / RVN / HOT 都回 tracked + observingSinceMs、levels 空）。
+
 ## 80. 2026-10-10：公允价值缺口（FVG）三端上线
 
 - **用户要的**：加 FVG 分析；定了三件事——入口放「分析」面板单独一项（不进指标列表）、已回补的缺口直接消失、三端一起做。界面名「公允价值缺口」，不出现英文缩写。

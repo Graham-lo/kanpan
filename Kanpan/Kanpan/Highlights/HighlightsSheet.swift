@@ -109,8 +109,11 @@ struct HighlightsSheet: View {
   private func blocks(_ page: HighlightsPage) -> some View {
     ScrollViewReader { reader in
       ScrollView {
+        let quiet = page.quietState(nowMs: Int64(Date().timeIntervalSince1970 * 1000))
         VStack(spacing: Space.s) {
           HighlightsFlowBlock(page: page)
+          // 刚开盯、价位与事件还没攒出来：紧跟在流向下面说一句「观察中」，不说「平静」。
+          if case .observing(let n) = quiet { quietLine(HighlightTerm.observing.fill(["n": "\(n)"]), id: "highlights.observing") }
           if !page.levels.isEmpty || page.range != nil {
             HighlightsLevelsBlock(model: model, market: market, page: page, zone: zone, onBack: back(level:))
           }
@@ -120,11 +123,7 @@ struct HighlightsSheet: View {
           if !page.events.isEmpty {
             HighlightsEventsBlock(page: page, model: model, zone: zone, onBack: back(event:))
           }
-          if !page.hasPoints {
-            Text(HighlightTerm.quiet.text).font(TypeScale.caption).foregroundStyle(t.ink3)
-              .frame(maxWidth: .infinity).padding(.vertical, Space.l)
-              .accessibilityIdentifier("highlights.quiet")
-          }
+          if quiet == .calm { quietLine(HighlightTerm.quiet.text, id: "highlights.quiet") }
         }
         .padding(.horizontal, Space.m)
         .padding(.bottom, Space.xxl)
@@ -139,6 +138,12 @@ struct HighlightsSheet: View {
         model.consumedScroll()
       }
     }
+  }
+
+  private func quietLine(_ text: String, id: String) -> some View {
+    Text(text).font(TypeScale.caption).foregroundStyle(t.ink3)
+      .frame(maxWidth: .infinity).padding(.vertical, Space.l)
+      .accessibilityIdentifier(id)
   }
 
   private func calm(icon: String, text: String, id: String) -> some View {

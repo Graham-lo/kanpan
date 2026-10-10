@@ -226,6 +226,7 @@ public enum HighlightTerm: String, CaseIterable, Sendable {
   case window4h
   case untracked
   case quiet
+  case observing
 
   /// 这一项的字。
   public var text: String { Terms.table["highlights"]?[rawValue] ?? rawValue }

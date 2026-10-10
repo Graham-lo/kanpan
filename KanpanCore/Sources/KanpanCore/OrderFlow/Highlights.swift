@@ -18,6 +18,11 @@ public struct HighlightsPage: Sendable, Equatable, Decodable {
   public var levels: [HighlightLevel]
   public var position: HighlightPosition?
   public var events: [HighlightEvent]
+  /// 服务端从什么时候开始盯这只（毫秒）。没盯过的币第一次问时服务端当场用历史补出流向与持仓 · 费率 · 现货溢价，
+  /// 价位与事件要盯一阵才攒得出来；没给就是 nil。
+  public var observingSinceMs: Int64?
+  /// 服务端补数没在时限内补全（先给能给的）。
+  public var partial: Bool
 
   public struct Flow: Sendable, Equatable, Decodable {
     public var rows: [FlowRow]
@@ -31,9 +36,10 @@ public struct HighlightsPage: Sendable, Equatable, Decodable {
 
   public init(base: String, generatedAtMs: Int64, tracked: Bool, staleMs: Int64? = nil, flow: Flow? = nil,
               range: HighlightRange? = nil, levels: [HighlightLevel] = [], position: HighlightPosition? = nil,
-              events: [HighlightEvent] = []) {
+              events: [HighlightEvent] = [], observingSinceMs: Int64? = nil, partial: Bool = false) {
     self.base = base; self.generatedAtMs = generatedAtMs; self.tracked = tracked; self.staleMs = staleMs
     self.flow = flow; self.range = range; self.levels = levels; self.position = position; self.events = events
+    self.observingSinceMs = observingSinceMs; self.partial = partial
   }
 
   public init(from decoder: Decoder) throws {
@@ -47,10 +53,33 @@ public struct HighlightsPage: Sendable, Equatable, Decodable {
     levels = (try? c.decode(Lossy<HighlightLevel>.self, forKey: .levels))?.items ?? []
     position = try? c.decodeIfPresent(HighlightPosition.self, forKey: .position)
     events = (try? c.decode(Lossy<HighlightEvent>.self, forKey: .events))?.items ?? []
+    observingSinceMs = (try? c.decodeIfPresent(Int64.self, forKey: .observingSinceMs)).flatMap { $0 }.flatMap { $0 > 0 ? $0 : nil }
+    partial = (try? c.decode(Bool.self, forKey: .partial)) ?? false
   }
 
   enum CodingKeys: String, CodingKey {
-    case base, generatedAtMs, tracked, staleMs, flow, range, levels, position, events
+    case base, generatedAtMs, tracked, staleMs, flow, range, levels, position, events, observingSinceMs, partial
+  }
+
+  /// 价位与事件都还没有时半页上那一句（和手机网页 `quietState` 同口径）。
+  public enum QuietState: Sendable, Equatable {
+    /// 有价位：什么都不写。
+    case none
+    /// 服务端开盯不到 15 分钟：「关键价位与事件观察中 · 约 N 分钟」（N = 离 15 分钟还剩几分钟，至少 1），紧跟在流向下面。
+    case observing(minutes: Int)
+    /// 盯满 15 分钟（或服务端没给开盯时刻）还什么都没有：「近 4 小时没有值得注意的价位与事件」。
+    case calm
+  }
+
+  public static let observeMs: Int64 = 15 * 60_000
+
+  public func quietState(nowMs: Int64) -> QuietState {
+    if !levels.isEmpty { return .none }
+    if let since = observingSinceMs, nowMs - since < Self.observeMs {
+      let left = Self.observeMs - max(0, nowMs - since)
+      return .observing(minutes: max(1, Int((left + 59_999) / 60_000)))
+    }
+    return range == nil && events.isEmpty ? .calm : .none
   }
 
   /// 现价上方的价位（距离从近到远），最多 `limit` 条。包住现价的那几条不算（见 `atPrice(_:)`）。

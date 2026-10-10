@@ -370,4 +370,37 @@ struct HighlightsTests {
     #expect(MarketBoard.Kind.oidown.rawValue == "oidown")
     #expect(MarketBoard.Kind.allCases.map(\.rawValue) == ["oi", "oidown", "gainers", "losers"])
   }
+
+  @Test("刚开盯价位空着写「观察中 · 约 N 分钟」，满 15 分钟才写平静，有价位都不写")
+  func quietStateObservingCalmLevels() throws {
+    let now: Int64 = 1_791_630_000_000
+    let min: Int64 = 60_000
+    // 服务端新字段：tracked + observingSinceMs + partial（没补全）。
+    let json = """
+    {"base": "ONT", "generatedAtMs": \(now), "tracked": true, "observingSinceMs": \(now - 3 * min), "partial": true,
+     "flow": {"rows": []}, "levels": [], "events": []}
+    """
+    let fresh = try JSONDecoder().decode(HighlightsPage.self, from: Data(json.utf8))
+    #expect(fresh.tracked && fresh.partial)
+    #expect(fresh.observingSinceMs == now - 3 * min)
+    #expect(fresh.quietState(nowMs: now) == .observing(minutes: 12))
+    #expect(HighlightTerm.observing.fill(["n": "12"]) == "关键价位与事件观察中 · 约 12 分钟")
+    // 剩不到一分钟也写 1；满 15 分钟换成平静。
+    #expect(fresh.quietState(nowMs: now + 12 * min - 1_000) == .observing(minutes: 1))
+    #expect(fresh.quietState(nowMs: now + 12 * min) == .calm)
+    // 没给开盯时刻（旧服务端）：照旧平静；0 当没给。
+    var old = fresh; old.observingSinceMs = nil
+    #expect(old.quietState(nowMs: now) == .calm)
+    let zero = try JSONDecoder().decode(HighlightsPage.self, from: Data(#"{"base":"X","generatedAtMs":1,"tracked":true,"observingSinceMs":0}"#.utf8))
+    #expect(zero.observingSinceMs == nil && !zero.partial)
+    // 有价位：哪句都不写，开盯多久都一样。
+    var withLevels = fresh
+    withLevels.levels = [HighlightLevel(id: "a", low: 1, high: 1, side: .bid, distPct: -1)]
+    #expect(withLevels.quietState(nowMs: now) == .none)
+    // 盯满了、价位空但有事件：不写平静。
+    var withEvents = old
+    withEvents.events = try JSONDecoder().decode([HighlightEvent].self, from: Data(#"[{"id":"b","t":"oiJump","atMs":2,"pct":1.4}]"#.utf8))
+    #expect(withEvents.events.count == 1)
+    #expect(withEvents.quietState(nowMs: now) == .none)
+  }
 }
