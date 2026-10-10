@@ -12,7 +12,7 @@ import XCTest
 // 1. 币安直连 BTCUSDT：青苔浅 / 青苔深 / 经典浅 / 经典深四张，再长按一条大单拍十字线读数。
 // 2. BTC 的「指标 › 主力订单流」参数表：拍表，把 U 本位永续与现货门槛调低、保存，确认新门槛到了
 //    簿那一层、图上的大单变多；再关掉「合约」确认只剩现货。
-// 3. 网关线路（K 线上游换成 OKX 替身），品种 SOLUSDT。
+// 3. 网关线路（K 线仍是币安自家的数，经 kanpan-api 透传 + Python 网关推送），品种 SOLUSDT。
 // 4. Coinbase 现货 BTC-USD 页面（同一只币，簿照样三家现货 + 各家合约一起订）。
 //
 // 大单画在 CoreGraphics 上，读屏树里没有；等待与取点都读 `chart.canvas` 诊断里的
@@ -23,7 +23,7 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
 
   override var extraLaunchEnvironment: [String: String] {
     var env = ["KANPAN_TEST_INTERVAL": "1m"]
-    // 网关线路的币安品种 K 线走 OKX 替身；大单那一层与线路无关，照样按品种表订全部簿。
+    // 网关线路的币安品种 K 线仍是币安自家的数（透传 + 共享推送，没有替身）；大单那一层与线路无关，照样按品种表订全部簿。
     if name.contains("Gateway") {
       env["KANPAN_TEST_ROUTE_POLICY"] = "gateway"
       env["KANPAN_TEST_DEEPLINK"] = "hkline://symbol/SOLUSDT?interval=1m"
@@ -623,20 +623,24 @@ final class OrderFlowEvidenceUITests: KanpanUICase {
     print("取证|局部放大|\(symbol)|中心 y=\(center)|线数=\(ys.filter { abs($0 - center) <= 50 }.count)|\(file.lastPathComponent)")
   }
 
-  // ------------------------------------------------------------ 3. 网关：OKX 替身
+  // ------------------------------------------------------------ 3. 网关：币安透传（OKX 替身 2026-10-08 起删了）
 
-  func testGatewayOKX() {
+  func testGatewayBinance() {
     let source = app.staticTexts["market.source"]
     XCTAssertTrue(waitUntil(timeout: Self.long * 2, poll: 0.5) {
-      source.exists && source.label == "okx" && (source.value as? String) == "live"
-    }, "网关线路没换到 OKX：source=\(source.label)")
+      source.exists && source.label == "binance" && (source.value as? String) == "live"
+    }, "网关线路的币安图没推起来：source=\(source.label) status=\(String(describing: source.value))")
+    // 证明真走了网关：K 线请求记成「网关 <kanpan-api 主机> /fapi/v1/klines」，没有一笔直连币安。
+    let network = app.staticTexts["market.network"].label
+    XCTAssertTrue(network.contains("网关 ") && network.contains("/fapi/v1/klines HTTP 200"), "没看到网关透传的 K 线请求：\(network)")
+    XCTAssertFalse(network.contains("直连 fapi.binance.com"), "网关线路不该直连币安：\(network)")
     XCTAssertTrue(waitUntil(timeout: 45, poll: 0.5) {
       (self.chartInfo()["symbol"] as? String ?? "").hasSuffix("/SOLUSDT") && (self.chartInfo()["bars"] as? Int ?? 0) >= 20
     }, "深链开 SOLUSDT 没出图：\(chartInfo())")
     executionTimeAllowance = 1200
     turnOnOrderFlow()
-    guard let symbol = waitForBandsRotating("OKX 网关", symbols: ["SOLUSDT", "DOGEUSDT", "ETHUSDT"]) else { return }
-    shot("OKX网关-" + symbol)
+    guard let symbol = waitForBandsRotating("币安网关", symbols: ["SOLUSDT", "DOGEUSDT", "ETHUSDT"]) else { return }
+    shot("币安网关-" + symbol)
   }
 
   // ------------------------------------------------------------ 4. Coinbase 现货

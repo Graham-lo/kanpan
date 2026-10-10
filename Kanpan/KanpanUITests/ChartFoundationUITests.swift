@@ -391,11 +391,14 @@ final class ChartFoundationUITests: XCTestCase {
     let gateway = app.buttons["settings.routePolicy.网关"]
     for _ in 0..<8 { if gateway.isHittable { break }; app.swipeUp() }
     gateway.tap(); leaveSettings()
-    XCTAssertTrue(wait { self.info()["externalSupported"] as? Bool == false }, feedEvidence())
-    XCTAssertEqual(info()["depthLevels"] as? Int, 0)
-    XCTAssertTrue(wait { self.info()["renderedDepthRows"] as? Int == 0 })
+    // 网关档仍是币安自家的数（kanpan-api 原样透传，`futures/data/*` 三条统计都在白名单里），
+    // 三副图照常出数；只少盘口与逐笔方向（Python hub 不转 `@depth5`），所以盘口梯清空。
+    XCTAssertTrue(wait { self.info()["depthLevels"] as? Int == 0 && self.info()["renderedDepthRows"] as? Int == 0 }, feedEvidence())
+    XCTAssertEqual(app.staticTexts["market.source"].label, "binance", feedEvidence())
+    XCTAssertEqual(info()["externalSupported"] as? Bool, true, feedEvidence())
+    XCTAssertTrue(wait(seconds: 90) { Set(self.info()["externalReady"] as? [String] ?? []) == Set(["LSR", "TAKER", "BASIS"]) }, feedEvidence())
     XCTAssertEqual((info()["subs"] as? [String])?.count, 3)
-    shot("网关-三副图空态")
+    shot("网关-三副图照常-无盘口")
     XCTAssertTrue(app.openSettingsFromMe(), "「我的 › 设置」没推出设置页")
     let direct = app.buttons["settings.routePolicy.直连"]
     for _ in 0..<8 { if direct.isHittable { break }; app.swipeUp() }
