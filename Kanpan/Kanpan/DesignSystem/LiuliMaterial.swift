@@ -284,7 +284,7 @@ extension View {
 
 // MARK: - 液态药丸
 
-/// 液态药丸：强调色渐变 + 顶上一线高光 + 同色投影。用在一页唯一的主操作上
+/// 液态药丸：强调色渐变 + 同色投影。用在一页唯一的主操作上
 /// （「登录 / 注册」「重试」这类），字是白的。
 struct LiuliPill: View {
   let title: String
@@ -312,8 +312,8 @@ struct LiuliPill: View {
       .frame(minHeight: Hit.min)
       .frame(maxWidth: fill ? .infinity : nil)
       .background {
+        // 不叠玻璃那道顶光：实心强调色上 1pt 的近白线读出来就是一道白线（用户 2026-10-10 点名）。
         Capsule().fill(m.accentGradient)
-          .overlay(alignment: .top) { m.topHighlight(inset: Space.l).padding(.top, 1) }
           .shadow(color: m.accent.opacity(m.dark ? 0.25 : 0.35), radius: 10, y: 6)
       }
       .contentShape(Capsule())
