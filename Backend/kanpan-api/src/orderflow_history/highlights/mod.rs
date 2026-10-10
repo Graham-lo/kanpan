@@ -266,18 +266,25 @@ fn step(states:&mut HashMap<String,State>,booting:&mut HashSet<String>,jobs:&mps
  for base in &tracked {states.entry(base.clone()).or_insert_with(||State::new(base,now));}
  for (base,p) in inbox {if let Some(s)=states.get_mut(&base) {s.fold(p,now);}}
  let mut snaps=HashMap::with_capacity(states.len());
- for (base,s) in states.iter_mut() {
+ // 主币先补（冷启动时一百多只排队，打开最多的几只别排在后面）。
+ let mut order:Vec<&String>=states.keys().collect();
+ order.sort_by_key(|b|(!ALWAYS.contains(&b.as_str()),(*b).clone()));
+ for base in order {
+  let s=&states[base];
   if !s.booted&&!booting.contains(base) {
    booting.insert(base.clone());
    let _=jobs.send(Job::Boot{base:base.clone(),live_from:s.live_from.unwrap_or(minute*M)});
   }
+ }
+ for (base,s) in states.iter_mut() {
   if s.booted {
    s.sample_due(now);
    let slot=hash(base);
    if (minute+slot)%5==0 {let _=jobs.send(Job::Oi{base:base.clone(),hourly:(minute%60)<5,price:s.last_close()});}
    if (minute+slot)%PERSIST_EVERY==0 {s.settle_hours();let _=jobs.send(Job::Save{base:base.clone(),payload:s.payload(),at:now});}
   }
-  snaps.insert(base.clone(),Arc::new(s.compute(now,true)));
+  // 还没补齐历史（起步 REST 与库里那一段）之前不发：只有头一分钟的数据，四行流向一样、涨跌全空，像真的又不对。
+  if s.booted {snaps.insert(base.clone(),Arc::new(s.compute(now,true)));}
  }
  *SNAPS.write().unwrap_or_else(|e|e.into_inner())=snaps;
  if minute%5==0 {let _=jobs.send(Job::Funding);}
