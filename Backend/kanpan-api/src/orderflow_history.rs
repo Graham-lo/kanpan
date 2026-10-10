@@ -1082,6 +1082,10 @@ struct Registry {
  next_start:Mutex<tokio::time::Instant>,
  /// 停掉了、还在收尾（结束挂着的单、把积压写进库）的跟踪任务。同一只马上又被起跟时，新的等旧的收完尾再读回挂着的单。
  retiring:Mutex<HashMap<String,JoinHandle<()>>>,
+ /// 自选层的两份来源：账号自选（10 分钟重算）与设备最近打开 / 带过的（随请求更新），合起来套 `Layer::Favorite`。
+ accounts:Mutex<Vec<String>>,
+ devices:Mutex<favorites::Devices>,
+ device_pick:Mutex<Vec<String>>,
 }
 
 static REGISTRY:OnceLock<Arc<Registry>>=OnceLock::new();
@@ -1091,7 +1095,8 @@ type Entries=HashMap<String,Entry>;
 impl Registry {
  fn new(pool:PgPool)->Self {
   Self{pool,entries:Mutex::new(HashMap::new()),lists:Mutex::new(Lists::default()),over:AtomicBool::new(false),shed:AtomicU8::new(0),
-   next_start:Mutex::new(tokio::time::Instant::now()),retiring:Mutex::new(HashMap::new())}
+   next_start:Mutex::new(tokio::time::Instant::now()),retiring:Mutex::new(HashMap::new()),
+   accounts:Mutex::new(Vec::new()),devices:Mutex::new(favorites::Devices::default()),device_pick:Mutex::new(Vec::new())}
  }
  fn lock(&self)->std::sync::MutexGuard<'_,Entries> {self.entries.lock().unwrap_or_else(|e|e.into_inner())}
  fn shed(&self)->u8 {self.shed.load(Ordering::Relaxed)}
@@ -1216,6 +1221,25 @@ impl Registry {
    if refused>0 {format!(", {refused} held back by the resource gate / cap")} else {String::new()},list.join(" "));
  }
 
+ /// 一台设备打开 / 带了这几只（已筛过合法、挂牌）：设备那一份换了成员就马上重套自选层。
+ fn touch_device(&self,device:&str,bases:&[String],now:i64) {
+  let changed={
+   let mut d=self.devices.lock().unwrap_or_else(|e|e.into_inner());
+   d.touch(device,bases,now)&&{
+    let pick=d.pick();
+    let mut last=self.device_pick.lock().unwrap_or_else(|e|e.into_inner());
+    if *last==pick {false} else {*last=pick;true}
+   }
+  };
+  if changed {self.apply_favorites(now);}
+ }
+
+ /// 账号自选 + 设备那一份，套成自选层。
+ fn apply_favorites(&self,now:i64) {
+  let list=favorites::combine(&self.accounts.lock().unwrap_or_else(|e|e.into_inner()),&self.device_pick.lock().unwrap_or_else(|e|e.into_inner()));
+  self.apply(Layer::Favorite,&list,now);
+ }
+
  /// 热点要排除的：已经因为别的理由在跟的，加上固定与山寨名单。
  fn not_hot(&self,now:i64)->HashSet<String> {
   let mut out:HashSet<String>=self.lock().iter().filter(|(_,e)|e.major||e.fixed||e.favorite||e.alt_until>now||e.on_demand(now)).map(|(b,_)|b.clone()).collect();
@@ -1286,7 +1310,7 @@ impl Registry {
 async fn recompute_favorites(registry:Arc<Registry>,running:crate::supervise::Running) {
  let _running=running;
  match favorites::bases(&registry.pool).await {
-  Ok(list)=>registry.apply(Layer::Favorite,&list,now_ms()),
+  Ok(list)=>{*registry.accounts.lock().unwrap_or_else(|e|e.into_inner())=list;registry.apply_favorites(now_ms());},
   Err(e)=>tracing::warn!("Orderflow history: favorites layer unreadable, keeping the last list: {e:#}"),
  }
 }
@@ -1541,6 +1565,14 @@ pub(crate) async fn want(base:&str,now:i64)->bool {
  registry.request(base,now);
  if let Some(pool)=POOL.get() && let Err(e)=store::touch(pool,base,now).await {tracing::warn!("Orderflow history: {base} could not be recorded as wanted: {e}")}
  registry.is_tracked(base)
+}
+
+/// 一台设备打开 / 带了这几只 base（首页异动一列的 `bases=`、要点请求）：合法、挂牌的记进自选层的设备那一份。
+pub(crate) async fn touch_device(device:&str,bases:&[String],now:i64) {
+ let Some(registry)=REGISTRY.get() else {return};
+ let mut ok=Vec::with_capacity(bases.len());
+ for b in bases {if instruments::valid_base(b)&&admitted(registry.is_tracked(b),instruments::listed(b).await) {ok.push(b.clone());}}
+ registry.touch_device(device,&ok,now);
 }
 
 /// 要不要为这只 base 起跟踪、记进库：已经在跟的照旧；合约表判得了而三家都没挂的不起；判不了（表还没拉到）的放行。

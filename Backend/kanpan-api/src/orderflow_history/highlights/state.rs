@@ -161,6 +161,9 @@ pub(super) struct State {
  pub touches_backfilled:bool,
  /// 首页「持仓 · 费率 · 现货溢价」那一项从哪一刻起一直是同一类极端（`atMs` 用它，不是每分钟重算的时刻）。
  pub position_since:Option<(&'static str,i64)>,
+ /// 这只是从哪一刻开始现场收的（新起跟、库里没有落过盘的才有；墙 / 吃单账本 / 爆仓要现场攒，关键价位与事件在这之后
+ /// 4 小时内算「观察中」）。不落盘：重启后读回落过的盘，就不算新起跟。
+ pub observing_since:Option<i64>,
 }
 
 /// 价位上几段（墙 / 吃单 / 爆仓）各自的地板：占这条价位合计不到 [`SEGMENT_SHARE`] 的不显示（写 0，客户端不画），
@@ -194,7 +197,7 @@ impl State {
   Self{base:base.to_string(),flow:Series::new(FLOW_MINUTES,0.0),px:Series::new(PX_MINUTES,f32::NAN),hours:BTreeMap::new(),
    oi5:BTreeMap::new(),oi1h:BTreeMap::new(),funding:None,ledger:Ledger::default(),until:0,live_from:None,samples:Sampled::default(),
    live:Vec::new(),ended:Vec::new(),sizes:Sizes::default(),broken:Vec::new(),last_bar:0,sampled:0,booted:false,created:now,
-   touches_backfilled:false,position_since:None}
+   touches_backfilled:false,position_since:None,observing_since:None}
  }
 
  fn mark_live(&mut self,minute:i64) {
@@ -265,6 +268,16 @@ impl State {
    let e=self.hours.entry(k.t).or_insert(Hour{o:k.o,h:k.h,l:k.l,c:k.c,net:0.0});
    if k.t>=current {e.h=e.h.max(k.h);e.l=e.l.min(k.l);e.o=k.o;} else {e.o=k.o;e.h=k.h;e.l=k.l;e.c=k.c;}
   }
+  // REST 补的分钟（1 分钟线、由它算的净主动）只补这一任开始现场收之前：现场那一分钟的足迹是 `+=` 进来的，补了就算两遍。
+  let cut=lf.min(b.gap.1);
+  let spot_min:BTreeMap<i64,f64>=b.spot_minutes.iter().map(|k|(k.t,k.c)).collect();
+  for k in &b.minutes {
+   if k.t>=cut {continue}
+   if let Some(s)=self.px.slot(k.t) {
+    if !s[0].is_finite() {s[0]=k.c as f32;s[1]=k.h as f32;s[2]=k.l as f32;}
+    if !s[3].is_finite() && let Some(sp)=spot_min.get(&k.t) {s[3]=*sp as f32;}
+   }
+  }
   for k in &b.fives {
    let at=k.t+4*M;
    if at>=lf {continue}
@@ -284,6 +297,11 @@ impl State {
   for (m,(long,short,_)) in &b.liq {
    if *m>=lf {continue}
    if let Some(s)=self.flow.slot(*m) {s[2]=*long as f32;s[3]=*short as f32;}
+  }
+  // 库里没有足迹的分钟（没跟过的品种全是）用 1 分钟线的主动买入额补：只有币安一家合约，比足迹（全部家、合约 + 现货）窄，但流向四行马上有数。
+  for (m,(net,vol)) in &b.kflow {
+   if *m>=cut {continue}
+   if let Some(s)=self.flow.slot(*m) && s[1]==0.0 {s[0]=*net as f32;s[1]=*vol as f32;}
   }
   let px=self.last_close().or_else(||b.hours.last().map(|k|k.c));
   let (gap_from,gap_to)=b.gap;
@@ -582,7 +600,8 @@ impl State {
   let (wall_floor,sizes)=self.wall_sizes();
   let evs=if price.is_some() {self.events(end,wall_floor)} else {Vec::new()};
   let p=price.unwrap_or(0.0);
-  let json=json!({"base":self.base,"generatedAtMs":now,"tracked":tracked,"staleMs":stale,
+  let observing=self.observing_since.filter(|t|now-t<events::WINDOW_MS);
+  let json=json!({"base":self.base,"generatedAtMs":now,"tracked":tracked,"staleMs":stale,"observingSinceMs":observing,"partial":false,
    "flow":{"rows":rows},"range":range_json,
    "levels":levels.iter().map(Self::level_json).collect::<Vec<_>>(),
    "position":position,

@@ -67,6 +67,16 @@ static SNAPS:LazyLock<RwLock<HashMap<String,Arc<Snap>>>>=LazyLock::new(||RwLock:
 static FUNDING:LazyLock<Mutex<HashMap<String,f64>>>=LazyLock::new(||Mutex::new(HashMap::new()));
 static ANSWERS:LazyLock<Answers<(String,bool)>>=LazyLock::new(||Answers::new(TTL));
 static BOARD_ANSWERS:LazyLock<Answers<(String,bool)>>=LazyLock::new(||Answers::new(TTL));
+/// 引擎收「起步补齐」的口子：接口那条快路补完也从这里交给引擎（引擎重起时换一个）。
+static INJECT:LazyLock<Mutex<Option<mpsc::Sender<Done>>>>=LazyLock::new(||Mutex::new(None));
+static POOL:std::sync::OnceLock<PgPool>=std::sync::OnceLock::new();
+/// 正在走快路补齐的（同一只同时只补一份；引擎看到就不再排自己的起步）。
+static QUICK:LazyLock<Mutex<HashMap<String,Arc<Quick>>>>=LazyLock::new(||Mutex::new(HashMap::new()));
+/// 打开一只没算好的品种，接口最多等多久。
+const QUICK_WAIT:Duration=Duration::from_secs(2);
+
+/// 一份快路补齐：各路 REST 与库谁先回来谁先写进 `boot`；`done` 全回来了为 true。
+struct Quick {started:i64,restored:Mutex<Option<Value>>,boot:Mutex<fetch::Boot>,done:tokio::sync::watch::Sender<bool>}
 
 fn on()->bool {ON.load(Ordering::Relaxed)}
 fn push(base:&str,f:impl FnOnce(&mut Pending)) {
@@ -183,6 +193,7 @@ enum Done {
 /// 起引擎（serve 起订单流时一次）。
 pub(super) fn start(pool:PgPool) {
  if ON.swap(true,Ordering::SeqCst) {return}
+ let _=POOL.set(pool.clone());
  let board_pool=pool.clone();
  crate::supervise::spawn_restarting("market-board",move ||market::run(board_pool.clone()));
  let moves_pool=pool.clone();
@@ -193,6 +204,7 @@ pub(super) fn start(pool:PgPool) {
 async fn run(pool:PgPool) {
  let (jobs,job_rx)=mpsc::unbounded_channel::<Job>();
  let (done_tx,mut done)=mpsc::channel::<Done>(64);
+ *INJECT.lock().unwrap_or_else(|e|e.into_inner())=Some(done_tx.clone());
  let worker=tokio::spawn(worker(pool,job_rx,done_tx));
  let _abort=Abort(worker);
  let mut states:HashMap<String,State>=HashMap::new();
@@ -218,10 +230,20 @@ fn receive(states:&mut HashMap<String,State>,booting:&mut HashSet<String>,d:Done
  match d {
   Done::Boot{base,restored,boot}=>{
    booting.remove(&base);
+   // 接口快路补齐时引擎可能还没给它建状态（起跟是在请求里起的，状态要等下一拍）：在跟就现在建。
+   if !states.contains_key(&base) {
+    if !REGISTRY.get().is_some_and(|r|r.is_tracked(&base)) {return}
+    states.insert(base.clone(),fresh(&base,now));
+   }
    let Some(s)=states.get_mut(&base) else {return};
-   if let Some(v)=restored && let Some(old)=State::restore(&base,&v,now) {merge(s,old);}
-   s.apply(*boot,now);
+   // 快路与引擎自己的起步都补齐了：只认先到的那份，不然账本里补的那段会加两遍。
+   if s.booted {return}
+   let started=s.created.min(s.live_from.unwrap_or(i64::MAX));
+   boot_state(s,restored,*boot,now,started);
    tracing::info!("Orderflow highlights: {base} ready ({} hours, {} ledger buckets, {} oi points)",s.hours.len(),s.ledger.b.len(),s.oi5.len());
+   // 补齐就出一份，不等下一拍。
+   let snap=Arc::new(s.compute(now,true));
+   SNAPS.write().unwrap_or_else(|e|e.into_inner()).insert(base,snap);
   },
   Done::Oi{base,five,hour,funding}=>if let Some(s)=states.get_mut(&base) {
    for (t,v) in five {s.oi5.insert(t,v);}
@@ -234,6 +256,24 @@ fn receive(states:&mut HashMap<String,State>,booting:&mut HashSet<String>,d:Done
    *FUNDING.lock().unwrap_or_else(|e|e.into_inner())=rates;
   },
  }
+}
+
+fn fresh(base:&str,now:i64)->State {
+ let mut s=State::new(base,now);
+ s.funding=FUNDING.lock().unwrap_or_else(|e|e.into_inner()).get(base).copied();
+ s
+}
+
+/// 起步补齐：读回落过的盘（有就并进来）、合进 REST 与库里的历史；库里没有落过盘的算新起跟，从 `started` 起「观察中」。
+fn boot_state(s:&mut State,restored:Option<Value>,boot:fetch::Boot,now:i64,started:i64) {
+ let old=restored.as_ref().and_then(|v|State::restore(&s.base,v,now));
+ let fresh_start=old.is_none();
+ if let Some(old)=old {merge(s,old);}
+ // 全市场费率表里没有（非币安、或那一下没取到）就先用最近一期的历史费率。
+ let settled=boot.funding.iter().max_by_key(|(t,_)|*t).map(|(_,v)|*v);
+ s.apply(boot,now);
+ if s.funding.is_none() {s.funding=settled;}
+ if fresh_start {s.observing_since=Some(started);}
 }
 
 /// 读回的那份并进这一任已经收了几分钟的状态：账本相加、样本与小时线补缺。
@@ -279,13 +319,7 @@ fn step(states:&mut HashMap<String,State>,booting:&mut HashSet<String>,jobs:&mps
   SNAPS.write().unwrap_or_else(|e|e.into_inner()).remove(&base);
  }
  let inbox=std::mem::take(&mut *INBOX.lock().unwrap_or_else(|e|e.into_inner()));
- for base in &tracked {
-  states.entry(base.clone()).or_insert_with(||{
-   let mut s=State::new(base,now);
-   s.funding=FUNDING.lock().unwrap_or_else(|e|e.into_inner()).get(base).copied();
-   s
-  });
- }
+ for base in &tracked {states.entry(base.clone()).or_insert_with(||fresh(base,now));}
  for (base,p) in inbox {if let Some(s)=states.get_mut(&base) {s.fold(p,now);}}
  let mut snaps=HashMap::with_capacity(states.len());
  // 主币先补（冷启动时一百多只排队，打开最多的几只别排在后面）。
@@ -293,7 +327,7 @@ fn step(states:&mut HashMap<String,State>,booting:&mut HashSet<String>,jobs:&mps
  order.sort_by_key(|b|(!ALWAYS.contains(&b.as_str()),(*b).clone()));
  for base in order {
   let s=&states[base];
-  if !s.booted&&!booting.contains(base) {
+  if !s.booted&&!booting.contains(base)&&!QUICK.lock().unwrap_or_else(|e|e.into_inner()).contains_key(base) {
    booting.insert(base.clone());
    let _=jobs.send(Job::Boot{base:base.clone(),live_from:s.live_from.unwrap_or(minute*M)});
   }
@@ -362,19 +396,82 @@ pub(super) struct HighlightsQuery {base:String}
 
 /// 没在跟（或刚起跟、还没算出第一份）时的答复。
 fn untracked(base:&str,now:i64)->Value {
- json!({"base":base,"generatedAtMs":now,"tracked":false,"staleMs":null,"flow":null,"range":null,"levels":[],"position":null,"events":[]})
+ json!({"base":base,"generatedAtMs":now,"tracked":false,"staleMs":null,"observingSinceMs":null,"partial":false,"flow":null,"range":null,"levels":[],"position":null,"events":[]})
 }
 
-pub(super) async fn highlights(Axum(_s):Axum<AppState>,headers:axum::http::HeaderMap,Params(q):Params<HighlightsQuery>)->Result<Response> {
+/// 快路：没算好的品种当场补一份（各路并发，最多等 [`QUICK_WAIT`]），能从 REST 历史拼出来的流向、区间、持仓 · 费率 · 现货溢价、
+/// 触及次数马上给，`tracked:true` + `observingSinceMs`；到点没补完就先拿已经回来的算、`partial:true`，剩下的在后台补完交给引擎。
+async fn quick(base:&str,now:i64)->Value {
+ let q={
+  let mut m=QUICK.lock().unwrap_or_else(|e|e.into_inner());
+  m.entry(base.to_string()).or_insert_with(||{
+   let q=Arc::new(Quick{started:now,restored:Mutex::new(None),boot:Mutex::new(fetch::Boot::default()),done:tokio::sync::watch::channel(false).0});
+   tokio::spawn(fill(base.to_string(),q.clone()));
+   q
+  }).clone()
+ };
+ let mut rx=q.done.subscribe();
+ let complete=tokio::time::timeout(QUICK_WAIT,rx.wait_for(|d|*d)).await.is_ok_and(|r|r.is_ok());
+ if complete && let Some(s)=snapshot(base) && s.json.get("tracked")==Some(&json!(true)) {return s.json.clone()}
+ let restored=q.restored.lock().unwrap_or_else(|e|e.into_inner()).clone();
+ let boot=q.boot.lock().unwrap_or_else(|e|e.into_inner()).clone();
+ let mut s=fresh(base,now);
+ boot_state(&mut s,restored,boot,now,q.started);
+ let snap=s.compute(now,true);
+ let mut json=snap.json.clone();
+ json["partial"]=json!(!complete);
+ if complete {SNAPS.write().unwrap_or_else(|e|e.into_inner()).entry(base.to_string()).or_insert_with(||Arc::new(snap));}
+ json
+}
+
+/// 快路的后台那一半：读回落过的盘、各路并发补齐，补完交给引擎（引擎已经补齐过就丢掉）。
+async fn fill(base:String,q:Arc<Quick>) {
+ let Some(pool)=POOL.get() else {let _=q.done.send(true);return};
+ let restored=match load(pool,&base).await {Ok(v)=>v,Err(e)=>{tracing::warn!("Orderflow highlights: {base} saved state unreadable: {e}");None}};
+ *q.restored.lock().unwrap_or_else(|e|e.into_inner())=restored.clone();
+ let now=now_ms();
+ let live_from=q.started.div_euclid(M)*M;
+ let until=restored.as_ref().and_then(|v|v["until"].as_i64()).filter(|u|*u>0).unwrap_or(0);
+ let from=until.max(now-3*stats::DAY_MS).min(live_from);
+ fetch::boot_into(pool,&base,from,live_from,now,&q.boot).await;
+ let boot=q.boot.lock().unwrap_or_else(|e|e.into_inner()).clone();
+ let tx=INJECT.lock().unwrap_or_else(|e|e.into_inner()).clone();
+ if let Some(tx)=tx {let _=tx.send(Done::Boot{base:base.clone(),restored,boot:Box::new(boot)}).await;}
+ let _=q.done.send(true);
+ QUICK.lock().unwrap_or_else(|e|e.into_inner()).remove(&base);
+}
+
+/// 一台设备：带登录令牌的按令牌（摘要），游客按来源地址（`auth::client_ip`，对端是本机的 Caddy 才认转发头）。
+pub(super) struct Client(String);
+impl<S:Send+Sync> axum::extract::FromRequestParts<S> for Client {
+ type Rejection=std::convert::Infallible;
+ async fn from_request_parts(parts:&mut axum::http::request::Parts,_:&S)->std::result::Result<Self,Self::Rejection> {
+  use std::hash::{Hash,Hasher};
+  if let Some(token)=parts.headers.get("authorization").and_then(|h|h.to_str().ok()).and_then(|v|v.strip_prefix("Bearer ")).filter(|t|!t.is_empty()) {
+   let mut h=std::hash::DefaultHasher::new();
+   token.hash(&mut h);
+   return Ok(Client(format!("t:{:016x}",h.finish())))
+  }
+  let peer=parts.extensions.get::<axum::extract::ConnectInfo<std::net::SocketAddr>>().map(|c|c.0)
+   .unwrap_or(std::net::SocketAddr::from((std::net::Ipv4Addr::UNSPECIFIED,0)));
+  Ok(Client(format!("ip:{}",crate::auth::client_ip(&peer,&parts.headers))))
+ }
+}
+
+pub(super) async fn highlights(Axum(_s):Axum<AppState>,headers:axum::http::HeaderMap,client:Client,Params(q):Params<HighlightsQuery>)->Result<Response> {
  if !instruments::valid_base(&q.base) {return Err(ApiError::bad("invalid_base"))}
  let gzip=accepts_gzip(&headers);
  let base=q.base;
+ // 打开一只就记进这台设备的名单（自选层的设备那一份，缓存命中也记）。
+ super::touch_device(&client.0,std::slice::from_ref(&base),now_ms()).await;
  let answer=ANSWERS.get_or_build((base.clone(),gzip),||async {
   let now=now_ms();
   // 打开一只就算「有人要」：没在跟的起跟（按需层），在跟的续上。
   let tracked=want(&base,now).await;
   let json=match snapshot(&base) {
    Some(s) if tracked=>s.json.clone(),
+   // 挂牌的永续不回空答复：当场用 REST 历史补一份（资源闸门挡住没起跟的也照补，只是不会接着现场收）。
+   _ if instruments::listed(&base).await!=Some(false)=>quick(&base,now).await,
    _=>untracked(&base,now),
   };
   packed(json.to_string(),gzip,CACHE_CONTROL)
@@ -387,9 +484,16 @@ pub(super) async fn highlights(Axum(_s):Axum<AppState>,headers:axum::http::Heade
 pub(super) struct BoardQuery {bases:Option<String>}
 
 /// 首页异动一列：自选（`bases`，客户端带）∪ 热点层，每只一行。只读算好的那一份，不起跟。
-pub(super) async fn highlights_board(Axum(_s):Axum<AppState>,headers:axum::http::HeaderMap,Params(q):Params<BoardQuery>)->Result<Response> {
+pub(super) async fn highlights_board(Axum(_s):Axum<AppState>,headers:axum::http::HeaderMap,client:Client,Params(q):Params<BoardQuery>)->Result<Response> {
  let gzip=accepts_gzip(&headers);
  let favorites=board::parse(q.bases.as_deref());
+ // 带上来的自选按客户端给的顺序记进这台设备的名单（每台最多 30），马上起跟，不等 10 分钟的账号自选重算、不要登录。
+ let ordered:Vec<String>={
+  let set:HashSet<&str>=favorites.iter().map(String::as_str).collect();
+  let mut seen=HashSet::new();
+  q.bases.as_deref().unwrap_or("").split(',').map(|b|b.trim().to_ascii_uppercase()).filter(|b|set.contains(b.as_str())&&seen.insert(b.clone())).collect()
+ };
+ if !ordered.is_empty() {super::touch_device(&client.0,&ordered,now_ms()).await;}
  let answer=BOARD_ANSWERS.get_or_build((favorites.join(","),gzip),||async {
   let hot=REGISTRY.get().map(|r|r.hot_list()).unwrap_or_default();
   let json=board::answer(&favorites,&hot,snapshot,&moves::current(),now_ms());
@@ -401,6 +505,46 @@ pub(super) async fn highlights_board(Axum(_s):Axum<AppState>,headers:axum::http:
 #[cfg(test)]
 mod tests {
  use super::*;
+
+ #[test]
+ fn a_fresh_base_answers_from_rest_history_then_levels_follow_live_data() {
+  use fetch::{Boot,K};
+  let now:i64=1_791_600_000_000+30_000;
+  let t0=now.div_euclid(M)*M;
+  let minutes:Vec<K>=(1..=1500).map(|i|K{t:t0-i*M,o:100.0,h:100.5,l:99.5,c:100.0}).collect();
+  let kflow=minutes.iter().map(|k|(k.t,(100.0,1000.0))).collect();
+  let hours:Vec<K>=(1..=20).map(|i|K{t:t0.div_euclid(stats::HOUR_MS)*stats::HOUR_MS-i*stats::HOUR_MS,o:100.0,h:101.0,l:99.0,c:100.0}).collect();
+  let oi5:Vec<(i64,f64)>=(0..100).map(|i|(t0.div_euclid(5*M)*5*M-i*5*M,1e8-1e5*i as f64)).collect();
+  let spot_minutes:Vec<K>=(1..=60).map(|i|K{t:t0-i*M,o:100.1,h:100.1,l:100.1,c:100.1}).collect();
+  let boot=Boot{minutes,kflow,spot_minutes,hours,oi5,funding:vec![(t0-8*stats::HOUR_MS,0.0001)],gap:(t0-3*stats::DAY_MS,t0),..Boot::default()};
+  let mut s=fresh("FRESH",now);
+  boot_state(&mut s,None,boot,now,now);
+  let j=s.compute(now,true).json;
+  assert_eq!(j["tracked"],true);
+  assert_eq!(j["observingSinceMs"],now,"a never-tracked base says when live observation started");
+  assert_eq!(j["partial"],false);
+  let rows=j["flow"]["rows"].as_array().unwrap();
+  assert_eq!(rows[0]["netUsd"],json!(1500.0),"15m from the 1-minute klines' taker-buy volume");
+  assert_eq!(rows[1]["netUsd"],json!(6000.0));
+  assert_eq!(rows[2]["netUsd"],json!(24000.0));
+  assert!(rows[3]["netUsd"].is_number(),"24h / range row covered by 25 hours of minutes");
+  assert!(j["position"]["oi"]["pct1h"].is_number(),"open interest from the 5-minute history");
+  assert_eq!(j["position"]["funding"]["rate"],json!(0.0001),"funding falls back to the latest settled rate");
+  assert_eq!(j["position"]["spotPremium"]["pct"],json!(0.1),"spot premium from the spot 1-minute klines");
+  assert!(j["levels"].as_array().unwrap().is_empty(),"levels need live walls / fills");
+  // 现场收到墙与成交之后，关键价位就出来了。
+  let mut p=Pending::default();
+  p.fills.push((t0,std::collections::BTreeMap::from([(ledger::key(100.2),(5e5,1e5))])));
+  p.walls.push((t0,vec![Live{bid:true,price:99.8,usd:2e6,initial:2e6,filled:0.0,first:t0}]));
+  s.fold(p,now+M);
+  let j=s.compute(now+M,true).json;
+  assert!(!j["levels"].as_array().unwrap().is_empty(),"live data turns into levels");
+  assert_eq!(j["observingSinceMs"],now);
+  // 落过盘的不算新起跟。
+  let mut old=fresh("FRESH",now);
+  boot_state(&mut old,Some(s.payload()),Boot{gap:(t0,t0),..Boot::default()},now,now);
+  assert_eq!(old.compute(now,true).json["observingSinceMs"],Value::Null);
+ }
 
  #[test]
  fn venue_ranks() {
