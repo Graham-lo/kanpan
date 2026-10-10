@@ -1,8 +1,7 @@
 /* 手机网页版 · 行情页周期条（照 iOS Main/IntervalBar.swift、IntervalGridPopover.swift、CrosshairReadout.swift）
  *
- * 钉住的档位按 INTERVALS 顺序等宽铺满；当前档一颗贴字的 accent-soft 药丸（「最新」药丸 2026-10-02 按用户要求删了：
- * 回到最新靠双击图、或在行情页再点一下底栏「图表」）；
- * 一根 1×14 分隔线；行尾三件：「更多 ▾」（当前档没钉住时写成那一档并高亮）· 「分析」· 图表设置记号。
+ * 2026-10-11：固定六个周期槽 +「更多 ▾ · 分析 · 图表设置」，九格随当前行宽等分铺满。
+ * 当前格为整格 accent-soft 淡底，无竖线、药丸或行尾外伸；非常用周期由「更多」格显示。
  * 长按一档 = 取消钉。十字线活着（主图或副图）时整行透明让位，同一行换成一条带子（照 iOS CrosshairActionBar 2026-10-08）：
  * 左边是那一根的读数「时间 · 开 高 低 收 · 涨跌幅」（11 号、ink2，放不下先收开高低、再收时间），
  * 右边一颗「创建提醒」药丸（只在主图上出：副图读的是指标值，建不了价格提醒）。出主力订单流详情卡时读数让位给卡片。
@@ -43,14 +42,13 @@ export function createIntervalBar(host: HTMLElement, h: IntervalBarHandlers) {
   const row = el('div', 'cp-ivrow')
   const bar = el('div', 'cp-ivbar')
   const chips = el('div', 'cp-chips')
-  const divider = el('span', 'cp-ivdiv')
   const more = el('button', 'cp-tail cp-more')
   more.type = 'button'
   const analysis = el('button', 'cp-tail', '分析')
   analysis.type = 'button'
   const settings = el('button', 'cp-tail cp-gear', icon('adjust', 18))
   settings.type = 'button'; settings.setAttribute('aria-label', '图表设置')
-  bar.append(chips, divider, more, analysis, settings)
+  bar.append(chips, more, analysis, settings)
   const alert = el('button', 'cp-alertpill', `${icon('bell', 12)}<span>创建提醒</span>`)
   alert.type = 'button'
   const xband = el('div', 'cp-xband')

@@ -1,37 +1,7 @@
 import XCTest
 
-// ============================================================ 周期条的排版（P3-1 / P3-2）
-//
-// 这一组用例守的是**六档周期在各种状态下都完整地排在条上，且彼此分得开**。
-//
-// 行尾那颗「最新」原来占着一个恒定宽度的槽位：空着、放「最新」、放另一颗药丸
-// 几种状态一样宽，为的是「药丸进出时周期不跳位」。2026-09-21 用户看了
-// 出厂第一屏的截图，第一句话说的就是那个槽位留下的空白（「周期条空间足够放，那可以
-// 搞点间距隔开啊」），于是槽位删了：**不在场时零宽度**，在场时淡入，周期区跟着
-// 0.18s 平滑地重新铺满。同一轮里出厂默认也从五档放满成六档（`Interval.quick`）。
-//
-// 所以「周期一个点都不许动」这条只剩一处还成立、也只有那一处该成立：**十字线开关**。
-// 十字线的动作（`CrosshairActionBar`；2026-09-25 起只剩「涨到 / 跌到 X 提醒我」一颗）
-// 就在周期条**这一行**上：十字线在时它整行顶替周期条，条透明让位、点不着，但照旧占位；
-// 十字线一收，六档要原地出现，一个点都不许挪。
-// 「最新」进出时周期区**本来就要重新铺满**，改成断言「六档还是全在、
-// 互不重叠、都在条里」，外加那颗动作自己点得着。
-//
-// 2026-09-24 行尾从「最新 | 更多 · 图表设置」变成「最新 | 更多 ▾ · 指标 · 图表设置」
-// （用户：「现在指标这个大类放到周期条中」），同一天「返回刚才」按用户要求整个删掉。
-// 最挤的一屏因此是「六档满钉 + 有『最新』+ 行尾三件」。
-//
-// 2026-10-02 「最新」药丸按用户要求整个删了（「都没什么用」；回到最新靠双击图或再点一下底栏
-// 「图表」），行尾只剩三件、周期区不再随视野进出重新铺满，最挤的一屏就是「六档满钉 + 行尾三件」，
-// 往回拖到历史里时六档要一个点都不动。
-//
-// `testPinnedChipsAllFit` 守的是两头——钉满六档时六颗全在条上、行尾三件
-// 都点得着，钉三档时那三颗把整行铺满；`testIndicatorsOpensIndicatorPage` 守的是「指标」
-// 直接开指标页、左上角那颗关面板；`testFullPinsSwapInOneStep` 守的是「钉满时点第七颗 = 挑一档换掉，一步到位」；
-// `testOffBarIntervalNeverEvictsPins` 守的是「临时去看一个没钉的周期，钉住的一档都不少」。
-//
-// 量的是每一颗 chip 的 `frame`，不是截图像素：截图能看出「动了」，量框才说得出「动了多少」。
-// 截图照旧落到 `/tmp/kanpan-p3/` 下给人看。
+// 固定六个周期槽 + 更多 / 分析 / 设置，九格按当前屏宽动态均分。
+// 验证宽度与位置、最长文字、非常用周期、入口命中、十字线与历史视野切换。
 
 @MainActor
 final class IntervalSlotUITests: KanpanUICase {
@@ -275,17 +245,19 @@ final class IntervalSlotUITests: KanpanUICase {
     assertAllVisible(full, "六档满钉·空")
     assertNoOverlap(full, "六档满钉·空")
     assertTailFits(full, "六档满钉")
+    assertEqualSlots(full, "六档满钉")
     // 最挤的那一屏的实测数字，留在日志里给人看（16 Pro 上尤其要看这一行）。
     dumpFrames(full, "六档满钉")
     shot("20-六档满钉-行尾三件")
 
-    // 取到三档：剩下的那三颗要把整行铺满（钉得少就平分，右边不留一条空白）。
+    // 兼容旧偏好不足六档：六个周期槽仍保留，右侧入口不挪位。
     unpinFromGrid(["1m", "5m", "15m"])
     let three = ["30m", "1h", "4h"]
     assertAllVisible(three, "三档")
-    assertFillsRow(three, "三档")
-    // 三档摊开铺满剩下的整行，右边不留一条空白。
-    shot("23-三档-铺满整行")
+    assertTailFits(three, "旧偏好三档")
+    assertEqualSlots(three, "三档")
+    // 旧偏好不足六档时保留槽位，三个入口不移动。
+    shot("23-旧偏好三档-保持九格位置")
   }
 
   /// 最宽的那六档一起钉上，照样一行排得下、一个字不截。
@@ -304,6 +276,7 @@ final class IntervalSlotUITests: KanpanUICase {
     assertAllVisible(widest, "最宽六档·空")
     assertNoOverlap(widest, "最宽六档·空")
     assertTailFits(widest, "最宽六档")
+    assertEqualSlots(widest, "最宽六档")
     dumpFrames(widest, "最宽六档")
     shot("26-最宽六档-行尾三件")
   }
@@ -348,6 +321,7 @@ final class IntervalSlotUITests: KanpanUICase {
   /// 从网格里切到一个没钉住的周期（2h）：钉住的六档一个都不少，「更多」写成「2h」并高亮。
   func testOffBarIntervalNeverEvictsPins() {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
+    let before = chipFrames()
     pickFromGrid("2h")
     let more = app.buttons[Ids.intervalMore]
     XCTAssertTrue(waitUntil(timeout: Self.long) { more.isSelected }, "切到没钉住的 2h，「更多」没高亮")
@@ -355,7 +329,14 @@ final class IntervalSlotUITests: KanpanUICase {
     XCTAssertFalse(app.buttons[Ids.intervalChip("2h")].exists, "没钉住的 2h 挤上了周期条")
     assertAllVisible(Ids.quickIntervals, "当前档没钉住")
     assertNoOverlap(Ids.quickIntervals, "当前档没钉住")
+    assertSame(before, chipFrames(), "更多显示2时")
+    assertEqualSlots(Ids.quickIntervals, "更多显示2时")
     shot("29-当前档没钉住-更多写成周期名")
+    pickFromGrid("12h")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { more.label.contains("12") && more.isSelected })
+    assertSame(before, chipFrames(), "更多显示最长的12时")
+    assertEqualSlots(Ids.quickIntervals, "更多显示12时")
+    shot("29b-当前12时-整格高亮")
     pickFromGrid("4h")
     XCTAssertTrue(waitUntil(timeout: Self.long) { !more.isSelected }, "切回钉住档，「更多」还亮着")
   }
@@ -395,17 +376,6 @@ final class IntervalSlotUITests: KanpanUICase {
     }
   }
 
-  /// 钉得少时这几颗要把整行铺满：末档的右沿贴着条的右沿，右边不留一条空白。
-  private func assertFillsRow(_ list: [String], _ what: String,
-                              file: StaticString = #filePath, line: UInt = #line) {
-    guard let m = stripLayout(list), let last = list.last, let tail = m.chips[last] else {
-      return XCTFail("\(what)：量不到条或末档", file: file, line: line)
-    }
-    XCTAssertGreaterThan(tail.maxX, m.row.maxX - 6,
-      "\(what)：\(last) 右边还空着 \(m.row.maxX - tail.maxX)pt，没铺满",
-      file: file, line: line)
-  }
-
   /// 行尾「更多 ▾ · 分析 · 图表设置」都在屏上、点得着，一件也没压到末档上，
   /// 也没被推出屏幕右沿。「画线」09-27 到 09-28 在这儿待过一天，现在和指标并列在「分析」面板里。
   private func assertTailFits(_ list: [String], _ what: String,
@@ -425,6 +395,24 @@ final class IntervalSlotUITests: KanpanUICase {
       XCTAssertGreaterThanOrEqual(b.frame.midX, prevMaxX - 2,
         "\(what)：\(id) 和前一件叠在一起了", file: file, line: line)
       prevMaxX = b.frame.maxX
+    }
+  }
+
+  /// 固定九格，周期与三个动作等宽且高 44pt；更多改写名称也不移动。
+  private func assertEqualSlots(_ list: [String], _ what: String,
+                                file: StaticString = #filePath, line: UInt = #line) {
+    let indexed = list.enumerated().map { ($0.offset, Ids.intervalChip($0.element)) }
+      + [(6, Ids.intervalMore), (7, Ids.intervalIndicators), (8, Ids.intervalChart)]
+    let screen = app.windows.firstMatch.frame
+    let width = screen.width / 9
+    for (index, id) in indexed {
+      let button = app.buttons[id]
+      XCTAssertTrue(button.exists && button.isHittable, "\(what)：\(id) 点不着", file: file, line: line)
+      XCTAssertEqual(button.frame.width, width, accuracy: 0.5,
+                     "\(what)：\(id) 没有等宽", file: file, line: line)
+      XCTAssertEqual(button.frame.minX, screen.minX + CGFloat(index) * width, accuracy: 0.5,
+                     "\(what)：\(id) 有间隔或越界", file: file, line: line)
+      XCTAssertEqual(button.frame.height, 44, accuracy: 0.5, file: file, line: line)
     }
   }
 

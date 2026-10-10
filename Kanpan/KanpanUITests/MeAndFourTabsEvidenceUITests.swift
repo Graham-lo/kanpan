@@ -7,8 +7,8 @@ import XCTest
 //
 // 1. **周期条宽度**：出厂六档（5分 30分 1时 4时 1日 1周）满钉时，行尾三件
 //    （更多 ▾ · 分析 · 图表设置）排得下，不缩字、不截字。读的是周期排
-//    `interval.quick` 在 DEBUG 包里挂的读数（实际分到的宽度 − 六档字宽与内距，见 `IntervalBar.layoutReport`），
-//    外加几何：三件都在页边距以内、互不重叠、各自的命中区够 44。
+//    `interval.quick` 在 DEBUG 包里挂的读数（格宽减最长文字与箭头的宽度，见 `IntervalBar.layoutReport`），
+//    外加几何：九格等宽、互不重叠，命中区高 44。
 //    2026-09-27 这里是四件（画线夹在指标与图表设置之间，16 Pro 只剩 1.2pt、两颗记号命中区叠 10pt）；
 //    09-28 用户定画线和指标并列归到一个大类：行尾那格「指标」改名「分析」，行尾回到三件，
 //    分析面板四节 画线 · 指标 · 对比 · 主力订单流（画线那一行 `indicator.draw`）。
@@ -70,8 +70,8 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
     let slack = report.split(separator: " ").dropFirst().first.flatMap { Double($0) }
     XCTAssertNotNil(slack, "读不到周期排的余量：\(report)")
     XCTAssertGreaterThanOrEqual(slack ?? -1, 0, "六档 + 行尾三件排不下：\(report)")
-    // 出厂六档在两台上都用不着收格子内距（2pt 原样）：收内距是留给用户钉出特别宽的组合时的退路。
-    XCTAssertTrue(report.contains("内距 2.00"), "出厂六档就开始收格子内距了：\(report)")
+    // 2026-10-11：九格按整屏宽度等分，文字与箭头在完整格子内居中。
+    XCTAssertTrue(report.contains("格宽"), "读不到等宽格子的宽度：\(report)")
 
     // 六档每一颗都在、字没被截（标签是完整的周期名）。
     for raw in ["5m", "30m", "1h", "4h", "1d", "1w"] {
@@ -89,14 +89,20 @@ final class MeAndFourTabsEvidenceUITests: KanpanUICase {
     XCTAssertEqual(indicators.label, "分析", "行尾那格不叫「分析」")
     XCTAssertLessThanOrEqual(more.frame.maxX, indicators.frame.minX + 0.5, "「更多」和「分析」叠了")
     XCTAssertLessThanOrEqual(indicators.frame.maxX, chart.frame.minX + 0.5, "「分析」和图表设置叠了")
-    // 命中区不小于 44。
+    // 行尾三件同样是整屏九分之一宽，点击范围覆盖整格。
     for (name, b) in [("更多", more), ("分析", indicators), ("图表设置", chart)] {
-      XCTAssertGreaterThanOrEqual(b.frame.width, 43.5, "\(name)的命中区不到 44：\(b.frame)")
+      XCTAssertEqual(b.frame.width, window.width / 9, accuracy: 0.5,
+                     "\(name)没有与周期等宽：\(b.frame)")
       XCTAssertGreaterThanOrEqual(b.frame.height, 43.5, "\(name)的命中区不到 44：\(b.frame)")
     }
     // 图表设置那颗的右缘不出窗口。
     XCTAssertLessThanOrEqual(chart.frame.maxX, window.maxX + 0.5, "图表设置被挤出屏：\(chart.frame)")
-    shot("周期条最挤", "青苔")
+    let screenshot = app.screenshot()
+    let attachment = XCTAttachment(screenshot: screenshot)
+    attachment.name = "出厂六档-九格等宽"; attachment.lifetime = .keepAlways; add(attachment)
+    let dir = URL(fileURLWithPath: "/tmp/kanpan-p3", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try screenshot.pngRepresentation.write(to: dir.appendingPathComponent("出厂六档-九格等宽.png"))
   }
 
   // ------------------------------------------------------------ 2. 三皮肤截图
